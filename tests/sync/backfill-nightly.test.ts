@@ -7,7 +7,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FakeDb } from "../helpers/fake-prisma";
 import type { ShopifyqlClient } from "../../app/services/sync/shopifyql.server";
+import { createSleepBudget } from "../../app/lib/sync/budget-shared";
 import {
+  ShopifyqlParseError,
   ShopifyqlThrottledError,
   addDays,
   assertPastRange,
@@ -152,7 +154,9 @@ describe("runBackfill", () => {
     expect(s).toMatchObject({ first90Ready: true, syncedThrough: "2026-10-15", range: { from: "2025-10-01", until: "2026-10-15" } });
     expect(s.finishedAt).toBeTruthy();
     expect(s.datasets?.visits).toMatchObject({ done: 13, total: 13, doneThrough: "2025-10-01" });
-    expect(afterSync).toHaveBeenCalledTimes(1);
+    expect(s.datasets?.totals).toMatchObject({ done: 13, total: 13 });
+    // Compute once when first90Ready flipped (early numbers), once when finished.
+    expect(afterSync).toHaveBeenCalledTimes(2);
 
     const nDays = 380; // 2025-10-01 … 2026-10-15
     expect(db.tables.stockDaily).toHaveLength(nDays * 2);
@@ -184,19 +188,79 @@ describe("runBackfill", () => {
       { id: "gid://shopify/Location/1", shop: S, name: "Warehouse", active: true, online: true },
       { id: "gid://shopify/Location/2", shop: S, name: "Madrid Store", active: true, online: false },
     ];
-    const first = fakeQl({ throttleOnCall: 9 }); // month 1: stock(1) + sales(3) + visits(1); month 2: stock(6), sales(7–9)
+    // Per month: stock(1), sales by location + by channel (2), visits(1), totals(1).
+    const first = fakeQl({ throttleOnCall: 9 }); // month 2: stock(6), sales(7–8), visits(9)
     expect(await runBackfill(S, deps(first.ql))).toBe("throttled");
     const s = state();
     expect(s.finishedAt).toBeUndefined();
     expect(s.datasets?.stock?.done).toBe(2);
-    expect(s.datasets?.sales).toMatchObject({ done: 1, lastError: expect.stringContaining("throttled") });
+    expect(s.datasets?.sales?.done).toBe(2);
+    expect(s.datasets?.visits).toMatchObject({ done: 1, attempts: 0, lastErrorCode: "throttled", lastError: expect.stringContaining("throttled") });
 
     const second = fakeQl();
     expect(await runBackfill(S, deps(second.ql))).toBe("done");
-    expect(second.calls[0]).toMatchObject({ kind: "salesByLocation", range: { since: "2026-09-01" } });
+    expect(second.calls[0]).toMatchObject({ kind: "sessions", range: { since: "2026-09-01" } });
     expect(cat.syncCatalog).toHaveBeenCalledTimes(2); // once per full backfill, not again on resume
     for (const t of Object.keys(want)) expect(snapshot(t), t).toEqual(want[t]);
-    expect(state().datasets?.sales?.lastError).toBeNull();
+    expect(state().datasets?.visits?.lastError).toBeNull();
+  });
+
+  it("review H3: a failing dataset never blocks the others; its month is skipped after 5 runs", async () => {
+    const { ql } = fakeQl();
+    const broken: ShopifyqlClient = {
+      ...ql,
+      stockDaily: async () => {
+        throw new ShopifyqlParseError(["bad column"], "q");
+      },
+    };
+    expect(await runBackfill(S, deps(broken))).toBe("error");
+    let s = state();
+    expect(s.datasets?.stock).toMatchObject({ done: 0, attempts: 1, lastErrorCode: "shopifyql_parse" });
+    expect(s.datasets?.sales?.done).toBe(13);
+    expect(s.datasets?.visits?.done).toBe(13);
+    expect(s.datasets?.totals?.done).toBe(13);
+    expect(s.first90Ready).toBeUndefined(); // needs stock too
+    for (let run = 2; run <= 5; run++) await runBackfill(S, deps(broken));
+    s = state();
+    expect(s.datasets?.stock).toMatchObject({ done: 1, attempts: 0, degraded: true, skippedMonths: ["2026-10-01"] });
+    expect(s.finishedAt).toBeUndefined();
+  });
+
+  it("per-tick step cap: at most maxSteps steps, then 'progress'", async () => {
+    const { ql, calls } = fakeQl();
+    expect(await runBackfill(S, deps(ql, { maxSteps: 6 }))).toBe("progress");
+    const s = state();
+    expect(s.datasets?.products?.done).toBe(1);
+    expect([s.datasets?.stock?.done, s.datasets?.sales?.done, s.datasets?.visits?.done, s.datasets?.totals?.done]).toEqual([2, 1, 1, 1]);
+    expect(calls.filter((c) => c.kind === "stock")).toHaveLength(2);
+  });
+
+  it("compute runs as soon as first90Ready flips, before the backfill is finished (spec J1)", async () => {
+    const { ql } = fakeQl();
+    const seen: Array<{ ready: boolean; finished: boolean; visits: number }> = [];
+    const afterSync = vi.fn(async () => {
+      const st = state();
+      seen.push({ ready: !!st.first90Ready, finished: !!st.finishedAt, visits: st.datasets?.visits?.done ?? 0 });
+    });
+    await runBackfill(S, deps(ql, { maxSteps: 12, afterSync }));
+    expect(seen).toEqual([{ ready: true, finished: false, visits: 2 }]); // after sales of month 3
+  });
+
+  it("review H4: a throttle longer than the tick's wait budget stops the run instead of sleeping", async () => {
+    const slept: number[] = [];
+    const budget = createSleepBudget(async (ms) => void slept.push(ms), 30_000);
+    const reset = new Date(NOW + 90_000).toISOString();
+    const admin = {
+      graphql: vi.fn(async () =>
+        new Response(JSON.stringify({ errors: [{ message: "Throttled", extensions: { code: "THROTTLED" } }], extensions: { shopifyqlCost: { requestedQueryCost: 10, maximumAvailable: 1000, currentlyAvailable: 0, windowResetAt: reset } } }), {
+          status: 200,
+        }),
+      ),
+    };
+    const outcome = await runBackfill(S, { getAdmin: async () => admin, now: () => NOW, sleep: async () => {}, throttleSleep: budget.sleep });
+    expect(outcome).toBe("throttled");
+    expect(slept).toEqual([]); // a 90 s wait never started
+    expect(state().datasets?.stock).toMatchObject({ done: 0, attempts: 0, lastErrorCode: "throttled" });
   });
 
   it("re-running the same month replaces rows instead of duplicating them", async () => {
@@ -270,6 +334,32 @@ describe("runNightly", () => {
     const ok = fakeQl();
     expect(await runNightly(S, deps(ok.ql, { now: () => Date.parse("2026-10-17T02:10:00Z") }))).toBe("done");
     expect(state().datasets?.stock?.lastError).toBeNull();
+  });
+
+  it("a failing dataset doesn't block the night: others advance, it retries from its own syncedThrough", async () => {
+    await finishedShop();
+    const { ql, calls } = fakeQl();
+    const broken: ShopifyqlClient = {
+      ...ql,
+      sessionsDaily: async () => {
+        throw new ShopifyqlParseError(["bad"], "q");
+      },
+    };
+    const at = Date.parse("2026-10-17T01:10:00Z");
+    expect(await runNightly(S, deps(broken, { now: () => at }))).toBe("partial");
+    const s = state();
+    expect(s.datasets?.stock?.syncedThrough).toBe("2026-10-16");
+    expect(s.datasets?.totals?.syncedThrough).toBe("2026-10-16");
+    expect(s.datasets?.visits).toMatchObject({ syncedThrough: "2026-10-15", lastErrorCode: "shopifyql_parse" });
+    expect(s.syncedThrough).toBe("2026-10-15"); // the slowest dataset
+    expect((db.tables.shop[0].lastNightlyAt as Date).getTime()).toBe(at);
+    expect(cat.syncCatalog).toHaveBeenCalledTimes(1);
+    expect(calls.some((c) => c.kind === "shopDaily")).toBe(true);
+    // Next night: visits catches up two days, the others one.
+    const next = fakeQl();
+    expect(await runNightly(S, deps(next.ql, { now: () => Date.parse("2026-10-18T01:10:00Z") }))).toBe("done");
+    expect(next.calls.find((c) => c.kind === "sessions")?.range).toEqual({ since: "2026-10-16", until: "2026-10-17" });
+    expect(next.calls.find((c) => c.kind === "stock")?.range).toEqual({ since: "2026-10-17", until: "2026-10-17" });
   });
 
   it("deletes daily facts older than 25 months", async () => {

@@ -21,7 +21,7 @@ import prisma from "../db.server";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
 import { shopifyqlBudget } from "../services/sync/shopifyql.server";
-import { backfillPercent, latestError, readBackfillState } from "../lib/sync/backfill-shared";
+import { backfillPercent, isDegraded, latestError, readBackfillState } from "../lib/sync/backfill-shared";
 
 const outbox = prisma.novaOutbox;
 
@@ -32,6 +32,8 @@ type SyncHealth = {
   backfillPct: number | null;
   lastError: string | null;
   lastErrorAt: string | null;
+  /** Installed shops with a dataset that skipped a month after repeated failures. */
+  degradedShops: number | null;
 };
 
 /** Data freshness over installed shops. Never throws (null fields on a DB error). */
@@ -44,10 +46,12 @@ async function syncHealth(): Promise<SyncHealth> {
     let lastNightly: Date | null = null;
     let pctSum = 0;
     let err: { message: string; at: string | null } | null = null;
+    let degraded = 0;
     for (const s of shops) {
       if (s.lastNightlyAt && (!lastNightly || s.lastNightlyAt > lastNightly)) lastNightly = s.lastNightlyAt;
       const state = readBackfillState(s.backfillState);
       pctSum += backfillPercent(state);
+      if (isDegraded(state)) degraded++;
       const e = latestError(state);
       if (e && (!err || (e.at !== null && (err.at === null || e.at > err.at)))) err = e;
     }
@@ -56,9 +60,10 @@ async function syncHealth(): Promise<SyncHealth> {
       backfillPct: shops.length ? Math.round(pctSum / shops.length) : null,
       lastError: err?.message ?? null,
       lastErrorAt: err?.at ?? null,
+      degradedShops: degraded,
     };
   } catch {
-    return { lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null };
+    return { lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null, degradedShops: null };
   }
 }
 

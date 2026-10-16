@@ -3,13 +3,16 @@
  *
  *   ensureShop → catalog → locations → stock now  (dataset "products")
  *   → history: HISTORY_MONTHS calendar months ending YESTERDAY in the store's time zone,
- *     month by month NEWEST FIRST, each month stock → sales (+ store totals) → visits.
+ *     month by month NEWEST FIRST: stock, sales, visits and store totals.
  *
  * Shop.backfillState is written after every step (durable progress: done / total /
  * doneThrough / lastError per dataset), so a restart, a throttle or an error resumes at the
  * exact step. The history window is fixed when the backfill starts (state.range).
- * first90Ready flips once the newest 3 months of stock + sales are stored; finishedAt when
- * everything is. A ShopifyQL throttle stops the run ("throttled") until the next tick.
+ * Each dataset (stock, sales, visits, totals) has its own month cursor, so a failing one
+ * never blocks the others; after 5 consecutive failures a month is skipped and the dataset
+ * marked degraded. first90Ready flips once the newest 3 months of stock + sales are stored —
+ * compute runs right then, so first numbers appear early — and finishedAt when everything
+ * is. A throttle (or the tick's throttle-wait budget) stops the run until the next tick.
  *
  * Never throws: kickoffBackfill (afterAuth) and the scheduler only log the outcome.
  */
@@ -28,17 +31,23 @@ import {
   type BackfillStep,
 } from "../../lib/sync/backfill-shared";
 import { historyRange, localDate, localYesterday, safeTimeZone } from "../../lib/sync/store-time-shared";
-import { ShopifyqlThrottledError } from "../../lib/sync/shopifyql-shared";
+import { isThrottle, syncErrorCode } from "../../lib/sync/errors-shared";
 
 export type DataJobDeps = SyncDeps & {
   /** Admin client for the shop (offline session). The scheduler / afterAuth pass unauthenticated.admin. */
   getAdmin: (shop: string) => Promise<AdminGraphqlClient>;
   /** ShopifyQL client factory (tests inject a fake). */
   shopifyql?: (admin: AdminGraphqlClient) => ShopifyqlClient;
-  /** Runs after data changed and the first 90 days are ready (compute; wired in task 1.5). */
+  /** Runs compute: as soon as first90Ready flips, and again when the backfill finishes. */
   afterSync?: (shop: string) => Promise<void>;
-  /** Stop after this many steps (tests, and to bound one tick). Default: unbounded. */
+  /** At most this many steps per run (the scheduler passes STEPS_PER_TICK). Default: unbounded. */
   maxSteps?: number;
+  /**
+   * Sleep used for THROTTLE waits only (ShopifyQL window reset, Admin API restore). The
+   * scheduler passes a per-tick budget that throws ThrottleBudgetError past 30 s.
+   * Defaults to `sleep`.
+   */
+  throttleSleep?: (ms: number) => Promise<void>;
 };
 
 export type BackfillOutcome = "done" | "progress" | "throttled" | "error" | "skipped";
@@ -51,7 +60,11 @@ async function saveState(shop: string, state: BackfillState): Promise<void> {
   await prisma.shop.update({ where: { domain: shop }, data: { backfillState: state as Prisma.InputJsonValue } });
 }
 
-/** Runs (or resumes) the backfill for one shop. */
+/**
+ * Runs (or resumes) the backfill for one shop. Each dataset advances its own month cursor;
+ * a dataset that fails is passed over for the rest of the run (the others continue) and its
+ * month is skipped after MAX_STEP_ATTEMPTS consecutive failures. A throttle stops the run.
+ */
 export async function runBackfill(shop: string, deps: DataJobDeps): Promise<BackfillOutcome> {
   const now = deps.now ?? Date.now;
   const nowIso = () => new Date(now()).toISOString();
@@ -62,7 +75,7 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
     const info = await ensureShop(admin, shop);
     tz = safeTimeZone(info.timezone);
   } catch (e) {
-    console.error(`[sync/backfill] ${shop}: shop read failed`, e);
+    console.error(`[sync/backfill] ${shop}: shop read failed (${syncErrorCode(e)})`, e);
     return "error";
   }
 
@@ -75,19 +88,35 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
   await saveState(shop, state);
 
   const chunks = monthChunks(state.range!.from, state.range!.until);
-  const ql = (deps.shopifyql ?? ((a) => createShopifyqlClient(a, { sleep: deps.sleep, now: deps.now })))(admin);
-  const wasReady = !!state.first90Ready;
+  const throttleSleep = deps.throttleSleep ?? deps.sleep;
+  const ql = (deps.shopifyql ?? ((a) => createShopifyqlClient(a, { sleep: throttleSleep, now: deps.now })))(admin);
+  const failedThisRun = new Set<string>();
   let steps = 0;
-  let changed = false;
-  let outcome: BackfillOutcome = "progress";
+  let stepsSinceCompute = 0;
+  let hadError = false;
+  let outcome: BackfillOutcome | null = null;
+
+  const compute = async () => {
+    stepsSinceCompute = 0;
+    if (!deps.afterSync) return;
+    try {
+      await deps.afterSync(shop);
+    } catch (e) {
+      console.error(`[sync/backfill] ${shop}: compute failed`, e);
+    }
+  };
 
   for (;;) {
-    const step: BackfillStep = nextBackfillStep(state, chunks);
+    const step: BackfillStep = nextBackfillStep(state, chunks, failedThisRun);
     if (step.kind === "done") {
       outcome = "done";
       break;
     }
+    if (step.kind === "wait") break; // everything left failed in this run: next tick
     if (deps.maxSteps !== undefined && steps >= deps.maxSteps) break;
+    steps++;
+    stepsSinceCompute++;
+    const wasReady = !!state.first90Ready;
     const dataset = step.kind === "products" ? "products" : step.dataset;
     try {
       if (step.kind === "products") {
@@ -102,28 +131,28 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
         }
       }
       state = completeStep(state, step, chunks, nowIso());
-      changed = true;
-      steps++;
       await saveState(shop, state);
     } catch (e) {
-      state = failStep(state, dataset, errorMessage(e), nowIso());
+      const code = syncErrorCode(e);
+      const throttled = isThrottle(e);
+      const failed = failStep(state, dataset, errorMessage(e), nowIso(), { countAttempt: !throttled, step, chunks, code });
+      state = failed.state;
       await saveState(shop, state).catch((err) => console.error(`[sync/backfill] ${shop}: state save failed`, err));
-      outcome = e instanceof ShopifyqlThrottledError ? "throttled" : "error";
-      if (outcome === "error") console.error(`[sync/backfill] ${shop} ${dataset}`, e);
-      else console.warn(`[sync/backfill] ${shop}: ShopifyQL throttled, resuming on the next tick`);
-      break;
+      if (throttled) {
+        console.warn(`[sync/backfill] ${shop}: throttled (${errorMessage(e)}), resuming on the next tick`);
+        outcome = "throttled";
+        break;
+      }
+      hadError = true;
+      failedThisRun.add(dataset);
+      console.error(`[sync/backfill] ${shop} ${dataset} (${code})${failed.skipped ? " — month skipped after repeated failures" : ""}`, e);
     }
+    // First numbers as soon as the newest months are in (spec J1), then keep backfilling.
+    if (!wasReady && state.first90Ready) await compute();
   }
 
-  // First numbers as soon as the newest months are in, then again when everything is.
-  if (deps.afterSync && state.first90Ready && changed && (!wasReady || outcome === "done")) {
-    try {
-      await deps.afterSync(shop);
-    } catch (e) {
-      console.error(`[sync/backfill] ${shop}: compute failed`, e);
-    }
-  }
-  return outcome;
+  if (state.first90Ready && (outcome === "done" || state.finishedAt) && stepsSinceCompute > 0) await compute();
+  return outcome ?? (hadError ? "error" : "progress");
 }
 
 // ---------------------------------------------------------------------------

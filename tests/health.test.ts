@@ -40,7 +40,7 @@ describe("/health", () => {
     expect(body).toMatchObject({ status: "ok", db: "ok", outbox: { pending: 0, dead: 0 } });
     expect(body.pricing).toEqual({ configured: false });
     expect(body.config).toBeDefined();
-    expect(body.sync).toEqual({ lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null });
+    expect(body.sync).toEqual({ lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null, degradedShops: 0 });
     expect(body.shopifyqlBudget).toEqual({ lastCost: null, lastRemaining: null, lastAt: null });
     expect(body.compute).toEqual({ lastAt: null, shopsComputed: 0 });
   });
@@ -67,7 +67,7 @@ describe("/health", () => {
         backfillState: {
           datasets: {
             products: { done: 1, total: 1 },
-            stock: { done: 0, total: 13, lastError: "ShopifyQL still throttled after 5 attempts", lastErrorAt: "2026-10-16T09:00:00Z" },
+            stock: { done: 0, total: 13, lastError: "ShopifyQL still throttled after 5 attempts", lastErrorAt: "2026-10-16T09:00:00Z", degraded: true, skippedMonths: ["2026-10-01"] },
           },
         },
       },
@@ -84,6 +84,7 @@ describe("/health", () => {
       backfillPct: 63, // a: 100, b: (100 + 0 + 0 + 0) / 4 = 25 → (100 + 25) / 2 = 62.5 → 63
       lastError: "ShopifyQL still throttled after 5 attempts",
       lastErrorAt: "2026-10-16T09:00:00Z",
+      degradedShops: 1,
     });
   });
 

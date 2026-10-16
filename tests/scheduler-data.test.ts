@@ -54,11 +54,27 @@ describe("dataTick", () => {
     const counts = await dataTick(deps);
     expect(counts).toEqual({ "backfill:progress": 2, "nightly:not_due": 1 });
     expect(m.runBackfill.mock.calls.map((c) => (c as unknown[])[0]).sort()).toEqual(["half.myshopify.com", "new.myshopify.com"]);
-    expect(m.runNightly).toHaveBeenCalledWith("done.myshopify.com", deps);
+    expect(m.runNightly).toHaveBeenCalledWith("done.myshopify.com", expect.objectContaining({ getAdmin: deps.getAdmin, maxSteps: 6 }));
     const hb = schedulerHeartbeat();
     expect(hb.lastDataTickAt).not.toBeNull();
     expect(hb.dataTickRunning).toBe(false);
     expect(JSON.parse(hb.lastDataTick!)).toEqual(counts);
+  });
+
+  it("review H4: bounds each shop to 6 steps and gives the tick a 30 s throttle-wait budget", async () => {
+    await dataTick(deps);
+    const passed = (m.runBackfill.mock.calls[0] as unknown as [string, DataJobDeps])[1];
+    expect(passed.maxSteps).toBe(6);
+    expect(passed.getAdmin).toBe(deps.getAdmin);
+    const slept: number[] = [];
+    m.runBackfill.mockClear();
+    await dataTick(deps, { sleep: async (ms) => void slept.push(ms) });
+    const budgeted = (m.runBackfill.mock.calls[0] as unknown as [string, DataJobDeps])[1];
+    await budgeted.throttleSleep!(20_000);
+    // The budget is shared by every shop in the tick.
+    const other = (m.runBackfill.mock.calls[1] as unknown as [string, DataJobDeps])[1];
+    await expect(other.throttleSleep!(15_000)).rejects.toThrow("exceeds the tick budget");
+    expect(slept).toEqual([20_000]);
   });
 
   it("skips a tick while the previous one is still running", async () => {

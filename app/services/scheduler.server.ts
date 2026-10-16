@@ -12,7 +12,8 @@
  *     it has finished, then the nightly sync (03:00 store-local, once per
  *     store-local day), each followed by compute. Overlap-guarded: a tick that
  *     is still running makes the next one skip; a shop already busy (install
- *     kickoff) is skipped too.
+ *     kickoff) is skipped too. Bounded: 6 backfill steps per shop per tick and
+ *     at most 30 s of throttle waits per tick.
  *
  *   - Monday email (spec §11): hourly; sends when it is Monday ≥ 08:00 in the
  *     store's time zone, once per store week via OwnerEmailLog.
@@ -33,6 +34,7 @@ import { runBackfill, withShopLock, type DataJobDeps } from "./sync/backfill.ser
 import { runNightly } from "./sync/nightly.server";
 import { computeAfterSync } from "./compute.server";
 import { isBackfillDone, readBackfillState } from "../lib/sync/backfill-shared";
+import { STEPS_PER_TICK, THROTTLE_BUDGET_MS, createSleepBudget } from "../lib/sync/budget-shared";
 import { runMondayEmailsAllShops } from "./monday.server";
 
 const OUTBOX_EVERY_MS = 2 * 60 * 1000;
@@ -75,12 +77,28 @@ export const dataJobDeps: DataJobDeps = {
   afterSync: computeAfterSync,
 };
 
+export type DataTickOptions = {
+  /** Backfill steps per shop per tick (default STEPS_PER_TICK = 6). */
+  stepsPerShop?: number;
+  /** Total throttle-wait time allowed in one tick (default 30 s). */
+  throttleBudgetMs?: number;
+  /** Real sleep (tests inject a fake). */
+  sleep?: (ms: number) => Promise<void>;
+};
+
 /**
  * Hourly data tick: for each installed shop (one with a session), resume the backfill
  * until it has finished, else run the nightly job when due. Returns outcome counts.
- * Exported for tests and a manual trigger.
+ * Bounded (review H4): each shop gets at most `stepsPerShop` backfill steps, and the whole
+ * tick waits at most `throttleBudgetMs` inside throttle waits — a longer throttle stops that
+ * shop's job, which resumes on the next tick. Exported for tests and a manual trigger.
  */
-export async function dataTick(deps: DataJobDeps = dataJobDeps): Promise<Record<string, number>> {
+export async function dataTick(base: DataJobDeps = dataJobDeps, opts: DataTickOptions = {}): Promise<Record<string, number>> {
+  const budget = createSleepBudget(
+    opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms))),
+    opts.throttleBudgetMs ?? THROTTLE_BUDGET_MS,
+  );
+  const deps: DataJobDeps = { ...base, throttleSleep: budget.sleep, maxSteps: opts.stepsPerShop ?? STEPS_PER_TICK };
   const counts: Record<string, number> = {};
   if (g.__kehaInvDataTickRunning) {
     counts.overlap = 1;

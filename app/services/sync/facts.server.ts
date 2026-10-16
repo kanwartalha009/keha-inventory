@@ -5,13 +5,15 @@
  * Idempotent: each range is written as "delete the shop's rows in [since, until], insert
  * the fresh rows" in one transaction, so re-running a month yields identical rows and a
  * correction from Shopify replaces the old figure. RESPONSE_TOO_LARGE halves the range
- * (runChunked); throttling surfaces as ShopifyqlThrottledError for the caller to stop on.
+ * (runChunked); a single day that is still too large is paged with ORDER BY / LIMIT /
+ * OFFSET (runChunkedPaged, syntax TO VERIFY on a dev store). Throttling surfaces as
+ * ShopifyqlThrottledError (or ThrottleBudgetError) for the caller to stop on.
  * Only whole past days are written (builders refuse `until >= today`, and every row outside
  * the range is dropped — invariant I-12).
  */
 import prisma from "../../db.server";
-import { runChunked, type ShopifyqlClient } from "./shopifyql.server";
-import type { DayRange, ParseResult } from "../../lib/sync/shopifyql-shared";
+import type { ShopifyqlClient } from "./shopifyql.server";
+import { runChunkedPaged, type BuildOptions, type DayRange, type ParseResult } from "../../lib/sync/shopifyql-shared";
 import {
   dayDate,
   locationNameIndex,
@@ -41,8 +43,14 @@ function assertColumns<T>(label: string, r: ParseResult<T>, required: string[]):
   if (missing.length) throw new ShopifyqlShapeError(`${label}: ShopifyQL result has no ${missing.join(", ")} column`);
 }
 
-async function chunked<T>(range: DayRange, run: (r: DayRange) => Promise<ParseResult<T>>, label: string, required: string[]) {
-  const parts = await runChunked(range, run);
+async function chunked<T>(
+  range: DayRange,
+  run: (r: DayRange, opts?: BuildOptions) => Promise<ParseResult<T>>,
+  label: string,
+  required: string[],
+  orderBy: string,
+) {
+  const parts = await runChunkedPaged(range, run, orderBy);
   const rows: T[] = [];
   let skipped = 0;
   for (const p of parts) {
@@ -80,9 +88,10 @@ export async function storeStock(
 ): Promise<StoreResult> {
   const { rows, skipped } = await chunked(
     range,
-    (r) => ql.stockDaily(r, today),
+    (r, o) => ql.stockDaily(r, today, o),
     "stock",
     ["ending_inventory_units_at_location", "days_out_of_stock_at_location"],
+    "product_variant_id",
   );
   const { facts, unmapped } = stockFacts(rows, range, locationNameIndex(locations));
   await prisma.$transaction([
@@ -95,8 +104,7 @@ export async function storeStock(
 }
 
 /**
- * Sales history: the location view and the channel view (see facts-shared), plus store
- * totals (orders, gross) for AOV.
+ * Sales history: the location view and the channel view (see facts-shared).
  * TODO(task 1.4 verification): one 3-dimension query (buildDailySalesQuery) once verified.
  */
 export async function storeSales(
@@ -106,39 +114,51 @@ export async function storeSales(
   today: string,
   locations: LocationRef[],
 ): Promise<StoreResult> {
-  const byLocation = await chunked(range, (r) => ql.salesDailyByLocation(r, today), "sales by location", [
-    "pos_location_name",
-    "net_items_sold",
-  ]);
-  const byChannel = await chunked(range, (r) => ql.salesDailyByChannel(r, today), "sales by channel", [
-    "sales_channel",
-    "net_items_sold",
-    "gross_sales",
-  ]);
-  const totals = await chunked(range, (r) => ql.shopDaily(r, today), "shop totals", ["orders", "gross_sales"]);
-
+  const byLocation = await chunked(
+    range,
+    (r, o) => ql.salesDailyByLocation(r, today, o),
+    "sales by location",
+    ["pos_location_name", "net_items_sold"],
+    "product_variant_id",
+  );
+  const byChannel = await chunked(
+    range,
+    (r, o) => ql.salesDailyByChannel(r, today, o),
+    "sales by channel",
+    ["sales_channel", "net_items_sold", "gross_sales"],
+    "product_variant_id",
+  );
   const loc = salesByLocationFacts(byLocation.rows, range, locationNameIndex(locations));
-  const ch = salesByChannelFacts(byChannel.rows, range);
-  const facts = [...loc.facts, ...ch];
-  const shopDays = shopDayFacts(totals.rows, range);
+  const facts = [...loc.facts, ...salesByChannelFacts(byChannel.rows, range)];
   await prisma.$transaction([
     prisma.salesDaily.deleteMany({ where: dayWhere(shop, range) }),
     ...batches(facts).map((b) =>
       prisma.salesDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
     ),
+  ]);
+  return { rows: facts.length, skipped: byLocation.skipped + byChannel.skipped, unmapped: loc.unmapped };
+}
+
+/** Store totals (orders, gross) per day, for AOV. Its own dataset: never blocks sales. */
+export async function storeTotals(shop: string, ql: ShopifyqlClient, range: DayRange, today: string): Promise<StoreResult> {
+  const totals = await chunked(range, (r, o) => ql.shopDaily(r, today, o), "shop totals", ["orders", "gross_sales"], "day");
+  const shopDays = shopDayFacts(totals.rows, range);
+  await prisma.$transaction([
     prisma.shopDaily.deleteMany({ where: dayWhere(shop, range) }),
     prisma.shopDaily.createMany({ data: shopDays.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
   ]);
-  return { rows: facts.length + shopDays.length, skipped: byLocation.skipped + byChannel.skipped + totals.skipped, unmapped: loc.unmapped };
+  return { rows: shopDays.length, skipped: totals.skipped, unmapped: [] };
 }
 
 /** Store visits by landing page. */
 export async function storeVisits(shop: string, ql: ShopifyqlClient, range: DayRange, today: string): Promise<StoreResult> {
-  const { rows, skipped } = await chunked(range, (r) => ql.sessionsDaily(r, today), "sessions", [
-    "landing_page_path",
+  const { rows, skipped } = await chunked(
+    range,
+    (r, o) => ql.sessionsDaily(r, today, o),
     "sessions",
-    "sessions_that_completed_checkout",
-  ]);
+    ["landing_page_path", "sessions", "sessions_that_completed_checkout"],
+    "landing_page_path",
+  );
   const facts = sessionsFacts(rows, range);
   await prisma.$transaction([
     prisma.sessionsDaily.deleteMany({ where: dayWhere(shop, range) }),
@@ -159,6 +179,7 @@ export async function storeHistory(
 ): Promise<StoreResult> {
   if (dataset === "stock") return storeStock(shop, ql, range, today, locations);
   if (dataset === "sales") return storeSales(shop, ql, range, today, locations);
+  if (dataset === "totals") return storeTotals(shop, ql, range, today);
   return storeVisits(shop, ql, range, today);
 }
 

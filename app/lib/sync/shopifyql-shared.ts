@@ -210,6 +210,56 @@ export async function runChunked<T>(
   }
 }
 
+/** Rows per page for the single-day RESPONSE_TOO_LARGE fallback. */
+export const PAGE_LIMIT = 5000;
+/** Safety stop: a page loop that never ends (OFFSET ignored) must not run forever. */
+export const MAX_PAGES = 200;
+
+/**
+ * Pages one query with `ORDER BY <orderBy> LIMIT <limit> OFFSET k`, k = 0, limit, 2·limit …,
+ * until a page returns fewer than `limit` raw rows (rows + skipped). Results are merged.
+ * TO VERIFY on a dev store: OFFSET paging semantics in ShopifyQL.
+ */
+export async function runPaged<T>(
+  fetchPage: (paging: Paging) => Promise<ParseResult<T>>,
+  orderBy: string,
+  limit: number = PAGE_LIMIT,
+  maxPages: number = MAX_PAGES,
+): Promise<ParseResult<T>> {
+  const rows: T[] = [];
+  let skipped = 0;
+  let missingColumns: string[] | null = null;
+  for (let page = 0; ; page++) {
+    if (page >= maxPages) throw new ShopifyqlRequestError(`ShopifyQL paging did not end after ${maxPages} pages`, null);
+    const r = await fetchPage({ orderBy, limit, offset: page * limit });
+    rows.push(...r.rows);
+    skipped += r.skipped;
+    missingColumns ??= r.missingColumns;
+    if (r.rows.length + r.skipped < limit) break;
+  }
+  return { rows, skipped, missingColumns: missingColumns ?? [] };
+}
+
+/**
+ * runChunked with a last resort: a SINGLE day that is still RESPONSE_TOO_LARGE is paged
+ * (runPaged) instead of failing. Results come back newest first, like runChunked.
+ */
+export async function runChunkedPaged<T>(
+  range: DayRange,
+  fetch: (range: DayRange, opts?: BuildOptions) => Promise<ParseResult<T>>,
+  orderBy: string,
+  limit: number = PAGE_LIMIT,
+): Promise<Array<{ range: DayRange; result: ParseResult<T> }>> {
+  return runChunked(range, async (r) => {
+    try {
+      return await fetch(r);
+    } catch (err) {
+      if (!isTooLargeError(err) || dayCount(r) > 1) throw err;
+      return runPaged((paging) => fetch(r, { paging }), orderBy, limit);
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Query builders (§6.1 — dataset and column names exactly as verified live)
 // ---------------------------------------------------------------------------
@@ -224,6 +274,11 @@ export const SHOPIFYQL_GRAPHQL = `#graphql
   }`;
 
 export type Paging = {
+  /**
+   * `ORDER BY <column>` before LIMIT / OFFSET so pages are stable.
+   * TO VERIFY on a dev store: ORDER BY together with TIMESERIES and LIMIT / OFFSET.
+   */
+  orderBy?: string;
   /** `LIMIT n` — ShopifyQL supports it. */
   limit?: number;
   /** `OFFSET n` — to verify on a dev store before relying on it for paging. */
@@ -235,6 +290,11 @@ export type BuildOptions = { paging?: Paging };
 function pagingClause(paging: Paging | undefined): string {
   if (!paging) return "";
   const parts: string[] = [];
+  if (paging.orderBy !== undefined) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(paging.orderBy)) throw new RangeError(`bad ORDER BY column ${paging.orderBy}`);
+    // TO VERIFY on a dev store: ORDER BY placement with TIMESERIES day.
+    parts.push(`ORDER BY ${paging.orderBy}`);
+  }
   if (paging.limit !== undefined) {
     if (!Number.isSafeInteger(paging.limit) || paging.limit < 1) {
       throw new RangeError(`limit must be a positive integer, got ${paging.limit}`);

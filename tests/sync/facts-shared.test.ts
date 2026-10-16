@@ -20,6 +20,9 @@ import {
   completeStep,
   failStep,
   isBackfillDone,
+  isDegraded,
+  isFirst90Ready,
+  MAX_STEP_ATTEMPTS,
   latestError,
   nextBackfillStep,
   type BackfillState,
@@ -115,13 +118,14 @@ describe("stock, sessions and totals", () => {
 describe("resumable backfill steps", () => {
   const chunks = monthChunks("2025-10-01", "2026-10-15");
   const NOW = "2026-10-16T08:00:00.000Z";
+  const START: BackfillState = { range: { from: "2025-10-01", until: "2026-10-15" } };
 
   function runAll(state: BackfillState, stopAfter = Infinity) {
     const order: string[] = [];
     let s = state;
     for (let n = 0; n < stopAfter; n++) {
       const step = nextBackfillStep(s, chunks);
-      if (step.kind === "done") break;
+      if (step.kind !== "products" && step.kind !== "history") break;
       order.push(step.kind === "products" ? "products" : `${step.dataset}@${step.range.since}`);
       s = completeStep(s, step, chunks, NOW);
     }
@@ -129,45 +133,96 @@ describe("resumable backfill steps", () => {
   }
 
   it("products first, then every dataset month by month, newest first", () => {
-    const { order } = runAll({ range: { from: "2025-10-01", until: "2026-10-15" } }, 8);
+    const { order } = runAll(START, 7);
     expect(order).toEqual([
       "products",
       "stock@2026-10-01",
       "sales@2026-10-01",
       "visits@2026-10-01",
+      "totals@2026-10-01",
       "stock@2026-09-01",
       "sales@2026-09-01",
-      "visits@2026-09-01",
-      "stock@2026-08-01",
     ]);
   });
 
-  it("first90Ready after the newest 3 months of stock + sales; finishedAt and syncedThrough at the end", () => {
-    const start: BackfillState = { range: { from: "2025-10-01", until: "2026-10-15" } };
-    const partial = runAll(start, 1 + 3 * 2 + 1).state; // products + 2 full months + stock of month 3
+  it("first90Ready after the newest 3 months of stock AND sales (visits / totals not needed); finish at the end", () => {
+    const partial = runAll(START, 1 + 4 * 2 + 1).state; // products + 2 full months + stock of month 3
     expect(partial.first90Ready).toBeUndefined();
-    const ready = runAll(start, 1 + 3 * 2 + 2).state; // + sales of month 3
+    const ready = runAll(START, 1 + 4 * 2 + 2).state; // + sales of month 3
     expect(ready.first90Ready).toBe(true);
+    expect(ready.datasets?.visits?.done).toBe(2);
     expect(ready.finishedAt).toBeUndefined();
-    expect(ready.datasets?.stock).toMatchObject({ done: 3, total: 13, doneThrough: "2026-08-01" });
+    expect(ready.datasets?.stock).toMatchObject({ done: 3, total: 13, doneThrough: "2026-08-01", syncedThrough: "2026-10-15" });
 
-    const { order, state } = runAll(start);
-    expect(order).toHaveLength(1 + 13 * 3);
+    const { order, state } = runAll(START);
+    expect(order).toHaveLength(1 + 13 * 4);
     expect(state.finishedAt).toBe(NOW);
     expect(state.syncedThrough).toBe("2026-10-15");
     expect(isBackfillDone(state)).toBe(true);
     expect(backfillPercent(state)).toBe(100);
   });
 
-  it("a failed step keeps progress, records the error, and is retried next", () => {
-    let s = runAll({ range: { from: "2025-10-01", until: "2026-10-15" } }, 2).state; // products + stock@Oct
-    s = failStep(s, "sales", "ShopifyqlThrottledError: still throttled", NOW);
-    expect(s.datasets?.sales).toMatchObject({ done: 0, lastError: "ShopifyqlThrottledError: still throttled", lastErrorAt: NOW });
-    expect(latestError(s)).toEqual({ message: "ShopifyqlThrottledError: still throttled", at: NOW });
+  it("isFirst90Ready ignores visits and totals", () => {
+    expect(isFirst90Ready({ datasets: { stock: { done: 3, total: 13 }, sales: { done: 3, total: 13 } } }, chunks)).toBe(true);
+    expect(isFirst90Ready({ datasets: { stock: { done: 3, total: 13 }, sales: { done: 2, total: 13 } } }, chunks)).toBe(false);
+  });
+
+  it("a dataset failing in this run is passed over: the others continue (review H3)", () => {
+    let s = runAll(START, 1).state; // products
+    const step = nextBackfillStep(s, chunks);
+    expect(step).toMatchObject({ kind: "history", dataset: "stock", index: 0 });
+    s = failStep(s, "stock", "ShopifyqlParseError: bad", NOW, { step, chunks, code: "shopifyql_parse" }).state;
+    const failed = new Set(["stock"]);
+    const order: string[] = [];
+    for (let n = 0; n < 7; n++) {
+      const st = nextBackfillStep(s, chunks, failed);
+      if (st.kind !== "history") break;
+      order.push(`${st.dataset}@${st.index}`);
+      s = completeStep(s, st, chunks, NOW);
+    }
+    expect(order).toEqual(["sales@0", "visits@0", "totals@0", "sales@1", "visits@1", "totals@1", "sales@2"]);
+    expect(s.datasets?.stock).toMatchObject({ done: 0, attempts: 1, lastErrorCode: "shopifyql_parse" });
+    // Next run: stock (fewest months) goes first again.
+    expect(nextBackfillStep(s, chunks)).toMatchObject({ dataset: "stock", index: 0 });
+  });
+
+  it("everything left failed in this run → wait (not done)", () => {
+    const s = runAll(START, 1).state;
+    expect(nextBackfillStep(s, chunks, new Set(["stock", "sales", "visits", "totals"]))).toEqual({ kind: "wait" });
+  });
+
+  it(`retry cap: after ${MAX_STEP_ATTEMPTS} consecutive failures the month is skipped and the dataset degraded`, () => {
+    let s = runAll(START, 1).state;
+    const step = nextBackfillStep(s, chunks);
+    for (let i = 1; i < MAX_STEP_ATTEMPTS; i++) {
+      const r = failStep(s, "stock", "too large", NOW, { step, chunks, code: "too_large" });
+      expect(r.skipped).toBe(false);
+      s = r.state;
+    }
+    expect(s.datasets?.stock?.attempts).toBe(MAX_STEP_ATTEMPTS - 1);
+    const r = failStep(s, "stock", "too large", NOW, { step, chunks, code: "too_large" });
+    expect(r.skipped).toBe(true);
+    expect(r.state.datasets?.stock).toMatchObject({ done: 1, attempts: 0, degraded: true, skippedMonths: ["2026-10-01"], syncedThrough: "2026-10-15" });
+    expect(isDegraded(r.state)).toBe(true);
+    expect(nextBackfillStep(r.state, chunks)).toMatchObject({ dataset: "sales", index: 0 });
+  });
+
+  it("throttling never counts towards the cap", () => {
+    let s = runAll(START, 1).state;
+    const step = nextBackfillStep(s, chunks);
+    for (let i = 0; i < 10; i++) s = failStep(s, "stock", "throttled", NOW, { step, chunks, countAttempt: false, code: "throttled" }).state;
+    expect(s.datasets?.stock).toMatchObject({ done: 0, attempts: 0 });
+    expect(s.datasets?.stock?.degraded).toBeUndefined();
+  });
+
+  it("a success clears the error; latestError reports the newest with its code", () => {
+    let s = runAll(START, 2).state; // products + stock@Oct
+    s = failStep(s, "sales", "ShopifyqlThrottledError: still throttled", NOW, { countAttempt: false, code: "throttled" }).state;
+    expect(latestError(s)).toEqual({ message: "ShopifyqlThrottledError: still throttled", code: "throttled", at: NOW });
     const step = nextBackfillStep(s, chunks);
     expect(step).toMatchObject({ kind: "history", dataset: "sales", index: 0 });
     s = completeStep(s, step, chunks, NOW);
     expect(s.datasets?.sales?.lastError).toBeNull();
-    expect(clearErrors(failStep(s, "stock", "x", NOW)).datasets?.stock?.lastError).toBeNull();
+    expect(clearErrors(failStep(s, "stock", "x", NOW).state).datasets?.stock?.lastError).toBeNull();
   });
 });
