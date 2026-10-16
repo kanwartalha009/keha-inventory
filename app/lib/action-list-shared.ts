@@ -178,16 +178,17 @@ export function readReason(raw: unknown): ActionReason {
 }
 
 /**
- * ASSUMPTION (contract with the engine, task 2.1): a bridge action carries the
- * expected arrival day as `arrivalDate` ("YYYY-MM-DD") in `reason.facts` or
- * `reason.params`. Without it the preorder form opens without a ship date.
+ * The expected arrival day ("YYYY-MM-DD") of a bridge action. The engine
+ * (engine/actions-rules-shared.ts) writes it as `reason.facts.arrival`;
+ * `arrivalDate` is also accepted. Without it the preorder form opens without
+ * a ship date.
  */
 export function arrivalOf(raw: unknown): string | null {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   for (const part of [r.facts, r.params]) {
     if (part && typeof part === "object") {
-      const v = (part as Record<string, unknown>).arrivalDate;
-      if (isDay(v)) return v;
+      const x = part as Record<string, unknown>;
+      for (const v of [x.arrival, x.arrivalDate]) if (isDay(v)) return v;
     }
   }
   return null;

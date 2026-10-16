@@ -33,7 +33,7 @@ import {
   type VariantResult,
 } from "../lib/engine/index-shared";
 import type { StoreConversion } from "../lib/engine/money-shared";
-import {
+import { kehaOpenUnits,
   SCOPE_ONLINE,
   buildSeries,
   engineSettingsFrom,
@@ -226,6 +226,16 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     onHand.set(s.variantId, cur);
   }
 
+  // Keha's own sent / confirmed orders: not in Shopify's incoming (see kehaOpenUnits).
+  const kehaOpen = kehaOpenUnits(
+    (
+      await prisma.purchaseOrder.findMany({
+        where: { shop, source: "keha", status: { in: [...OPEN_PO_STATUSES] } },
+        select: { lines: true },
+      })
+    ).map((po) => ({ lines: readPoLines(po.lines) })),
+  );
+
   // ---- seasonality and trend (§7.3) ----
   const coverage = salesCoverage(readBackfillState(shopRow.backfillState));
   const plans = considered.map((v) => {
@@ -258,7 +268,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       series: series.get(v.id) ?? [],
       today,
       onHand: stockNowRow.onHand,
-      incoming: stockNowRow.incoming,
+      incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
       role: roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
       lastSaleDay: lastSale.get(v.id) ?? null,
@@ -287,6 +297,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
           safetyLevel: shopSettings.safetyLevel,
           serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
           supplierId: supplierIdOf.get(r.id) ?? null,
+          kehaOnOrder: kehaOpen.get(r.id) ?? 0,
         });
         const data = {
           rate: m.rate,
@@ -507,8 +518,8 @@ async function writeActions(
     returnsMeasured,
   });
 
-  const existing = await prisma.action.findMany({ where: { shop }, select: { dedupeKey: true, state: true } });
-  const plan = planActionWrites(existing, drafts);
+  const existing = await prisma.action.findMany({ where: { shop }, select: { dedupeKey: true, state: true, doneAt: true } });
+  const plan = planActionWrites(existing, drafts, new Date());
   for (let i = 0; i < plan.upserts.length; i += WRITE_BATCH) {
     await prisma.$transaction(
       plan.upserts.slice(i, i + WRITE_BATCH).map((d) => {
@@ -527,6 +538,12 @@ async function writeActions(
         });
       }),
     );
+  }
+  if (plan.reopenKeys.length) {
+    await prisma.action.updateMany({
+      where: { shop, state: "done", dedupeKey: { in: plan.reopenKeys } },
+      data: { state: "open", doneAt: null, stateAmount: null, snoozeUntil: null },
+    });
   }
   // Re-checks state "open" in the delete itself: a row snoozed meanwhile is kept.
   for (let i = 0; i < plan.deleteKeys.length; i += WRITE_BATCH) {

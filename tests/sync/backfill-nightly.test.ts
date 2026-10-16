@@ -1,6 +1,6 @@
 /**
  * Backfill and nightly services (task 1.4b) on an in-memory Prisma with a fake ShopifyQL
- * client: 13 months newest first, durable resumable state, throttle → stop → resume to the
+ * client: 14 months newest first, durable resumable state, throttle → stop → resume to the
  * same rows, never today, POS names → Location ids, nightly once per store-local day after
  * 03:00 and only after the backfill, catch-up range, retention.
  */
@@ -135,7 +135,7 @@ beforeEach(() => {
 const state = () => readBackfillState(db.tables.shop[0].backfillState);
 
 describe("runBackfill", () => {
-  it("reads products, then 13 months newest first, and finishes with yesterday as syncedThrough", async () => {
+  it("reads products, then 14 months newest first, and finishes with yesterday as syncedThrough", async () => {
     const { ql, calls } = fakeQl();
     const afterSync = vi.fn(async () => {});
     expect(await runBackfill(S, deps(ql, { afterSync }))).toBe("done");
@@ -144,21 +144,21 @@ describe("runBackfill", () => {
     expect(cat.syncLocations).toHaveBeenCalledTimes(1);
     expect(cat.syncStockNow).toHaveBeenCalledTimes(1);
     const stockRanges = calls.filter((c) => c.kind === "stock").map((c) => c.range);
-    expect(stockRanges).toHaveLength(13);
+    expect(stockRanges).toHaveLength(14);
     expect(stockRanges[0]).toEqual({ since: "2026-10-01", until: "2026-10-15" });
-    expect(stockRanges[12]).toEqual({ since: "2025-10-01", until: "2025-10-31" });
+    expect(stockRanges[13]).toEqual({ since: "2025-09-01", until: "2025-09-30" });
     expect(calls.every((c) => c.today === "2026-10-16")).toBe(true);
     expect(calls.some((c) => c.kind === "salesDaily")).toBe(false);
 
     const s = state();
-    expect(s).toMatchObject({ first90Ready: true, syncedThrough: "2026-10-15", range: { from: "2025-10-01", until: "2026-10-15" } });
+    expect(s).toMatchObject({ first90Ready: true, syncedThrough: "2026-10-15", range: { from: "2025-09-01", until: "2026-10-15" } });
     expect(s.finishedAt).toBeTruthy();
-    expect(s.datasets?.visits).toMatchObject({ done: 13, total: 13, doneThrough: "2025-10-01" });
-    expect(s.datasets?.totals).toMatchObject({ done: 13, total: 13 });
+    expect(s.datasets?.visits).toMatchObject({ done: 14, total: 14, doneThrough: "2025-09-01" });
+    expect(s.datasets?.totals).toMatchObject({ done: 14, total: 14 });
     // Compute once when first90Ready flipped (early numbers), once when finished.
     expect(afterSync).toHaveBeenCalledTimes(2);
 
-    const nDays = 380; // 2025-10-01 … 2026-10-15
+    const nDays = 410; // 2025-09-01 … 2026-10-15
     expect(db.tables.stockDaily).toHaveLength(nDays * 2);
     expect(db.tables.salesDaily).toHaveLength(nDays * 3); // online + Madrid (location view) + Online Store (channel view)
     expect(db.tables.sessionsDaily).toHaveLength(nDays);
@@ -216,9 +216,9 @@ describe("runBackfill", () => {
     expect(await runBackfill(S, deps(broken))).toBe("error");
     let s = state();
     expect(s.datasets?.stock).toMatchObject({ done: 0, attempts: 1, lastErrorCode: "shopifyql_parse" });
-    expect(s.datasets?.sales?.done).toBe(13);
-    expect(s.datasets?.visits?.done).toBe(13);
-    expect(s.datasets?.totals?.done).toBe(13);
+    expect(s.datasets?.sales?.done).toBe(14);
+    expect(s.datasets?.visits?.done).toBe(14);
+    expect(s.datasets?.totals?.done).toBe(14);
     expect(s.first90Ready).toBeUndefined(); // needs stock too
     for (let run = 2; run <= 5; run++) await runBackfill(S, deps(broken));
     s = state();

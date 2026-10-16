@@ -145,6 +145,24 @@ describe("buildReorderGroups", () => {
     expect(groupTitle(groups[2]!, (s) => s)).toBe("No vendor");
   });
 
+  it("subtracts only the Keha units compute did not already count in orderQty", () => {
+    const id = variant(1).id;
+    const run = (onOrder: number, kehaCounted: number) =>
+      buildReorderGroups({
+        ...base,
+        variants: [variant(1)],
+        metrics: new Map([[id, metric(30, { kehaCounted })]]),
+        onOrder: new Map([[id, onOrder]]),
+        suppliers: [],
+      })[0]?.lines[0]?.suggested ?? 0;
+    // 20 sent units counted by compute, nothing new: orderQty stands.
+    expect(run(20, 20)).toBe(30);
+    // 20 counted + a 5-unit draft made since: subtract the 5.
+    expect(run(25, 20)).toBe(25);
+    // Counted units already received (no longer open): nothing extra to subtract.
+    expect(run(0, 20)).toBe(30);
+  });
+
   it("subtracts open Keha orders and drops lines with nothing left to order", () => {
     const groups = buildReorderGroups({
       ...base,

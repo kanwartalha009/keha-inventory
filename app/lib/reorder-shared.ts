@@ -94,6 +94,11 @@ export type ReorderMetricIn = {
   daysLeft: number | null;
   neverRunsOut: boolean;
   rate: number | null;
+  /**
+   * Units on sent / confirmed Keha orders that compute already counted as incoming when it
+   * set orderQty (VariantMetric.inputs.kehaOnOrder). Optional: 0 when absent.
+   */
+  kehaCounted?: number;
 };
 
 export type ReorderSupplierIn = SupplierLite & { currency: string | null; hasEmail: boolean };
@@ -160,7 +165,7 @@ export type BuildReorderInput = {
   variants: readonly ReorderVariantIn[];
   metrics: ReadonlyMap<string, ReorderMetricIn>;
   stock: ReadonlyMap<string, { onHand: number | null; incoming: number | null }>;
-  /** Open Keha order units per variant (draft + sent + confirmed − received). */
+  /** Open Keha order units per variant now (draft + sent + confirmed − received). */
   onOrder: ReadonlyMap<string, number>;
   suppliers: readonly ReorderSupplierIn[];
   storeCurrency: string;
@@ -180,7 +185,10 @@ export function buildReorderGroups(input: BuildReorderInput): ReorderGroup[] {
   for (const v of input.variants) {
     const m = input.metrics.get(v.id);
     const onOrder = Math.max(0, input.onOrder.get(v.id) ?? 0);
-    const need = Math.max(0, (m?.orderQty ?? 0) - onOrder);
+    // orderQty already nets out the Keha units compute counted; subtract only the rest
+    // (drafts, and orders sent since compute last ran).
+    const notCounted = Math.max(0, onOrder - Math.max(0, m?.kehaCounted ?? 0));
+    const need = Math.max(0, (m?.orderQty ?? 0) - notCounted);
     const isSel = selected.has(v.id);
     if (need <= 0 && !isSel) continue;
     const supplier = supplierFor(v, input.suppliers);

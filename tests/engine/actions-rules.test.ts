@@ -14,6 +14,7 @@ import {
   type RuleVariant,
 } from "../../app/lib/engine/actions-rules-shared";
 import { ACTION_REASONS, type ActionKind } from "../../app/lib/actions-shared";
+import { arrivalOf } from "../../app/lib/action-list-shared";
 
 const TODAY = "2026-10-16";
 const CTX: RuleContext = { today: TODAY, aov: 50, returnsMeasured: true };
@@ -95,6 +96,11 @@ describe("bridge", () => {
     expect(d.amount).toBe(180);
     expect(d.reason).toMatchObject({ key: "bridge_gap", params: { gap: 9, date: "2026-10-30" } });
     expect(d.reason.facts).toMatchObject({ arrivalSource: "lead_time", gapDays: 9 });
+  });
+
+  it("contract with Home: the bridge's arrival day reaches the Keha Preorder link", () => {
+    const d = of(generateActions([p({}, [low()])], CTX), "bridge")!;
+    expect(arrivalOf(d.reason)).toBe("2026-10-30");
   });
 
   it("dated arrival after the run-out day triggers even when order-by has not passed", () => {

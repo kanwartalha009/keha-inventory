@@ -86,7 +86,7 @@ describe("Defaults and Alerts validate separately", () => {
       expect(r.settings.mondayEmail).toEqual(configured.mondayEmail);
       expect(r.settings.alerts).toEqual(configured.alerts);
     }
-    expect(Object.keys(settingsToForm(configured)).sort()).toEqual(["cycleDays", "deadDays", "leadTimeDays", "tooMuchDays"]);
+    expect(Object.keys(settingsToForm(configured)).sort()).toEqual(["cycleDays", "deadDays", "leadTimeDays", "safetyLevel", "tooMuchDays"]);
   });
 
   it("an Alerts save keeps every Defaults setting and the stored Slack link", () => {

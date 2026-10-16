@@ -193,6 +193,23 @@ describe("task 2.1 helpers", () => {
     expect(salesCoverage({ datasets: { sales: { done: 1, total: 13, doneThrough: "2026-10-01", syncedThrough: "2026-10-15" } } })).toMatchObject({ from: "2026-10-01", to: "2026-10-15" });
   });
 
+  it("planActionWrites reopens a done row only when it still triggers 30+ days after done", async () => {
+    const { planActionWrites } = await import("../app/lib/compute-shared");
+    const now = new Date("2026-12-01T00:00:00Z");
+    const draft = (productId: string) => ({ kind: "clear" as const, productId, variantIds: ["v"], amount: 100, reason: { key: "clear_dead", params: {} } });
+    const plan = planActionWrites(
+      [
+        { dedupeKey: "clear:old", state: "done", doneAt: new Date("2026-10-31T00:00:00Z") },
+        { dedupeKey: "clear:recent", state: "done", doneAt: new Date("2026-11-20T00:00:00Z") },
+        { dedupeKey: "clear:gone", state: "done", doneAt: new Date("2026-01-01T00:00:00Z") },
+      ],
+      [draft("old"), draft("recent")],
+      now,
+    );
+    expect(plan.reopenKeys).toEqual(["clear:old"]);
+    expect(planActionWrites([{ dedupeKey: "clear:old", state: "done", doneAt: null }], [draft("old")]).reopenKeys).toEqual([]);
+  });
+
   it("planActionWrites upserts every draft once and deletes only open rows that stopped triggering", async () => {
     const { planActionWrites } = await import("../app/lib/compute-shared");
     const draft = (kind: "reorder" | "clear", productId: string) => ({ kind, productId, variantIds: ["v"], amount: 1, reason: { key: "k", params: {} } });
@@ -220,6 +237,15 @@ describe("task 2.1 helpers", () => {
     expect(soldOver(rows, "2026-10-16", 28)).toBe(5);
     expect(soldOver([], "2026-10-16", 28)).toBeNull();
     expect(soldOver([rows[0]], "2026-10-16", 28)).toBeNull();
+  });
+
+  it("kehaOpenUnits: ordered minus received per variant, across orders", async () => {
+    const { kehaOpenUnits } = await import("../app/lib/compute-shared");
+    const m = kehaOpenUnits([
+      { lines: [{ variantId: "a", qty: 10, received: 4 }, { variantId: "b", qty: 3, received: 5 }] },
+      { lines: [{ variantId: "a", qty: 2 }] },
+    ]);
+    expect([...m]).toEqual([["a", 8]]);
   });
 
   it("poArrivals: earliest dated arrival and open units per variant; undated orders ignored", async () => {

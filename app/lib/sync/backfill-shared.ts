@@ -9,7 +9,13 @@
  * first 90 days come first so numbers appear early ("first90Ready").
  */
 
-export const HISTORY_MONTHS = 13;
+/**
+ * Calendar months read at install, the current (partial) month included. 14, not the spec's 13:
+ * the seasonal index's base window is 28 days one year back from yesterday (engine/season-shared),
+ * which a 13-calendar-month backfill misses for most of each month (it starts on the 1st of the
+ * month 12 months ago). 14 lets seasonality start on day one instead of ~2 weeks later.
+ */
+export const HISTORY_MONTHS = 14;
 
 /** The datasets Home shows as progress bars. */
 export const DATASETS = ["products", "stock", "sales", "visits"] as const;

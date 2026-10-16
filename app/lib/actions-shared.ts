@@ -34,6 +34,14 @@ export type ActionState = (typeof ACTION_STATES)[number];
 export const SNOOZE_DAYS = 7;
 
 /**
+ * A "done" action (e.g. a clearance discount created) that still triggers this
+ * many days later opens again — the default clearance discount lasts 30 days.
+ * The spec doesn't say when done items return; without this they never would,
+ * because there is one row per (kind, product).
+ */
+export const DONE_REOPEN_DAYS = 30;
+
+/**
  * English sentence templates for `reason.key` ({placeholders} filled from
  * `reason.params`). Owned by the engine task (2.1/2.4); every value here is a
  * translation key (registered in tests/i18n-coverage.test.ts).

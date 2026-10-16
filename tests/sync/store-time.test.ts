@@ -1,6 +1,6 @@
 /**
  * Store-time helpers (task 1.4b): local date / hour / yesterday across DST changes and the
- * extreme offsets (UTC−11, UTC+14, +05:45), the 13-month window, nightly due rule, retention.
+ * extreme offsets (UTC−11, UTC+14, +05:45), the 14-month window, nightly due rule, retention.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -67,19 +67,19 @@ describe("local date and hour", () => {
 });
 
 describe("history window", () => {
-  it("13 calendar months ending yesterday → 13 chunks, newest first", () => {
+  it("14 calendar months ending yesterday → 14 chunks, newest first", () => {
     const r = historyRange("2026-10-15");
-    expect(r).toEqual({ from: "2025-10-01", until: "2026-10-15" });
+    expect(r).toEqual({ from: "2025-09-01", until: "2026-10-15" });
     const chunks = monthChunks(r.from, r.until);
-    expect(chunks).toHaveLength(13);
+    expect(chunks).toHaveLength(14);
     expect(chunks[0]).toEqual({ since: "2026-10-01", until: "2026-10-15" });
-    expect(chunks[12]).toEqual({ since: "2025-10-01", until: "2025-10-31" });
+    expect(chunks[13]).toEqual({ since: "2025-09-01", until: "2025-09-30" });
   });
 
-  it("yesterday on the 1st still gives 13 months", () => {
+  it("yesterday on the 1st still gives 14 months", () => {
     const r = historyRange("2026-01-01");
-    expect(r.from).toBe("2025-01-01");
-    expect(monthChunks(r.from, r.until)).toHaveLength(13);
+    expect(r.from).toBe("2024-12-01");
+    expect(monthChunks(r.from, r.until)).toHaveLength(14);
   });
 
   it("monthsBefore clamps to the month's length", () => {

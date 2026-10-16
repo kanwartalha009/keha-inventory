@@ -76,6 +76,12 @@ export async function poolStock(shop: string, ids: string[]): Promise<Map<string
   return out;
 }
 
+/** VariantMetric.inputs.kehaOnOrder (compute, task 2.1): Keha units already in orderQty. */
+function kehaCountedOf(inputs: unknown): number {
+  const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>).kehaOnOrder : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 /**
  * Units on open Keha orders per variant (ordered − received) and the earliest
  * arrival. `statuses`: draft/sent/confirmed for the Reorder suggestions;
@@ -177,7 +183,7 @@ export async function loadReorder(shop: string, selected: string[] = []): Promis
   const basics = await shopBasics(shop);
   const metrics = await prisma.variantMetric.findMany({
     where: { shop, scope: METRIC_SCOPE, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
-    select: { variantId: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true },
+    select: { variantId: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true, inputs: true },
   });
   const ids = [...new Set([...metrics.map((m) => m.variantId), ...selected])];
   const [variants, suppliers, onOrder, stock, open] = await Promise.all([
@@ -209,7 +215,14 @@ export async function loadReorder(shop: string, selected: string[] = []): Promis
   const metricMap = new Map<string, ReorderMetricIn>(
     metrics.map((m) => [
       m.variantId,
-      { orderQty: m.orderQty, orderBy: dayOf(m.orderBy), daysLeft: m.daysLeft, neverRunsOut: m.neverRunsOut, rate: m.rate },
+      {
+        orderQty: m.orderQty,
+        orderBy: dayOf(m.orderBy),
+        daysLeft: m.daysLeft,
+        neverRunsOut: m.neverRunsOut,
+        rate: m.rate,
+        kehaCounted: kehaCountedOf(m.inputs),
+      },
     ]),
   );
   const variantRows: ReorderVariantIn[] = variants.map((v) => ({ ...v, cost: num(v.cost) }));

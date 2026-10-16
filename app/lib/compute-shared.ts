@@ -22,7 +22,7 @@ import type { Coverage } from "./engine/season-shared";
 import { zForSafetyLevel } from "./engine/safety-shared";
 import { addDays } from "./engine/dates-shared";
 import type { ActionDraft } from "./actions-shared";
-import { dedupeKey } from "./actions-shared";
+import { DONE_REOPEN_DAYS, dedupeKey } from "./actions-shared";
 import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
 
@@ -132,7 +132,7 @@ export function salesCoverage(state: BackfillState): Coverage {
 // Actions → rows
 // ---------------------------------------------------------------------------
 
-export type ExistingAction = { dedupeKey: string; state: string };
+export type ExistingAction = { dedupeKey: string; state: string; doneAt?: Date | null };
 
 /**
  * What one compute run writes to Action (spec §7.7):
@@ -142,8 +142,9 @@ export type ExistingAction = { dedupeKey: string; state: string };
  *  - snoozed / dismissed / done rows are left alone (their € figure is refreshed only while
  *    they still trigger, which is how "comes back when the € figure doubles" works).
  * Duplicate drafts for one key keep the first (generateActions never emits duplicates).
+ *  - DONE rows that still trigger DONE_REOPEN_DAYS after doneAt open again (`reopenKeys`).
  */
-export function planActionWrites(existing: readonly ExistingAction[], drafts: readonly ActionDraft[]) {
+export function planActionWrites(existing: readonly ExistingAction[], drafts: readonly ActionDraft[], now?: Date) {
   const upserts: (ActionDraft & { dedupeKey: string })[] = [];
   const keys = new Set<string>();
   for (const d of drafts) {
@@ -153,7 +154,14 @@ export function planActionWrites(existing: readonly ExistingAction[], drafts: re
     upserts.push({ ...d, dedupeKey: key });
   }
   const deleteKeys = existing.filter((a) => a.state === "open" && !keys.has(a.dedupeKey)).map((a) => a.dedupeKey);
-  return { upserts, deleteKeys };
+  const cutoff = now ? now.getTime() - DONE_REOPEN_DAYS * 86_400_000 : null;
+  const reopenKeys =
+    cutoff == null
+      ? []
+      : existing
+          .filter((a) => a.state === "done" && keys.has(a.dedupeKey) && (a.doneAt == null || a.doneAt.getTime() <= cutoff))
+          .map((a) => a.dedupeKey);
+  return { upserts, deleteKeys, reopenKeys };
 }
 
 /** Units sold over the last `days` days that have data in the series; null when none has. */
@@ -168,6 +176,22 @@ export function soldOver(rows: readonly DailyRow[] | undefined, today: string, d
     sum += r.sold;
   }
   return any ? sum : null;
+}
+
+/**
+ * Units still to arrive per variant on Keha's own sent / confirmed orders (ordered − received).
+ * Keha orders never reach Shopify (no purchase-order write API), so Shopify's `incoming` never
+ * includes them: compute adds these units to incoming, and records the figure in
+ * VariantMetric.inputs.kehaOnOrder so the Reorder screen subtracts only what came after.
+ */
+export function kehaOpenUnits(pos: readonly { lines: { variantId: string; qty: number; received?: number }[] }[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const po of pos)
+    for (const l of po.lines) {
+      const open = Math.max(0, l.qty - (l.received ?? 0));
+      if (open > 0) out.set(l.variantId, (out.get(l.variantId) ?? 0) + open);
+    }
+  return out;
 }
 
 /** Earliest expected arrival and dated units per variant from open purchase orders. */
