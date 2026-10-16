@@ -11,7 +11,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { getVariantDetail } from "../models/products.server";
-import { AppPage, KvRow, ProductThumb } from "../components/ui";
+import { AppPage, FormCard, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
@@ -83,11 +83,10 @@ export default function VariantDetailPage() {
     >
       {!forecast && <UpgradeBanner feature="forecast" />}
 
-      <s-section>
+      <FormCard title={t("Stock")} sub={t("Online stock pool: active locations that fulfil online orders.")}>
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">
-            <s-text color="subdued">{t("Online stock pool: active locations that fulfil online orders.")}</s-text>
             <KvRow label={t("Stock now")} value={formatCount(row.onHand, locale)} />
             <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
             {row.onOrder > 0 && (
@@ -121,7 +120,7 @@ export default function VariantDetailPage() {
             <KvRow label={t("Suggested qty")} value={forecast ? formatCount(row.orderQty, locale) : locked} />
           </div>
         </div>
-      </s-section>
+      </FormCard>
 
       <SalesChart series={data.series} months={data.months} />
       <ForecastInputs inputs={data.inputs} forecast={forecast} />
@@ -142,7 +141,7 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
     n: formatCount(outDays, locale),
   });
   return (
-    <s-section heading={t("Sales, last 13 months")}>
+    <FormCard title={t("Sales, last 13 months")}>
       <s-stack direction="block" gap="base">
         {hasData ? (
           <>
@@ -179,8 +178,8 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Month")}</s-table-header>
-            <s-table-header>{t("Units sold")}</s-table-header>
-            <s-table-header>{t("Sold-out days")}</s-table-header>
+            <s-table-header format="numeric">{t("Units sold")}</s-table-header>
+            <s-table-header format="numeric">{t("Sold-out days")}</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {months.map((m) => (
@@ -193,7 +192,7 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
           </s-table-body>
         </s-table>
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -211,7 +210,7 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
     v === null ? "—" : new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v);
   const locked = planTag("forecast", t);
   return (
-    <s-section heading={t("How the forecast was built")}>
+    <FormCard title={t("How the forecast was built")}>
       {!inputs ? (
         <s-paragraph color="subdued">{t("Not enough sales yet to advise")}</s-paragraph>
       ) : (
@@ -219,9 +218,11 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">{t("Window")}</s-table-header>
-              <s-table-header>{t("Days in stock")}</s-table-header>
-              <s-table-header>{t("Sales per day while in stock")}</s-table-header>
-              <s-table-header>{t("Weight")}</s-table-header>
+              <s-table-header format="numeric">{t("Days in stock")}</s-table-header>
+              <s-table-header format="numeric">
+                <HeaderLabel id="keha-window-rate" label={t("Sales/day")} hint={t("Sales per day while in stock")} />
+              </s-table-header>
+              <s-table-header format="numeric">{t("Weight")}</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {inputs.windows.map((w) => (
@@ -276,18 +277,18 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
           </s-text>
         </s-stack>
       )}
-    </s-section>
+    </FormCard>
   );
 }
 
 function RecentSales({ recent }: { recent: ChartDay[] }) {
   const { t, locale } = useLocale();
   return (
-    <s-section heading={t("Recent sales")}>
+    <FormCard title={t("Recent sales")}>
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">{t("Day")}</s-table-header>
-          <s-table-header>{t("Units sold")}</s-table-header>
+          <s-table-header format="numeric">{t("Units sold")}</s-table-header>
           <s-table-header>{t("Stock")}</s-table-header>
         </s-table-header-row>
         <s-table-body>
@@ -300,6 +301,6 @@ function RecentSales({ recent }: { recent: ChartDay[] }) {
           ))}
         </s-table-body>
       </s-table>
-    </s-section>
+    </FormCard>
   );
 }

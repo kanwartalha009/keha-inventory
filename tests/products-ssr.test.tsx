@@ -228,6 +228,17 @@ describe("Variant detail", () => {
     expect(html).toContain('href="/app/products"');
   });
 
+  it("layout: every card uses the shared head; count columns are right-aligned; no header wraps", () => {
+    const html = renderDetail(detail(true));
+    for (const title of ["Stock", "Sales, last 13 months", "How the forecast was built", "Recent sales"]) {
+      expect(html).toContain(`<div class="keha-form-card__head"><s-stack gap="small-500"><s-heading>${title}</s-heading>`);
+    }
+    expect(html).not.toMatch(/<s-section heading=/);
+    expect(count(html, 'format="numeric"')).toBe(6);
+    // The long rate header is short in the table, long in its tooltip.
+    expect(html).toContain('<s-text interestFor="keha-window-rate">Sales/day</s-text><s-tooltip id="keha-window-rate">Sales per day while in stock</s-tooltip>');
+  });
+
   it("Free: forecast parts locked, sales rate still shown", () => {
     const html = renderDetail(detail(false));
     expect(html).toContain("Growth plan");
