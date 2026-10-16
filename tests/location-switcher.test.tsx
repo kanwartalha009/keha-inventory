@@ -37,6 +37,9 @@ vi.mock("../app/models/products.server", () => ({
 }));
 vi.mock("../app/models/locations.server", () => ({ listPlanningLocations: m.listPlanningLocations }));
 vi.mock("../app/models/reorder.server", () => ({ loadReorder: m.loadReorder, createOrderFromGroup: m.createOrderFromGroup }));
+vi.mock("../app/models/transfers.server", () => ({
+  loadTransfers: async () => ({ groups: [], recent: [], hasWarehouse: true, hasStore: true }),
+}));
 
 import Products, { loader as productsLoader, type ProductsData } from "../app/routes/app.products";
 import { loader as csvLoader } from "../app/routes/app.products.csv";
@@ -171,6 +174,7 @@ describe("SSR: the switcher", () => {
       locationsEnabled: true,
       locations: [WH, STORE],
       location: STORE,
+      transfers: { enabled: true, groups: [], recent: [], hasWarehouse: true, hasStore: true },
     };
     const html = render("/app/reorder?location=2", "reorder", Reorder, d);
     expect(html).toContain("What Barcelona needs, from each supplier");

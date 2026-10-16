@@ -59,6 +59,7 @@ function reorderData(): ReorderPageData {
     locationsEnabled: false,
     locations: [],
     location: null,
+    transfers: { enabled: false, groups: [], recent: [], hasWarehouse: false, hasStore: false },
     groups,
     currency: "EUR",
     missingSelected: 0,

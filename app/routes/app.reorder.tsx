@@ -14,6 +14,11 @@
  * or store's own needs (store-level replenishment, still grouped by
  * supplier); an order created there records the location in its note. The
  * server ignores `?location` below Pro.
+ *
+ * Pro (`transfers`): "Transfers: warehouse → stores" below the supplier
+ * groups — the transfer plan (lib/transfers-shared) with editable quantities
+ * and "Create transfer in Shopify" behind a confirm (POST /app/transfers).
+ * Below Pro the section shows what it does and the plans link.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -24,6 +29,8 @@ import { getEntitlements, upgradeResponse } from "../services/entitlements.serve
 import { createOrderFromGroup, loadReorder, type OpenOrderRow, type ReorderData } from "../models/reorder.server";
 import { listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
+import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
+import { loadTransfers } from "../models/transfers.server";
 import { AppPage, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
@@ -50,17 +57,24 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
   // Locked page (app.tsx shows the plan page): send nothing.
-  if (!features.reorderPlan) return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false, ...NO_LOCATIONS };
+  if (!features.reorderPlan) {
+    return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false, ...NO_LOCATIONS, transfers: LOCKED_TRANSFERS };
+  }
   const url = new URL(request.url);
   const selected = parseVariantsParam(url.searchParams.get("variants"));
   const locations = features.locations ? await listPlanningLocations(session.shop) : [];
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
+  const [reorder, transfers] = await Promise.all([
+    loadReorder(session.shop, selected, view.scope),
+    features.transfers ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
+  ]);
   return {
-    ...(await loadReorder(session.shop, selected, view.scope)),
+    ...reorder,
     enabled: true,
     locationsEnabled: features.locations,
     locations,
     location: view.location,
+    transfers,
   };
 };
 
@@ -93,7 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
-export type ReorderPageData = ReorderData & { enabled: boolean } & LocationView;
+export type ReorderPageData = ReorderData & { enabled: boolean } & LocationView & { transfers: TransfersView };
 
 export default function Reorder() {
   const { t } = useLocale();
@@ -128,6 +142,7 @@ export default function Reorder() {
       ) : (
         data.groups.map((g) => <GroupCard key={g.key} group={g} location={location} />)
       )}
+      <TransfersSection view={data.transfers} />
       <OpenOrders orders={data.openOrders} />
     </AppPage>
   );
