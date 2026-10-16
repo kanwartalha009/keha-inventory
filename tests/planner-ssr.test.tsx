@@ -87,6 +87,7 @@ function data(over: Partial<PlannerData> = {}): PlannerData {
     plan: "growth",
     features: { collectionGoals: true, accuracy: true },
     today: TODAY,
+    timezone: "Europe/Madrid",
     currency: "EUR",
     history: { enough: false, from: SHORT.from },
     scenarios: [s],
@@ -111,7 +112,7 @@ describe("Planner page", () => {
     expect(html).toContain("Planner");
     expect(html).toContain("Based on the last 90 days only; we don&#x27;t have last year&#x27;s sales yet.");
     expect(html).toContain("Black Friday 2026");
-    expect(html).toContain("Calculated Oct 16, 2026");
+    expect(html).toContain("Calculated Oct 16, 10:00 AM");
     expect(html).toContain("Recalculate");
     for (const h of ["Expected sales (units)", "Expected revenue", "Cash needed", "Last year, same period"]) expect(html).toContain(h);
     // Every number has a popover ending with "Based on: …".

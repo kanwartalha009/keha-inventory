@@ -281,6 +281,8 @@ export type PlannerData = {
   plan: PlanCode;
   features: { collectionGoals: boolean; accuracy: boolean };
   today: string;
+  /** Store time zone (IANA). */
+  timezone: string;
   currency: string;
   history: { enough: boolean; from: string | null };
   scenarios: ScenarioView[];
@@ -332,6 +334,7 @@ export async function loadPlanner(
     plan: opts.plan,
     features: opts.features,
     today: ctx.today,
+    timezone: ctx.timezone,
     currency: ctx.currency,
     history: { enough: hasSeasonHistory(ctx.coverage, ctx.today), from: ctx.coverage.from },
     scenarios: all.map(({ result: _r, ...v }) => v),

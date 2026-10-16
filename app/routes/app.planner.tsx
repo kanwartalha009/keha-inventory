@@ -37,7 +37,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import { LockedPage, featureCopy, planTag } from "../components/plan";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
-import { formatAmount, formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
+import { formatAmount, formatCount, formatDay, formatPercent, formatUpdatedAt } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import type { Feature, PlanCode } from "../lib/plan-shared";
 import {
@@ -69,6 +69,7 @@ const LOCKED: PlannerData = {
   plan: "free",
   features: { collectionGoals: false, accuracy: false },
   today: "",
+  timezone: "UTC",
   currency: "USD",
   history: { enough: false, from: null },
   scenarios: [],
@@ -176,7 +177,7 @@ export default function Planner() {
       {!data.history.enough && <s-banner tone="warning">{t("Based on the last 90 days only; we don't have last year's sales yet.")}</s-banner>}
       {data.editing && <ScenarioEditor key={data.editing.id ?? "new"} editing={data.editing} today={data.today} />}
       <Scenarios data={data} />
-      {selected && <ScenarioOutput scenario={selected} result={selected.result} titles={data.collectionTitles} />}
+      {selected && <ScenarioOutput scenario={selected} result={selected.result} titles={data.collectionTitles} timezone={data.timezone} />}
       {data.features.collectionGoals ? (
         <CollectionGoals goals={data.goals} options={data.collectionOptions} currency={data.currency} />
       ) : (
@@ -417,10 +418,12 @@ function ScenarioOutput({
   scenario,
   result,
   titles,
+  timezone,
 }: {
   scenario: ScenarioView;
   result: ScenarioResult | null;
   titles: Record<string, string>;
+  timezone: string;
 }) {
   const { t, locale } = useLocale();
   const fetcher = useFetcher<PlannerAction>();
@@ -435,7 +438,7 @@ function ScenarioOutput({
         <s-heading>{scenario.name}</s-heading>
         <s-text color="subdued">
           {periodText(scenario.start, scenario.end, t, locale)}
-          {result ? ` · ${fill(t("Calculated {date}"), { date: formatDay(result.computedAt.slice(0, 10), locale) })}` : ""}
+          {result ? ` · ${fill(t("Calculated {date}"), { date: formatUpdatedAt(result.computedAt, timezone, locale) })}` : ""}
         </s-text>
       </s-stack>
       {recalc}
@@ -628,7 +631,14 @@ function CashChart({ result }: { result: ScenarioResult }) {
                 </g>
               ))}
             </svg>
-            <s-text color="subdued">{t("Orders are counted in the week of their order-by date. Late orders count in this week.")}</s-text>
+            <HowWeGotThis
+              id="keha-plan-weeks"
+              title={t("Cash needed per week")}
+              lines={[
+                t("Orders are counted in the week of their order-by date. Late orders count in this week."),
+                t("Based on: units to order × unit cost from Shopify (retail price when the cost is missing)"),
+              ]}
+            />
             <s-table>
               <s-table-header-row>
                 <s-table-header listSlot="primary">{t("Week of")}</s-table-header>
