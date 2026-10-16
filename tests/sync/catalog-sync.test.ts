@@ -36,6 +36,7 @@ const jsonl = readFileSync(join(__dirname, "fixtures/catalog.jsonl"), "utf8");
 const db = createFakePrisma(
   {
     variant: ["id"],
+    collection: ["id"],
     location: ["id"],
     stockNow: ["shop", "variantId", "locationId"],
     shop: ["domain"],
@@ -126,8 +127,19 @@ describe("syncCatalog", () => {
     db.tables.variant = [{ id: "gid://shopify/ProductVariant/777", shop: S, productId: "gid://shopify/Product/77" }];
     db.tables.stockNow = [{ shop: S, variantId: "gid://shopify/ProductVariant/777", locationId: "L" }];
     db.tables.variantMetric = [{ shop: S, variantId: "gid://shopify/ProductVariant/777", scope: "online" }];
+    db.tables.collection = [
+      { id: "gid://shopify/Collection/301", shop: S, title: "Old name", handle: "old" },
+      { id: "gid://shopify/Collection/999", shop: S, title: "Gone", handle: "gone" },
+      { id: "gid://shopify/Collection/888", shop: "other.myshopify.com", title: "Other shop", handle: "other" },
+    ];
     const r = await syncCatalog(bulkAdmin(jsonl), S, { sleep: async () => {}, fetch: async () => new Response(jsonl) });
-    expect(r).toEqual({ variants: 4, products: 3, malformed: 2, orphans: 1, removed: 1 });
+    expect(r).toEqual({ variants: 4, products: 3, malformed: 2, orphans: 1, removed: 1, collections: 2, collectionsRemoved: 1 });
+    // Titles refreshed, new ones added, the shop's stale one removed, other shops untouched.
+    expect(db.tables.collection.map((c) => [c.id, c.shop, c.title, c.handle]).sort()).toEqual([
+      ["gid://shopify/Collection/301", S, "Summer", "summer"],
+      ["gid://shopify/Collection/302", S, "", ""],
+      ["gid://shopify/Collection/888", "other.myshopify.com", "Other shop", "other"],
+    ]);
     expect(db.tables.variant.map((v) => v.id).sort()).toEqual([
       "gid://shopify/ProductVariant/1001",
       "gid://shopify/ProductVariant/1002",

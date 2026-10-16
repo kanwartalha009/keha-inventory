@@ -1,8 +1,9 @@
 {"id":"gid://shopify/ProductVariant/1001","title":"S","sku":"TEE-S","price":"25.00","requiresComponents":false,"inventoryItem":{"id":"gid://shopify/InventoryItem/5001","tracked":true,"unitCost":{"amount":"8.50","currencyCode":"EUR"}},"__parentId":"gid://shopify/Product/1"}
 {"id":"gid://shopify/Product/1","title":"Basic Tee","handle":"basic-tee","status":"ACTIVE","vendor":"Acme","productType":"Shirts","createdAt":"2025-01-10T09:00:00Z","hasVariantsThatRequiresComponents":false,"featuredMedia":{"preview":{"image":{"url":"https://cdn.shopify.com/tee.jpg"}}}}
-{"id":"gid://shopify/Collection/301","__parentId":"gid://shopify/Product/1"}
+{"id":"gid://shopify/Collection/301","title":"Summer","handle":"summer","__parentId":"gid://shopify/Product/1"}
 {"id":"gid://shopify/ProductVariant/1002","title":"M","sku":"TEE-M","price":"25.00","requiresComponents":false,"inventoryItem":{"id":"gid://shopify/InventoryItem/5002","tracked":false,"unitCost":null},"__parentId":"gid://shopify/Product/1"}
 {"id":"gid://shopify/Collection/302","__parentId":"gid://shopify/Product/1"}
+{"id":"gid://shopify/Collection/301","title":" Summer ","handle":"summer","__parentId":"gid://shopify/Product/3"}
 this is not json
 {"id":"gid://shopify/Product/2","title":"Gift Box","handle":"gift-box","status":"DRAFT","vendor":"Acme","productType":"","createdAt":"2026-09-01T00:00:00Z","hasVariantsThatRequiresComponents":true,"featuredMedia":null}
 {"id":"gid://shopify/ProductVariant/2001","title":"Default Title","sku":null,"price":"60.00","requiresComponents":true,"inventoryItem":{"id":"gid://shopify/InventoryItem/6001","tracked":true,"unitCost":{"amount":"","currencyCode":"EUR"}},"__parentId":"gid://shopify/Product/2"}

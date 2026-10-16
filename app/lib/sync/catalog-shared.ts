@@ -24,6 +24,8 @@
 /**
  * The bulk query itself (sent as a string inside bulkOperationRunQuery). Bulk operations
  * ignore `first`, so a product's collections are capped to MAX_COLLECTIONS by the parser.
+ * Collections also carry `title` and `handle` (task 2.5): the parser returns them as
+ * Collection rows for the planner, collection goals and filters.
  * Connections: products, collections, variants (3 of 5 allowed; depth 1 of 2).
  */
 export const CATALOG_BULK_QUERY = `{
@@ -39,7 +41,7 @@ export const CATALOG_BULK_QUERY = `{
         createdAt
         hasVariantsThatRequiresComponents
         featuredMedia { preview { image { url } } }
-        collections { edges { node { id } } }
+        collections { edges { node { id title handle } } }
         variants {
           edges {
             node {
@@ -284,8 +286,22 @@ export function toVariantRow(
 // Bulk JSONL
 // ---------------------------------------------------------------------------
 
+/** One Collection row (Prisma `Collection` minus shop). A missing title or handle is "". */
+export type CollectionRow = { id: string; title: string; handle: string };
+
+/** A collection child line of the bulk JSONL → a Collection row; null when the id is unusable. */
+export function toCollectionRow(node: unknown): CollectionRow | null {
+  if (!node || typeof node !== "object") return null;
+  const n = node as { id?: unknown; title?: unknown; handle?: unknown };
+  const id = toGid("Collection", n.id);
+  if (!id) return null;
+  return { id, title: str(n.title)?.trim() ?? "", handle: str(n.handle)?.trim() ?? "" };
+}
+
 export type CatalogParse = {
   variants: VariantRow[];
+  /** Every collection seen (deduplicated by id; the last line wins). */
+  collections: CollectionRow[];
   products: number;
   /** Lines that were not JSON objects. */
   malformed: number;
@@ -301,6 +317,7 @@ export function parseCatalogJsonl(text: string): CatalogParse {
   const products = new Map<string, GqlProductNode>();
   const variantsByProduct = new Map<string, GqlVariantNode[]>();
   const collectionsByProduct = new Map<string, string[]>();
+  const collectionRows = new Map<string, CollectionRow>();
   let malformed = 0;
   let orphans = 0;
 
@@ -334,6 +351,8 @@ export function parseCatalogJsonl(text: string): CatalogParse {
       const list = collectionsByProduct.get(parent) ?? [];
       list.push(o.id as string);
       collectionsByProduct.set(parent, list);
+      const c = toCollectionRow(o);
+      if (c) collectionRows.set(c.id, c);
     } else {
       orphans++;
     }
@@ -353,7 +372,7 @@ export function parseCatalogJsonl(text: string): CatalogParse {
       else orphans++;
     }
   }
-  return { variants: rows, products: products.size, malformed, orphans };
+  return { variants: rows, collections: [...collectionRows.values()], products: products.size, malformed, orphans };
 }
 
 // ---------------------------------------------------------------------------

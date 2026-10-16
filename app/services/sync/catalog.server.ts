@@ -5,7 +5,9 @@
  *                   bulkOperation(id) (currentBulkOperation is deprecated since 2026-01), JSONL
  *                   downloaded and parsed by catalog-shared → Variant upserts. Variants of this
  *                   shop missing from a COMPLETED run are removed (with their StockNow /
- *                   VariantMetric rows): the bulk result is the full catalog.
+ *                   VariantMetric rows): the bulk result is the full catalog. Collections
+ *                   (id, title, handle) are upserted the same way, and the shop's collections
+ *                   no product of a completed run belongs to any more are removed.
  *  - syncLocations: locations(includeInactive) → Location upserts; `role` is never overwritten.
  *  - syncStockNow:  inventoryItems → inventoryLevels, paginated → StockNow upserts; rows not
  *                   seen in a complete run are removed.
@@ -41,6 +43,7 @@ import {
   toLocationRow,
   toVariantRow,
   type AdminCost,
+  type CollectionRow,
   type GqlInventoryItem,
   type GqlProductNode,
   type GqlVariantNode,
@@ -295,7 +298,31 @@ async function deleteVariants(shop: string, ids: string[]): Promise<number> {
   return removed;
 }
 
-export type CatalogResult = { variants: number; products: number; malformed: number; orphans: number; removed: number };
+/** Upserts Collection rows (title and handle refresh on every catalog run). */
+export async function upsertCollections(shop: string, rows: CollectionRow[]): Promise<number> {
+  await inBatches(rows, WRITE_BATCH, (batch) =>
+    prisma.$transaction(
+      batch.map((c) =>
+        prisma.collection.upsert({
+          where: { id: c.id },
+          create: { id: c.id, shop, title: c.title, handle: c.handle },
+          update: { shop, title: c.title, handle: c.handle },
+        }),
+      ),
+    ),
+  );
+  return rows.length;
+}
+
+export type CatalogResult = {
+  variants: number;
+  products: number;
+  malformed: number;
+  orphans: number;
+  removed: number;
+  collections: number;
+  collectionsRemoved: number;
+};
 
 /** Full catalog via one bulk operation. */
 export async function syncCatalog(admin: AdminGraphqlClient, shop: string, deps: SyncDeps = {}): Promise<CatalogResult> {
@@ -308,6 +335,17 @@ export async function syncCatalog(admin: AdminGraphqlClient, shop: string, deps:
     shop,
     existing.map((v) => v.id).filter((id) => !seen.has(id)),
   );
+  // Collections: the bulk result lists every product's collections, so one no product
+  // belongs to any more (deleted, or emptied) is removed after this complete read.
+  await upsertCollections(shop, parsed.collections);
+  const seenCollections = new Set(parsed.collections.map((c) => c.id));
+  const staleCollections = (await prisma.collection.findMany({ where: { shop }, select: { id: true } }))
+    .map((c) => c.id)
+    .filter((id) => !seenCollections.has(id));
+  let collectionsRemoved = 0;
+  await inBatches(staleCollections, 1000, async (batch) => {
+    collectionsRemoved += (await prisma.collection.deleteMany({ where: { shop, id: { in: batch } } })).count;
+  });
   if (parsed.malformed || parsed.orphans) {
     console.warn(`[sync/catalog] ${shop}: ${parsed.malformed} malformed line(s), ${parsed.orphans} orphan(s) skipped`);
   }
@@ -317,6 +355,8 @@ export async function syncCatalog(admin: AdminGraphqlClient, shop: string, deps:
     malformed: parsed.malformed,
     orphans: parsed.orphans,
     removed,
+    collections: parsed.collections.length,
+    collectionsRemoved,
   };
 }
 

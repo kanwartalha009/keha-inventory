@@ -22,6 +22,7 @@ import {
   toGid,
   toLocationRow,
   toVariantRow,
+  toCollectionRow,
 } from "../../app/lib/sync/catalog-shared";
 
 const jsonl = readFileSync(join(__dirname, "fixtures/catalog.jsonl"), "utf8");
@@ -104,8 +105,31 @@ describe("parseCatalogJsonl", () => {
     expect(out.variants[0].collections).toHaveLength(MAX_COLLECTIONS);
   });
 
+  it("returns each collection once with its title and handle (task 2.5)", () => {
+    expect(r.collections.sort((a, b) => (a.id < b.id ? -1 : 1))).toEqual([
+      // Seen under Product/1 and Product/3; the title is trimmed; the last line wins.
+      { id: "gid://shopify/Collection/301", title: "Summer", handle: "summer" },
+      // No title / handle in the line: "" (the UI shows "—").
+      { id: "gid://shopify/Collection/302", title: "", handle: "" },
+    ]);
+    expect(byId.get("gid://shopify/ProductVariant/3001")!.collections).toEqual(["gid://shopify/Collection/301"]);
+  });
+
+  it("keeps every collection row, also past the per-variant cap of 20, and drops unusable ids", () => {
+    const lines = [JSON.stringify({ id: "gid://shopify/Product/9", title: "X", handle: "x" })];
+    for (let i = 0; i < 25; i++)
+      lines.push(JSON.stringify({ id: `gid://shopify/Collection/${i + 1}`, title: `C${i + 1}`, handle: `c-${i + 1}`, __parentId: "gid://shopify/Product/9" }));
+    lines.push(JSON.stringify({ id: "gid://shopify/ProductVariant/90", __parentId: "gid://shopify/Product/9", inventoryItem: { tracked: true } }));
+    const out = parseCatalogJsonl(lines.join("\n"));
+    expect(out.collections).toHaveLength(25);
+    expect(out.collections[0]).toEqual({ id: "gid://shopify/Collection/1", title: "C1", handle: "c-1" });
+    expect(toCollectionRow({ id: "gid://shopify/Product/1", title: "Nope" })).toBeNull();
+    expect(toCollectionRow({ id: 44, title: 5, handle: null })).toEqual({ id: "gid://shopify/Collection/44", title: "", handle: "" });
+    expect(toCollectionRow(null)).toBeNull();
+  });
+
   it("empty input is an empty catalog", () => {
-    expect(parseCatalogJsonl("")).toEqual({ variants: [], products: 0, malformed: 0, orphans: 0 });
+    expect(parseCatalogJsonl("")).toEqual({ variants: [], collections: [], products: 0, malformed: 0, orphans: 0 });
   });
 });
 
@@ -115,6 +139,7 @@ describe("bulk query shape", () => {
     expect(CATALOG_BULK_QUERY).not.toMatch(/first:/);
     expect(CATALOG_BULK_QUERY).toContain("hasVariantsThatRequiresComponents");
     expect(CATALOG_BULK_QUERY).toContain("requiresComponents");
+    expect(CATALOG_BULK_QUERY).toContain("collections { edges { node { id title handle } } }");
   });
 });
 
