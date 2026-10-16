@@ -81,6 +81,9 @@ describe("Products page", () => {
     expect(html).toContain("All collections");
     expect(html).toContain("All vendors");
     expect(html).toContain("Search by product, variant or SKU");
+    // Stock now / Incoming say which locations they cover.
+    expect(html).toContain("Online stock pool: active locations that fulfil online orders.");
+    expect(html).toContain('<s-text interestFor="keha-pool-stock">Stock now</s-text><s-tooltip id="keha-pool-stock">');
   });
 
   it("Growth: forecast values, ∞ with an accessible label, and dashes for unknowns", () => {

@@ -1,7 +1,13 @@
 /**
  * Products table and variant detail (spec §5.2). Database reads only; the
- * mapping lives in app/lib/products-shared.ts. Metrics use the online pool
- * (METRIC_SCOPE) in this phase; stock is summed over every location.
+ * mapping lives in app/lib/products-shared.ts. Everything here uses the same
+ * online stock pool as compute (VariantMetric scope "online"): stock now,
+ * incoming and sold-out days come from active locations that fulfil online
+ * orders, so a row can't read "Stock now 40 · Out".
+ *
+ * SalesDaily holds two views of the same sales (facts-shared): by location
+ * (channel "all") and by channel (locationKey "all"). Totals read the channel
+ * view only — summing both would double every number.
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -18,6 +24,14 @@ import {
 } from "../lib/products-shared";
 import { addDays } from "../lib/engine/dates-shared";
 import { todayIn } from "../lib/dashboard-shared";
+import { poolLocationIds } from "../lib/compute-shared";
+import { ALL } from "../lib/sync/facts-shared";
+
+/** The online stock pool's location ids (same rule as compute.server). */
+async function poolIds(shop: string): Promise<string[]> {
+  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  return poolLocationIds(locations);
+}
 
 /** Rows in one CSV export (a 5,000-variant store fits with room to spare). */
 export const CSV_MAX_ROWS = 20_000;
@@ -61,16 +75,19 @@ const ORDER: Prisma.VariantOrderByWithRelationInput[] = [{ productTitle: "asc" }
 /** Metrics and summed stock for a set of variants, by variant id. */
 async function joinFor(shop: string, ids: string[]) {
   if (ids.length === 0) return { metrics: new Map<string, MetricRowIn>(), stock: new Map<string, StockSumIn>() };
+  const pool = await poolIds(shop);
   const [metrics, stock] = await Promise.all([
     prisma.variantMetric.findMany({
       where: { shop, scope: METRIC_SCOPE, variantId: { in: ids } },
       select: { variantId: true, status: true, rate: true, daysLeft: true, neverRunsOut: true, orderQty: true, orderBy: true },
     }),
-    prisma.stockNow.groupBy({
-      by: ["variantId"],
-      where: { shop, variantId: { in: ids } },
-      _sum: { onHand: true, incoming: true },
-    }),
+    pool.length
+      ? prisma.stockNow.groupBy({
+          by: ["variantId"],
+          where: { shop, variantId: { in: ids }, locationId: { in: pool } },
+          _sum: { onHand: true, incoming: true },
+        })
+      : Promise.resolve([]),
   ]);
   return {
     metrics: new Map<string, MetricRowIn>(metrics.map((m) => [m.variantId, m])),
@@ -176,17 +193,22 @@ export async function getVariantDetail(
   const today = todayIn(shopRow?.timezone, now);
   const since = new Date(`${addDays(today, -CHART_DAYS)}T00:00:00Z`);
   const until = new Date(`${today}T00:00:00Z`);
+  const pool = await poolIds(shop);
   const [metric, stockNow, sales, stock] = await Promise.all([
     prisma.variantMetric.findUnique({ where: { shop_variantId_scope: { shop, variantId, scope: METRIC_SCOPE } } }),
-    prisma.stockNow.aggregate({ where: { shop, variantId }, _sum: { onHand: true, incoming: true } }),
+    prisma.stockNow.aggregate({
+      where: { shop, variantId, locationId: { in: pool } },
+      _sum: { onHand: true, incoming: true },
+    }),
+    // Channel view only (locationKey "all"): one row per channel, never the location view too.
     prisma.salesDaily.groupBy({
       by: ["day"],
-      where: { shop, variantId, day: { gte: since, lt: until } },
+      where: { shop, variantId, locationKey: ALL, day: { gte: since, lt: until } },
       _sum: { sold: true },
       orderBy: { day: "asc" },
     }),
     prisma.stockDaily.findMany({
-      where: { shop, variantId, day: { gte: since, lt: until } },
+      where: { shop, variantId, locationId: { in: pool }, day: { gte: since, lt: until } },
       select: { day: true, outOfStock: true },
     }),
   ]);

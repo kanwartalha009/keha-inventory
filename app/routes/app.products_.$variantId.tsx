@@ -87,6 +87,7 @@ export default function VariantDetailPage() {
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">
+            <s-text color="subdued">{t("Online stock pool: active locations that fulfil online orders.")}</s-text>
             <KvRow label={t("Stock now")} value={formatCount(row.onHand, locale)} />
             <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
             <KvRow label={t("Sales per day while in stock")} value={formatRate(row.rate, locale)} />

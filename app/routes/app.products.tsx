@@ -101,7 +101,7 @@ export default function Products() {
   return (
     <AppPage
       heading={t("Products")}
-      intro={t("One row per variant. Sales per day count only the days the variant was in stock.")}
+      intro={`${t("One row per variant. Sales per day count only the days the variant was in stock.")} ${t("Online stock pool: active locations that fulfil online orders.")}`}
       secondaryActions={[<CsvButton key="csv" enabled={data.csv} filters={filters} />]}
     >
       {locked && <UpgradeBanner feature="forecast" />}
@@ -155,8 +155,14 @@ export default function Products() {
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
             <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Stock now")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Incoming")}</s-table-header>
+            <s-table-header listSlot="labeled">
+              <s-text interestFor="keha-pool-stock">{t("Stock now")}</s-text>
+              <s-tooltip id="keha-pool-stock">{t("Online stock pool: active locations that fulfil online orders.")}</s-tooltip>
+            </s-table-header>
+            <s-table-header listSlot="labeled">
+              <s-text interestFor="keha-pool-incoming">{t("Incoming")}</s-text>
+              <s-tooltip id="keha-pool-incoming">{t("Online stock pool: active locations that fulfil online orders.")}</s-tooltip>
+            </s-table-header>
             <s-table-header listSlot="labeled">{t("Sales per day while in stock")}</s-table-header>
             {lockedHead(t("Days of stock left"))}
             {lockedHead(t("Order by"))}
