@@ -20,6 +20,7 @@ import {
 } from "react";
 import { COMMON_TR } from "./i18n-common";
 import { PLANS_TR } from "./i18n-plans";
+import { HOME_TR } from "./i18n-home";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -58,7 +59,7 @@ type Dict = Record<string, string>;
 const DICT: Record<Exclude<Locale, "en">, Dict> = { es: {}, fr: {}, de: {}, it: {}, pt: {}, nl: {}, pl: {} };
 
 /** Every area dictionary. Add a new `i18n-<area>.ts` here. */
-export const AREAS: Record<string, Record<string, Tr>> = { common: COMMON_TR, plans: PLANS_TR };
+export const AREAS: Record<string, Record<string, Tr>> = { common: COMMON_TR, plans: PLANS_TR, home: HOME_TR };
 
 for (const area of Object.values(AREAS)) {
   for (const [key, m] of Object.entries(area)) {

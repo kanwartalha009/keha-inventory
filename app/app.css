@@ -641,3 +641,9 @@
 .keha-setup > * + * { margin-top: 12px; }
 .keha-setup .keha-list-row__sub { white-space: normal; }
 .keha-setup .keha-list-row__title s { color: var(--keha-text-secondary); }
+
+/* Home: money-at-stake card value, setup guide steps (task 1.6) */
+.keha-money__value { display: block; font-size: var(--keha-font-size-2xl); line-height: 1.15; font-weight: var(--keha-weight-semibold); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--keha-text); }
+.keha-setup-step { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+@media (max-width: 640px) { .keha-setup-step { grid-template-columns: 20px minmax(0, 1fr); } .keha-setup-step > :last-child { grid-column: 2; } }
+
