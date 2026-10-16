@@ -25,3 +25,30 @@ export type OwnerEmail = {
   /** Optional HTML version, sent alongside `text`. */
   html?: string;
 };
+
+/**
+ * One retry within the period (review fix 2026-10-16): a FAILED log row may be
+ * sent again once, at least an hour after the failed attempt. The attempt
+ * count lives in `error` ("attempt 1: …"), so the schema stays as it is.
+ */
+export const OWNER_EMAIL_RETRY_AFTER_MS = 60 * 60 * 1000;
+export const OWNER_EMAIL_MAX_ATTEMPTS = 2;
+
+/** Attempts recorded in a log row's `error` (a FAILED row without the prefix counts as 1). */
+export function emailAttempts(error: string | null | undefined): number {
+  const m = /^attempt (\d+):/.exec(error ?? "");
+  return m ? Number(m[1]) : 1;
+}
+
+export function failedAttemptError(attempt: number, reason: string): string {
+  return `attempt ${attempt}: ${reason}`.slice(0, 300);
+}
+
+/** May this period's email be tried again now? Never for a SENT row. */
+export function canRetryOwnerEmail(row: { status: string; sentAt: Date; error: string | null }, now: Date): boolean {
+  return (
+    row.status === "FAILED" &&
+    emailAttempts(row.error) < OWNER_EMAIL_MAX_ATTEMPTS &&
+    now.getTime() - row.sentAt.getTime() >= OWNER_EMAIL_RETRY_AFTER_MS
+  );
+}

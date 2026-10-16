@@ -9,6 +9,7 @@ import type { Tr } from "./i18n";
 export const EMAIL_TR: Record<string, Tr> = {
   // ---- Monday email ----
   "{money} at stake this week": { es: "{money} en juego esta semana", fr: "{money} en jeu cette semaine", de: "{money} stehen diese Woche auf dem Spiel", it: "{money} in gioco questa settimana", pt: "{money} em jogo esta semana", nl: "{money} op het spel deze week", pl: "{money} na szali w tym tygodniu" },
+  "Your stock this week": { es: "Tu stock esta semana", fr: "Votre stock cette semaine", de: "Dein Bestand diese Woche", it: "Il tuo stock questa settimana", pt: "O seu stock esta semana", nl: "Je voorraad deze week", pl: "Twoje stany magazynowe w tym tygodniu" },
   "1 thing to do": { es: "1 cosa por hacer", fr: "1 chose à faire", de: "1 Aufgabe", it: "1 cosa da fare", pt: "1 coisa a fazer", nl: "1 actie", pl: "1 rzecz do zrobienia" },
   "{count} things to do": { es: "{count} cosas por hacer", fr: "{count} choses à faire", de: "{count} Aufgaben", it: "{count} cose da fare", pt: "{count} coisas a fazer", nl: "{count} acties", pl: "{count} rzeczy do zrobienia" },
   "Your Monday summary for {store}": { es: "Tu resumen del lunes para {store}", fr: "Votre récapitulatif du lundi pour {store}", de: "Deine Montagsübersicht für {store}", it: "Il tuo riepilogo del lunedì per {store}", pt: "O seu resumo de segunda-feira para {store}", nl: "Je maandagoverzicht voor {store}", pl: "Twoje poniedziałkowe podsumowanie dla {store}" },

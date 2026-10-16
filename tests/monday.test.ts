@@ -1,10 +1,11 @@
 /**
  * The Monday email (spec §11, task 1.8): due from 08:00 store time on the
  * store's Monday (DST and extreme offsets included), the composer (4 numbers,
- * week-on-week change, "—" for nulls, Free line, money subject, translated),
- * once per store week, unsubscribe, and the public unsubscribe page.
+ * week-on-week change, "—" for nulls, Free line, forward-looking money
+ * subject, translated), once per store week with one retry, stale numbers
+ * skipped, unsubscribe, and the public unsubscribe page.
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
 import { createElement } from "react";
 import { createRoutesStub } from "react-router";
@@ -43,9 +44,16 @@ const { tables, sendEmail, planFor, fakeDb } = vi.hoisted(() => {
       create: async ({ data }: { data: Row }) => {
         if (tables.ownerEmailLog.some((r) => r.shop === data.shop && r.kind === data.kind && r.periodKey === data.periodKey))
           throw new Error("Unique constraint failed");
-        const row = { status: "SENT", ...data };
+        const row = { status: "SENT", error: null, sentAt: new Date(), ...data };
         tables.ownerEmailLog.push(row);
         return row;
+      },
+      // Conditional claim: every where field must match (Dates by time).
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        const eq = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+        const hits = tables.ownerEmailLog.filter((r) => Object.entries(where).every(([k, v]) => eq(r[k] ?? null, v ?? null)));
+        for (const r of hits) Object.assign(r, data);
+        return { count: hits.length };
       },
       update: async ({ where, data }: { where: { shop_kind_periodKey: Row }; data: Row }) => {
         const k = where.shop_kind_periodKey;
@@ -152,7 +160,8 @@ const base: MondayEmailInput = {
 describe("composeMondayEmail", () => {
   it("English: money subject, the 4 numbers, change, '—' for nulls, links", () => {
     const e = composeMondayEmail(base);
-    expect(e.subject).toBe("€4,651 at stake this week");
+    // Headline = Sales at risk + Cash stuck (1200 + 3400.5), not the past-period cards.
+    expect(e.subject).toBe("€4,601 at stake this week");
     expect(e.text).toContain("Your Monday summary for Acme Shoes");
     expect(e.text).toContain("Sales at risk (next 28 days): €1,200 (+€200 vs last week)");
     expect(e.text).toMatch(/^Sales lost to sell-outs \(last 90 days\): —$/m); // null → "—", no change
@@ -173,7 +182,7 @@ describe("composeMondayEmail", () => {
   it("Spanish: translated labels, store-locale money, Free line", () => {
     const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", refresh: "monthly" });
     const eur = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
-    expect(e.subject).toBe(`${eur(4651)} en juego esta semana`);
+    expect(e.subject).toBe(`${eur(4601)} en juego esta semana`);
     expect(e.text).toContain("Tu resumen del lunes para Acme Shoes");
     expect(e.text).toContain(`Ventas en riesgo (próximos 28 días): ${eur(1200)} (`);
     expect(e.text).toContain("respecto a la semana pasada");
@@ -196,11 +205,25 @@ describe("composeMondayEmail", () => {
     expect(composeMondayEmail({ ...base, currency: "USD", now: { atRisk: 12345.4, lost90: null, cashStuck: null, soldOutTraffic: null } }).subject).toBe(
       "$12,345 at stake this week",
     );
-    expect(composeMondayEmail({ ...base, currency: "GBP" }).subject).toBe("£4,651 at stake this week");
+    expect(composeMondayEmail({ ...base, currency: "GBP" }).subject).toBe("£4,601 at stake this week");
     expect(composeMondayEmail({ ...base, now: { atRisk: null, lost90: null, cashStuck: null, soldOutTraffic: null } }).subject).toBe(
-      "— at stake this week",
+      "Your stock this week",
     );
     expect(formatMoneyWhole(12, "NOT_A_CURRENCY", "en")).toBe("12 NOT_A_CURRENCY");
+  });
+
+  it("headline counts only the forward-looking money; past cards stay in the body", () => {
+    const e = composeMondayEmail({ ...base, now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } });
+    expect(e.subject).toBe("Your stock this week");
+    expect(e.text).toContain("Sales lost to sell-outs (last 90 days): €900");
+    expect(e.text).toContain("Sold-out page visits (last 30 days): €80");
+    expect(e.html).toContain(">Your stock this week</h1>");
+    expect(composeMondayEmail({ ...base, locale: "es", now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } }).subject).toBe(
+      "Tu stock esta semana",
+    );
+    expect(composeMondayEmail({ ...base, now: { atRisk: 100, lost90: 900, cashStuck: null, soldOutTraffic: 80 } }).subject).toBe(
+      "€100 at stake this week",
+    );
   });
 
   it("escapes the store name in HTML", () => {
@@ -212,13 +235,15 @@ describe("composeMondayEmail", () => {
   it("later phases: actions add '— 5 things to do' and the top 5; accuracy adds its line", () => {
     const actions = Array.from({ length: 7 }, (_, i) => ({ title: `Reorder item ${i + 1}`, reason: "Runs out in 9 days", amount: 100 * (i + 1), link: `https://x/${i + 1}` }));
     const e = composeMondayEmail({ ...base, actions, accuracy: "Last month we predicted 412 units, you sold 398 (96%)." });
-    expect(e.subject).toBe("€4,651 at stake this week — 5 things to do");
+    expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
     expect(e.text).toContain("Top things to do this week");
     expect(e.text).toContain("5. Reorder item 5 (€500)");
     expect(e.text).not.toContain("Reorder item 6");
     expect(e.text).toContain("Last month we predicted 412 units");
     expect(e.html).toContain('href="https://x/5"');
-    expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,651 at stake this week — 1 thing to do");
+    expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,601 at stake this week — 1 thing to do");
+    const pastOnly = { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 };
+    expect(composeMondayEmail({ ...base, now: pastOnly, actions: actions.slice(0, 1) }).subject).toBe("Your stock this week — 1 thing to do");
     expect(composeMondayEmail({ ...base, locale: "es", actions }).subject).toMatch(/— 5 cosas por hacer$/);
   });
 });
@@ -270,7 +295,8 @@ describe("runMondayEmails", () => {
     expect(await runMondayEmails(S, new Date("2026-10-19T15:00:00Z"))).toBe("skipped:already_sent");
     expect(sendEmail).toHaveBeenCalledTimes(1);
 
-    // The next Monday is a new store week.
+    // The next Monday is a new store week (with that week's numbers).
+    tables.moneyAtStake.push(money("2026-10-25", "1600.00"));
     expect(await runMondayEmails(S, new Date("2026-10-26T07:00:00Z"))).toBe("sent");
     expect(tables.ownerEmailLog.map((r) => r.periodKey)).toEqual(["2026-W43", "2026-W44"]);
   });
@@ -285,7 +311,7 @@ describe("runMondayEmails", () => {
 
   it("uses the store-local week: Kiritimati's Monday while UTC is still Sunday", async () => {
     tables.shop = [shopRow({ timezone: "Pacific/Kiritimati" })];
-    tables.moneyAtStake = [money("2026-10-17", "1500.00")];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
     expect(await runMondayEmails(S, new Date("2026-10-18T18:30:00Z"))).toBe("sent");
     expect(tables.ownerEmailLog[0].periodKey).toBe("2026-W43");
   });
@@ -326,6 +352,90 @@ describe("runMondayEmails", () => {
     tables.moneyAtStake = [money("2026-10-18", "1500.00"), money("2026-10-18", "10.00", B), money("2026-10-18", "10.00", "gone.myshopify.com")];
     expect(await runMondayEmailsAllShops(MON)).toEqual({ sent: 2, failed: 0, skipped: 0 });
     expect(await runMondayEmailsAllShops(MON)).toEqual({ sent: 0, failed: 0, skipped: 2 });
+  });
+});
+
+describe("stale numbers", () => {
+  const computed = (hoursAgo: number, from = MON) => ({ computedAt: new Date(from.getTime() - hoursAgo * 3600000).toISOString() });
+
+  it("paid plans: sends numbers up to 36 h old, skips (and logs) older ones", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [{ ...money("2026-10-17", "1500.00"), basis: computed(37) }];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/acme\.myshopify\.com: skipped .*37 h old, daily refresh/));
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(tables.ownerEmailLog).toEqual([]);
+
+    tables.moneyAtStake = [{ ...money("2026-10-18", "1500.00"), basis: computed(35) }];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    warn.mockRestore();
+  });
+
+  it("without basis.computedAt the row's day is used", async () => {
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-17", "1500.00")]; // 55 h before MON
+    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+  });
+
+  it("Free (monthly refresh): up to 35 days, with the monthly line", async () => {
+    planFor.mockResolvedValue("free");
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [{ ...money("2026-09-15", "1500.00"), basis: computed(36 * 24) }];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+    tables.moneyAtStake = [{ ...money("2026-09-15", "1500.00"), basis: computed(34 * 24) }];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    expect((sendEmail.mock.calls[0][0] as { text: string }).text).toContain("Refreshed monthly on Free");
+  });
+});
+
+describe("one retry within the week", () => {
+  const fail = () => sendEmail.mockResolvedValueOnce({ ok: false, reason: "provider_500: down" });
+  const at = (iso: string) => new Date(iso);
+  const log = () => tables.ownerEmailLog[0];
+  let errSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-19", "1500.00")]; // fresh all Monday
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => errSpy.mockRestore());
+
+  it("retries a failed send once, after an hour, and then never again", async () => {
+    fail();
+    expect(await runMondayEmails(S, at("2026-10-19T07:00:00Z"))).toBe("failed");
+    expect(log()).toMatchObject({ status: "FAILED", error: "attempt 1: provider_500: down" });
+    expect(await runMondayEmails(S, at("2026-10-19T07:30:00Z"))).toBe("skipped:already_sent"); // < 1 h
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+
+    expect(await runMondayEmails(S, at("2026-10-19T08:00:00Z"))).toBe("sent");
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(tables.ownerEmailLog).toHaveLength(1);
+    expect(log()).toMatchObject({ status: "SENT", error: null, periodKey: "2026-W43" });
+
+    expect(await runMondayEmails(S, at("2026-10-19T12:00:00Z"))).toBe("skipped:already_sent");
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it("a second failure is final for the week", async () => {
+    fail();
+    fail();
+    expect(await runMondayEmails(S, at("2026-10-19T07:00:00Z"))).toBe("failed");
+    expect(await runMondayEmails(S, at("2026-10-19T08:30:00Z"))).toBe("failed");
+    expect(log()).toMatchObject({ status: "FAILED", error: "attempt 2: provider_500: down" });
+    expect(await runMondayEmails(S, at("2026-10-19T12:00:00Z"))).toBe("skipped:already_sent");
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it("two ticks racing for the retry send it once", async () => {
+    fail();
+    expect(await runMondayEmails(S, at("2026-10-19T07:00:00Z"))).toBe("failed");
+    const later = at("2026-10-19T08:15:00Z");
+    const results = await Promise.all([runMondayEmails(S, later), runMondayEmails(S, later)]);
+    expect(results.sort()).toEqual(["sent", "skipped"]);
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(log()).toMatchObject({ status: "SENT" });
   });
 });
 

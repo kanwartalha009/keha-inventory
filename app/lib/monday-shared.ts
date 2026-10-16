@@ -96,9 +96,16 @@ export function formatMoneyChange(amount: number, currency: string, locale: stri
   return `${r > 0 ? "+" : ""}${r} ${currency}`;
 }
 
-/** Sum of the cards that have a value; null when none has one. */
-export function totalAtStake(values: Record<MoneyCardKey, number | null>): number | null {
-  const known = MONEY_CARDS.map((k) => values[k]).filter((v): v is number => v != null);
+/**
+ * The headline money: forward-looking only — Sales at risk (next 28 days) +
+ * Cash stuck. "Lost to sell-outs" and "sold-out page visits" cover past
+ * periods and overlap each other, so they stay in the body but are not
+ * added up. Null when neither is known.
+ */
+export const HEADLINE_CARDS = ["atRisk", "cashStuck"] as const satisfies readonly MoneyCardKey[];
+
+export function headlineAtStake(values: Record<MoneyCardKey, number | null>): number | null {
+  const known = HEADLINE_CARDS.map((k) => values[k]).filter((v): v is number => v != null);
   return known.length ? known.reduce((a, b) => a + b, 0) : null;
 }
 
@@ -160,8 +167,8 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
     return { label: labels[k], value: now == null ? DASH : money(now), changeText };
   });
 
-  const total = totalAtStake(input.now);
-  const atStake = fill(tr("{money} at stake this week"), { money: total == null ? DASH : money(total) });
+  const total = headlineAtStake(input.now);
+  const atStake = total == null ? tr("Your stock this week") : fill(tr("{money} at stake this week"), { money: money(total) });
 
   const actions = (input.actions ?? []).slice(0, MONDAY_TOP_ACTIONS);
   const todo =

@@ -8,15 +8,16 @@
  * OwnerEmailLog (shop, "monday", week) makes the send happen once
  * (sendOwnerEmailOnce inserts the row before sending).
  *
- * Not sent: no money-at-stake numbers yet, unsubscribed, no recipient, or no
- * app URL to build the unsubscribe link from.
+ * Not sent: no money-at-stake numbers yet, numbers too old (over 36 h on paid
+ * plans, 35 days on Free), unsubscribed, no recipient, or no app URL to build
+ * the unsubscribe link from. A failed send is retried once (sendOwnerEmailOnce).
  */
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
 import { composeMondayEmail, isMondaySendTime, MONDAY_UNSUB_PURPOSE, type MondayValues } from "../lib/monday-shared";
 import { MONEY_CARDS } from "../lib/money-shared";
-import { weekKey } from "../lib/owner-email-shared";
+import { canRetryOwnerEmail, weekKey } from "../lib/owner-email-shared";
 import { MONEY_REFRESH } from "../lib/plan-shared";
 import { seal } from "../lib/seal.server";
 import { readSettings } from "../lib/settings-shared";
@@ -35,6 +36,7 @@ export type MondayResult =
   | "skipped:not_due"
   | "skipped:already_sent"
   | "skipped:no_data"
+  | "skipped:stale_data"
   | "skipped:no_app_url"
   | "skipped:no_recipient"
   | "skipped";
@@ -48,7 +50,20 @@ type ShopRow = {
   settings: unknown;
 };
 
-type MoneyRow = { day: Date } & Record<(typeof MONEY_CARDS)[number], unknown>;
+type MoneyRow = { day: Date; basis?: unknown } & Record<(typeof MONEY_CARDS)[number], unknown>;
+
+/** Oldest money-at-stake numbers the email may show: 36 h on daily refresh, 35 days on Free (monthly). */
+export const MAX_MONEY_AGE_MS: Record<"daily" | "monthly", number> = {
+  daily: 36 * 60 * 60 * 1000,
+  monthly: 35 * 24 * 60 * 60 * 1000,
+};
+
+/** When the row was computed: basis.computedAt, else the start of its (store-local) day. */
+function moneyComputedAt(row: MoneyRow): Date {
+  const at = (row.basis as { computedAt?: unknown } | null | undefined)?.computedAt;
+  const d = typeof at === "string" ? new Date(at) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : row.day;
+}
 
 const num = (v: unknown): number | null => {
   if (v == null) return null;
@@ -100,12 +115,24 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const sent = await prisma.ownerEmailLog.findUnique({
     where: { shop_kind_periodKey: { shop, kind: MONDAY_KIND, periodKey } },
   });
-  if (sent) return "skipped:already_sent";
+  if (sent && !canRetryOwnerEmail(sent, now)) return "skipped:already_sent";
 
   const money = await moneyRows(shop);
   if (!money) return "skipped:no_data";
   const nowValues = values(money.latest);
   if (MONEY_CARDS.every((k) => nowValues[k] == null)) return "skipped:no_data";
+
+  // Never email stale numbers: paid plans refresh daily, Free monthly.
+  const plan = await planFor(shop);
+  const refresh = MONEY_REFRESH[plan];
+  const computedAt = moneyComputedAt(money.latest);
+  const ageMs = now.getTime() - computedAt.getTime();
+  if (ageMs > MAX_MONEY_AGE_MS[refresh]) {
+    console.warn(
+      `[monday] ${shop}: skipped — money at stake computed ${computedAt.toISOString()} (${Math.round(ageMs / 3600000)} h old, ${refresh} refresh)`,
+    );
+    return "skipped:stale_data";
+  }
 
   const unsubscribe = mondayUnsubscribeUrl(shop, now.getTime());
   if (!unsubscribe) {
@@ -119,7 +146,6 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   if (!to || (Array.isArray(to) && !to.length)) return "skipped:no_recipient";
 
   const locale = toSupportedLocale(row.locale);
-  const plan = await planFor(shop);
   const content = composeMondayEmail({
     locale,
     numberLocale: row.locale,
@@ -127,7 +153,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     storeName: contact?.name || shop,
     now: nowValues,
     before: money.before ? values(money.before) : null,
-    refresh: MONEY_REFRESH[plan],
+    refresh,
     links: { app: adminAppUrl(shop, "/app"), unsubscribe },
   });
 
@@ -135,6 +161,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     shop,
     { kind: MONDAY_KIND, periodKey, ...content },
     { name: contact?.name || shop, to, locale },
+    now,
   );
 }
 
