@@ -6,22 +6,15 @@
  * reinstalled inside the 48h is skipped and its purge cancelled (2026-09-28).
  * Token-guarded for an external scheduler (the Nova platform cron or any HTTP
  * scheduler):
- *   Authorization: Bearer $INVENTORY_CRON_SECRET   (or ?token=$INVENTORY_CRON_SECRET)
+ *   Authorization: Bearer $INVENTORY_CRON_SECRET  
  * GET is a dry run that lists which shops are due, without deleting.
  * The in-process scheduler runs the same purge hourly (scheduler.server).
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { purgeDueShops, shopsDueForPurge } from "../services/gdpr.server";
+import { cronAuthorized } from "../lib/cron-auth.server";
 
-function authorized(request: Request): boolean {
-  const secret = process.env.INVENTORY_CRON_SECRET ?? "";
-  if (!secret) return false;
-  const tokenParam = new URL(request.url).searchParams.get("token");
-  const bearer = (request.headers.get("Authorization") || "").match(
-    /^Bearer\s+(.+)$/i,
-  )?.[1];
-  return tokenParam === secret || bearer === secret;
-}
+const authorized = (request: Request) => cronAuthorized(request);
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (!authorized(request)) return new Response("Unauthorized", { status: 401 });

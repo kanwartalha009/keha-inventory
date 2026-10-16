@@ -3,20 +3,15 @@
  *
  * Drains PENDING NovaOutbox rows whose backoff has elapsed (install-confirm + webhook forwards that
  * didn't deliver first try). Safe to retry — Nova dedupes. Token-guarded for an external scheduler:
- *   Authorization: Bearer $INVENTORY_CRON_SECRET   (or ?token=$INVENTORY_CRON_SECRET)
+ *   Authorization: Bearer $INVENTORY_CRON_SECRET  
  * GET is a dry run reporting how many rows are due. Run it every minute or two.
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import prisma from "../db.server";
 import { flushOutbox } from "../lib/nova.server";
+import { cronAuthorized } from "../lib/cron-auth.server";
 
-function authorized(request: Request): boolean {
-  const secret = process.env.INVENTORY_CRON_SECRET ?? "";
-  if (!secret) return false;
-  const tokenParam = new URL(request.url).searchParams.get("token");
-  const bearer = (request.headers.get("Authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1];
-  return tokenParam === secret || bearer === secret;
-}
+const authorized = (request: Request) => cronAuthorized(request);
 
 const outbox = prisma.novaOutbox;
 

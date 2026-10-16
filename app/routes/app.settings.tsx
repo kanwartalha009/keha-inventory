@@ -31,7 +31,12 @@ type ActionData = { ok: true; form: SettingsForm } | { ok: false; errors?: Setti
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<ActionData> => {
   const { session } = await authenticate.admin(request);
-  const body = (await request.json()) as Partial<SettingsForm>;
+  let body: Partial<SettingsForm>;
+  try {
+    body = (await request.json()) as Partial<SettingsForm>;
+  } catch {
+    throw new Response("Bad request", { status: 400 });
+  }
   const form: SettingsForm = {
     leadTimeDays: String(body.leadTimeDays ?? ""),
     cycleDays: String(body.cycleDays ?? ""),
