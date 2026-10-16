@@ -222,7 +222,16 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
       </s-table-cell>
       <s-table-cell>{r.status ? <s-badge tone={statusTone(r.status)}>{statusLabel(r.status, t)}</s-badge> : "—"}</s-table-cell>
       <s-table-cell>{formatCount(r.onHand, locale)}</s-table-cell>
-      <s-table-cell>{formatCount(r.incoming, locale)}</s-table-cell>
+      <s-table-cell>
+        {r.onOrder > 0 ? (
+          <s-stack direction="block" gap="none">
+            <span>{formatCount(r.incoming, locale)}</span>
+            <s-text color="subdued">{fill(t("+{n} on order with Keha"), { n: formatCount(r.onOrder, locale) })}</s-text>
+          </s-stack>
+        ) : (
+          formatCount(r.incoming, locale)
+        )}
+      </s-table-cell>
       <s-table-cell>{formatRate(r.rate, locale)}</s-table-cell>
       <s-table-cell>
         {locked ? (

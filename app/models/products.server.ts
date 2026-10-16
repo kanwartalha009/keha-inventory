@@ -17,6 +17,7 @@ import {
   pageInfo,
   toProductRow,
   type MetricRowIn,
+  type OnOrderIn,
   type PageInfo,
   type ProductFilters,
   type ProductRow,
@@ -26,6 +27,10 @@ import { addDays } from "../lib/engine/dates-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { poolLocationIds } from "../lib/compute-shared";
 import { ALL } from "../lib/sync/facts-shared";
+import { kehaOnOrder } from "./reorder.server";
+
+/** Keha orders that count as "on order" on Products: sent or confirmed (drafts aren't ordered yet). */
+const ON_ORDER_STATUSES = ["sent", "confirmed"] as const;
 
 /** The online stock pool's location ids (same rule as compute.server). */
 async function poolIds(shop: string): Promise<string[]> {
@@ -74,9 +79,11 @@ const ORDER: Prisma.VariantOrderByWithRelationInput[] = [{ productTitle: "asc" }
 
 /** Metrics and summed stock for a set of variants, by variant id. */
 async function joinFor(shop: string, ids: string[]) {
-  if (ids.length === 0) return { metrics: new Map<string, MetricRowIn>(), stock: new Map<string, StockSumIn>() };
+  if (ids.length === 0) {
+    return { metrics: new Map<string, MetricRowIn>(), stock: new Map<string, StockSumIn>(), onOrder: new Map<string, OnOrderIn>() };
+  }
   const pool = await poolIds(shop);
-  const [metrics, stock] = await Promise.all([
+  const [metrics, stock, onOrder] = await Promise.all([
     prisma.variantMetric.findMany({
       where: { shop, scope: METRIC_SCOPE, variantId: { in: ids } },
       select: { variantId: true, status: true, rate: true, daysLeft: true, neverRunsOut: true, orderQty: true, orderBy: true },
@@ -88,8 +95,10 @@ async function joinFor(shop: string, ids: string[]) {
           _sum: { onHand: true, incoming: true },
         })
       : Promise.resolve([]),
+    kehaOnOrder(shop, ON_ORDER_STATUSES, ids),
   ]);
   return {
+    onOrder: onOrder,
     metrics: new Map<string, MetricRowIn>(metrics.map((m) => [m.variantId, m])),
     stock: new Map<string, StockSumIn>(
       stock.map((s) => [s.variantId, { onHand: s._sum.onHand ?? null, incoming: s._sum.incoming ?? null }]),
@@ -112,12 +121,12 @@ export async function listProducts(
     total === 0
       ? []
       : await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, skip: info.skip, take: info.take });
-  const { metrics, stock } = await joinFor(
+  const { metrics, stock, onOrder } = await joinFor(
     shop,
     variants.map((v) => v.id),
   );
   return {
-    rows: variants.map((v) => toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast)),
+    rows: variants.map((v) => toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id))),
     total,
     info,
   };
@@ -131,11 +140,11 @@ export async function allProducts(shop: string, filters: ProductFilters, forecas
   // Join in slices so each IN list stays small.
   for (let i = 0; i < variants.length; i += 1000) {
     const slice = variants.slice(i, i + 1000);
-    const { metrics, stock } = await joinFor(
+    const { metrics, stock, onOrder } = await joinFor(
       shop,
       slice.map((v) => v.id),
     );
-    for (const v of slice) out.push(toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast));
+    for (const v of slice) out.push(toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)));
   }
   return out;
 }
@@ -194,7 +203,7 @@ export async function getVariantDetail(
   const since = new Date(`${addDays(today, -CHART_DAYS)}T00:00:00Z`);
   const until = new Date(`${today}T00:00:00Z`);
   const pool = await poolIds(shop);
-  const [metric, stockNow, sales, stock] = await Promise.all([
+  const [metric, stockNow, sales, stock, onOrder] = await Promise.all([
     prisma.variantMetric.findUnique({ where: { shop_variantId_scope: { shop, variantId, scope: METRIC_SCOPE } } }),
     prisma.stockNow.aggregate({
       where: { shop, variantId, locationId: { in: pool } },
@@ -211,6 +220,7 @@ export async function getVariantDetail(
       where: { shop, variantId, locationId: { in: pool }, day: { gte: since, lt: until } },
       select: { day: true, outOfStock: true },
     }),
+    kehaOnOrder(shop, ON_ORDER_STATUSES, [variantId]),
   ]);
   return {
     variant,
@@ -219,6 +229,7 @@ export async function getVariantDetail(
       metric,
       { onHand: stockNow._sum.onHand ?? null, incoming: stockNow._sum.incoming ?? null },
       forecast,
+      onOrder.get(variantId),
     ),
     today,
     sigma: metric?.sigma ?? null,

@@ -90,6 +90,16 @@ export default function VariantDetailPage() {
             <s-text color="subdued">{t("Online stock pool: active locations that fulfil online orders.")}</s-text>
             <KvRow label={t("Stock now")} value={formatCount(row.onHand, locale)} />
             <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
+            {row.onOrder > 0 && (
+              <KvRow
+                label={t("On order with Keha")}
+                value={
+                  row.onOrderArrival
+                    ? fill(t("{n} · arrives {date}"), { n: formatCount(row.onOrder, locale), date: formatDay(row.onOrderArrival, locale) })
+                    : formatCount(row.onOrder, locale)
+                }
+              />
+            )}
             <KvRow label={t("Sales per day while in stock")} value={formatRate(row.rate, locale)} />
             <KvRow
               label={t("Days of stock left")}

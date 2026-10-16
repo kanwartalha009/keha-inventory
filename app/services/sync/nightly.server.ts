@@ -20,6 +20,7 @@ import { syncLocations } from "./catalog.server";
 import { createShopifyqlClient, monthChunks } from "./shopifyql.server";
 import { applyRetention, loadLocations, storeHistory } from "./facts.server";
 import { runProductsPass, type DataJobDeps } from "./backfill.server";
+import { runPurchaseOrderJobs } from "./po.server";
 import {
   HISTORY_DATASETS,
   clearError,
@@ -131,6 +132,9 @@ export async function runNightly(shop: string, deps: DataJobDeps): Promise<Night
     partial = true;
     console.error(`[sync/nightly] ${shop} products (${syncErrorCode(e)})`, e);
   }
+
+  // Shopify purchase orders + closing Keha orders whose stock landed (task 2.2). Never throws.
+  await runPurchaseOrderJobs(admin, shop, deps);
 
   if (deps.afterSync) {
     // A compute failure must not re-run the whole sync: it is logged, the facts stay.

@@ -206,6 +206,24 @@ export const REORDER_TR: Record<string, Tr> = {
     nl: "+{n} besteld via Keha",
     pl: "+{n} zamówione przez Keha",
   },
+  "On order with Keha": {
+    es: "Pedido con Keha",
+    fr: "En commande via Keha",
+    de: "Über Keha bestellt",
+    it: "In ordine con Keha",
+    pt: "Encomendado com a Keha",
+    nl: "Besteld via Keha",
+    pl: "Zamówione przez Keha",
+  },
+  "{n} · arrives {date}": {
+    es: "{n} · llega el {date}",
+    fr: "{n} · arrive le {date}",
+    de: "{n} · kommt am {date}",
+    it: "{n} · arriva il {date}",
+    pt: "{n} · chega a {date}",
+    nl: "{n} · komt aan op {date}",
+    pl: "{n} · dotrze {date}",
+  },
 
   // ---- Open orders and order page ----
   "Open orders": { es: "Pedidos abiertos", fr: "Commandes en cours", de: "Offene Bestellungen", it: "Ordini aperti", pt: "Encomendas em aberto", nl: "Open bestellingen", pl: "Otwarte zamówienia" },

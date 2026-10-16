@@ -65,6 +65,9 @@ vi.mock("../app/db.server", () => ({
     stockDaily: {
       findMany: async ({ where }: { where: Row }) => db.stockDaily!.filter((r) => matches(r, where)),
     },
+    purchaseOrder: {
+      findMany: async ({ where }: { where: Row }) => db.purchaseOrder!.filter((r) => matches(r, where)),
+    },
   },
 }));
 
@@ -106,6 +109,7 @@ beforeEach(() => {
     { shop: SHOP, variantId: VID, day: day("2026-10-14"), locationId: WH, outOfStock: true },
     { shop: SHOP, variantId: VID, day: day("2026-10-14"), locationId: STORE, outOfStock: false },
   ];
+  db.purchaseOrder = [];
 });
 
 describe("products model (review fixes)", () => {
@@ -133,5 +137,20 @@ describe("products model (review fixes)", () => {
     db.location = [{ id: STORE, shop: SHOP, active: true, online: false }];
     const page = await listProducts(SHOP, { status: null, collection: null, vendor: null, q: null }, 1, true);
     expect(page.rows[0]).toMatchObject({ onHand: null, incoming: null });
+  });
+  it("Keha orders show as 'on order', beside Shopify's incoming, never added to it (task 2.2)", async () => {
+    const line = (qty: number, received?: number) => ({ variantId: VID, qty, unitCost: null, productTitle: "Shirt", variantTitle: "M", sku: "S-M", received });
+    db.purchaseOrder = [
+      { shop: SHOP, source: "keha", status: "sent", lines: [line(12)], confirmedShipDate: null, expectedDate: day("2026-11-02") },
+      { shop: SHOP, source: "keha", status: "confirmed", lines: [line(5, 2)], confirmedShipDate: day("2026-10-28"), expectedDate: day("2026-11-09") },
+      { shop: SHOP, source: "keha", status: "draft", lines: [line(100)], confirmedShipDate: null, expectedDate: null },
+      { shop: SHOP, source: "shopify", status: "sent", lines: [line(40)], confirmedShipDate: null, expectedDate: null },
+    ];
+    const page = await listProducts(SHOP, { status: null, collection: null, vendor: null, q: null }, 1, true);
+    expect(page.rows[0]!.incoming).toBe(6); // Shopify's pool incoming, unchanged
+    expect(page.rows[0]!.onOrder).toBe(15); // 12 sent + (5 − 2) confirmed; drafts and Shopify POs excluded
+    expect(page.rows[0]!.onOrderArrival).toBe("2026-10-28");
+    const d = await getVariantDetail(SHOP, VID, true, NOW);
+    expect(d!.row.onOrder).toBe(15);
   });
 });

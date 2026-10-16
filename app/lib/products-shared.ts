@@ -131,7 +131,18 @@ export type ProductRow = {
   neverRunsOut: boolean;
   orderBy: string | null;
   orderQty: number | null;
+  /**
+   * Units on sent / confirmed Keha orders (task 2.2). Keha orders never reach
+   * Shopify, so this is never part of `incoming` (Shopify's own number): shown
+   * beside it as "On order with Keha", never added to it. 0 = none.
+   */
+  onOrder: number;
+  /** Earliest expected arrival of those orders, "YYYY-MM-DD". */
+  onOrderArrival: string | null;
 };
+
+/** Open Keha order units for one variant (models/reorder.server kehaOnOrder). */
+export type OnOrderIn = { qty: number; arrival: string | null };
 
 export type VariantRowIn = {
   id: string;
@@ -176,6 +187,7 @@ export function toProductRow(
   metric: MetricRowIn | null | undefined,
   stock: StockSumIn | null | undefined,
   forecast: boolean,
+  onOrder?: OnOrderIn | null,
 ): ProductRow {
   const status = metric && isVariantStatus(metric.status) ? metric.status : null;
   return {
@@ -194,6 +206,8 @@ export function toProductRow(
     neverRunsOut: forecast ? !!metric?.neverRunsOut : false,
     orderBy: forecast ? dayOf(metric?.orderBy ?? null) : null,
     orderQty: forecast ? finite(metric?.orderQty) : null,
+    onOrder: onOrder && onOrder.qty > 0 ? onOrder.qty : 0,
+    onOrderArrival: onOrder && onOrder.qty > 0 ? onOrder.arrival : null,
   };
 }
 
