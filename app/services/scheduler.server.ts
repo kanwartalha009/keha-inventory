@@ -18,7 +18,12 @@
  *   - Monday email (spec §11): hourly; sends when it is Monday ≥ 08:00 in the
  *     store's time zone, once per store week via OwnerEmailLog.
  *
- * Instant alerts and accuracy (spec §6.6) are added by the tasks that build them.
+ *   - instant alerts + Flow triggers (spec §6.6 "alerts", alerts.server) and the
+ *     accuracy snapshot / grade (spec §7.8, accuracy.server): hourly, both
+ *     overlap-guarded and never throwing.
+ *
+ * Boot runs every hourly job once (after BOOT_DELAY_MS), so a restart never
+ * leaves a job waiting up to an hour.
  *
  * The /cron/* HTTP endpoints remain (token-guarded) as manual triggers and as
  * an external-scheduler option. Set INVENTORY_DISABLE_INTERNAL_CRON=1 to turn
@@ -201,6 +206,21 @@ async function planSyncTick(): Promise<void> {
   }
 }
 
+/**
+ * The hourly jobs, in order. Boot runs them all once too. Each one is overlap-guarded
+ * (or idempotent) and never throws.
+ */
+export const HOURLY_JOBS: ReadonlyArray<{ name: string; run: () => Promise<unknown> }> = [
+  { name: "purge", run: () => purgeTick() },
+  { name: "plan sync", run: () => planSyncTick() },
+  { name: "data sync", run: () => dataTick() },
+  { name: "monday email", run: () => mondayTick() },
+  // spec §7.8: snapshot on the 1st, grade last month (idempotent)
+  { name: "accuracy", run: () => runAccuracyAllShops(new Date()) },
+  // instant alerts + Flow triggers (spec §6.6 "alerts", alerts.server)
+  { name: "alerts", run: () => alertsTick() },
+];
+
 export function startScheduler(): void {
   if (process.env.INVENTORY_DISABLE_INTERNAL_CRON === "1") {
     console.log("[scheduler] internal cron disabled via INVENTORY_DISABLE_INTERNAL_CRON");
@@ -209,21 +229,14 @@ export function startScheduler(): void {
   if (g.__kehaInvSchedulerStarted) return; // dev-server module reloads
   g.__kehaInvSchedulerStarted = true;
 
+  const hourly = () => {
+    for (const job of HOURLY_JOBS) void job.run();
+  };
   setTimeout(() => {
     void outboxTick();
-    void purgeTick();
-    void planSyncTick();
-    void dataTick();
-    void mondayTick();
+    hourly(); // boot runs every hourly job once
     setInterval(() => void outboxTick(), OUTBOX_EVERY_MS);
-    setInterval(() => {
-      void purgeTick();
-      void planSyncTick();
-      void dataTick();
-      void mondayTick();
-      void runAccuracyAllShops(new Date()); // spec §7.8: snapshot on the 1st, grade last month (idempotent)
-      void alertsTick(); // instant alerts + Flow triggers (spec §6.6 "alerts", alerts.server)
-    }, HOURLY_EVERY_MS);
-    console.log("[scheduler] started — outbox every 2 min; purge, access-log retention, plan sync and data sync hourly");
+    setInterval(hourly, HOURLY_EVERY_MS);
+    console.log(`[scheduler] started — outbox every 2 min; hourly and at boot: ${HOURLY_JOBS.map((j) => j.name).join(", ")}`);
   }, BOOT_DELAY_MS);
 }
