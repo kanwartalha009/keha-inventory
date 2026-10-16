@@ -243,7 +243,7 @@ export function createFakePrisma(keys: Record<string, string[]> = {}, updatedAtT
             if (args._count === true) out._count = list.length;
             else {
               const c: Row = {};
-              for (const f of Object.keys(args._count)) c[f] = list.filter((r) => r[f] != null).length;
+              for (const f of Object.keys(args._count)) c[f] = f === "_all" ? list.length : list.filter((r) => r[f] != null).length;
               out._count = c;
             }
           }

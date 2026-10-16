@@ -11,6 +11,7 @@ import { consumeReferral } from "./lib/referral.server";
 import { cancelPendingPurge } from "./services/purge-stamp.server";
 import { POLARIS_URL } from "./lib/polaris-shared";
 import { kickoffBackfill } from "./services/sync/backfill.server";
+import { computeAfterSync } from "./services/compute.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -54,9 +55,6 @@ const shopify = shopifyApp({
 export async function dataAdmin(shop: string) {
   return (await shopify.unauthenticated.admin(shop)).admin;
 }
-
-/** Compute after sync. Wired to the engine in task 1.5. */
-export async function computeAfterSync(_shop: string): Promise<void> {}
 
 export default shopify;
 export const apiVersion = ApiVersion.October26;
