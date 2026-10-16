@@ -51,7 +51,7 @@ export const SCOPE_PURPOSES: Record<string, string> = {
     "Runs Shopify's own analytics reports (ShopifyQL) for daily sales totals per product, stock history and store visits per landing page. These reports are totals: the app never asks them for customer details.",
   read_inventory_purchase_orders: "Reads purchase orders you create in Shopify, so stock you have already ordered is counted as incoming.",
   write_inventory_transfers:
-    "Reads the transfers linked to your Shopify purchase orders, and lets the app create a stock transfer only when you press confirm.",
+    "Reads the transfers linked to your Shopify purchase orders and, on Pro, creates a draft stock transfer from a warehouse to a store only when you press confirm.",
   write_discounts: "Creates a Shopify discount for dead stock, only when you press confirm on a Clear action.",
 };
 

@@ -1,8 +1,10 @@
 /**
  * The store's name and email addresses, read with the shop's offline token
- * (2026-09-28). Used where Keha Inventory acts outside an admin request:
- *   - shopper emails: sender name = the store's name, replies go to the store
- *   - GDPR data requests: the export is emailed to the store owner
+ * (2026-09-28). Used where Keha Inventory acts outside an admin request (it never emails
+ * shoppers):
+ *   - supplier emails: sender name = the store's name, replies go to the store's contact email
+ *   - the supplier confirmation page and the purchase-order PDF: the store's name
+ *   - GDPR data requests: the answer is emailed to the store owner
  * Cached per shop for an hour. Never throws — null when the store can't be read.
  */
 import { unauthenticated } from "../shopify.server";

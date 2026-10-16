@@ -59,11 +59,12 @@ export default function Privacy() {
         currency, time zone and language; the App plan; and an access token
         received through Shopify’s standard authorization flow. The store’s
         name, owner email and contact email are read from Shopify when an email
-        is sent and are not stored in our database.
+        is sent or a purchase order is shown, and are not stored in our
+        database.
       </p>
       <p>
         <strong>Store data, as totals:</strong> the product catalog (product
-        and variant titles, SKUs, vendors, product types, collections, image
+        and variant titles, SKUs, vendors, product types, collection titles, image
         links, status, creation date, prices and costs); locations (name,
         whether active, whether they fulfil online orders); stock per variant
         and location, now and per day; units sold, units returned and sales per
@@ -76,8 +77,11 @@ export default function Privacy() {
         <strong>What the merchant enters in the App:</strong> settings (lead
         times, thresholds, safety level); suppliers (name, email address, lead
         time, minimum orders, case packs, the vendors they supply); purchase
-        orders created in the App; the email addresses that should receive the
-        Monday email; a Slack webhook address, if connected; and what the
+        orders created in the App; planner scenarios (dates and targets) and
+        revenue goals per collection; each location’s role (warehouse, store)
+        and whether it counts for online sales; the stock transfers created
+        from the App; the email addresses that should receive the Monday email;
+        a Slack webhook address, if connected; and what the
         merchant does with each suggested action (done, snoozed, dismissed,
         discounts created).
       </p>
@@ -95,8 +99,9 @@ export default function Privacy() {
       <h2>How we use information</h2>
       <p>
         Only to provide the App to the merchant: calculating the money at stake
-        in their stock, ranking the weekly actions, building reorder plans and
-        purchase orders, measuring forecast accuracy, and sending the emails and
+        in their stock, ranking the weekly actions, building reorder plans,
+        season plans, purchase orders and transfer plans, measuring forecast
+        accuracy, and sending the emails and
         messages described below. We do not sell information or use it for
         advertising.
       </p>
@@ -105,8 +110,10 @@ export default function Privacy() {
       <p>
         The App changes nothing in your store until you press a confirm button.
         After you confirm, it can create a Shopify discount for the products in
-        a Clear action, or a stock transfer between your locations. It never
-        edits your products, prices or stock levels.
+        a Clear action, or (on Pro) a stock transfer from a warehouse to a
+        store. Transfers are created as drafts: no stock moves until you mark
+        the transfer ready to ship in Shopify. The App never edits your
+        products, prices or stock levels.
       </p>
       <p>
         On plans with Shopify Flow, the App sends two kinds of event to Shopify

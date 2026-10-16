@@ -73,6 +73,8 @@ describe("/privacy", () => {
     expect(html).toContain("Resend");
     expect(html).toContain("Railway");
     expect(html).toContain("Product needs reorder");
+    expect(html).toContain("Transfers are created as drafts");
+    expect(html).toContain("planner scenarios");
     expect(html).toContain("privacy@example.com");
     expect(html).toContain("Example Ltd");
     expect(html).not.toContain("rolled up");
@@ -84,6 +86,7 @@ describe("/terms", () => {
     delete process.env.INVENTORY_SUPPORT_EMAIL;
     const html = render("/terms", Terms, termsLoader());
     expect(html).toContain("changes nothing in the store until the merchant confirms");
+    expect(html).toContain("stock transfers are created as drafts");
     expect(html).toContain("stops working 60 days after the order is sent");
     expect(html).toContain("deleted 48 hours after uninstall");
     expect(html).toContain("support@keha.io");

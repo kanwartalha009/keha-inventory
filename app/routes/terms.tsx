@@ -40,8 +40,9 @@ export default function Terms() {
         The App reads a store’s products, stock, sales totals and store visits,
         and gives the merchant stock advice: the money at stake, a weekly list
         of what to reorder, push, fix and clear, reorder plans with purchase
-        orders, a confirmation link for suppliers, and emails, Slack messages
-        and Shopify Flow events about stock. Features may be added, changed, or
+        orders, a confirmation link for suppliers, a season planner, plans per
+        warehouse and store with draft stock transfers (Pro), and emails, Slack
+        messages and Shopify Flow events about stock. Features may be added, changed, or
         removed as the App evolves.
       </p>
 
@@ -63,9 +64,10 @@ export default function Terms() {
         </li>
         <li>
           The App changes nothing in the store until the merchant confirms.
-          Discounts and stock transfers the merchant confirms are created in
-          Shopify as the merchant set them up; the merchant can edit or end them
-          in Shopify at any time.
+          Discounts the merchant confirms are created in Shopify as the merchant
+          set them up; stock transfers are created as drafts, and no stock moves
+          until the merchant marks them ready to ship in Shopify. The merchant
+          can edit or end either in Shopify at any time.
         </li>
         <li>
           The merchant must have the right to give us the supplier details they
