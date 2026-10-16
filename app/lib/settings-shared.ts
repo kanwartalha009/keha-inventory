@@ -32,6 +32,12 @@ export type ShopSettings = {
     slackWebhook: string | null;
     /** Send the Monday summary to Slack too (when connected). */
     slackMonday: boolean;
+    /**
+     * Last permanent Slack failure (4xx such as invalid_token, channel_not_found,
+     * no_service). The webhook is kept; the Alerts tab shows the error. Cleared on
+     * the next successful send, a new webhook or a disconnect.
+     */
+    slackError: { code: string; at: string } | null;
   };
 };
 
@@ -43,7 +49,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   tooMuchDays: 180,
   deadDays: 90,
   mondayEmail: { enabled: true, recipients: [] },
-  alerts: { instant: true, slackWebhook: null, slackMonday: true },
+  alerts: { instant: true, slackWebhook: null, slackMonday: true, slackError: null },
 };
 
 const int = (v: unknown, min: number, max: number, dflt: number) =>
@@ -55,6 +61,7 @@ export function readSettings(raw: unknown): ShopSettings {
   const me = (r.mondayEmail && typeof r.mondayEmail === "object" ? r.mondayEmail : {}) as Record<string, unknown>;
   const level = r.safetyLevel;
   const al = (r.alerts && typeof r.alerts === "object" ? r.alerts : {}) as Record<string, unknown>;
+  const se = (al.slackError && typeof al.slackError === "object" ? al.slackError : null) as Record<string, unknown> | null;
   return {
     leadTimeDays: int(r.leadTimeDays, 0, 365, DEFAULT_SETTINGS.leadTimeDays),
     leadTimeConfirmedAt: typeof r.leadTimeConfirmedAt === "string" ? r.leadTimeConfirmedAt : null,
@@ -70,10 +77,13 @@ export function readSettings(raw: unknown): ShopSettings {
       instant: typeof al.instant === "boolean" ? al.instant : DEFAULT_SETTINGS.alerts.instant,
       slackWebhook: typeof al.slackWebhook === "string" && al.slackWebhook ? al.slackWebhook : null,
       slackMonday: typeof al.slackMonday === "boolean" ? al.slackMonday : DEFAULT_SETTINGS.alerts.slackMonday,
+      slackError:
+        se && typeof se.code === "string" && se.code && typeof se.at === "string" ? { code: se.code, at: se.at } : null,
     },
   };
 }
 
+/** The Defaults tab (/app/settings). The Monday email moved to the Alerts tab (task 2.6). */
 export type SettingsForm = {
   leadTimeDays: string;
   cycleDays: string;
@@ -81,9 +91,6 @@ export type SettingsForm = {
   deadDays: string;
   /** "lean" | "balanced" | "safe"; anything else keeps the current level. */
   safetyLevel: string;
-  mondayEnabled: boolean;
-  /** Comma or newline separated; empty = the store owner. */
-  recipients: string;
 };
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
@@ -105,10 +112,11 @@ export const SETTINGS_ERRORS = {
   range: "Enter a whole number from {min} to {max}.",
   emails: "Check the email addresses.",
   tooMany: "Up to 10 addresses.",
+  slackUrl: "Paste a Slack incoming webhook link. It starts with https://hooks.slack.com/services/",
 } as const;
 
 /**
- * Validate the Settings form against the current settings. Error values are
+ * Validate the Defaults form against the current settings. Error values are
  * English message keys (translated in the UI). The lead time counts as
  * confirmed on the first save (setup guide step 1).
  */
@@ -132,12 +140,6 @@ export function applySettingsForm(
   const cycleDays = num("cycleDays");
   const tooMuchDays = num("tooMuchDays");
   const deadDays = num("deadDays");
-  const recipients = form.recipients
-    .split(/[\s,;]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (recipients.some((r) => !EMAIL.test(r))) errors.recipients = SETTINGS_ERRORS.emails;
-  else if (recipients.length > 10) errors.recipients = SETTINGS_ERRORS.tooMany;
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -149,7 +151,6 @@ export function applySettingsForm(
       tooMuchDays,
       deadDays,
       safetyLevel: isLevel(form.safetyLevel) ? form.safetyLevel : current.safetyLevel,
-      mondayEmail: { enabled: form.mondayEnabled, recipients: Array.from(new Set(recipients.map((r) => r.toLowerCase()))) },
     },
   };
 }
@@ -161,7 +162,70 @@ export function settingsToForm(s: ShopSettings): SettingsForm {
     tooMuchDays: String(s.tooMuchDays),
     deadDays: String(s.deadDays),
     safetyLevel: s.safetyLevel,
+  };
+}
+
+// ---------------------------------------------------------------- Alerts tab
+
+/** The Alerts tab (/app/settings/alerts, spec §5.5): Monday email, instant alerts, Slack. */
+export type AlertsForm = {
+  mondayEnabled: boolean;
+  /** Comma or newline separated; empty = the store owner. */
+  recipients: string;
+  instant: boolean;
+  slackMonday: boolean;
+  /** A new Slack incoming-webhook link to connect; empty = keep the current one. Never sent back to the page. */
+  slackWebhook: string;
+};
+
+export type AlertsErrors = Partial<Record<keyof AlertsForm, string>>;
+
+/** Parse the recipients field: split, trim, lowercase, de-duplicate. */
+export function parseRecipients(raw: string): { ok: true; recipients: string[] } | { ok: false; error: string } {
+  const list = String(raw ?? "")
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (list.some((r) => !EMAIL.test(r))) return { ok: false, error: SETTINGS_ERRORS.emails };
+  const unique = Array.from(new Set(list.map((r) => r.toLowerCase())));
+  if (unique.length > 10) return { ok: false, error: SETTINGS_ERRORS.tooMany };
+  return { ok: true, recipients: unique };
+}
+
+/**
+ * Validate the Alerts form. `isWebhook` checks a pasted Slack link (lib/slack-shared).
+ * The returned `webhook` is the validated new link (or null to keep the stored one);
+ * the caller encrypts it before storing (lib/crypto.server), so this stays pure.
+ */
+export function applyAlertsForm(
+  current: ShopSettings,
+  form: AlertsForm,
+  isWebhook: (raw: string) => string | null,
+): { ok: true; settings: ShopSettings; webhook: string | null } | { ok: false; errors: AlertsErrors } {
+  const errors: AlertsErrors = {};
+  const parsed = parseRecipients(form.recipients);
+  if (!parsed.ok) errors.recipients = parsed.error;
+  const raw = String(form.slackWebhook ?? "").trim();
+  const webhook = raw ? isWebhook(raw) : null;
+  if (raw && !webhook) errors.slackWebhook = SETTINGS_ERRORS.slackUrl;
+  if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors };
+  return {
+    ok: true,
+    webhook,
+    settings: {
+      ...current,
+      mondayEmail: { enabled: form.mondayEnabled === true, recipients: parsed.recipients },
+      alerts: { ...current.alerts, instant: form.instant === true, slackMonday: form.slackMonday === true },
+    },
+  };
+}
+
+export function alertsToForm(s: ShopSettings): AlertsForm {
+  return {
     mondayEnabled: s.mondayEmail.enabled,
     recipients: s.mondayEmail.recipients.join(", "),
+    instant: s.alerts.instant,
+    slackMonday: s.alerts.slackMonday,
+    slackWebhook: "",
   };
 }

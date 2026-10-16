@@ -26,6 +26,7 @@ import { EMAIL_TR } from "./i18n-email";
 import { REASONS_TR } from "./i18n-reasons";
 import { REORDER_TR } from "./i18n-reorder";
 import { ACTIONS_TR } from "./i18n-actions";
+import { ALERTS_TR } from "./i18n-alerts";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -73,6 +74,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   reasons: REASONS_TR,
   reorder: REORDER_TR,
   actions: ACTIONS_TR,
+  alerts: ALERTS_TR,
 };
 
 for (const area of Object.values(AREAS)) {

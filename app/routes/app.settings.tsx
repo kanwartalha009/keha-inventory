@@ -1,7 +1,8 @@
 /**
- * Settings (/app/settings), spec §5.5. Phase 1: defaults (lead time, with
- * order cycle and thresholds under "More options"), the Monday email, and the
- * app language. Suppliers, locations and Slack join with their tasks.
+ * Settings (/app/settings), spec §5.5. The Defaults tab: lead time (with
+ * order cycle and thresholds under "More options") and the app language. The
+ * Monday email, Slack and instant alerts live on the Alerts tab
+ * (app.settings_.alerts.tsx); suppliers and locations on their own tabs.
  * At most 8 visible fields per section (spec §5.5); everything has a default.
  */
 import { useEffect, useState } from "react";
@@ -11,7 +12,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { AppPage, Disclosure } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
-import { SelectField, flag, isChecked, val } from "../components/wc";
+import { SelectField, flag, val } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
 import {
   SETTINGS_BOUNDS,
@@ -45,8 +46,6 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     tooMuchDays: String(body.tooMuchDays ?? ""),
     deadDays: String(body.deadDays ?? ""),
     safetyLevel: String(body.safetyLevel ?? ""),
-    mondayEnabled: body.mondayEnabled === true,
-    recipients: String(body.recipients ?? ""),
   };
   const current = await getShopSettings(session.shop);
   const r = applySettingsForm(current, form, new Date());
@@ -136,25 +135,6 @@ export default function Settings() {
               />
             </s-stack>
           </Disclosure>
-        </s-stack>
-      </s-section>
-
-      <s-section heading={t("Monday email")}>
-        <s-stack direction="block" gap="base">
-          <s-checkbox
-            label={t("Send the Monday email")}
-            details={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}
-            checked={flag(form.mondayEnabled)}
-            onChange={(e) => set("mondayEnabled", isChecked(e))}
-          />
-          <s-text-field
-            label={t("Send to")}
-            details={t("Leave empty to send it to the store owner. Separate several addresses with commas.")}
-            value={form.recipients}
-            error={err("recipients")}
-            disabled={flag(!form.mondayEnabled)}
-            onInput={(e) => set("recipients", val(e))}
-          />
         </s-stack>
       </s-section>
 

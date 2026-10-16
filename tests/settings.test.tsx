@@ -1,6 +1,7 @@
 /**
- * Settings (spec §5.5): form validation, lead time confirmed on first save
- * (setup guide step 1), Monday email recipients; SSR render.
+ * Settings → Defaults (spec §5.5): form validation, lead time confirmed on first
+ * save (setup guide step 1); SSR render. The Monday email moved to the Alerts
+ * tab (tests/alerts-settings.test.tsx).
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
@@ -41,13 +42,6 @@ describe("settings form", () => {
     }
   });
 
-  it("parses, lowercases and de-duplicates recipients; rejects bad addresses", () => {
-    const ok = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), recipients: "Ann@Shop.com, ann@shop.com\nbob@shop.com" }, now);
-    expect(ok.ok && ok.settings.mondayEmail.recipients).toEqual(["ann@shop.com", "bob@shop.com"]);
-    const bad = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), recipients: "not-an-email" }, now);
-    expect(!bad.ok && bad.errors.recipients).toBe(SETTINGS_ERRORS.emails);
-  });
-
   it("saves the safety level; an unknown value keeps the current one", () => {
     expect(settingsToForm(DEFAULT_SETTINGS).safetyLevel).toBe("balanced");
     const safe = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), safetyLevel: "safe" }, now);
@@ -56,20 +50,15 @@ describe("settings form", () => {
     const bad = applySettingsForm(lean, { ...settingsToForm(lean), safetyLevel: "reckless" }, now);
     expect(bad.ok && bad.settings.safetyLevel).toBe("lean");
   });
-
-  it("can turn the Monday email off", () => {
-    const r = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), mondayEnabled: false }, now);
-    expect(r.ok && r.settings.mondayEmail.enabled).toBe(false);
-  });
 });
 
 describe("Settings page", () => {
-  it("renders the defaults, the Monday email and the language", () => {
+  it("renders the defaults and the language; the Monday email is on the Alerts tab", () => {
     const data = { form: settingsToForm(DEFAULT_SETTINGS) };
     const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
     const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
     expect(html).toContain("How long do your suppliers take?");
-    expect(html).toContain("Send the Monday email");
+    expect(html).not.toContain("Send the Monday email");
     expect(html).toContain("More options");
     expect(html).toContain("App language");
     expect(html).toMatch(/<s-number-field[^>]*value="14"/);

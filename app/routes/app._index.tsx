@@ -277,7 +277,7 @@ function SetupGuide({ data }: { data: HomeData }) {
               : t("Off. Turn it on to get your numbers and actions every Monday.")
           }
           action={
-            <s-button variant="secondary" {...link("/app/settings")}>
+            <s-button variant="secondary" {...link("/app/settings/alerts")}>
               {t("Change")}
             </s-button>
           }
