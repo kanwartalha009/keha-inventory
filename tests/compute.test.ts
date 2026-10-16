@@ -134,7 +134,7 @@ beforeEach(seed);
 describe("computeShop", () => {
   it("writes one online metric per ACTIVE tracked, non-bundle variant and drops stale / draft ones", async () => {
     const r = await computeShop(S, { now: () => NOW });
-    expect(r).toEqual({ status: "computed", today: "2026-10-16", variants: 4, money: "computed" });
+    expect(r).toMatchObject({ status: "computed", today: "2026-10-16", variants: 4, money: "computed" });
     expect(db.tables.variantMetric.map((m) => m.variantId).sort()).toEqual([A, B, C, SPARSE]);
     expect(db.tables.variantMetric.every((m) => m.scope === "online" && (m.computedAt as Date).getTime() === NOW)).toBe(true);
   });
@@ -233,5 +233,104 @@ describe("computeShop", () => {
     const m = db.tables.moneyAtStake[0];
     expect(m.soldOutTraffic).toBeNull();
     expect(m.lost90).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2.1 / 2.4: seasonality, suppliers, the action list
+// ---------------------------------------------------------------------------
+
+const action = (key: string) => db.tables.action?.find((a) => a.dedupeKey === key);
+
+describe("computeShop — action list", () => {
+  it("writes one open action per (kind, product) with the store currency", async () => {
+    const r = await computeShop(S, { now: () => NOW });
+    const keys = (db.tables.action ?? []).map((a) => a.dedupeKey).sort();
+    expect(keys).toEqual(["bridge:PB", "clear:PC", "push:PA", "reorder:PB"]);
+    expect(r.actions).toBe(4);
+    for (const a of db.tables.action) expect(a).toMatchObject({ shop: S, state: "open", currency: "EUR" });
+    // B is out: demand 28 × 1/day − incoming 24 = 4 units × 20 (the money card's maths).
+    expect(action("reorder:PB")).toMatchObject({ kind: "reorder", productId: "PB", variantIds: [B], amount: 80 });
+    expect((action("reorder:PB")!.reason as { key: string }).key).toBe("reorder_out");
+    // Bridge: no dated order, order-by passed → arrives today + 14; gap 14 days × 1/day × 20.
+    expect(action("bridge:PB")).toMatchObject({ amount: 280 });
+    expect((action("bridge:PB")!.reason as { params: Record<string, unknown> }).params).toEqual({ gap: 14, date: "2026-10-30" });
+    // C is dead: cash stuck 30 × cost 10.
+    expect(action("clear:PC")).toMatchObject({ amount: 300 });
+    // A: role A, healthy, flat trend → potential 2 × 28 × 25 × 20 %.
+    expect(action("push:PA")).toMatchObject({ amount: 280 });
+  });
+
+  it("updates in place, keeps state / stateAmount / snoozeUntil / doneAt, deletes open rows that no longer trigger", async () => {
+    const until = new Date("2026-10-20T00:00:00Z");
+    db.tables.action = [
+      { id: "a1", shop: S, kind: "clear", productId: "PC", dedupeKey: "clear:PC", variantIds: [], amount: 50, currency: "EUR", reason: {}, state: "snoozed", stateAmount: 50, snoozeUntil: until, doneAt: null },
+      { id: "a2", shop: S, kind: "fix_page", productId: "PA", dedupeKey: "fix_page:PA", variantIds: [A], amount: 10, currency: "EUR", reason: {}, state: "open" },
+      { id: "a3", shop: S, kind: "fix_sizes", productId: "PZ", dedupeKey: "fix_sizes:PZ", variantIds: [], amount: 10, currency: "EUR", reason: {}, state: "dismissed", stateAmount: 10 },
+      { id: "a4", shop: S, kind: "reorder", productId: "PB", dedupeKey: "reorder:PB", variantIds: [], amount: 1, currency: "EUR", reason: {}, state: "done", doneAt: until },
+    ];
+    await computeShop(S, { now: () => NOW });
+    expect(action("clear:PC")).toMatchObject({ id: "a1", amount: 300, state: "snoozed", stateAmount: 50, snoozeUntil: until, variantIds: [C] });
+    expect(action("fix_page:PA")).toBeUndefined();
+    expect(action("fix_sizes:PZ")).toMatchObject({ id: "a3", state: "dismissed" });
+    expect(action("reorder:PB")).toMatchObject({ id: "a4", state: "done", doneAt: until, amount: 80 });
+    // Idempotent: a second run changes nothing.
+    const before = JSON.stringify(db.tables.action);
+    await computeShop(S, { now: () => NOW });
+    expect(JSON.stringify(db.tables.action)).toBe(before);
+  });
+
+  it("Free plan: actions refresh with the money cards (monthly)", async () => {
+    await computeShop(S, { now: () => NOW, plan: async () => "free" });
+    action("clear:PC")!.amount = 1;
+    const r = await computeShop(S, { now: () => Date.parse("2026-10-20T08:00:00Z"), plan: async () => "free" });
+    expect(r.money).toBe("not_due");
+    expect(r.actions).toBeUndefined();
+    expect(action("clear:PC")!.amount).toBe(1);
+  });
+});
+
+describe("computeShop — seasonality, trend, suppliers, safety level", () => {
+  /** Last year's online sales for A: 2/day from Aug 2025, 4/day over the 28 days from 16 Oct 2025. */
+  function seedLastYear() {
+    db.tables.shop[0].backfillState = { datasets: { sales: { done: 13, total: 13, doneThrough: "2025-08-01", syncedThrough: "2026-10-15" } } };
+    for (const day of daysBetween("2025-08-01", "2026-07-17")) {
+      const sold = day >= "2025-10-16" && day <= "2025-11-12" ? 4 : 2;
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: "online", channel: "all", sold, returned: 0, gross: 0 });
+    }
+  }
+
+  it("without sales coverage every variant keeps 1.0, labelled 'No seasonal data yet'", async () => {
+    await computeShop(S, { now: () => NOW });
+    const inputs = metric(A).inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
+    expect(inputs.seasonal).toBe(1);
+    expect(inputs.trend).toBe(1);
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: false, seasonalReason: "short_history", label: "No seasonal data yet" });
+  });
+
+  it("applies the store's seasonal index and trend to days left, with the inputs for the popover", async () => {
+    seedLastYear();
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
+    // Index = 4/day (LY horizon) ÷ 2/day (LY base) = 2.
+    expect(inputs.seasonal).toBeCloseTo(2, 10);
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, horizonDays: 28, trendApplied: true });
+    // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2.
+    expect(inputs.trend).toBe(2);
+    // days left = 100 ÷ (2 × 2 × 2).
+    expect(a.daysLeft).toBeCloseTo(12.5, 10);
+    expect(a.status).toBe("running_low");
+  });
+
+  it("takes lead time and case pack from the supplier matched by vendor; z from the safety level", async () => {
+    db.tables.supplier = [{ id: "S1", shop: S, name: "Acme", leadTimeDays: 30, minOrder: null, minOrderTotal: 500, casePack: 12, vendorMatch: ["acme co"] }];
+    db.tables.variant.find((v) => v.id === A)!.vendor = "Acme Co";
+    db.tables.shop[0].settings = { safetyLevel: "safe" };
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    expect(a.inputs).toMatchObject({ leadTimeDays: 30, leadTimeSource: "supplier", caseQty: 12, supplierId: "S1", z: 2.05, safetyLevel: "safe", serviceLevel: 0.98 });
+    expect((a.orderQty as number) % 12).toBe(0);
+    expect(metric(B).inputs).toMatchObject({ leadTimeSource: "default", z: 1.65, serviceLevel: 0.95 }); // role B on Safe
   });
 });

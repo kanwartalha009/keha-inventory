@@ -18,6 +18,12 @@
  */
 import type { DailyRow, EngineSettings, VariantResult } from "./engine/index-shared";
 import type { ProductTraffic, StoreConversion } from "./engine/money-shared";
+import type { Coverage } from "./engine/season-shared";
+import { zForSafetyLevel } from "./engine/safety-shared";
+import { addDays } from "./engine/dates-shared";
+import type { ActionDraft } from "./actions-shared";
+import { dedupeKey } from "./actions-shared";
+import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
 
 export const SCOPE_ONLINE = "online";
@@ -92,9 +98,97 @@ export function revenueOf(sales: SalesDay[]): Map<string, number> {
   return m;
 }
 
-/** Shop settings → the engine overrides this phase uses (safety level maps in phase 2). */
+/** Shop settings → engine overrides; the safety level picks z per ABC role (safety-shared). */
 export function engineSettingsFrom(s: ShopSettings): Partial<EngineSettings> {
-  return { leadTimeDays: s.leadTimeDays, cycleDays: s.cycleDays, tooMuchDays: s.tooMuchDays, deadDays: s.deadDays };
+  return {
+    leadTimeDays: s.leadTimeDays,
+    cycleDays: s.cycleDays,
+    tooMuchDays: s.tooMuchDays,
+    deadDays: s.deadDays,
+    z: zForSafetyLevel(s.safetyLevel),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Seasonality inputs
+// ---------------------------------------------------------------------------
+
+/**
+ * The days the SALES history covers (seasonality, trend and accuracy use it to tell a real
+ * zero-sale day from a missing day): from the oldest month the backfill stored
+ * (`datasets.sales.doneThrough`) to the newest day stored (`datasets.sales.syncedThrough`, else
+ * the shop-wide syncedThrough), minus months the backfill had to skip. No backfill state → no
+ * coverage (every seasonal figure falls back to 1.0, "No seasonal data yet").
+ */
+export function salesCoverage(state: BackfillState): Coverage {
+  const sales = state.datasets?.sales;
+  const from = sales?.doneThrough ?? null;
+  const to = sales?.syncedThrough ?? state.syncedThrough ?? null;
+  if (!from || !to || from > to) return { from: null, to: null };
+  return { from, to, skippedMonths: (sales?.skippedMonths ?? []).map((m) => m.slice(0, 7)) };
+}
+
+// ---------------------------------------------------------------------------
+// Actions → rows
+// ---------------------------------------------------------------------------
+
+export type ExistingAction = { dedupeKey: string; state: string };
+
+/**
+ * What one compute run writes to Action (spec §7.7):
+ *  - every draft is upserted by (shop, dedupeKey); a recompute updates amount / reason /
+ *    variantIds / currency in place and never touches state, stateAmount, snoozeUntil or doneAt;
+ *  - OPEN rows whose trigger no longer fires are deleted;
+ *  - snoozed / dismissed / done rows are left alone (their € figure is refreshed only while
+ *    they still trigger, which is how "comes back when the € figure doubles" works).
+ * Duplicate drafts for one key keep the first (generateActions never emits duplicates).
+ */
+export function planActionWrites(existing: readonly ExistingAction[], drafts: readonly ActionDraft[]) {
+  const upserts: (ActionDraft & { dedupeKey: string })[] = [];
+  const keys = new Set<string>();
+  for (const d of drafts) {
+    const key = dedupeKey(d.kind, d.productId);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    upserts.push({ ...d, dedupeKey: key });
+  }
+  const deleteKeys = existing.filter((a) => a.state === "open" && !keys.has(a.dedupeKey)).map((a) => a.dedupeKey);
+  return { upserts, deleteKeys };
+}
+
+/** Units sold over the last `days` days that have data in the series; null when none has. */
+export function soldOver(rows: readonly DailyRow[] | undefined, today: string, days: number): number | null {
+  if (!rows?.length) return null;
+  const from = addDays(today, -days);
+  let any = false;
+  let sum = 0;
+  for (const r of rows) {
+    if (r.day < from || r.day >= today) continue;
+    any = true;
+    sum += r.sold;
+  }
+  return any ? sum : null;
+}
+
+/** Earliest expected arrival and dated units per variant from open purchase orders. */
+export function poArrivals(
+  pos: readonly { lines: { variantId: string; qty: number; received?: number }[]; arrival: string | null }[],
+): Map<string, { arrival: string; units: number }> {
+  const out = new Map<string, { arrival: string; units: number }>();
+  for (const po of pos) {
+    if (!po.arrival) continue;
+    for (const l of po.lines) {
+      const open = Math.max(0, l.qty - (l.received ?? 0));
+      if (open <= 0) continue;
+      const cur = out.get(l.variantId);
+      if (!cur) out.set(l.variantId, { arrival: po.arrival, units: open });
+      else {
+        cur.units += open;
+        if (po.arrival < cur.arrival) cur.arrival = po.arrival;
+      }
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,8 +300,11 @@ export function jsonSafe<T>(v: T): unknown {
   return JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "number" && !Number.isFinite(x) ? null : x)));
 }
 
-/** daysLeft Infinity (rate 0 with stock) → null + neverRunsOut, never a huge number. */
-export function metricRow(r: VariantResult): MetricRow {
+/**
+ * daysLeft Infinity (rate 0 with stock) → null + neverRunsOut, never a huge number.
+ * `extra` is merged into `inputs` (seasonality source, safety level …) for the popover.
+ */
+export function metricRow(r: VariantResult, extra?: Record<string, unknown>): MetricRow {
   const infinite = r.daysLeft === Infinity;
   return {
     rate: r.rate,
@@ -218,7 +315,7 @@ export function metricRow(r: VariantResult): MetricRow {
     role: r.role,
     orderQty: r.orderQty,
     orderBy: r.orderBy,
-    inputs: jsonSafe(r.inputs),
+    inputs: jsonSafe(extra ? { ...r.inputs, ...extra } : r.inputs),
   };
 }
 

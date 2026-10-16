@@ -6,8 +6,17 @@
  * Only ACTIVE products' tracked, non-bundle variants are computed; DRAFT / ARCHIVED products
  * get no VariantMetric (stale rows are removed) and never reach the money cards. VariantMetric is refreshed on every run;
  * money on the Free plan only when the last MoneyAtStake row is from an earlier calendar
- * month (MONEY_REFRESH), daily otherwise. Seasonal / trend / plan multipliers are 1 this
- * phase (§7.3 lands in task 2.1).
+ * month (MONEY_REFRESH), daily otherwise.
+ *
+ * Task 2.1 / 2.4:
+ *  - seasonal × trend (§7.3, season.server + engine/season-shared) per variant, for the horizon
+ *    lead time + cycle, at store or collection level; the plan multiplier stays 1 (the planner
+ *    applies its own). Everything behind them goes into VariantMetric.inputs.
+ *  - supplier per variant: supplierFor() (explicit, then vendor match); its lead time and per-line
+ *    minimum order; case pack: casePackFor(). The order-total minimum is the Reorder screen's.
+ *  - safety level → z per ABC role (engineSettingsFrom).
+ *  - the action list (§7.7, engine/actions-rules-shared) is written with the money cards, on the
+ *    same cadence (Free: monthly, paid: daily), so Free's € figures refresh monthly everywhere.
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -19,24 +28,39 @@ import {
   salesAtRisk,
   salesLostToSellOuts,
   soldOutPageTraffic,
+  type DailyRow,
+  type EngineSettings,
   type VariantResult,
 } from "../lib/engine/index-shared";
+import type { StoreConversion } from "../lib/engine/money-shared";
 import {
   SCOPE_ONLINE,
   buildSeries,
   engineSettingsFrom,
+  planActionWrites,
+  poArrivals,
   poolSalesKeys,
   metricRow,
   moneyDue,
   poolLocationIds,
+  productHandleFromPath,
   productTraffic,
   revenueOf,
+  salesCoverage,
   sessionsByHandle,
+  soldOver,
   storeConversion,
   type PooledStockDay,
   type SalesDay,
   type TrafficProduct,
 } from "../lib/compute-shared";
+import { generateActions, type RuleProduct, type RuleVariant } from "../lib/engine/actions-rules-shared";
+import { resolveLeadTime } from "../lib/engine/order-shared";
+import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
+import { serviceLevelFor } from "../lib/engine/safety-shared";
+import { OPEN_PO_STATUSES, casePackFor, poArrival, readPoLines, supplierFor } from "../lib/supplier-shared";
+import { readBackfillState } from "../lib/sync/backfill-shared";
+import { loadSeasonContext } from "./season.server";
 import { readSettings } from "../lib/settings-shared";
 import { MONEY_REFRESH, type PlanCode } from "../lib/plan-shared";
 import type { MoneyBasisJson } from "../lib/money-shared";
@@ -54,6 +78,8 @@ export type ComputeResult = {
   today?: string;
   variants?: number;
   money?: "computed" | "not_due";
+  /** Actions written (with the money cards; absent when money was not due). */
+  actions?: number;
 };
 
 export type ComputeOptions = { now?: () => number; plan?: (shop: string) => Promise<PlanCode> };
@@ -67,7 +93,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const startedAt = new Date(now());
   const shopRow = await prisma.shop.findUnique({
     where: { domain: shop },
-    select: { timezone: true, currency: true, settings: true, uninstalledAt: true },
+    select: { timezone: true, currency: true, settings: true, uninstalledAt: true, backfillState: true },
   });
   if (!shopRow || shopRow.uninstalledAt) return { status: "skipped" };
   const tz = safeTimeZone(shopRow.timezone);
@@ -76,7 +102,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const to = addDays(today, -1);
   const range = { gte: dayDate(from), lte: dayDate(to) };
 
-  const overrides = engineSettingsFrom(readSettings(shopRow.settings));
+  const shopSettings = readSettings(shopRow.settings);
+  const overrides = engineSettingsFrom(shopSettings);
   const settings = resolveSettings(overrides);
 
   // ---- catalog and pool ----
@@ -88,6 +115,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         id: true,
         productId: true,
         handle: true,
+        vendor: true,
+        collections: true,
         tracked: true,
         isBundle: true,
         cost: true,
@@ -98,20 +127,22 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         status: true,
       },
     }),
-    prisma.supplier.findMany({ where: { shop }, select: { id: true, leadTimeDays: true, minOrder: true } }),
+    prisma.supplier.findMany({
+      where: { shop },
+      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true },
+    }),
   ]);
   const pool = poolLocationIds(locations);
   const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
   const poolKeys = poolSalesKeys(pool);
-  const supplierById = new Map(suppliers.map((s) => [s.id, s]));
 
   // ---- facts (grouped in SQL) ----
   const [channelG, poolSalesG, stockG, outG, lastSaleG, dataSinceG, stockNow] = await Promise.all([
-    // Channel view: revenue (ABC) and unit price only.
+    // Channel view: revenue (ABC), unit price and returns only.
     prisma.salesDaily.groupBy({
       by: ["variantId", "day"],
       where: { shop, locationKey: ALL, day: range },
-      _sum: { sold: true, gross: true },
+      _sum: { sold: true, gross: true, returned: true },
     }),
     // Location view, online + pool locations: units sold for the online pool.
     prisma.salesDaily.groupBy({
@@ -161,6 +192,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     sold: num(g._sum.sold),
     gross: num(g._sum.gross),
   }));
+  // Returns over the 90 days (channel view). quantity_returned's sign is unverified: use |x|.
+  const returnsByVariant = new Map<string, { sold: number; returned: number }>();
+  for (const g of channelG) {
+    const cur = returnsByVariant.get(g.variantId) ?? { sold: 0, returned: 0 };
+    cur.sold += num(g._sum.sold);
+    cur.returned += Math.abs(num(g._sum.returned));
+    returnsByVariant.set(g.variantId, cur);
+  }
   const poolSales: SalesDay[] = poolSalesG.map((g) => ({
     variantId: g.variantId,
     day: dayKey(g.day),
@@ -187,15 +226,32 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     onHand.set(s.variantId, cur);
   }
 
+  // ---- seasonality and trend (§7.3) ----
+  const coverage = salesCoverage(readBackfillState(shopRow.backfillState));
+  const plans = considered.map((v) => {
+    const supplier = supplierFor(v, suppliers);
+    const lead = resolveLeadTime(supplier?.leadTimeDays ?? null, settings);
+    return { v, supplier, horizon: lead.days + settings.cycleDays };
+  });
+  const seasonCtx = await loadSeasonContext(shop, {
+    today,
+    poolKeys,
+    variants: variants.filter((v) => !v.isBundle).map((v) => ({ id: v.id, collections: v.collections ?? [] })),
+    coverage,
+    maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1),
+  });
+
   // ---- engine ----
   const roles = abcRoles(
     considered.map((v) => ({ id: v.id, revenue90: revenue.get(v.id) ?? 0 })),
     settings,
   );
   const results: VariantResult[] = [];
-  for (const v of considered) {
-    const supplier = v.supplierId ? supplierById.get(v.supplierId) : undefined;
+  const seasonOf = new Map<string, VariantSeason>();
+  for (const { v, supplier, horizon } of plans) {
     const stockNowRow = onHand.get(v.id) ?? { onHand: 0, incoming: 0 };
+    const season = seasonCtx.forVariant(v.collections ?? [], horizon);
+    seasonOf.set(v.id, season);
     const r = computeVariant({
       id: v.id,
       isBundle: false,
@@ -208,10 +264,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       lastSaleDay: lastSale.get(v.id) ?? null,
       dataSinceDay: dataSince.get(v.id) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
-      caseQty: v.caseQty,
+      caseQty: casePackFor(v.caseQty, supplier),
       minOrder: supplier?.minOrder ?? null,
-      seasonal: 1,
-      trend: 1,
+      seasonal: season.seasonal,
+      trend: season.trend,
       plan: 1,
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),
@@ -220,11 +276,18 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     if (r) results.push(r);
   }
 
+  const supplierIdOf = new Map(plans.map((p) => [p.v.id, p.supplier?.id ?? null]));
   for (let i = 0; i < results.length; i += WRITE_BATCH) {
     const batch = results.slice(i, i + WRITE_BATCH);
     await prisma.$transaction(
       batch.map((r) => {
-        const m = metricRow(r);
+        const season = seasonOf.get(r.id);
+        const m = metricRow(r, {
+          season: season ? seasonFacts(season) : null,
+          safetyLevel: shopSettings.safetyLevel,
+          serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
+          supplierId: supplierIdOf.get(r.id) ?? null,
+        });
         const data = {
           rate: m.rate,
           sigma: m.sigma,
@@ -275,7 +338,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const landing = sessionsG.map((g) => {
     totals.sessions += num(g._sum.sessions);
     totals.checkouts += num(g._sum.checkouts);
-    return { landingPath: g.landingPath, day: dayKey(g.day), sessions: num(g._sum.sessions) };
+    return { landingPath: g.landingPath, day: dayKey(g.day), sessions: num(g._sum.sessions), checkouts: num(g._sum.checkouts) };
   });
   for (const d of shopDays) {
     totals.orders += d.orders;
@@ -318,7 +381,158 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     create: { shop, day: dayDate(today), ...money },
     update: money,
   });
-  return { status: "computed", today, variants: results.length, money: "computed" };
+
+  // ---- action list (§7.7), same cadence as the money cards ----
+  const actions = await writeActions(shop, {
+    today,
+    currency: shopRow.currency,
+    settings,
+    coverage,
+    results,
+    considered,
+    series,
+    channelSales,
+    returnsByVariant,
+    landing,
+    store: storeConversion(totals),
+  });
+  return { status: "computed", today, variants: results.length, money: "computed", actions };
+}
+
+const ACTION_WINDOW = 28;
+
+/** Builds the rule inputs, runs generateActions and persists the result (planActionWrites). */
+async function writeActions(
+  shop: string,
+  x: {
+    today: string;
+    currency: string;
+    settings: EngineSettings;
+    coverage: Coverage;
+    results: VariantResult[];
+    considered: { id: string; productId: string; handle: string }[];
+    series: Map<string, DailyRow[]>;
+    channelSales: SalesDay[];
+    returnsByVariant: Map<string, { sold: number; returned: number }>;
+    landing: { landingPath: string; day: string; sessions: number; checkouts: number }[];
+    store: StoreConversion;
+  },
+): Promise<number> {
+  const { today } = x;
+  const from28 = addDays(today, -ACTION_WINDOW);
+  // Same 28 days last year, weekdays aligned (as the trend).
+  const lyFrom = addDays(from28, -SEASON.trendShiftDays);
+  const lyTo = addDays(today, -1 - SEASON.trendShiftDays);
+  const lyCovered = spanStats({ units: new Map(), coverage: x.coverage }, lyFrom, lyTo).coverage >= SEASON.minCoverage;
+  const [lyG, pos] = await Promise.all([
+    lyCovered
+      ? prisma.salesDaily.groupBy({
+          by: ["variantId"],
+          where: { shop, locationKey: ALL, day: { gte: dayDate(lyFrom), lte: dayDate(lyTo) } },
+          _sum: { gross: true },
+        })
+      : Promise.resolve([]),
+    prisma.purchaseOrder.findMany({
+      where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
+      select: { lines: true, confirmedShipDate: true, expectedDate: true },
+    }),
+  ]);
+  const lyRevenue = new Map(lyG.map((g) => [g.variantId, num(g._sum.gross)]));
+  const tyRevenue = new Map<string, number>();
+  for (const s of x.channelSales) if (s.day >= from28) tyRevenue.set(s.variantId, (tyRevenue.get(s.variantId) ?? 0) + s.gross);
+  const arrivals = poArrivals(
+    pos.map((po) => {
+      const a = poArrival(po);
+      return { lines: readPoLines(po.lines), arrival: a ? dayKey(a) : null };
+    }),
+  );
+  const landingBy = new Map<string, { sessions: number; checkouts: number }>();
+  for (const l of x.landing) {
+    if (l.day < from28) continue;
+    const h = productHandleFromPath(l.landingPath);
+    if (!h) continue;
+    const cur = landingBy.get(h) ?? { sessions: 0, checkouts: 0 };
+    cur.sessions += l.sessions;
+    cur.checkouts += l.checkouts;
+    landingBy.set(h, cur);
+  }
+  const haveSessions = x.landing.length > 0;
+
+  const resultOf = new Map(x.results.map((r) => [r.id, r]));
+  const products = new Map<string, RuleProduct & { handle: string }>();
+  for (const v of x.considered) {
+    const r = resultOf.get(v.id);
+    if (!r) continue;
+    const p =
+      products.get(v.productId) ??
+      products.set(v.productId, { productId: v.productId, handle: v.handle, variants: [], sessions28: null, checkouts28: null, revenue28: null, revenue28LastYear: null }).get(v.productId)!;
+    const ret = x.returnsByVariant.get(v.id);
+    const arr = arrivals.get(v.id);
+    const rv: RuleVariant = {
+      id: v.id,
+      status: r.status,
+      role: r.role,
+      rate: r.rate,
+      seasonal: r.seasonal,
+      trend: r.trend,
+      onHand: r.onHand,
+      incoming: r.incoming,
+      daysLeft: r.daysLeft,
+      orderBy: r.orderBy,
+      orderQty: r.orderQty,
+      leadTimeDays: r.inputs.leadTimeDays,
+      price: r.price,
+      cost: r.cost,
+      sold28: soldOver(x.series.get(v.id), today, ACTION_WINDOW),
+      noSaleDays: r.inputs.noSaleDays,
+      arrival: arr?.arrival ?? null,
+      incomingDated: arr?.units ?? 0,
+      soldNet90: ret ? ret.sold : null,
+      returned90: ret ? ret.returned : null,
+    };
+    p.variants.push(rv);
+    p.revenue28 = (p.revenue28 ?? 0) + (tyRevenue.get(v.id) ?? 0);
+    if (lyCovered) p.revenue28LastYear = (p.revenue28LastYear ?? 0) + (lyRevenue.get(v.id) ?? 0);
+  }
+  for (const p of products.values()) {
+    const l = landingBy.get(p.handle.toLowerCase());
+    p.sessions28 = haveSessions ? (l?.sessions ?? 0) : null;
+    p.checkouts28 = haveSessions ? (l?.checkouts ?? 0) : null;
+  }
+  const returnsMeasured = [...x.returnsByVariant.values()].some((r) => r.returned !== 0);
+  const drafts = generateActions([...products.values()], {
+    today,
+    settings: x.settings,
+    aov: x.store.aov,
+    returnsMeasured,
+  });
+
+  const existing = await prisma.action.findMany({ where: { shop }, select: { dedupeKey: true, state: true } });
+  const plan = planActionWrites(existing, drafts);
+  for (let i = 0; i < plan.upserts.length; i += WRITE_BATCH) {
+    await prisma.$transaction(
+      plan.upserts.slice(i, i + WRITE_BATCH).map((d) => {
+        const data = {
+          kind: d.kind,
+          productId: d.productId,
+          variantIds: d.variantIds,
+          amount: d.amount,
+          currency: x.currency,
+          reason: d.reason as unknown as Prisma.InputJsonValue,
+        };
+        return prisma.action.upsert({
+          where: { shop_dedupeKey: { shop, dedupeKey: d.dedupeKey } },
+          create: { shop, dedupeKey: d.dedupeKey, state: "open", ...data },
+          update: data,
+        });
+      }),
+    );
+  }
+  // Re-checks state "open" in the delete itself: a row snoozed meanwhile is kept.
+  for (let i = 0; i < plan.deleteKeys.length; i += WRITE_BATCH) {
+    await prisma.action.deleteMany({ where: { shop, state: "open", dedupeKey: { in: plan.deleteKeys.slice(i, i + WRITE_BATCH) } } });
+  }
+  return plan.upserts.length;
 }
 
 /** afterSync hook for the backfill / nightly jobs: compute and log. Never throws. */
