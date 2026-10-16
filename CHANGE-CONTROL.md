@@ -14,7 +14,7 @@ Classify every change before coding:
 | I-1 | Nothing changes the merchant's store without an explicit confirm (discounts, transfers). | code review, SSR tests |
 | I-2 | No shopper personal data is stored; ShopifyQL queries never select customer fields. | review, `gdpr.test.ts` |
 | I-3 | Every table with a `shop` column is purged on `shop/redact` and 48 h after uninstall. | `gdpr.test.ts` |
-| I-4 | Schema changes go through `prisma migrate` (add-only). Never `db push` in production. | review |
+| I-4 | Schema changes go through `prisma migrate` (add-only). Never `db push`. | `migrations.test.ts` |
 | I-5 | Missing data shows "—", never 0; no hard-coded numbers in the UI. | engine + SSR tests |
 | I-6 | Plan checks fail open: unknown plan locks nothing. Plan locks teach, they don't hide. | `plans.test.ts` |
 | I-7 | Admin API 2026-10 pinned in every place; queries validated against that schema. | `config.test.ts` |

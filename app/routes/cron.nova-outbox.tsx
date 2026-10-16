@@ -18,11 +18,7 @@ function authorized(request: Request): boolean {
   return tokenParam === secret || bearer === secret;
 }
 
-const outbox = (
-  prisma as unknown as {
-    novaOutbox: { count(a: { where: Record<string, unknown> }): Promise<number> };
-  }
-).novaOutbox;
+const outbox = prisma.novaOutbox;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (!authorized(request)) return new Response("Unauthorized", { status: 401 });

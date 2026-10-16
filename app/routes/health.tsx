@@ -16,11 +16,7 @@ import prisma from "../db.server";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
 
-const outbox = (
-  prisma as unknown as {
-    novaOutbox: { count(a: { where: Record<string, unknown> }): Promise<number> };
-  }
-).novaOutbox;
+const outbox = prisma.novaOutbox;
 
 export const loader = async () => {
   const heartbeat = schedulerHeartbeat();

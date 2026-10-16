@@ -39,17 +39,7 @@ export function backoffMs(attempts: number): number { // exported for tests
 
 type OutboxRow = { id: string; url: string; body: string; headers: string; attempts: number };
 
-// Cast to tolerate the Prisma client before `prisma generate` adds NovaOutbox (matches the
-// established pattern for new models, e.g. cron.purge-uninstalled's `uninstalledShop`).
-const outbox = (
-  prisma as unknown as {
-    novaOutbox: {
-      create(a: { data: Record<string, unknown> }): Promise<{ id: string }>;
-      findMany(a: Record<string, unknown>): Promise<OutboxRow[]>;
-      update(a: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
-    };
-  }
-).novaOutbox;
+const outbox = prisma.novaOutbox;
 
 /** Deliver one outbox row. Marks SENT on success; backs off (or DEAD past MAX_ATTEMPTS) on failure. */
 async function deliver(row: OutboxRow, timeoutMs = RETRY_TIMEOUT_MS): Promise<boolean> {
@@ -121,14 +111,7 @@ async function enqueue(
 export const SENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export async function scrubDeliveredOutbox(now = new Date()): Promise<number> {
   try {
-    const ob = (
-      prisma as unknown as {
-        novaOutbox: {
-          updateMany(a: Record<string, unknown>): Promise<{ count: number }>;
-          deleteMany(a: Record<string, unknown>): Promise<{ count: number }>;
-        };
-      }
-    ).novaOutbox;
+    const ob = prisma.novaOutbox;
     const r = await ob.updateMany({ where: { status: "SENT", NOT: { body: "" } }, data: { body: "" } });
     const d = await ob.deleteMany({
       where: { status: "SENT", sentAt: { lt: new Date(now.getTime() - SENT_RETENTION_MS) } },

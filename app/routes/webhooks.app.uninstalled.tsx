@@ -25,18 +25,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // GDPR §7.4: record the uninstall so `cron.purge-uninstalled` hard-deletes the
   // shop's data 48h later. Idempotent (re-arms the timer if the webhook repeats).
-  // UninstalledShop arrives via `prisma db push`; reach it through a narrow cast.
-  await (
-    db as unknown as {
-      uninstalledShop: {
-        upsert(a: {
-          where: { shop: string };
-          update: Record<string, unknown>;
-          create: Record<string, unknown>;
-        }): Promise<unknown>;
-      };
-    }
-  ).uninstalledShop
+  await db.uninstalledShop
     .upsert({
       where: { shop },
       update: { uninstalledAt: new Date(), purgedAt: null },

@@ -96,3 +96,229 @@ model PersonalDataAccessLog {
   @@index([shop, createdAt])
   @@index([createdAt])
 }
+
+// ======================================================================
+// Keha Inventory Intelligence data (spec §8). Every table carries `shop`
+// (the purge key). Daily fact tables store only yesterday and older.
+// Money: Decimal(18,2) for amounts, Decimal(18,4) for unit cost / price.
+// ======================================================================
+
+model Shop {
+  id            String    @id @default(cuid())
+  domain        String    @unique
+  currency      String
+  timezone      String    // IANA, e.g. Europe/Madrid
+  locale        String    // primary shop locale (shopLocales)
+  plan          String?
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+  settings      Json      @default("{}") // lead time, cycle, thresholds, alerts (spec §5.5)
+  backfillState Json      @default("{}") // per-dataset months done / pct / lastError (spec §6.6)
+  lastNightlyAt DateTime?
+}
+
+model Location {
+  id     String @id // gid://shopify/Location/<n>
+  shop   String
+  name   String
+  active Boolean
+  online Boolean // fulfillsOnlineOrders
+  role   String  @default("other") // warehouse | store | other
+
+  @@index([shop])
+}
+
+model Variant {
+  id               String    @id // gid://shopify/ProductVariant/<n>
+  shop             String
+  productId        String
+  productTitle     String
+  variantTitle     String
+  handle           String
+  sku              String?
+  vendor           String?
+  productType      String?
+  collections      String[]
+  image            String?
+  tracked          Boolean
+  isBundle         Boolean   @default(false)
+  status           String    // ACTIVE | DRAFT | ARCHIVED
+  productCreatedAt DateTime? // for the "Dead" rule (product exists ≥ 90 days, spec §7.5)
+  cost             Decimal?  @db.Decimal(18, 4)
+  costCurrency     String?
+  price            Decimal?  @db.Decimal(18, 4)
+  supplierId       String?
+  caseQty          Int?
+  updatedAt        DateTime  @updatedAt
+
+  @@index([shop])
+  @@index([shop, productId])
+}
+
+model SalesDaily {
+  shop        String
+  day         DateTime @db.Date
+  variantId   String
+  locationKey String // "online" | Location.id
+  channel     String
+  sold        Int
+  returned    Int
+  gross       Decimal  @db.Decimal(18, 2)
+
+  @@id([shop, day, variantId, locationKey, channel])
+  @@index([shop, variantId, day])
+}
+
+model StockDaily {
+  shop       String
+  day        DateTime @db.Date
+  variantId  String
+  locationId String
+  endUnits   Int
+  outOfStock Boolean
+
+  @@id([shop, day, variantId, locationId])
+  @@index([shop, variantId, day])
+}
+
+model SessionsDaily {
+  shop        String
+  day         DateTime @db.Date
+  landingPath String
+  trafficType String
+  sessions    Int
+  checkouts   Int
+
+  @@id([shop, day, landingPath, trafficType])
+}
+
+/// Store-level daily totals for AOV and conversion (spec §7.6 sold-out page traffic).
+model ShopDaily {
+  shop   String
+  day    DateTime @db.Date
+  orders Int
+  gross  Decimal  @db.Decimal(18, 2)
+
+  @@id([shop, day])
+}
+
+model StockNow {
+  shop       String
+  variantId  String
+  locationId String
+  available  Int
+  incoming   Int
+  committed  Int
+  onHand     Int
+  updatedAt  DateTime @updatedAt
+
+  @@id([shop, variantId, locationId])
+}
+
+model VariantMetric {
+  shop         String
+  variantId    String
+  scope        String    // "online" | Location.id
+  rate         Float?
+  sigma        Float?
+  daysLeft     Float?    // null when unknown OR never runs out — see neverRunsOut
+  neverRunsOut Boolean   @default(false) // rate 0 with stock: daysLeft is infinite
+  status       String
+  role         String    // A | B | C
+  orderQty     Int?
+  orderBy      DateTime? @db.Date
+  computedAt   DateTime
+  inputs       Json
+
+  @@id([shop, variantId, scope])
+  @@index([shop, status])
+}
+
+model Action {
+  id          String    @id @default(cuid())
+  shop        String
+  kind        String
+  variantIds  String[]
+  productId   String
+  amount      Decimal   @db.Decimal(18, 2)
+  currency    String
+  reason      Json
+  state       String    @default("open") // open | snoozed | dismissed | done
+  snoozeUntil DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([shop, state])
+}
+
+model MoneyAtStake {
+  shop           String
+  day            DateTime @db.Date
+  atRisk         Decimal? @db.Decimal(18, 2) // null = not enough data ("—"), never 0
+  lost90         Decimal? @db.Decimal(18, 2)
+  cashStuck      Decimal? @db.Decimal(18, 2)
+  soldOutTraffic Decimal? @db.Decimal(18, 2)
+  basis          Json
+
+  @@id([shop, day])
+}
+
+model Supplier {
+  id           String   @id @default(cuid())
+  shop         String
+  name         String
+  email        String?  // AES-256-GCM ciphertext (app/lib/crypto.server.ts)
+  leadTimeDays Int
+  minOrder     Int?
+  currency     String?
+  vendorMatch  String[]
+
+  @@index([shop])
+}
+
+model PurchaseOrder {
+  id                String    @id @default(cuid())
+  shop              String
+  supplierId        String
+  status            String    // draft | sent | confirmed | received | cancelled
+  number            String
+  lines             Json
+  confirmToken      String    @unique
+  confirmedShipDate DateTime?
+  source            String    // keha | shopify
+  shopifyPoId       String?
+  createdAt         DateTime  @default(now())
+
+  @@index([shop])
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  shop        String
+  name        String
+  start       DateTime
+  end         DateTime
+  targetType  String
+  targetValue Decimal  @db.Decimal(18, 2)
+  result      Json?
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop])
+}
+
+model CollectionGoal {
+  shop         String
+  collectionId String
+  goalPct      Float
+
+  @@id([shop, collectionId])
+}
+
+model ForecastSnapshot {
+  shop      String
+  month     DateTime @db.Date
+  variantId String
+  predicted Float
+  actual    Float?
+
+  @@id([shop, month, variantId])
+}

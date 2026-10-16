@@ -8,14 +8,7 @@ import { normaliseEntry, retentionCutoff, type PiiLogEntry } from "../lib/pii-lo
 
 export { staffActor } from "../lib/pii-log-shared";
 
-// Model added via `prisma db push` — reached through a narrow cast (the
-// established pattern, see gdpr.server / billing.server).
-const db = prisma as unknown as {
-  personalDataAccessLog: {
-    create(a: { data: PiiLogEntry }): Promise<unknown>;
-    deleteMany(a: { where: Record<string, unknown> }): Promise<{ count: number }>;
-  };
-};
+const db = prisma;
 
 export async function logPersonalDataAccess(entry: PiiLogEntry): Promise<void> {
   if (!entry.shop || entry.records <= 0) return;

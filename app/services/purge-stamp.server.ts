@@ -4,13 +4,7 @@
  */
 import prisma from "../db.server";
 
-const uninstalledShop = (
-  prisma as unknown as {
-    uninstalledShop: {
-      deleteMany(a: { where: Record<string, unknown> }): Promise<{ count: number }>;
-    };
-  }
-).uninstalledShop;
+const uninstalledShop = prisma.uninstalledShop;
 
 /**
  * Cancel a pending purge — the shop reinstalled. Without this, reinstalling

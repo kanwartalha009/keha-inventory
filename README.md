@@ -24,6 +24,14 @@ PRISMA_SCHEMA_ENGINE_BINARY=/tmp/x PRISMA_QUERY_ENGINE_LIBRARY=/tmp/x \
 PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate --no-engine
 ```
 
+## Database changes
+
+Real migrations only (`prisma/migrations`; `tests/migrations.test.ts` fails if the schema and
+migrations disagree). Railway runs `prisma migrate deploy` on boot (`npm run setup`).
+
+- On a machine with Prisma engines and a local Postgres: `npx prisma migrate dev --name <change>`.
+- Add-only: never drop or rename a column without an impact note and approval (CHANGE-CONTROL I-4).
+
 ## Layout
 
 ```

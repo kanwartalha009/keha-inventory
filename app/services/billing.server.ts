@@ -18,18 +18,7 @@ export type BillingRow = {
   currentPeriodEnd: Date | null;
 };
 
-const billingState = (
-  prisma as unknown as {
-    billingState: {
-      findUnique(a: { where: { shop: string } }): Promise<BillingRow | null>;
-      upsert(a: {
-        where: { shop: string };
-        create: Record<string, unknown>;
-        update: Record<string, unknown>;
-      }): Promise<unknown>;
-    };
-  }
-).billingState;
+const billingState = prisma.billingState;
 
 export async function getBillingState(shop: string): Promise<BillingRow | null> {
   return billingState.findUnique({ where: { shop } });

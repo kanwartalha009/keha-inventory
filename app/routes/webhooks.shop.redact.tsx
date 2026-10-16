@@ -23,11 +23,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const counts = await purgeShopData(shop);
     // Clear our own uninstall bookkeeping too.
-    await (
-      prisma as unknown as {
-        uninstalledShop: { deleteMany(a: { where: { shop: string } }): Promise<unknown> };
-      }
-    ).uninstalledShop
+    await prisma.uninstalledShop
       .deleteMany({ where: { shop } })
       .catch(() => {});
     console.log(`[gdpr] shop/redact ${shop}: ${JSON.stringify(counts)}`);

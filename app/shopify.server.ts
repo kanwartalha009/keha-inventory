@@ -18,10 +18,7 @@ const shopify = shopifyApp({
   scopes: process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
-  // Cast: shopify-app-session-storage-prisma and shopify-app-react-router resolve two different
-  // @shopify/shopify-api copies (nested dup install), so SessionStorage clashes structurally though
-  // it's identical at runtime. Known upstream dedupe issue — see note below for the clean fix.
-  sessionStorage: new PrismaSessionStorage(prisma) as any,
+  sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
   // Must equal <AppProvider polarisUrl> (preload Link header for the same script).
   polarisUrl: POLARIS_URL,
