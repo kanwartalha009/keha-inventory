@@ -1,0 +1,406 @@
+/**
+ * The Monday email (spec §11, task 1.8): due from 08:00 store time on the
+ * store's Monday (DST and extreme offsets included), the composer (4 numbers,
+ * week-on-week change, "—" for nulls, Free line, money subject, translated),
+ * once per store week, unsubscribe, and the public unsubscribe page.
+ */
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToString } from "react-dom/server";
+import { createElement } from "react";
+import { createRoutesStub } from "react-router";
+
+type Row = Record<string, unknown>;
+const { tables, sendEmail, planFor, fakeDb } = vi.hoisted(() => {
+  const tables: { shop: Row[]; moneyAtStake: Row[]; ownerEmailLog: Row[] } = { shop: [], moneyAtStake: [], ownerEmailLog: [] };
+  const dayIn = (d: unknown, c: { gte?: Date; lte?: Date }) =>
+    d instanceof Date && (!c.gte || d >= c.gte) && (!c.lte || d <= c.lte);
+  const byDay = (dir: "asc" | "desc") => (a: Row, b: Row) =>
+    ((a.day as Date).getTime() - (b.day as Date).getTime()) * (dir === "asc" ? 1 : -1);
+  const fakeDb = {
+    shop: {
+      findUnique: async ({ where }: { where: { domain: string } }) => tables.shop.find((r) => r.domain === where.domain) ?? null,
+      findMany: async ({ where }: { where: { uninstalledAt: null } }) =>
+        tables.shop.filter((r) => (where.uninstalledAt === null ? r.uninstalledAt == null : true)),
+      update: async ({ where, data }: { where: { domain: string }; data: Row }) => {
+        const r = tables.shop.find((x) => x.domain === where.domain);
+        if (!r) throw new Error("not found");
+        Object.assign(r, data);
+        return r;
+      },
+    },
+    moneyAtStake: {
+      findFirst: async ({ where, orderBy }: { where: { shop: string }; orderBy: { day: "asc" | "desc" } }) =>
+        tables.moneyAtStake.filter((r) => r.shop === where.shop).sort(byDay(orderBy.day))[0] ?? null,
+      findMany: async ({ where, orderBy }: { where: { shop: string; day: { gte?: Date; lte?: Date } }; orderBy: { day: "asc" | "desc" } }) =>
+        tables.moneyAtStake.filter((r) => r.shop === where.shop && dayIn(r.day, where.day)).sort(byDay(orderBy.day)),
+    },
+    ownerEmailLog: {
+      findUnique: async ({ where }: { where: { shop_kind_periodKey: { shop: string; kind: string; periodKey: string } } }) => {
+        const k = where.shop_kind_periodKey;
+        return tables.ownerEmailLog.find((r) => r.shop === k.shop && r.kind === k.kind && r.periodKey === k.periodKey) ?? null;
+      },
+      // Unique (shop, kind, periodKey), like the real table.
+      create: async ({ data }: { data: Row }) => {
+        if (tables.ownerEmailLog.some((r) => r.shop === data.shop && r.kind === data.kind && r.periodKey === data.periodKey))
+          throw new Error("Unique constraint failed");
+        const row = { status: "SENT", ...data };
+        tables.ownerEmailLog.push(row);
+        return row;
+      },
+      update: async ({ where, data }: { where: { shop_kind_periodKey: Row }; data: Row }) => {
+        const k = where.shop_kind_periodKey;
+        const r = tables.ownerEmailLog.find((x) => x.shop === k.shop && x.kind === k.kind && x.periodKey === k.periodKey);
+        if (r) Object.assign(r, data);
+        return r;
+      },
+    },
+  };
+  const sendEmail = vi.fn(async (_input: Record<string, unknown>) => ({ ok: true }) as { ok: true } | { ok: false; reason: string });
+  const planFor = vi.fn(async (_shop: string) => "growth");
+  return { tables, sendEmail, planFor, fakeDb };
+});
+
+vi.mock("../app/db.server", () => ({ default: fakeDb }));
+vi.mock("../app/shopify.server", () => ({
+  unauthenticated: {
+    admin: vi.fn(async () => ({
+      admin: {
+        graphql: async () => ({
+          json: async () => ({
+            data: { shop: { name: "Acme Shoes", email: "owner@acme.test", contactEmail: null }, shopLocales: [{ locale: "en", primary: true }] },
+          }),
+        }),
+      },
+    })),
+  },
+}));
+vi.mock("../app/services/entitlements.server", () => ({ planFor: (shop: string) => planFor(shop) }));
+vi.mock("../app/services/email.server", () => ({
+  emailTransportConfigured: () => true,
+  sendEmail: (input: Record<string, unknown>) => sendEmail(input),
+}));
+
+beforeAll(() => {
+  process.env.SHOPIFY_API_SECRET = "test-secret";
+  process.env.SHOPIFY_APP_URL = "https://inventory.test";
+});
+
+import {
+  composeMondayEmail,
+  formatMoneyWhole,
+  isMondaySendTime,
+  MONDAY_UNSUB_PURPOSE,
+  type MondayEmailInput,
+} from "../app/lib/monday-shared";
+import { runMondayEmails, runMondayEmailsAllShops } from "../app/services/monday.server";
+import { seal } from "../app/lib/seal.server";
+import UnsubscribePage, { action as unsubAction, loader as unsubLoader } from "../app/routes/email.unsubscribe";
+
+// ---------------------------------------------------------------- send time
+
+const due = (iso: string, tz: string) => isMondaySendTime(new Date(iso), tz);
+
+describe("isMondaySendTime", () => {
+  it("Europe/Madrid, spring forward (Sun 29 Mar 2026): 08:00 CEST = 06:00Z", () => {
+    expect(due("2026-03-23T06:59:00Z", "Europe/Madrid").due).toBe(false); // 07:59 CET
+    expect(due("2026-03-23T07:00:00Z", "Europe/Madrid")).toEqual({ due: true, localDate: "2026-03-23" });
+    expect(due("2026-03-30T05:59:00Z", "Europe/Madrid").due).toBe(false); // 07:59 CEST
+    expect(due("2026-03-30T06:00:00Z", "Europe/Madrid")).toEqual({ due: true, localDate: "2026-03-30" });
+  });
+  it("Europe/Madrid, fall back (Sun 25 Oct 2026): 08:00 CET = 07:00Z", () => {
+    expect(due("2026-10-19T06:00:00Z", "Europe/Madrid")).toEqual({ due: true, localDate: "2026-10-19" }); // CEST
+    expect(due("2026-10-26T06:30:00Z", "Europe/Madrid").due).toBe(false); // 07:30 CET
+    expect(due("2026-10-26T07:00:00Z", "Europe/Madrid")).toEqual({ due: true, localDate: "2026-10-26" });
+  });
+  it("America/Los_Angeles across the 1 Nov 2026 change, and late Monday evening", () => {
+    expect(due("2026-10-26T14:59:00Z", "America/Los_Angeles").due).toBe(false);
+    expect(due("2026-10-26T15:00:00Z", "America/Los_Angeles").due).toBe(true); // 08:00 PDT
+    expect(due("2026-11-02T15:59:00Z", "America/Los_Angeles").due).toBe(false); // 07:59 PST
+    expect(due("2026-11-02T16:00:00Z", "America/Los_Angeles")).toEqual({ due: true, localDate: "2026-11-02" });
+    // Tuesday 06:00Z is still Monday 23:00 in Los Angeles.
+    expect(due("2026-10-27T06:00:00Z", "America/Los_Angeles")).toEqual({ due: true, localDate: "2026-10-26" });
+  });
+  it("Pacific/Kiritimati (UTC+14): due on what is still Sunday in UTC", () => {
+    expect(due("2026-10-18T17:59:00Z", "Pacific/Kiritimati").due).toBe(false);
+    expect(due("2026-10-18T18:00:00Z", "Pacific/Kiritimati")).toEqual({ due: true, localDate: "2026-10-19" });
+  });
+  it("Pacific/Pago_Pago (UTC−11): not due on UTC Monday morning", () => {
+    expect(due("2026-10-19T10:00:00Z", "Pacific/Pago_Pago")).toEqual({ due: false, localDate: "2026-10-18" });
+    expect(due("2026-10-19T19:00:00Z", "Pacific/Pago_Pago")).toEqual({ due: true, localDate: "2026-10-19" });
+  });
+  it("is not due before 08:00 or on Tuesday; an unknown zone counts as UTC", () => {
+    expect(due("2026-10-19T05:00:00Z", "Europe/Madrid").due).toBe(false);
+    expect(due("2026-10-20T10:00:00Z", "Europe/Madrid").due).toBe(false);
+    expect(due("2026-10-19T08:00:00Z", "Not/AZone")).toEqual({ due: true, localDate: "2026-10-19" });
+    expect(due("2026-10-19T07:59:00Z", "")).toEqual({ due: false, localDate: "2026-10-19" });
+  });
+});
+
+// ---------------------------------------------------------------- composer
+
+const base: MondayEmailInput = {
+  locale: "en",
+  numberLocale: "en",
+  currency: "EUR",
+  storeName: "Acme Shoes",
+  now: { atRisk: 1200, lost90: null, cashStuck: 3400.5, soldOutTraffic: 50 },
+  before: { atRisk: 1000, lost90: 500, cashStuck: 3400.5, soldOutTraffic: null },
+  refresh: "daily",
+  links: { app: "https://admin.shopify.com/store/acme/apps/keha-inventory/app", unsubscribe: "https://inventory.test/email/unsubscribe?token=abc" },
+};
+
+describe("composeMondayEmail", () => {
+  it("English: money subject, the 4 numbers, change, '—' for nulls, links", () => {
+    const e = composeMondayEmail(base);
+    expect(e.subject).toBe("€4,651 at stake this week");
+    expect(e.text).toContain("Your Monday summary for Acme Shoes");
+    expect(e.text).toContain("Sales at risk (next 28 days): €1,200 (+€200 vs last week)");
+    expect(e.text).toMatch(/^Sales lost to sell-outs \(last 90 days\): —$/m); // null → "—", no change
+    expect(e.text).toContain("Cash stuck: €3,401 (Same as last week)");
+    expect(e.text).toMatch(/^Sold-out page visits \(last 30 days\): €50$/m); // before null → no change
+    expect(e.text).toContain(`Open Keha: ${base.links.app}`);
+    expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
+    expect(e.text).not.toContain("Refreshed monthly");
+    expect(e.text).not.toContain("things to do");
+    expect(e.text).not.toMatch(/\b0 vs last week/);
+    expect(e.html).toContain('<html lang="en">');
+    expect(e.html).toContain(`href="${base.links.app}"`);
+    expect(e.html).toContain(`href="${base.links.unsubscribe}"`);
+    expect(e.html).toContain("+€200 vs last week");
+    expect(e.html).toContain(">—<");
+  });
+
+  it("Spanish: translated labels, store-locale money, Free line", () => {
+    const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", refresh: "monthly" });
+    const eur = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
+    expect(e.subject).toBe(`${eur(4651)} en juego esta semana`);
+    expect(e.text).toContain("Tu resumen del lunes para Acme Shoes");
+    expect(e.text).toContain(`Ventas en riesgo (próximos 28 días): ${eur(1200)} (`);
+    expect(e.text).toContain("respecto a la semana pasada");
+    expect(e.text).toContain("Dinero inmovilizado");
+    expect(e.text).toContain("Igual que la semana pasada");
+    expect(e.text).toContain("Se actualiza cada mes en el plan Gratis");
+    expect(e.text).toContain("Abrir Keha:");
+    expect(e.text).toContain("Darse de baja:");
+    expect(e.html).toContain('<html lang="es">');
+    expect(e.html).not.toContain("Sales at risk");
+  });
+
+  it("shows no change at all without a row from a week before", () => {
+    const e = composeMondayEmail({ ...base, before: null });
+    expect(e.text).not.toContain("last week");
+    expect(e.html).not.toContain("last week");
+  });
+
+  it("formats the subject in the store currency, with '—' when nothing is known", () => {
+    expect(composeMondayEmail({ ...base, currency: "USD", now: { atRisk: 12345.4, lost90: null, cashStuck: null, soldOutTraffic: null } }).subject).toBe(
+      "$12,345 at stake this week",
+    );
+    expect(composeMondayEmail({ ...base, currency: "GBP" }).subject).toBe("£4,651 at stake this week");
+    expect(composeMondayEmail({ ...base, now: { atRisk: null, lost90: null, cashStuck: null, soldOutTraffic: null } }).subject).toBe(
+      "— at stake this week",
+    );
+    expect(formatMoneyWhole(12, "NOT_A_CURRENCY", "en")).toBe("12 NOT_A_CURRENCY");
+  });
+
+  it("escapes the store name in HTML", () => {
+    const e = composeMondayEmail({ ...base, storeName: `Tom & "Jerry" <b>` });
+    expect(e.html).toContain("Tom &amp; &quot;Jerry&quot; &lt;b&gt;");
+    expect(e.html).not.toContain("<b>");
+  });
+
+  it("later phases: actions add '— 5 things to do' and the top 5; accuracy adds its line", () => {
+    const actions = Array.from({ length: 7 }, (_, i) => ({ title: `Reorder item ${i + 1}`, reason: "Runs out in 9 days", amount: 100 * (i + 1), link: `https://x/${i + 1}` }));
+    const e = composeMondayEmail({ ...base, actions, accuracy: "Last month we predicted 412 units, you sold 398 (96%)." });
+    expect(e.subject).toBe("€4,651 at stake this week — 5 things to do");
+    expect(e.text).toContain("Top things to do this week");
+    expect(e.text).toContain("5. Reorder item 5 (€500)");
+    expect(e.text).not.toContain("Reorder item 6");
+    expect(e.text).toContain("Last month we predicted 412 units");
+    expect(e.html).toContain('href="https://x/5"');
+    expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,651 at stake this week — 1 thing to do");
+    expect(composeMondayEmail({ ...base, locale: "es", actions }).subject).toMatch(/— 5 cosas por hacer$/);
+  });
+});
+
+// ---------------------------------------------------------------- sending
+
+const S = "acme.myshopify.com";
+const day = (d: string) => new Date(`${d}T00:00:00Z`);
+
+function shopRow(over: Row = {}): Row {
+  return { domain: S, currency: "EUR", timezone: "Europe/Madrid", locale: "es", uninstalledAt: null, settings: {}, ...over };
+}
+function money(d: string, atRisk: string | null, shop = S): Row {
+  return { shop, day: day(d), atRisk, lost90: "300.00", cashStuck: null, soldOutTraffic: "40.00", basis: {} };
+}
+
+const MON = new Date("2026-10-19T07:00:00Z"); // Monday 09:00 in Madrid (W43)
+
+beforeEach(() => {
+  tables.shop = [];
+  tables.moneyAtStake = [];
+  tables.ownerEmailLog = [];
+  sendEmail.mockClear();
+  planFor.mockReset();
+  planFor.mockResolvedValue("growth");
+});
+
+describe("runMondayEmails", () => {
+  it("sends once per store week, in the store's language, with HTML and the unsubscribe link", async () => {
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00"), money("2026-10-17", "900.00"), money("2026-10-11", "1000.00")];
+
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const sent = sendEmail.mock.calls[0][0] as { to: string; subject: string; text: string; html: string };
+    expect(sent.to).toBe("owner@acme.test");
+    expect(sent.subject).toMatch(/en juego esta semana$/);
+    expect(sent.text).toContain("Tu resumen del lunes para Acme Shoes");
+    // vs the 11 Oct row (7 days back), not the 17 Oct one.
+    const plus500 = new Intl.NumberFormat("es", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0, signDisplay: "exceptZero" }).format(500);
+    expect(sent.text).toContain(`(${plus500} respecto a la semana pasada)`);
+    expect(sent.text).toContain("Dinero inmovilizado: —");
+    expect(sent.text).toContain("https://admin.shopify.com/store/acme/apps/");
+    expect(sent.text).toMatch(/https:\/\/inventory\.test\/email\/unsubscribe\?token=[\w-]+/);
+    expect(sent.html).toContain('<html lang="es">');
+    expect(tables.ownerEmailLog).toEqual([expect.objectContaining({ shop: S, kind: "monday", periodKey: "2026-W43" })]);
+
+    // Later the same Monday: nothing more goes out.
+    expect(await runMondayEmails(S, new Date("2026-10-19T15:00:00Z"))).toBe("skipped:already_sent");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+
+    // The next Monday is a new store week.
+    expect(await runMondayEmails(S, new Date("2026-10-26T07:00:00Z"))).toBe("sent");
+    expect(tables.ownerEmailLog.map((r) => r.periodKey)).toEqual(["2026-W43", "2026-W44"]);
+  });
+
+  it("two ticks racing in the same week send one email (OwnerEmailLog unique)", async () => {
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    const results = await Promise.all([runMondayEmails(S, MON), runMondayEmails(S, MON)]);
+    expect(results.sort()).toEqual(["sent", "skipped"]);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the store-local week: Kiritimati's Monday while UTC is still Sunday", async () => {
+    tables.shop = [shopRow({ timezone: "Pacific/Kiritimati" })];
+    tables.moneyAtStake = [money("2026-10-17", "1500.00")];
+    expect(await runMondayEmails(S, new Date("2026-10-18T18:30:00Z"))).toBe("sent");
+    expect(tables.ownerEmailLog[0].periodKey).toBe("2026-W43");
+  });
+
+  it("does not send when unsubscribed, without numbers, or before 08:00", async () => {
+    tables.shop = [shopRow({ settings: { mondayEmail: { enabled: false, recipients: [] } } })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:no_data");
+
+    tables.moneyAtStake = [{ ...money("2026-10-18", null), lost90: null, soldOutTraffic: null }];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:no_data");
+
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, new Date("2026-10-19T05:30:00Z"))).toBe("skipped:not_due");
+    expect(await runMondayEmails("unknown.myshopify.com", MON)).toBe("skipped:not_installed");
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(tables.ownerEmailLog).toEqual([]);
+  });
+
+  it("sends to the chosen recipients, and adds the Free line on Free", async () => {
+    planFor.mockResolvedValue("free");
+    tables.shop = [shopRow({ locale: "en", settings: { mondayEmail: { enabled: true, recipients: ["ops@acme.test", " buyer@acme.test "] } } })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { to: string[]; text: string };
+    expect(sent.to).toEqual(["ops@acme.test", "buyer@acme.test"]);
+    expect(sent.text).toContain("Refreshed monthly on Free");
+    expect(sent.text).not.toContain("vs last week"); // no row a week earlier
+  });
+
+  it("runs every installed store and skips uninstalled ones", async () => {
+    const B = "beta.myshopify.com";
+    tables.shop = [shopRow(), shopRow({ domain: B }), shopRow({ domain: "gone.myshopify.com", uninstalledAt: new Date() })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00"), money("2026-10-18", "10.00", B), money("2026-10-18", "10.00", "gone.myshopify.com")];
+    expect(await runMondayEmailsAllShops(MON)).toEqual({ sent: 2, failed: 0, skipped: 0 });
+    expect(await runMondayEmailsAllShops(MON)).toEqual({ sent: 0, failed: 0, skipped: 2 });
+  });
+});
+
+// ---------------------------------------------------------------- unsubscribe page
+
+const ttl = 180 * 24 * 60 * 60 * 1000;
+const token = (shop = S) => seal(MONDAY_UNSUB_PURPOSE, { shop }, ttl);
+const args = (request: Request) => ({ request, params: {}, context: {} }) as never;
+const url = (t: string) => `https://inventory.test/email/unsubscribe?token=${encodeURIComponent(t)}`;
+
+function renderPage(loaderData: unknown, actionData?: unknown) {
+  const Stub = createRoutesStub([{ id: "unsub", path: "/email/unsubscribe", Component: UnsubscribePage, loader: () => loaderData }]);
+  return renderToString(
+    createElement(Stub, {
+      initialEntries: ["/email/unsubscribe"],
+      hydrationData: { loaderData: { unsub: loaderData }, ...(actionData ? { actionData: { unsub: actionData } } : {}) },
+    }),
+  );
+}
+
+describe("email unsubscribe route", () => {
+  beforeEach(() => {
+    tables.shop = [shopRow({ settings: { leadTimeDays: 30, mondayEmail: { enabled: true, recipients: ["ops@acme.test"] } } })];
+  });
+
+  it("GET shows the confirm page in the store's language and changes nothing", async () => {
+    const t = token();
+    const data = await unsubLoader(args(new Request(url(t))));
+    expect(data).toEqual({ state: "confirm", locale: "es", shop: S, token: t });
+    expect((tables.shop[0].settings as Row).mondayEmail).toEqual({ enabled: true, recipients: ["ops@acme.test"] });
+    const html = renderPage(data);
+    expect(html).toContain("¿Dejar de recibir el email del lunes?");
+    expect(html).toContain("Darse de baja");
+    expect(html).toContain('method="post"');
+    expect(html).toContain(`value="${t}"`);
+  });
+
+  it("POST turns the Monday email off and keeps every other setting", async () => {
+    const form = new FormData();
+    form.set("token", token());
+    const data = await unsubAction(args(new Request("https://inventory.test/email/unsubscribe", { method: "POST", body: form })));
+    expect(data).toEqual({ state: "done", locale: "es", shop: S });
+    expect(tables.shop[0].settings).toEqual({ leadTimeDays: 30, mondayEmail: { enabled: false, recipients: ["ops@acme.test"] } });
+    expect(renderPage({ state: "invalid", locale: "es" }, data)).toContain("Te has dado de baja");
+
+    // …and then no Monday email goes out.
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+  });
+
+  it("POST also accepts the token in the URL (mail-client one-click)", async () => {
+    const req = new Request(url(token()), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "List-Unsubscribe=One-Click",
+    });
+    expect(await unsubAction(args(req))).toMatchObject({ state: "done" });
+    expect((tables.shop[0].settings as Row).mondayEmail).toMatchObject({ enabled: false });
+  });
+
+  it("a bad, expired or other-purpose token gets a friendly page and changes nothing", async () => {
+    const fr = { headers: { "Accept-Language": "fr-FR,fr;q=0.9" } };
+    const bad = await unsubLoader(args(new Request(url("garbage"), fr)));
+    expect(bad).toEqual({ state: "invalid", locale: "fr" });
+    expect(renderPage(bad)).toContain("plus valide");
+
+    const expired = seal(MONDAY_UNSUB_PURPOSE, { shop: S }, 1000, Date.now() - 10_000);
+    expect(await unsubLoader(args(new Request(url(expired))))).toMatchObject({ state: "invalid" });
+    const other = seal("supplier-confirm", { shop: S }, ttl);
+    const form = new FormData();
+    form.set("token", other);
+    expect(await unsubAction(args(new Request("https://inventory.test/email/unsubscribe", { method: "POST", body: form })))).toMatchObject({
+      state: "invalid",
+    });
+    expect(await unsubLoader(args(new Request("https://inventory.test/email/unsubscribe")))).toMatchObject({ state: "invalid", locale: "en" });
+    expect((tables.shop[0].settings as Row).mondayEmail).toMatchObject({ enabled: true });
+  });
+});

@@ -3,7 +3,8 @@
  * translated into all 7 non-English languages, keeps its {placeholders}, and
  * every dictionary entry is still used somewhere.
  *
- * Visible strings = every `t("…")` literal in app/ plus the plan data that is
+ * Visible strings = every `t("…")`, `tr("…")` and `translate(locale, "…")`
+ * literal in app/ plus the plan data that is
  * passed through t() as a variable (plan matrix, plan cards, plan names).
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -37,7 +38,8 @@ function files(dir: string): string[] {
   });
 }
 
-const T_CALL = /\bt\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g;
+// t("…"), a local tr("…") alias, and translate(<locale>, "…") (emails, public pages).
+const T_CALL = /(?:\b(?:t|tr)\(\s*|\btranslate\(\s*[^,()"]+,\s*)"((?:[^"\\]|\\.)*)"\s*\)/g;
 
 function literalKeys(): Set<string> {
   const out = new Set<string>();

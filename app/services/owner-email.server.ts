@@ -12,7 +12,8 @@ import { emailTransportConfigured, sendEmail } from "./email.server";
 import { toSupportedLocale, type Locale } from "../lib/i18n";
 import type { OwnerEmail } from "../lib/owner-email-shared";
 
-export type OwnerContact = { name: string; to: string | null; locale: Locale };
+/** `to`: the owner email, or the store's chosen recipients (Monday email settings). */
+export type OwnerContact = { name: string; to: string | string[] | null; locale: Locale };
 
 const OWNER_QUERY = `#graphql
   query KehaInvOwner { shop { name email contactEmail } shopLocales { locale primary } }`;
@@ -44,13 +45,20 @@ export async function sendOwnerEmailOnce(
   email: OwnerEmail,
   contact: OwnerContact,
 ): Promise<"sent" | "failed" | "skipped"> {
-  if (!emailTransportConfigured() || !contact.to) return "skipped";
+  const to = (Array.isArray(contact.to) ? contact.to : [contact.to]).filter((x): x is string => Boolean(x));
+  if (!emailTransportConfigured() || !to.length) return "skipped";
   try {
     await prisma.ownerEmailLog.create({ data: { shop, kind: email.kind, periodKey: email.periodKey } });
   } catch {
     return "skipped"; // already sent for this period (unique)
   }
-  const r = await sendEmail({ to: contact.to, subject: email.subject, text: email.text, fromName: "Keha Inventory" });
+  const r = await sendEmail({
+    to: to.length === 1 ? to[0] : to,
+    subject: email.subject,
+    text: email.text,
+    ...(email.html ? { html: email.html } : {}),
+    fromName: "Keha Inventory",
+  });
   if (!r.ok) {
     await prisma.ownerEmailLog.update({
       where: { shop_kind_periodKey: { shop, kind: email.kind, periodKey: email.periodKey } },

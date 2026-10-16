@@ -3,7 +3,7 @@
  * answers). Keha never emails shoppers.
  *
  * Provider-agnostic: configured by env. The default shape targets a Resend-style
- * JSON API (`from`, `to`, `subject`, `text`); swap the URL/body for SendGrid,
+ * JSON API (`from`, `to`, `subject`, `text`, optional `html`); swap the URL/body for SendGrid,
  * Postmark, SES, etc. If unconfigured, we return a FAILED result with a reason —
  * never a silent success.
  *
@@ -13,9 +13,12 @@
  */
 
 export type SendEmailInput = {
-  to: string;
+  /** One address, or several (e.g. the Monday email's recipients). */
+  to: string | string[];
   subject: string;
   text: string;
+  /** Optional HTML version (Resend `html`); `text` is always sent as the plain-text part. */
+  html?: string;
   replyTo?: string;
   /** Display name for the From line (the store's name); the address stays INVENTORY_EMAIL_FROM. */
   fromName?: string;
@@ -53,7 +56,8 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
         "no_transport: set INVENTORY_EMAIL_API_KEY + INVENTORY_EMAIL_FROM to enable store-owner emails",
     };
   }
-  if (!input.to) return { ok: false, reason: "no_recipient" };
+  const to = (Array.isArray(input.to) ? input.to : [input.to]).filter(Boolean);
+  if (!to.length) return { ok: false, reason: "no_recipient" };
 
   try {
     const res = await fetch(url, {
@@ -64,9 +68,10 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
       },
       body: JSON.stringify({
         from: fromWithName(from, input.fromName),
-        to: [input.to],
+        to,
         subject: input.subject,
         text: input.text,
+        ...(input.html ? { html: input.html } : {}),
         ...(input.replyTo ? { reply_to: input.replyTo } : {}),
         ...(input.headers && Object.keys(input.headers).length ? { headers: input.headers } : {}),
       }),

@@ -17,4 +17,11 @@ export function weekKey(d: Date): string {
   return `${y}-W${String(w).padStart(2, "0")}`;
 }
 
-export type OwnerEmail = { kind: string; periodKey: string; subject: string; text: string };
+export type OwnerEmail = {
+  kind: string;
+  periodKey: string;
+  subject: string;
+  text: string;
+  /** Optional HTML version, sent alongside `text`. */
+  html?: string;
+};
