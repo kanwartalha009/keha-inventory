@@ -3,7 +3,7 @@
 # Use: shopify app config use shopify.app.dev.toml && shopify app dev
 # Keep scopes, webhooks and api_version identical to shopify.app.toml.
 
-client_id = ""
+client_id = "697e77fbed7c47e1736b0393ba94c9dd"
 name = "Keha Inventory (dev)"
 handle = "keha-inventory-dev"
 application_url = "https://example.com"

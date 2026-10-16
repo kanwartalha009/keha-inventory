@@ -5,7 +5,7 @@
 # 2026-10 is required for the purchase-order reads (spec §6.3, §9).
 
 # Set by `shopify app config link` once the Partner app exists (task 0.1).
-client_id = ""
+client_id = "5bc85cc9e4ccd1c60e95950e85f306d8"
 # Must equal the App Store listing name (requirement 4.1.1 / 4.1.2), ≤30 characters.
 name = "Keha Inventory Intelligence"
 # Admin URL slug (admin.shopify.com/store/<store>/apps/keha-inventory). Set before
