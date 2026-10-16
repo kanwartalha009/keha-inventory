@@ -40,6 +40,18 @@ export const FLOW_LOG_KIND: Record<FlowHandle, "flow_reorder" | "flow_dead"> = {
 /** AlertLog.channel: a fire, and the end of an episode. */
 export const FLOW_FIRED = "flow";
 export const FLOW_ENDED = "flow_end";
+/**
+ * AlertLog.channel: Shopify refused the trigger (userErrors, e.g. the Flow
+ * extension isn't released yet). Not a fire: tried again after
+ * FLOW_REJECT_RETRY_MS, at most FLOW_MAX_REJECTIONS times per (product,
+ * trigger) in FLOW_REJECTION_WINDOW_DAYS — so an unreleased extension doesn't
+ * use up every product's one fire, and doesn't hammer Shopify either
+ * (review fix 2026-10-17).
+ */
+export const FLOW_REJECTED = "flow_rejected";
+export const FLOW_REJECT_RETRY_MS = 24 * 60 * 60 * 1000;
+export const FLOW_MAX_REJECTIONS = 7;
+export const FLOW_REJECTION_WINDOW_DAYS = 30;
 
 /** Triggers sent per store per hourly tick (the rest go on the next tick). */
 export const MAX_FLOW_PER_TICK = 25;
@@ -142,10 +154,24 @@ export function payloadMatches(handle: FlowHandle, payload: Record<string, unkno
  * The episode rule. `latest` = channel of the newest AlertLog row for this
  * (product, trigger), or undefined when there is none.
  *  - in the state, no fire yet in this episode → "fire";
- *  - out of the state after a fire → "end" (the next entry fires again);
+ *  - in the state after a rejection → "fire" again once the rejection is
+ *    FLOW_REJECT_RETRY_MS old and fewer than FLOW_MAX_REJECTIONS were logged
+ *    in the window (`retry`; without it a rejection waits) — else nothing;
+ *  - out of the state after a fire or a rejection → "end" (the next entry fires again);
  *  - otherwise nothing.
  */
-export function episodeStep(latest: string | undefined, inState: boolean): "fire" | "end" | "none" {
-  if (inState) return latest === FLOW_FIRED ? "none" : "fire";
-  return latest === FLOW_FIRED ? "end" : "none";
+export function episodeStep(
+  latest: string | undefined,
+  inState: boolean,
+  retry?: { latestAt: Date; rejections: number; now: Date },
+): "fire" | "end" | "none" {
+  const open = latest === FLOW_FIRED || latest === FLOW_REJECTED;
+  if (!inState) return open ? "end" : "none";
+  if (latest === FLOW_FIRED) return "none";
+  if (latest === FLOW_REJECTED) {
+    if (!retry) return "none";
+    const waited = retry.now.getTime() - retry.latestAt.getTime() >= FLOW_REJECT_RETRY_MS;
+    return waited && retry.rejections < FLOW_MAX_REJECTIONS ? "fire" : "none";
+  }
+  return "fire";
 }

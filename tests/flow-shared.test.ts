@@ -12,6 +12,8 @@ import {
   FLOW_WENT_DEAD,
   deadProductIds,
   episodeStep,
+  FLOW_MAX_REJECTIONS,
+  FLOW_REJECTED,
   legacyId,
   needsReorderPayload,
   needsReorderProducts,
@@ -117,5 +119,20 @@ describe("episode rule: once per product until it leaves the state", () => {
     [undefined, false, "none"],
   ] as const)("latest %s, in state %s → %s", (latest, inState, step) => {
     expect(episodeStep(latest, inState)).toBe(step);
+  });
+});
+
+describe("a rejected trigger (review fix 2026-10-17): not a fire, retried after 24 h, bounded", () => {
+  const now = new Date("2026-10-17T10:00:00Z");
+  const ago = (h: number) => new Date(now.getTime() - h * 3_600_000);
+  it("waits 24 h, then fires again while under the rejection cap", () => {
+    expect(episodeStep(FLOW_REJECTED, true, { latestAt: ago(23), rejections: 1, now })).toBe("none");
+    expect(episodeStep(FLOW_REJECTED, true, { latestAt: ago(24), rejections: 1, now })).toBe("fire");
+    expect(episodeStep(FLOW_REJECTED, true, { latestAt: ago(48), rejections: FLOW_MAX_REJECTIONS - 1, now })).toBe("fire");
+    expect(episodeStep(FLOW_REJECTED, true, { latestAt: ago(48), rejections: FLOW_MAX_REJECTIONS, now })).toBe("none");
+    expect(episodeStep(FLOW_REJECTED, true)).toBe("none"); // no timing known: wait
+  });
+  it("leaving the state after a rejection ends the episode", () => {
+    expect(episodeStep(FLOW_REJECTED, false)).toBe("end");
   });
 });

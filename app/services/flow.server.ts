@@ -3,10 +3,12 @@
  * the trigger's handle and a payload whose keys match its extension toml
  * (lib/flow-shared FLOW_FIELDS). Called from the hourly alerts job on Growth.
  *
- * Results: "ok"; "rejected" = Shopify answered with userErrors (e.g. no
- * workflow uses the trigger, or the extension isn't deployed) — a definite
- * answer, so the episode counts as fired and it isn't retried every hour;
- * "error" = network / throttle / auth — not recorded, tried again next tick.
+ * Results: "ok"; "rejected" = Shopify answered with userErrors (e.g. the
+ * extension isn't deployed / released yet) — logged as its own AlertLog
+ * channel (flow_rejected) and tried again after 24 h, a bounded number of
+ * times (lib/flow-shared episodeStep), so it neither uses up the episode nor
+ * retries every hour; "error" = network / throttle / auth — not recorded,
+ * tried again next tick.
  */
 import { FLOW_FIELDS, payloadMatches, type FlowHandle } from "../lib/flow-shared";
 

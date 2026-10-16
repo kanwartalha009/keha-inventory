@@ -20,6 +20,7 @@ import { gql, type SyncDeps } from "./catalog.server";
 import { newConfirmToken, poolStock } from "../../models/reorder.server";
 import {
   PO_MAX_PAGES,
+  PO_TRANSFER_PAGE_SIZE,
   PURCHASE_ORDERS_QUERY,
   PURCHASE_ORDER_LINES_QUERY,
   parsePoLine,
@@ -112,7 +113,7 @@ async function upsertShopifyPo(shop: string, po: ParsedShopifyPo, now: Date): Pr
   }
 }
 
-export type PoSyncResult = { status: "done" | "capped" | "error"; upserted: number; removed: number };
+export type PoSyncResult = { status: "done" | "capped" | "error"; upserted: number; removed: number; partial?: number };
 
 export async function syncShopifyPurchaseOrders(
   admin: AdminGraphqlClient,
@@ -121,6 +122,7 @@ export async function syncShopifyPurchaseOrders(
 ): Promise<PoSyncResult> {
   const now = new Date((deps.now ?? Date.now)());
   const seen: string[] = [];
+  const partial: string[] = [];
   let upserted = 0;
   let after: string | null = null;
   let complete = false;
@@ -132,6 +134,7 @@ export async function syncShopifyPurchaseOrders(
         let po = parseShopifyPo(node);
         if (!po) continue;
         if (po.moreLines) po = await allLines(admin, po, deps);
+        if (po.transfersCapped) partial.push(po.number);
         await upsertShopifyPo(shop, po, now);
         seen.push(po.shopifyPoId);
         upserted++;
@@ -146,13 +149,17 @@ export async function syncShopifyPurchaseOrders(
     console.warn(`[sync/po] ${shop}: Shopify purchase orders skipped (${syncErrorCode(e)}): ${e instanceof Error ? e.message : String(e)}`);
     return { status: "error", upserted, removed: 0 };
   }
+  if (partial.length) {
+    // More linked transfers than one read returns: kept open, never auto-marked received (lib/sync/po-shared).
+    console.warn(`[sync/po] ${shop}: ${partial.length} purchase order(s) partially read (over ${PO_TRANSFER_PAGE_SIZE} transfers), kept open: ${partial.slice(0, 5).join(", ")}`);
+  }
   let removed = 0;
   if (complete) {
     removed = (
       await prisma.purchaseOrder.deleteMany({ where: { shop, source: "shopify", NOT: { shopifyPoId: { in: seen } } } })
     ).count;
   }
-  return { status: complete ? "done" : "capped", upserted, removed };
+  return { status: complete ? "done" : "capped", upserted, removed, ...(partial.length ? { partial: partial.length } : {}) };
 }
 
 /** Closes sent / confirmed Keha orders whose stock has landed. Returns how many closed. */

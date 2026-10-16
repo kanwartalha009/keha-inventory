@@ -340,12 +340,15 @@ describe("Flow triggers", () => {
     expect(flowLog()).toEqual([[P(9), "flow_reorder", "flow"]]);
   });
 
-  it("Shopify's userErrors count as fired; a network error stops the tick and logs nothing", async () => {
+  it("Shopify's userErrors are logged as rejected (not a fire); a network error stops the tick and logs nothing", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const rejected = fakeAdmin(() => ({ data: { flowTriggerReceive: { userErrors: [{ field: ["handle"], message: "Invalid handle" }] } } }));
     expect(await runAlertsForShop(shopRow(settings), NOW, rejected.deps)).toMatchObject({ flow: "fired" });
-    expect(flowLog()).toHaveLength(2);
+    expect(flowLog()).toEqual([
+      [P(1), "flow_reorder", "flow_rejected"],
+      [P(3), "flow_dead", "flow_rejected"],
+    ]);
 
     seed();
     seedFlow();
@@ -355,6 +358,43 @@ describe("Flow triggers", () => {
     expect(flowLog()).toEqual([]);
     log.mockRestore();
     warn.mockRestore();
+  });
+
+  it("a rejected trigger doesn't use up the episode: retried after 24 h, at most 7 times in 30 days, then fires normally once released", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const refuse = () => fakeAdmin(() => ({ data: { flowTriggerReceive: { userErrors: [{ field: ["handle"], message: "Invalid handle" }] } } }));
+    const at = (h: number) => new Date(NOW.getTime() + h * HOUR);
+    await runAlertsForShop(shopRow(settings), NOW, refuse().deps);
+    // An hour later: no retry yet.
+    const soon = refuse();
+    await runAlertsForShop(shopRow(settings), at(1), soon.deps);
+    expect(soon.calls).toEqual([]);
+    // A day later the extension is released: both fire, and the episode is used up as usual.
+    const released = fakeAdmin();
+    for (const m of db.tables.variantMetric) m.computedAt = at(23);
+    expect(await runAlertsForShop(shopRow(settings), at(24), released.deps)).toMatchObject({ flow: "fired" });
+    expect(released.calls.map((c) => c.variables.handle)).toEqual(["product-needs-reorder", "product-went-dead"]);
+    expect(flowLog().slice(-2)).toEqual([
+      [P(1), "flow_reorder", "flow"],
+      [P(3), "flow_dead", "flow"],
+    ]);
+    const after = fakeAdmin();
+    for (const m of db.tables.variantMetric) m.computedAt = at(47);
+    await runAlertsForShop(shopRow(settings), at(48), after.deps);
+    expect(after.calls).toEqual([]);
+
+    // Never released: 7 tries (one a day), then it stops asking.
+    seed();
+    seedFlow();
+    let tries = 0;
+    for (let day = 0; day < 10; day++) {
+      for (const m of db.tables.variantMetric) m.computedAt = at(24 * day - 1); // fresh numbers every day
+      const a = refuse();
+      await runAlertsForShop(shopRow(settings), at(24 * day), a.deps);
+      tries += a.calls.filter((c) => c.variables.handle === "product-needs-reorder").length;
+    }
+    expect(tries).toBe(7);
+    log.mockRestore();
   });
 
   it(`at most ${MAX_FLOW_PER_TICK} per store per tick; the rest next tick`, async () => {

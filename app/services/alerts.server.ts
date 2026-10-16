@@ -18,7 +18,8 @@
  * Flow triggers (Growth, not tied to the instant-alerts switch: the merchant opts
  * in by building a workflow): "Product needs reorder" / "Product went dead",
  * once per product per episode (lib/flow-shared episodeStep), at most
- * MAX_FLOW_PER_TICK per store per tick.
+ * MAX_FLOW_PER_TICK per store per tick. A trigger Shopify rejects is logged
+ * as "flow_rejected" and retried after 24 h, at most 7 times in 30 days.
  */
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
@@ -48,6 +49,8 @@ import {
   FLOW_ENDED,
   FLOW_FIRED,
   FLOW_LOG_KIND,
+  FLOW_REJECTED,
+  FLOW_REJECTION_WINDOW_DAYS,
   FLOW_NEEDS_REORDER,
   FLOW_WENT_DEAD,
   MAX_FLOW_PER_TICK,
@@ -333,18 +336,31 @@ export async function runFlowTriggers(
     }
   }
 
-  const latestRows = await prisma.alertLog.findMany({
-    where: { shop, kind: { in: [FLOW_LOG_KIND[FLOW_NEEDS_REORDER], FLOW_LOG_KIND[FLOW_WENT_DEAD]] } },
-    orderBy: { sentAt: "desc" },
-    distinct: ["productId", "kind"],
-    select: { productId: true, kind: true, channel: true },
-  });
-  const latest = new Map(latestRows.map((r) => [`${r.kind}|${r.productId}`, r.channel]));
+  const flowKinds = [FLOW_LOG_KIND[FLOW_NEEDS_REORDER], FLOW_LOG_KIND[FLOW_WENT_DEAD]];
+  const [latestRows, rejectedRows] = await Promise.all([
+    prisma.alertLog.findMany({
+      where: { shop, kind: { in: flowKinds } },
+      orderBy: { sentAt: "desc" },
+      distinct: ["productId", "kind"],
+      select: { productId: true, kind: true, channel: true, sentAt: true },
+    }),
+    // Rejections in the window bound the retries (lib/flow-shared FLOW_MAX_REJECTIONS).
+    prisma.alertLog.groupBy({
+      by: ["productId", "kind"],
+      where: { shop, kind: { in: flowKinds }, channel: FLOW_REJECTED, sentAt: { gte: new Date(now.getTime() - FLOW_REJECTION_WINDOW_DAYS * DAY_MS) } },
+      _count: { _all: true },
+    }),
+  ]);
+  const latest = new Map(latestRows.map((r) => [`${r.kind}|${r.productId}`, r]));
+  const rejections = new Map(rejectedRows.map((r) => [`${r.kind}|${r.productId}`, r._count._all]));
 
   type Fire = { handle: FlowHandle; productId: string; payload: Record<string, unknown> };
   const fires: Fire[] = [];
   const fireIfNew = (handle: FlowHandle, productId: string, payload: Record<string, unknown> | null) => {
-    if (payload && episodeStep(latest.get(`${FLOW_LOG_KIND[handle]}|${productId}`), true) === "fire") fires.push({ handle, productId, payload });
+    const key = `${FLOW_LOG_KIND[handle]}|${productId}`;
+    const last = latest.get(key);
+    const retry = last ? { latestAt: last.sentAt, rejections: rejections.get(key) ?? 0, now } : undefined;
+    if (payload && episodeStep(last?.channel, true, retry) === "fire") fires.push({ handle, productId, payload });
   };
   // Most urgent first: fewest days left; most cash stuck.
   for (const [pid, st] of [...reorder].sort((a, b) => a[1].daysLeft - b[1].daysLeft)) fireIfNew(FLOW_NEEDS_REORDER, pid, needsReorderPayload(pid, st));
@@ -376,7 +392,9 @@ export async function runFlowTriggers(
       out.rejected! += 1;
       console.log(`[flow] ${shop} ${f.handle}: ${r.error}`);
     } else out.fired! += 1;
-    await prisma.alertLog.create({ data: { shop, productId: f.productId, kind: FLOW_LOG_KIND[f.handle], channel: FLOW_FIRED, sentAt: now } });
+    // A rejection is logged under its own channel: not a fire, retried after 24 h (bounded).
+    const channel = r.status === "rejected" ? FLOW_REJECTED : FLOW_FIRED;
+    await prisma.alertLog.create({ data: { shop, productId: f.productId, kind: FLOW_LOG_KIND[f.handle], channel, sentAt: now } });
   }
   out.status = "fired";
   return out;

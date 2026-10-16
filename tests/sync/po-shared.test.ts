@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   PO_LINE_PAGE_SIZE,
   PO_PAGE_SIZE,
+  PO_QUERY_COST_ESTIMATE,
+  PO_TRANSFER_PAGE_SIZE,
   PURCHASE_ORDERS_QUERY,
   mapShopifyPoStatus,
   parsePoLine,
@@ -101,8 +103,31 @@ describe("PURCHASE_ORDERS_QUERY", () => {
     expect(PURCHASE_ORDERS_QUERY).toContain(`inventoryPurchaseOrders(first: ${PO_PAGE_SIZE}`);
     expect(PURCHASE_ORDERS_QUERY).toContain(`lineItems(first: ${PO_LINE_PAGE_SIZE})`);
     expect(PURCHASE_ORDERS_QUERY).not.toContain("referenceName");
-    // 5 orders × (1 + origin 1 + lines (2 + 25 × 6) + transfers (2 + 3)) + 2 ≈ 797
+    expect(PURCHASE_ORDERS_QUERY).toContain(`transfers(first: ${PO_TRANSFER_PAGE_SIZE})`);
+    // 2 + 5 orders × (1 + origin 1 + lines (2 + 25 × 6 + pageInfo 1) + transfers (2 + 25 + pageInfo 1)) + pageInfo 1 = 918
     const lineCost = 1 + 1 + 1 + (2 + 1);
-    expect(PO_PAGE_SIZE * (1 + 1 + (2 + PO_LINE_PAGE_SIZE * lineCost) + (2 + 3)) + 2).toBeLessThan(1000);
+    const estimate = 2 + PO_PAGE_SIZE * (1 + 1 + (2 + PO_LINE_PAGE_SIZE * lineCost + 1) + (2 + PO_TRANSFER_PAGE_SIZE + 1)) + 1;
+    expect(estimate).toBe(PO_QUERY_COST_ESTIMATE);
+    expect(PO_QUERY_COST_ESTIMATE).toBe(918);
+    expect(PO_QUERY_COST_ESTIMATE).toBeLessThan(1000);
+    expect(PO_TRANSFER_PAGE_SIZE).toBeGreaterThan(3);
+  });
+});
+
+describe("linked transfers beyond one read (review fix 2026-10-17)", () => {
+  const many = { nodes: [{ status: "RECEIVED", totalQuantity: 15, receivedQuantity: 15 }], pageInfo: { hasNextPage: true } };
+  it("an open PO whose transfers didn't fit is flagged partially read and stays open, never received", () => {
+    const r = parseShopifyPo(po({ transfers: many }))!;
+    expect(r.transfersCapped).toBe(true);
+    expect(r.receivedUnits).toBe(15);
+    expect(r.status).toBe("sent"); // 15 of 15 received in what was read, but more transfers exist
+    expect(withMoreLines(r, []).status).toBe("sent");
+    expect(mapShopifyPoStatus({ status: "ORDERED", archived: false, ordered: 10, received: 10, partial: true })).toBe("sent");
+  });
+  it("a complete read still closes it; an archived PO keeps its own mapping", () => {
+    const full = parseShopifyPo(po({ transfers: { ...many, pageInfo: { hasNextPage: false } } }))!;
+    expect(full.transfersCapped).toBe(false);
+    expect(full.status).toBe("received");
+    expect(parseShopifyPo(po({ transfers: many, archivedAt: "2026-10-10T00:00:00Z" }))!.status).toBe("received");
   });
 });
