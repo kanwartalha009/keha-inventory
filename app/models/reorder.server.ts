@@ -6,6 +6,13 @@
  * confirmed — the engine can't see Keha orders: they never reach Shopify),
  * then the supplier's minimums (lib/reorder-shared).
  *
+ * Location view (Pro, phase 3; `scope` = a warehouse / store Location.id):
+ * store-level replenishment from that location's metrics and its StockNow,
+ * grouped by supplier the same way. Keha orders carry no destination
+ * location, so open Keha units are subtracted in every view (never order the
+ * same units twice); an order created from a location view records the
+ * location's name in its note.
+ *
  * Incoming, and why nothing is counted twice:
  *  - StockNow.incoming is Shopify's own "incoming" (transfers, including the
  *    ones linked to Shopify purchase orders).
@@ -73,6 +80,22 @@ export async function poolStock(shop: string, ids: string[]): Promise<Map<string
     _sum: { onHand: true, incoming: true },
   });
   for (const r of rows) out.set(r.variantId, { onHand: r._sum.onHand ?? null, incoming: r._sum.incoming ?? null });
+  return out;
+}
+
+/** On-hand and incoming at one location per variant (location view). */
+export async function locationStock(
+  shop: string,
+  ids: string[],
+  locationId: string,
+): Promise<Map<string, { onHand: number | null; incoming: number | null }>> {
+  const out = new Map<string, { onHand: number | null; incoming: number | null }>();
+  if (!ids.length) return out;
+  const rows = await prisma.stockNow.findMany({
+    where: { shop, variantId: { in: ids }, locationId },
+    select: { variantId: true, onHand: true, incoming: true },
+  });
+  for (const r of rows) out.set(r.variantId, { onHand: r.onHand, incoming: r.incoming });
   return out;
 }
 
@@ -178,11 +201,11 @@ export type ReorderData = {
   missingSelected: number;
 };
 
-/** The Reorder screen: suggestions grouped by supplier, and the open orders. */
-export async function loadReorder(shop: string, selected: string[] = []): Promise<ReorderData> {
+/** The Reorder screen: suggestions grouped by supplier, and the open orders. `scope`: "online" or a Location.id. */
+export async function loadReorder(shop: string, selected: string[] = [], scope: string = METRIC_SCOPE): Promise<ReorderData> {
   const basics = await shopBasics(shop);
   const metrics = await prisma.variantMetric.findMany({
-    where: { shop, scope: METRIC_SCOPE, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
+    where: { shop, scope, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
     select: { variantId: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true, inputs: true },
   });
   const ids = [...new Set([...metrics.map((m) => m.variantId), ...selected])];
@@ -209,7 +232,7 @@ export async function loadReorder(shop: string, selected: string[] = []): Promis
       select: { id: true, name: true, email: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, currency: true },
     }),
     kehaOnOrder(shop, REORDER_HOLD_STATUSES, ids),
-    poolStock(shop, ids),
+    scope === METRIC_SCOPE ? poolStock(shop, ids) : locationStock(shop, ids, scope),
     openOrders(shop),
   ]);
   const metricMap = new Map<string, ReorderMetricIn>(
@@ -283,8 +306,9 @@ export async function createOrderFromGroup(
   shop: string,
   groupKey: string,
   quantities: Record<string, number>,
+  view: { scope: string; note: string | null } = { scope: METRIC_SCOPE, note: null },
 ): Promise<CreateOrderResult> {
-  const { groups } = await loadReorder(shop, Object.keys(quantities));
+  const { groups } = await loadReorder(shop, Object.keys(quantities), view.scope);
   const group = groups.find((g) => g.key === groupKey);
   if (!group) return { ok: false, error: "gone" };
   const lines: PoLine[] = [];
@@ -301,6 +325,7 @@ export async function createOrderFromGroup(
     source: "keha",
     lines: lines as unknown as Prisma.InputJsonValue,
     currency: group.currency,
+    note: view.note,
   });
   return { ok: true, ...created };
 }

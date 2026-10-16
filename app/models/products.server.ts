@@ -8,6 +8,11 @@
  * SalesDaily holds two views of the same sales (facts-shared): by location
  * (channel "all") and by channel (locationKey "all"). Totals read the channel
  * view only — summing both would double every number.
+ *
+ * Location view (Pro, `scope` = a warehouse / store Location.id, phase 3): the
+ * table reads that location's VariantMetric scope and its StockNow only, and
+ * lists the variants that have a metric there (the ones the location carries).
+ * The variant detail page stays on the online stock pool.
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -45,7 +50,7 @@ export const CSV_MAX_ROWS = 20_000;
  * Variants the table lists: tracked, non-bundle (the engine's population —
  * bundles are never planned and untracked variants have no stock).
  */
-async function variantWhere(shop: string, f: ProductFilters): Promise<Prisma.VariantWhereInput> {
+async function variantWhere(shop: string, f: ProductFilters, scope: string): Promise<Prisma.VariantWhereInput> {
   const where: Prisma.VariantWhereInput = { shop, tracked: true, isBundle: false };
   if (f.vendor) where.vendor = f.vendor;
   if (f.collection) where.collections = { has: f.collection };
@@ -56,9 +61,10 @@ async function variantWhere(shop: string, f: ProductFilters): Promise<Prisma.Var
       { sku: { contains: f.q, mode: "insensitive" } },
     ];
   }
-  if (f.status) {
+  if (f.status || scope !== METRIC_SCOPE) {
+    // A status filter, or a location view (only the variants with a metric at that location).
     const ids = await prisma.variantMetric.findMany({
-      where: { shop, scope: METRIC_SCOPE, status: f.status },
+      where: { shop, scope, ...(f.status ? { status: f.status } : {}) },
       select: { variantId: true },
     });
     where.id = { in: ids.map((r) => r.variantId) };
@@ -77,15 +83,15 @@ const VARIANT_SELECT = {
 
 const ORDER: Prisma.VariantOrderByWithRelationInput[] = [{ productTitle: "asc" }, { variantTitle: "asc" }, { id: "asc" }];
 
-/** Metrics and summed stock for a set of variants, by variant id. */
-async function joinFor(shop: string, ids: string[]) {
+/** Metrics and summed stock for a set of variants, by variant id. `scope`: "online" or a Location.id. */
+async function joinFor(shop: string, ids: string[], scope: string) {
   if (ids.length === 0) {
     return { metrics: new Map<string, MetricRowIn>(), stock: new Map<string, StockSumIn>(), onOrder: new Map<string, OnOrderIn>() };
   }
-  const pool = await poolIds(shop);
+  const pool = scope === METRIC_SCOPE ? await poolIds(shop) : [scope];
   const [metrics, stock, onOrder] = await Promise.all([
     prisma.variantMetric.findMany({
-      where: { shop, scope: METRIC_SCOPE, variantId: { in: ids } },
+      where: { shop, scope, variantId: { in: ids } },
       select: { variantId: true, status: true, rate: true, daysLeft: true, neverRunsOut: true, orderQty: true, orderBy: true },
     }),
     pool.length
@@ -113,8 +119,9 @@ export async function listProducts(
   filters: ProductFilters,
   page: number,
   forecast: boolean,
+  scope: string = METRIC_SCOPE,
 ): Promise<ProductPage> {
-  const where = await variantWhere(shop, filters);
+  const where = await variantWhere(shop, filters, scope);
   const total = await prisma.variant.count({ where });
   const info = pageInfo(total, page);
   const variants =
@@ -124,6 +131,7 @@ export async function listProducts(
   const { metrics, stock, onOrder } = await joinFor(
     shop,
     variants.map((v) => v.id),
+    scope,
   );
   return {
     rows: variants.map((v) => toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id))),
@@ -133,8 +141,13 @@ export async function listProducts(
 }
 
 /** Every filtered row (CSV export), capped at CSV_MAX_ROWS. */
-export async function allProducts(shop: string, filters: ProductFilters, forecast: boolean): Promise<ProductRow[]> {
-  const where = await variantWhere(shop, filters);
+export async function allProducts(
+  shop: string,
+  filters: ProductFilters,
+  forecast: boolean,
+  scope: string = METRIC_SCOPE,
+): Promise<ProductRow[]> {
+  const where = await variantWhere(shop, filters, scope);
   const variants = await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, take: CSV_MAX_ROWS });
   const out: ProductRow[] = [];
   // Join in slices so each IN list stays small.
@@ -143,6 +156,7 @@ export async function allProducts(shop: string, filters: ProductFilters, forecas
     const { metrics, stock, onOrder } = await joinFor(
       shop,
       slice.map((v) => v.id),
+      scope,
     );
     for (const v of slice) out.push(toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)));
   }

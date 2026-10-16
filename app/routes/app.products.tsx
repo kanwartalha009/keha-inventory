@@ -12,6 +12,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { listProducts, productFilterOptions } from "../models/products.server";
+import { listPlanningLocations } from "../models/locations.server";
+import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, ProductThumb } from "../components/ui";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -31,17 +33,30 @@ import {
   type ProductFilters,
   type ProductRow,
 } from "../lib/products-shared";
+import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
+  // Location view (Pro): ?location is ignored below Pro and for anything but a warehouse / store.
+  const locations = features.locations ? await listPlanningLocations(session.shop) : [];
+  const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
   const [page, options] = await Promise.all([
-    listProducts(session.shop, filters, parsePage(url.searchParams), features.forecast),
+    listProducts(session.shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
     productFilterOptions(session.shop),
   ]);
-  return { ...page, filters, options, forecast: features.forecast, csv: features.csvExport };
+  return {
+    ...page,
+    filters,
+    options,
+    forecast: features.forecast,
+    csv: features.csvExport,
+    locationsEnabled: features.locations,
+    locations,
+    location: view.location,
+  };
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -54,6 +69,12 @@ export type ProductsData = {
   options: { vendors: string[]; collections: string[] };
   forecast: boolean;
   csv: boolean;
+  /** Pro `locations`: the switcher works (otherwise shown locked). */
+  locationsEnabled: boolean;
+  /** Active warehouses and stores (empty below Pro). */
+  locations: PlanningLocation[];
+  /** The location shown; null = the online stock pool. */
+  location: PlanningLocation | null;
 };
 
 type FilterKey = "status" | "collection" | "vendor" | "q";
@@ -63,7 +84,11 @@ export default function Products() {
   const data = useLoaderData<typeof loader>() as ProductsData;
   const [params, setParams] = useSearchParams();
   const navigation = useNavigation();
-  const { rows, info, total, filters, options, forecast } = data;
+  const { rows, info, total, filters, options, forecast, location } = data;
+  // What "Stock now" / "Incoming" cover: the online stock pool, or the one location shown.
+  const stockScope = location
+    ? fill(t("Stock at {location} only."), { location: location.name })
+    : t("Online stock pool: active locations that fulfil online orders.");
 
   const apply = (patch: Partial<Record<FilterKey, string>>) => {
     const next = new URLSearchParams(params);
@@ -101,8 +126,12 @@ export default function Products() {
   return (
     <AppPage
       heading={t("Products")}
-      intro={`${t("One row per variant. Sales per day count only the days the variant was in stock.")} ${t("Online stock pool: active locations that fulfil online orders.")}`}
-      secondaryActions={[<CsvButton key="csv" enabled={data.csv} filters={filters} />]}
+      intro={
+        location
+          ? `${t("One row per variant this location carries. Sales per day are this location's own sales, counted only on the days it had the variant in stock.")} ${stockScope}`
+          : `${t("One row per variant. Sales per day count only the days the variant was in stock.")} ${stockScope}`
+      }
+      secondaryActions={[<CsvButton key="csv" enabled={data.csv} filters={filters} location={location} />]}
     >
       {locked && <UpgradeBanner feature="forecast" />}
 
@@ -116,6 +145,7 @@ export default function Products() {
           loading={flag(navigation.state === "loading")}
         >
           <div slot="filters" className="keha-filters">
+            <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
             <s-search-field
               label={t("Search")}
               labelAccessibilityVisibility="exclusive"
@@ -157,11 +187,11 @@ export default function Products() {
             <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
             <s-table-header listSlot="labeled">
               <s-text interestFor="keha-pool-stock">{t("Stock now")}</s-text>
-              <s-tooltip id="keha-pool-stock">{t("Online stock pool: active locations that fulfil online orders.")}</s-tooltip>
+              <s-tooltip id="keha-pool-stock">{stockScope}</s-tooltip>
             </s-table-header>
             <s-table-header listSlot="labeled">
               <s-text interestFor="keha-pool-incoming">{t("Incoming")}</s-text>
-              <s-tooltip id="keha-pool-incoming">{t("Online stock pool: active locations that fulfil online orders.")}</s-tooltip>
+              <s-tooltip id="keha-pool-incoming">{stockScope}</s-tooltip>
             </s-table-header>
             <s-table-header listSlot="labeled">{t("Sales per day while in stock")}</s-table-header>
             {lockedHead(t("Days of stock left"))}
@@ -178,7 +208,11 @@ export default function Products() {
           <s-box padding="base">
             <s-stack direction="block" gap="small" alignItems="center">
               <s-paragraph color="subdued">
-                {anyFilter ? t("No variants match these filters.") : t("Your products appear here once your catalog is read.")}
+                {anyFilter
+                  ? t("No variants match these filters.")
+                  : location
+                    ? t("No numbers for this location yet. They appear after the next nightly refresh, for the products it stocks.")
+                    : t("Your products appear here once your catalog is read.")}
               </s-paragraph>
               {anyFilter && (
                 <s-button variant="secondary" onClick={() => apply({ status: "", collection: "", vendor: "", q: "" })}>
@@ -256,7 +290,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
  * CSV export. Growth: downloads the filtered table (fetch, so App Bridge adds
  * the session token). Free: the same button names the plan and opens Plans.
  */
-function CsvButton({ enabled, filters }: { enabled: boolean; filters: ProductFilters }) {
+function CsvButton({ enabled, filters, location }: { enabled: boolean; filters: ProductFilters; location: PlanningLocation | null }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const [busy, setBusy] = useState(false);
@@ -274,6 +308,7 @@ function CsvButton({ enabled, filters }: { enabled: boolean; filters: ProductFil
     try {
       const q = filtersToParams(filters);
       q.set("lang", locale);
+      if (location) q.set("location", locationNumericId(location.id));
       const res = await fetch(`/app/products/csv?${q.toString()}`);
       if (!res.ok) throw new Error(String(res.status));
       const url = URL.createObjectURL(await res.blob());

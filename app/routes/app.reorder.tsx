@@ -9,6 +9,11 @@
  * until the merchant emails it or marks it sent. `?variants=gid,gid` (Home
  * "Add to reorder plan") highlights those lines. Open orders below include
  * purchase orders read from Shopify, marked "From Shopify".
+ *
+ * Pro (`locations`): a location switcher (`?location=`) shows one warehouse's
+ * or store's own needs (store-level replenishment, still grouped by
+ * supplier); an order created there records the location in its note. The
+ * server ignores `?location` below Pro.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -17,6 +22,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { createOrderFromGroup, loadReorder, type OpenOrderRow, type ReorderData } from "../models/reorder.server";
+import { listPlanningLocations } from "../models/locations.server";
+import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
@@ -33,14 +40,28 @@ import {
   type ReorderLine,
 } from "../lib/reorder-shared";
 import { formatPrice, poStatusLabel, poStatusTone } from "../lib/purchase-order-shared";
+import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
+import { METRIC_SCOPE } from "../lib/products-shared";
 
-export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderData & { enabled: boolean }> => {
+type LocationView = { locationsEnabled: boolean; locations: PlanningLocation[]; location: PlanningLocation | null };
+const NO_LOCATIONS: LocationView = { locationsEnabled: false, locations: [], location: null };
+
+export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPageData> => {
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
   // Locked page (app.tsx shows the plan page): send nothing.
-  if (!features.reorderPlan) return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false };
-  const selected = parseVariantsParam(new URL(request.url).searchParams.get("variants"));
-  return { ...(await loadReorder(session.shop, selected)), enabled: true };
+  if (!features.reorderPlan) return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false, ...NO_LOCATIONS };
+  const url = new URL(request.url);
+  const selected = parseVariantsParam(url.searchParams.get("variants"));
+  const locations = features.locations ? await listPlanningLocations(session.shop) : [];
+  const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
+  return {
+    ...(await loadReorder(session.shop, selected, view.scope)),
+    enabled: true,
+    locationsEnabled: features.locations,
+    locations,
+    location: view.location,
+  };
 };
 
 export type ReorderAction = { ok: true; id: string; number: string } | { ok: false; error: "gone" | "empty" };
@@ -59,22 +80,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const raw = body.quantities && typeof body.quantities === "object" ? (body.quantities as Record<string, unknown>) : {};
   const quantities: Record<string, number> = {};
   for (const [k, v] of Object.entries(raw).slice(0, 500)) if (/^gid:\/\/shopify\/ProductVariant\/\d+$/.test(k)) quantities[k] = readQty(v);
-  return (await createOrderFromGroup(session.shop, body.groupKey, quantities)) satisfies ReorderAction;
+  // Location view (Pro only; ignored otherwise): the same group, from that location's numbers.
+  const requested = parseLocationParam(typeof body.location === "string" ? body.location : null);
+  const view = requested && features.locations
+    ? resolveScope(requested, true, await listPlanningLocations(session.shop))
+    : { scope: METRIC_SCOPE, location: null };
+  return (await createOrderFromGroup(session.shop, body.groupKey, quantities, {
+    scope: view.scope,
+    note: view.location?.name ?? null,
+  })) satisfies ReorderAction;
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
-export type ReorderPageData = ReorderData & { enabled: boolean };
+export type ReorderPageData = ReorderData & { enabled: boolean } & LocationView;
 
 export default function Reorder() {
   const { t } = useLocale();
   const data = useLoaderData<typeof loader>() as ReorderPageData;
   const anySelected = data.groups.some((g) => g.selected);
+  const location = data.location;
   return (
     <AppPage
       heading={t("Reorder")}
-      intro={t("What to order from each supplier, how much, and by which date. Quantities are rounded up to case packs and minimum orders.")}
+      intro={
+        location
+          ? fill(t("What {location} needs, from each supplier, and by which date: its own sales and stock. Quantities are rounded up to case packs and minimum orders."), {
+              location: location.name,
+            })
+          : t("What to order from each supplier, how much, and by which date. Quantities are rounded up to case packs and minimum orders.")
+      }
     >
+      <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
       {anySelected && <s-banner tone="info">{t("The products from your action list are highlighted.")}</s-banner>}
       {data.missingSelected > 0 && (
         <s-banner tone="warning">{t("Some products from the link aren't tracked in your store any more.")}</s-banner>
@@ -89,14 +126,14 @@ export default function Reorder() {
           </s-stack>
         </s-section>
       ) : (
-        data.groups.map((g) => <GroupCard key={g.key} group={g} />)
+        data.groups.map((g) => <GroupCard key={g.key} group={g} location={location} />)
       )}
       <OpenOrders orders={data.openOrders} />
     </AppPage>
   );
 }
 
-function GroupCard({ group }: { group: ReorderGroup }) {
+function GroupCard({ group, location }: { group: ReorderGroup; location: PlanningLocation | null }) {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
   const fetcher = useFetcher<ReorderAction>();
@@ -180,15 +217,21 @@ function GroupCard({ group }: { group: ReorderGroup }) {
         open={confirm}
         destructive={false}
         title={fill(t("Create a draft order for {supplier}?"), { supplier: title })}
-        message={fill(t("{n} units. Nothing is sent to the supplier until you email the order or mark it as sent."), {
-          n: formatCount(totals.units, locale),
-        })}
+        message={[
+          fill(t("{n} units. Nothing is sent to the supplier until you email the order or mark it as sent."), {
+            n: formatCount(totals.units, locale),
+          }),
+          location ? fill(t("The order notes that it is for {location}."), { location: location.name }) : null,
+        ]
+          .filter(Boolean)
+          .join(" ")}
         confirmLabel={t("Create order")}
         onCancel={() => setConfirm(false)}
         onConfirm={() => {
           setConfirm(false);
           const quantities = Object.fromEntries(group.lines.map((l) => [l.variantId, q(l.variantId)]));
-          fetcher.submit({ intent: "create", groupKey: group.key, quantities } as never, { method: "post", encType: "application/json" });
+          const body = { intent: "create", groupKey: group.key, quantities, ...(location ? { location: locationNumericId(location.id) } : {}) };
+          fetcher.submit(body as never, { method: "post", encType: "application/json" });
         }}
       />
     </s-section>

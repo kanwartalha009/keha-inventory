@@ -56,6 +56,9 @@ function reorderData(): ReorderPageData {
   });
   return {
     enabled: true,
+    locationsEnabled: false,
+    locations: [],
+    location: null,
     groups,
     currency: "EUR",
     missingSelected: 0,

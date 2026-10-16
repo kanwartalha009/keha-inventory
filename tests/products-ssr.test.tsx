@@ -47,6 +47,9 @@ function data(forecast: boolean, over: Partial<ProductsData> = {}): ProductsData
     options: { vendors: ["Acme", "Beta"], collections: ["Summer"] },
     forecast,
     csv: forecast,
+    locationsEnabled: false,
+    locations: [],
+    location: null,
     ...over,
   };
 }
