@@ -68,6 +68,10 @@ const page: CSSProperties = {
 };
 const th: CSSProperties = { textAlign: "left", padding: "8px 6px", borderBottom: "1px solid #e3e3e3", fontSize: 13, color: "#616161" };
 const td: CSSProperties = { padding: "8px 6px", borderBottom: "1px solid #f1f1f1", fontSize: 14, verticalAlign: "top" };
+// Numbers: right-aligned, digits lined up, never split over two lines (docs/DESIGN-RULES.md).
+const num: CSSProperties = { textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
+// On a phone the table scrolls sideways inside the card instead of widening the page.
+const tableWrap: CSSProperties = { overflowX: "auto", margin: "8px 0 12px" };
 const button: CSSProperties = {
   background: "#1a1a1a",
   color: "#ffffff",
@@ -123,35 +127,37 @@ export default function SupplierConfirm() {
         </p>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", margin: "8px 0 12px" }}>
-        <thead>
-          <tr>
-            <th style={th}>{tr("Product")}</th>
-            <th style={th}>{tr("SKU")}</th>
-            <th style={{ ...th, textAlign: "right" }}>{tr("Quantity")}</th>
-            {!view.hidePrices && <th style={{ ...th, textAlign: "right" }}>{tr("Unit cost")}</th>}
-            {!view.hidePrices && <th style={{ ...th, textAlign: "right" }}>{tr("Line total")}</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {view.lines.map((l, i) => (
-            <tr key={i}>
-              <td style={td}>
-                {l.productTitle}
-                {lineVariant(l.variantTitle) && <span style={{ color: "#616161" }}>{` — ${lineVariant(l.variantTitle)}`}</span>}
-              </td>
-              <td style={td}>{l.sku || "—"}</td>
-              <td style={{ ...td, textAlign: "right" }}>{formatCount(l.qty, locale)}</td>
-              {!view.hidePrices && <td style={{ ...td, textAlign: "right" }}>{formatPrice(l.unitCost, view.currency, locale)}</td>}
-              {!view.hidePrices && (
-                <td style={{ ...td, textAlign: "right" }}>
-                  {formatPrice(l.unitCost == null ? null : l.unitCost * l.qty, view.currency, locale)}
-                </td>
-              )}
+      <div style={tableWrap}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={th}>{tr("Product")}</th>
+              <th style={th}>{tr("SKU")}</th>
+              <th style={{ ...th, ...num }}>{tr("Quantity")}</th>
+              {!view.hidePrices && <th style={{ ...th, ...num }}>{tr("Unit cost")}</th>}
+              {!view.hidePrices && <th style={{ ...th, ...num }}>{tr("Line total")}</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {view.lines.map((l, i) => (
+              <tr key={i}>
+                <td style={td}>
+                  {l.productTitle}
+                  {lineVariant(l.variantTitle) && <span style={{ color: "#616161" }}>{` — ${lineVariant(l.variantTitle)}`}</span>}
+                </td>
+                <td style={td}>{l.sku || "—"}</td>
+                <td style={{ ...td, ...num }}>{formatCount(l.qty, locale)}</td>
+                {!view.hidePrices && <td style={{ ...td, ...num }}>{formatPrice(l.unitCost, view.currency, locale)}</td>}
+                {!view.hidePrices && (
+                  <td style={{ ...td, ...num }}>
+                    {formatPrice(l.unitCost == null ? null : l.unitCost * l.qty, view.currency, locale)}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p style={{ textAlign: "right", fontWeight: 600, margin: "0 0 24px" }}>
         {fill(tr("Total units: {n}"), { n: formatCount(view.totalUnits, locale) })}
         {!view.hidePrices && ` · ${fill(tr("Total cost: {amount}"), { amount: formatPrice(view.totalCost, view.currency, locale) })}`}
