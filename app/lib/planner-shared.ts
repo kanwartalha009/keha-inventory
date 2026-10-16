@@ -1042,8 +1042,9 @@ export interface ScorecardRow {
 }
 
 /**
- * The top-20 rows behind a graded month: the snapshotted variants ranked by that month's
- * revenue (> 0), as gradeMonth ranks them. The error is "—" when the actual is not > 0.
+ * The top-20 rows behind a graded month: the snapshotted variants ranked by revenue (> 0) over
+ * rankingWindow(month) — the month before, as gradeMonth ranked them. The error is "—" when the
+ * actual is not > 0.
  */
 export function scorecardRows(
   snapshot: readonly { variantId: string; predicted: number; actual: number | null }[],

@@ -10,7 +10,10 @@ import {
   monthEnd,
   monthStart,
   nextMonthStart,
+  monthsToGrade,
   previousMonthStart,
+  rankingWindow,
+  snapshotDue,
   snapshotRows,
 } from "../../app/lib/engine/accuracy-shared";
 
@@ -95,5 +98,24 @@ describe("grading", () => {
     expect(zero.storeErrorPct).toBeNull();
     expect(zero.top20ErrorPct).toBeNull();
     expect(absPctError(5, 0)).toBeNull();
+  });
+});
+
+describe("review fixes: one ranking rule, no skipped months", () => {
+  it("rankingWindow = the whole month before the graded month (year boundary)", () => {
+    expect(rankingWindow("2026-10-01")).toEqual({ from: "2026-09-01", to: "2026-09-30" });
+    expect(rankingWindow("2027-01-01")).toEqual({ from: "2026-12-01", to: "2026-12-31" });
+  });
+
+  it("snapshotDue on days 1–3 only", () => {
+    expect(["2026-11-01", "2026-11-02", "2026-11-03"].map(snapshotDue)).toEqual([true, true, true]);
+    expect(snapshotDue("2026-11-04")).toBe(false);
+  });
+
+  it("monthsToGrade: every ungraded past month with complete data, oldest first; the rest wait", () => {
+    const r = monthsToGrade(["2026-10-01", "2026-08-01", "2026-09-01", "2026-11-01"], ["2026-08-01"], "2026-11-20", "2026-10-31");
+    expect(r).toEqual({ due: ["2026-09-01", "2026-10-01"], waiting: [] });
+    expect(monthsToGrade(["2026-09-01", "2026-10-01"], [], "2026-11-01", "2026-10-30")).toEqual({ due: ["2026-09-01"], waiting: ["2026-10-01"] });
+    expect(monthsToGrade(["2026-10-01"], [], "2026-11-01", null)).toEqual({ due: [], waiting: ["2026-10-01"] });
   });
 });

@@ -69,8 +69,18 @@ describe("snapshot", () => {
     expect(db.tables.forecastSnapshot.find((x) => x.variantId === A)!.predicted).toBe(60);
   });
 
-  it("only on the 1st (store time) and only with fresh metrics", async () => {
-    expect((await runAccuracy(S, new Date("2026-11-02T08:00:00Z"))).snapshot).toBe("not_due");
+  it("review fix: the first run of days 1–3 takes a missing snapshot (a missed 1st no longer skips the month)", async () => {
+    for (const m of db.tables.variantMetric) m.computedAt = new Date("2026-11-03T04:00:00Z");
+    expect((await runAccuracy(S, new Date("2026-11-03T08:00:00Z"))).snapshot).toBe("written");
+    expect(db.tables.forecastSnapshot.find((x) => x.variantId === A)!.predicted).toBe(60);
+    expect((await runAccuracy(S, new Date("2026-11-03T09:00:00Z"))).snapshot).toBe("exists");
+    seed();
+    for (const m of db.tables.variantMetric) m.computedAt = new Date("2026-11-04T04:00:00Z");
+    expect((await runAccuracy(S, new Date("2026-11-04T08:00:00Z"))).snapshot).toBe("not_due");
+  });
+
+  it("only on days 1–3 (store time) and only with fresh metrics", async () => {
+    expect((await runAccuracy(S, new Date("2026-11-04T08:00:00Z"))).snapshot).toBe("not_due");
     // 31 Oct 23:30 UTC is already 1 Nov in Madrid.
     expect((await runAccuracy(S, new Date("2026-10-31T23:30:00Z"))).snapshot).toBe("written");
     seed();
@@ -99,6 +109,9 @@ describe("grading last month", () => {
     }
     // A POS store outside the pool: not counted.
     db.tables.salesDaily.push({ shop: S, day: d("2026-10-05"), variantId: A, locationKey: "gid://shopify/Location/9", channel: "all", sold: 40, returned: 0, gross: 0 });
+    // September revenue (channel view): what ranks October's top 20 (the month before, no look-ahead).
+    db.tables.salesDaily.push({ shop: S, day: d("2026-09-15"), variantId: A, locationKey: "all", channel: "Online Store", sold: 2, returned: 0, gross: 50 });
+    db.tables.salesDaily.push({ shop: S, day: d("2026-09-15"), variantId: B, locationKey: "all", channel: "Online Store", sold: 1, returned: 0, gross: 20 });
   }
 
   it("fills actuals from the online pool view and writes AccuracyMonth", async () => {
@@ -117,6 +130,31 @@ describe("grading last month", () => {
     // Idempotent.
     expect((await runAccuracy(S, new Date("2026-11-01T10:00:00Z"))).grade).toBe("exists");
     expect(db.tables.accuracyMonth).toHaveLength(1);
+  });
+
+  it("review fix: the top 20 is ranked by revenue in the month BEFORE the graded month (as the backtest)", async () => {
+    october();
+    // B sold in October but had no September revenue: not ranked, so not in the top-20 mean.
+    db.tables.salesDaily = db.tables.salesDaily.filter((x) => !(x.variantId === B && (x.day as Date).toISOString().startsWith("2026-09")));
+    await runAccuracy(S, FIRST);
+    expect(db.tables.accuracyMonth[0]).toMatchObject({ top20ErrorPct: 0, graded: 1 });
+  });
+
+  it("review fix: grades every snapshotted, ungraded month whose data is complete (none skipped), idempotent", async () => {
+    october();
+    // August and September were snapshotted but never graded (e.g. the app was down on those days).
+    for (const m of ["2026-08-01", "2026-09-01"]) {
+      db.tables.forecastSnapshot.push(
+        { shop: S, month: d(m), variantId: A, predicted: 50, actual: null },
+        { shop: S, month: d(m), variantId: "__store__", predicted: 50, actual: null },
+      );
+    }
+    db.tables.accuracyMonth.push({ shop: S, month: d("2026-08-01"), storeErrorPct: 1, top20ErrorPct: 1, graded: 1 });
+    expect((await runAccuracy(S, new Date("2026-11-20T08:00:00Z"))).grade).toBe("written");
+    expect(db.tables.accuracyMonth.map((m) => (m.month as Date).toISOString().slice(0, 7)).sort()).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(db.tables.accuracyMonth.find((m) => (m.month as Date).toISOString().startsWith("2026-08"))).toMatchObject({ storeErrorPct: 1 }); // untouched
+    expect((await runAccuracy(S, new Date("2026-11-20T09:00:00Z"))).grade).toBe("exists");
+    expect(db.tables.accuracyMonth).toHaveLength(3);
   });
 
   it("waits until the sales history reaches the month's last day", async () => {

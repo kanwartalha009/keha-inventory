@@ -3,23 +3,28 @@
  * every step is idempotent, so a second run in the same hour (or a restart) changes nothing.
  *
  * Per installed shop, on the store's clock:
- *  - Snapshot (on the 1st only): when ForecastSnapshot has no row for this month yet and the
- *    latest VariantMetric run is fresh (≤ 36 h old), write predicted units for the month per
- *    variant with a rate (rate × seasonal-for-this-month × trend × days in month) plus the
- *    "__store__" total. createMany skipDuplicates: the first snapshot of a month is kept.
- *  - Grade last month (any day, once): when last month has snapshot rows, no AccuracyMonth row
- *    yet, and the sales history reaches last month's final day. Fills ForecastSnapshot.actual
- *    from SalesDaily — the online pool LOCATION view only (channel "all", locationKey in the
- *    pool keys), never added to the channel view — and writes AccuracyMonth. Revenue for the
- *    top-20 ranking comes from the channel view (locationKey "all") on its own.
- */
+ *  - Snapshot (the first run on days 1–3 of the month, review fix: a missed 1st no longer skips
+ *    the month): when ForecastSnapshot has no row for this month yet and the latest
+ *    VariantMetric run is fresh (≤ 36 h old), write predicted units for the month per variant
+ *    with a rate (rate × seasonal-for-this-month × trend × days in month) plus the "__store__"
+ *    total. createMany skipDuplicates: the first snapshot of a month is kept.
+ *  - Grade (any day): EVERY snapshotted month before this one with no AccuracyMonth row yet whose
+ *    sales history reaches its final day (review fix: not only last month), oldest first. Fills
+ *    ForecastSnapshot.actual from SalesDaily — the online pool LOCATION view only (channel "all",
+ *    locationKey in the pool keys), never added to the channel view — and writes AccuracyMonth.
+ *    Revenue for the top-20 ranking comes from the channel view (locationKey "all") on its own,
+ *    over the month BEFORE the graded month (rankingWindow: no look-ahead, as the backtest).
+  */
 import prisma from "../db.server";
 import {
+  STORE_ROW,
   daysInMonth,
   gradeMonth,
   monthEnd,
   monthStart,
-  previousMonthStart,
+  monthsToGrade,
+  rankingWindow,
+  snapshotDue,
   snapshotRows,
 } from "../lib/engine/accuracy-shared";
 import { spanStats } from "../lib/engine/season-shared";
@@ -39,6 +44,7 @@ export type AccuracyResult = {
 };
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function runAccuracy(shop: string, now: Date = new Date()): Promise<AccuracyResult> {
   const row = await prisma.shop.findUnique({
@@ -53,7 +59,7 @@ export async function runAccuracy(shop: string, now: Date = new Date()): Promise
   return {
     status: "ok",
     snapshot: await snapshotMonth(shop, today, now, poolKeys, coverage),
-    grade: await gradeLastMonth(shop, today, poolKeys, coverage),
+    grade: await gradeMonths(shop, today, poolKeys, coverage),
   };
 }
 
@@ -64,8 +70,8 @@ async function snapshotMonth(
   poolKeys: string[],
   coverage: ReturnType<typeof salesCoverage>,
 ): Promise<AccuracyResult["snapshot"]> {
-  if (today.slice(8, 10) !== "01") return "not_due";
   const month = monthStart(today);
+  if (!snapshotDue(today)) return "not_due";
   const existing = await prisma.forecastSnapshot.count({ where: { shop, month: dayDate(month) } });
   if (existing > 0) return "exists";
   const metrics = await prisma.variantMetric.findMany({
@@ -102,24 +108,42 @@ async function snapshotMonth(
   return "written";
 }
 
-async function gradeLastMonth(
+async function gradeMonths(
   shop: string,
   today: string,
   poolKeys: string[],
   coverage: ReturnType<typeof salesCoverage>,
 ): Promise<AccuracyResult["grade"]> {
-  const month = previousMonthStart(today);
+  const [snapshotted, graded] = await Promise.all([
+    prisma.forecastSnapshot.findMany({
+      where: { shop, variantId: STORE_ROW, month: { lt: dayDate(monthStart(today)) } },
+      select: { month: true },
+    }),
+    prisma.accuracyMonth.findMany({ where: { shop }, select: { month: true } }),
+  ]);
+  const plan = monthsToGrade(
+    snapshotted.map((r) => dayKey(r.month)),
+    graded.map((r) => dayKey(r.month)),
+    today,
+    coverage.to,
+  );
+  for (const month of plan.due) await gradeOneMonth(shop, month, poolKeys, coverage);
+  if (plan.due.length) return "written";
+  if (plan.waiting.length) return "waiting";
+  return snapshotted.length ? "exists" : "no_snapshot";
+}
+
+/** Grades one snapshotted month (its data is complete). */
+async function gradeOneMonth(shop: string, month: string, poolKeys: string[], coverage: ReturnType<typeof salesCoverage>): Promise<void> {
   const end = monthEnd(month);
-  const done = await prisma.accuracyMonth.findUnique({ where: { shop_month: { shop, month: dayDate(month) } }, select: { shop: true } });
-  if (done) return "exists";
   const snapshot = await prisma.forecastSnapshot.findMany({
     where: { shop, month: dayDate(month) },
     select: { variantId: true, predicted: true },
   });
-  if (!snapshot.length) return "no_snapshot";
-  if (!coverage.to || coverage.to < end) return "waiting";
+  if (!snapshot.length) return;
   const covered = spanStats({ units: new Map(), coverage }, month, end).coverage;
   const days = { gte: dayDate(month), lte: dayDate(end) };
+  const rank = rankingWindow(month);
   const [unitsG, revenueG] = await Promise.all([
     prisma.salesDaily.groupBy({
       by: ["variantId"],
@@ -128,7 +152,7 @@ async function gradeLastMonth(
     }),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, locationKey: ALL, day: days },
+      where: { shop, locationKey: ALL, day: { gte: dayDate(rank.from), lte: dayDate(rank.to) } },
       _sum: { gross: true },
     }),
   ]);
@@ -155,7 +179,6 @@ async function gradeLastMonth(
     create: { shop, month: dayDate(month), ...data },
     update: data,
   });
-  return "written";
 }
 
 let running = false;

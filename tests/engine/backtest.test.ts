@@ -320,6 +320,55 @@ describe("backtest script arguments", async () => {
     expect(() => parseArgs(["--shop", "brand.myshopify.com", "--month", "2026-07", "--months", "0"])).toThrow(/--months/);
   });
 
+  it("review fix: load() honours the 'counts for online sales' override (POS store added to the pool)", async () => {
+    const { load } = await import("../../scripts/backtest");
+    const { createFakePrisma } = await import("../helpers/fake-prisma");
+    const db = createFakePrisma();
+    const S = "brand.myshopify.com";
+    const day = new Date("2026-07-10T00:00:00.000Z");
+    db.tables.shop = [{ domain: S, currency: "EUR", settings: {}, backfillState: {} }];
+    db.tables.location = [
+      { id: "L1", shop: S, active: true, online: true, onlinePool: null },
+      { id: "L2", shop: S, active: true, online: false, onlinePool: true }, // the merchant counts it
+      { id: "L3", shop: S, active: true, online: true, onlinePool: false }, // the merchant leaves it out
+    ];
+    db.tables.variant = [];
+    db.tables.supplier = [];
+    db.tables.stockDaily = [
+      { shop: S, day, variantId: "v", locationId: "L1", endUnits: 1, outOfStock: false },
+      { shop: S, day, variantId: "v", locationId: "L2", endUnits: 10, outOfStock: false },
+      { shop: S, day, variantId: "v", locationId: "L3", endUnits: 100, outOfStock: false },
+    ];
+    db.tables.salesDaily = [
+      { shop: S, day, variantId: "v", locationKey: "L2", channel: "all", sold: 3, gross: 0 },
+      { shop: S, day, variantId: "v", locationKey: "L3", channel: "all", sold: 30, gross: 0 },
+    ];
+    const data = await load(db.client as never, S, "2026-07-01", "2026-07-31");
+    expect(data.stock).toEqual([{ variantId: "v", day: "2026-07-10", endUnits: 11, reported: 2, outReported: 0 }]);
+    expect(data.poolSales).toEqual([{ variantId: "v", day: "2026-07-10", sold: 3, gross: 0 }]);
+  });
+
+  it("review fix: every reader of the online pool selects the override (POOL_LOCATION_SELECT)", async () => {
+    const { readFileSync, readdirSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = new URL("../../", import.meta.url).pathname;
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(f)) files.push(p);
+      }
+    };
+    walk(join(root, "app"));
+    walk(join(root, "scripts"));
+    const offenders = files.filter((f) => {
+      const src = readFileSync(f, "utf8");
+      return /poolLocationIds\(/.test(src) && /location\.findMany\(\{[^}]*select: \{ id: true, active: true, online: true \}/.test(src);
+    });
+    expect(offenders).toEqual([]);
+  });
+
   it("never writes to the database", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("../../scripts/backtest.ts", import.meta.url), "utf8");

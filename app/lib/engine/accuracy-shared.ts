@@ -8,8 +8,10 @@
  *  - grade last month: actual units per snapshotted variant (online pool view), the store row's
  *    actual = Σ of the same variants' actuals (so both sides cover the same variants), then
  *      storeErrorPct  = |predicted − actual| ÷ actual × 100 of the store row;
- *      top20ErrorPct  = mean of the same over the top 20 snapshotted variants by last month's
- *                       revenue (revenue > 0, actual > 0 — a % error of a 0 actual is undefined);
+ *      top20ErrorPct  = mean of the same over the top 20 snapshotted variants by revenue in the
+ *                       month BEFORE the graded month (`rankingMonth`: known when the snapshot is
+ *                       taken — no look-ahead; the backtest ranks the same way) (revenue > 0,
+ *                       actual > 0 — a % error of a 0 actual is undefined);
  *      graded         = how many variants that mean used.
  *    Null ("—") when there is not enough data: no snapshot, < 80 % of the month's days covered,
  *    a store actual of 0, or no variant to average.
@@ -41,6 +43,48 @@ export function daysInMonth(month: DayKey): number {
 
 export function monthEnd(month: DayKey): DayKey {
   return addDays(nextMonthStart(month), -1);
+}
+
+/**
+ * The days whose revenue ranks a graded month's top 20 (review fix, one rule everywhere —
+ * accuracy, the scorecard and the backtest): the whole month BEFORE the graded month, which is
+ * known when the snapshot is taken on the graded month's first days.
+ */
+export function rankingWindow(gradedMonth: DayKey): { from: DayKey; to: DayKey } {
+  const from = previousMonthStart(gradedMonth);
+  return { from, to: monthEnd(from) };
+}
+
+/** Days into the month on which a missing snapshot is still taken (the first run of days 1–3). */
+export const SNAPSHOT_LATE_DAYS = 3;
+
+/** Is the snapshot for today's month still due by date? Day 1…SNAPSHOT_LATE_DAYS of the month. */
+export function snapshotDue(today: DayKey): boolean {
+  const day = Number(toDayKey(today).slice(8, 10));
+  return day >= 1 && day <= SNAPSHOT_LATE_DAYS;
+}
+
+/**
+ * Snapshotted months to grade now (review fix: none is skipped): every month before today's
+ * month with a snapshot and no grade yet whose sales history is complete (`coverageTo` ≥ the
+ * month's last day), oldest first.
+ */
+export function monthsToGrade(
+  snapshotMonths: readonly DayKey[],
+  gradedMonths: readonly DayKey[],
+  today: DayKey,
+  coverageTo: DayKey | null,
+): { due: DayKey[]; waiting: DayKey[] } {
+  const current = monthStart(today);
+  const graded = new Set(gradedMonths.map(monthStart));
+  const due: DayKey[] = [];
+  const waiting: DayKey[] = [];
+  for (const m of [...new Set(snapshotMonths.map(monthStart))].sort()) {
+    if (m >= current || graded.has(m)) continue;
+    if (coverageTo && coverageTo >= monthEnd(m)) due.push(m);
+    else waiting.push(m);
+  }
+  return { due, waiting };
 }
 
 /** Forecast units for `days` days: rate × seasonal × trend × days. Null without a rate. */
@@ -82,7 +126,7 @@ export interface GradeInput {
   snapshot: readonly { variantId: string; predicted: number }[];
   /** Units sold last month per variant (online pool view). A variant missing here sold 0. */
   actualUnits: ReadonlyMap<string, number>;
-  /** Gross revenue last month per variant (ranks the top 20). */
+  /** Gross revenue per variant over rankingWindow(graded month) (ranks the top 20). */
   revenue: ReadonlyMap<string, number>;
   /** Share of last month's days the sales history covers (0–1). */
   coverage: number;

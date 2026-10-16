@@ -31,7 +31,7 @@ import {
 import { jsonSafe } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { addDays } from "../lib/engine/dates-shared";
-import { monthEnd } from "../lib/engine/accuracy-shared";
+import { rankingWindow } from "../lib/engine/accuracy-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { computeScenarioFor, plannerShop, type PlannerShop } from "../services/planner.server";
 
@@ -252,7 +252,8 @@ export async function loadScorecard(shop: string, today: string): Promise<Scorec
     prisma.forecastSnapshot.findMany({ where: { shop, month: dayDate(month) }, select: { variantId: true, predicted: true, actual: true } }),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, locationKey: ALL, day: { gte: dayDate(month), lte: dayDate(monthEnd(month)) } },
+      // The ranking the accuracy job graded with: the month before (rankingWindow, no look-ahead).
+      where: { shop, locationKey: ALL, day: { gte: dayDate(rankingWindow(month).from), lte: dayDate(rankingWindow(month).to) } },
       _sum: { gross: true },
     }),
   ]);

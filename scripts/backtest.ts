@@ -28,7 +28,7 @@ import {
 } from "../app/lib/engine/backtest-shared";
 import { addDays } from "../app/lib/engine/dates-shared";
 import { monthEnd, nextMonthStart } from "../app/lib/engine/accuracy-shared";
-import { engineSettingsFrom, poolLocationIds, poolSalesKeys, salesCoverage } from "../app/lib/compute-shared";
+import { POOL_LOCATION_SELECT, engineSettingsFrom, poolLocationIds, poolSalesKeys, salesCoverage } from "../app/lib/compute-shared";
 import { readSettings } from "../app/lib/settings-shared";
 import { readBackfillState } from "../app/lib/sync/backfill-shared";
 import { ALL, dayDate } from "../app/lib/sync/facts-shared";
@@ -56,14 +56,14 @@ const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const numOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
-async function load(prisma: PrismaClient, shop: string, from: string, to: string): Promise<BacktestData> {
+export async function load(prisma: PrismaClient, shop: string, from: string, to: string): Promise<BacktestData> {
   const shopRow = await prisma.shop.findUnique({
     where: { domain: shop },
     select: { currency: true, settings: true, backfillState: true },
   });
   if (!shopRow) throw new Error(`no data for ${shop}: the store has not installed the app on this database`);
   const [locations, variants, suppliers] = await Promise.all([
-    prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } }),
+    prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT }),
     prisma.variant.findMany({
       where: { shop },
       select: {

@@ -6,7 +6,9 @@
  *  - Rate, σ, z and "enough data": the latest VariantMetric run (scope "online"), i.e. the
  *    numbers Products and Reorder show. The planner does not recompute the sales rate.
  *  - Stock: Σ StockNow over the online pool (onHand, Shopify's incoming) plus units on sent /
- *    confirmed Keha orders (they never reach Shopify; compute counts them the same way).
+ *    confirmed Keha orders (they never reach Shopify; compute counts them the same way), minus
+ *    the units compute estimated as already landed (VariantMetric.inputs.kehaLanded).
+ *    The pool honours the merchant's "counts for online sales" override (POOL_LOCATION_SELECT).
  *  - Seasonality and trend: daily units from the SalesDaily LOCATION view (channel "all",
  *    locationKey in the pool keys) — the view the sales rate uses — at store or collection
  *    level (collections that sold ≥ 2,000 units in 12 months), only over the windows the maths
@@ -30,7 +32,7 @@ import {
 } from "../lib/planner-shared";
 import { SEASON, spanStats, type Coverage, type UnitsSeries } from "../lib/engine/season-shared";
 import { addDays } from "../lib/engine/dates-shared";
-import { poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { OPEN_PO_STATUSES } from "../lib/supplier-shared";
 import { readSettings } from "../lib/settings-shared";
@@ -46,6 +48,12 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** VariantMetric.inputs.kehaLanded (compute): Keha order units estimated to have landed early. */
+function landedOf(inputs: Record<string, unknown>): number {
+  const v = inputs.kehaLanded;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 export type PlannerShop = {
   currency: string;
   timezone: string;
@@ -60,7 +68,8 @@ export type PlannerShop = {
 export async function plannerShop(shop: string, now: Date = new Date()): Promise<PlannerShop> {
   const [row, locations] = await Promise.all([
     prisma.shop.findUnique({ where: { domain: shop }, select: { currency: true, timezone: true, settings: true, backfillState: true } }),
-    prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } }),
+    // The merchant's "counts for online sales" override included (review fix): same pool as compute.
+    prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT }),
   ]);
   const timezone = safeTimeZone(row?.timezone);
   const pool = poolLocationIds(locations);
@@ -141,7 +150,8 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
       z: num(inputs.z),
       enoughData: inputs.enoughData === true,
       onHand: s?.onHand ?? 0,
-      incoming: (s?.incoming ?? 0) + (keha.get(v.id)?.qty ?? 0),
+      // Keha units minus those compute estimated as already landed (they are in on-hand).
+      incoming: (s?.incoming ?? 0) + Math.max(0, (keha.get(v.id)?.qty ?? 0) - landedOf(inputs)),
     });
   }
   return out;

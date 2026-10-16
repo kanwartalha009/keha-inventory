@@ -8,8 +8,10 @@
  *  bridge      orderBy has passed, or the dated arrival is after the run-out day; and real demand
  *              (≥ 5 units in 28 d over those variants, or ≥ 50 sessions/week on the product page)
  *                                                                  → rate × seasonal × trend × gap × price
- *  push        A/B role, Healthy, trend ≥ 1; or Too much with landing conversion ≥ store median
- *              (≥ 200 sessions)                                    → rate × 28 × price × 20 %
+ *  push        A/B role, Healthy, the product's own sales vs the same 28 days last year ≥ 1 (else,
+ *              without last year, trend ≥ 1); or Too much with landing conversion ≥ store
+ *              median (≥ 200 sessions); never for a product with fix_falling
+ *                                                                  → rate × 28 × price × 20 %
  *  fix_falling top 20 by revenue in the same 28 days last year; now ≤ 70 % of last year
  *                                                                  → revenue gap vs last year
  *  fix_sizes   ≥ 30 % of a product's variants (≥ 2) at 0 stock while it still sells (≥ 1 unit in 28 d)
@@ -289,8 +291,25 @@ function bridgeRule(p: RuleProduct, ctx: RuleContext): ActionDraft | null {
 
 // ── Push ───────────────────────────────────────────────────────────────────
 
+/**
+ * The product's own sales vs the same 28 days last year (fix_falling's windows and coverage
+ * rule): revenue28 ÷ revenue28LastYear; null without last year's revenue (not covered, or none).
+ */
+export function productYoY(p: Pick<RuleProduct, "revenue28" | "revenue28LastYear">): number | null {
+  if (!known(p.revenue28LastYear) || !finite(p.revenue28)) return null;
+  return Math.max(0, p.revenue28) / p.revenue28LastYear;
+}
+
+/**
+ * Push (review fix): "sales up or flat" is the PRODUCT's own year-on-year revenue (≥ 1) when last
+ * year is known, so it can never contradict "falling best seller"; without last year's data it
+ * falls back to the store / collection trend (≥ 1). generateActions never emits Push for a
+ * product that gets fix_falling.
+ */
 function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft | null {
-  const strong = p.variants.filter((v) => (v.role === "A" || v.role === "B") && v.status === "healthy" && v.trend >= 1);
+  const yoy = productYoY(p);
+  const upOrFlat = (v: RuleVariant) => (yoy !== null ? yoy >= 1 : v.trend >= 1);
+  const strong = p.variants.filter((v) => (v.role === "A" || v.role === "B") && v.status === "healthy" && upOrFlat(v));
   const conv = conversion(p);
   const converts = conv !== null && storeMedianConv !== null && conv >= storeMedianConv;
   const tooMuch = converts ? p.variants.filter((v) => v.status === "too_much") : [];
@@ -301,6 +320,7 @@ function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft |
   const facts = {
     variants: hit.length,
     trend: hit[0].trend,
+    ...(yoy === null ? {} : { revenue28: round2(Math.max(0, p.revenue28 as number)), revenue28LastYear: round2(p.revenue28LastYear as number) }),
     conversionPct: conv === null ? null : pct(conv),
     storeMedianPct: storeMedianConv === null ? null : pct(storeMedianConv),
     sessions28: p.sessions28,
@@ -308,8 +328,8 @@ function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft |
     horizonDays: ACTION_RULES.horizonDays,
   };
   if (strong.length) {
-    const tr = Math.max(...strong.map((v) => v.trend));
-    return tr > 1
+    const tr = yoy ?? Math.max(...strong.map((v) => v.trend));
+    return Math.round((tr - 1) * 100) > 0
       ? draft("push", p.productId, hit.map((v) => v.id), amount, "push_up", { pct: Math.round((tr - 1) * 100) }, facts)
       : draft("push", p.productId, hit.map((v) => v.id), amount, "push_steady", {}, facts);
   }
@@ -490,14 +510,17 @@ function clearRule(p: RuleProduct, settings: EngineSettings): ActionDraft | null
 export function generateActions(products: readonly RuleProduct[], ctx: RuleContext): ActionDraft[] {
   const settings = ctx.settings ?? ENGINE_DEFAULTS;
   const storeMedianConv = median(products.map(conversion).filter((c): c is number => c !== null));
+  const falling = fallingRules(products);
+  const fallingIds = new Set(falling.map((d) => d.productId));
   const out: ActionDraft[] = [];
   for (const p of products) {
     if (!p.variants.length) continue;
-    for (const d of [reorderRule(p, ctx), bridgeRule(p, ctx), pushRule(p, storeMedianConv), sizesRule(p), clearRule(p, settings)]) {
+    const push = fallingIds.has(p.productId) ? null : pushRule(p, storeMedianConv);
+    for (const d of [reorderRule(p, ctx), bridgeRule(p, ctx), push, sizesRule(p), clearRule(p, settings)]) {
       if (d) out.push(d);
     }
   }
-  out.push(...fallingRules(products), ...pageRules(products, ctx.aov), ...returnsRules(products, ctx.returnsMeasured));
+  out.push(...falling, ...pageRules(products, ctx.aov), ...returnsRules(products, ctx.returnsMeasured));
   return out;
 }
 

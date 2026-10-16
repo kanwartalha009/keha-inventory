@@ -202,6 +202,19 @@ describe("results calculated on save", () => {
     expect(s!.result!.lastYear).toMatchObject({ from: "2025-11-26", to: "2025-11-30", units: null, revenue: null });
   });
 
+  it("review fix: the pool honours the 'counts for online sales' override; Keha units compute saw land are not incoming again", async () => {
+    const { computeScenarioFor } = await import("../app/services/planner.server");
+    db.tables.variantMetric[0]!.rate = 100; // enough demand that V1 always gets a line
+    db.tables.variantMetric[0]!.inputs = { z: 1.65, enoughData: true, kehaLanded: 2 };
+    const line = async () =>
+      (await computeScenarioFor(SHOP, BF, NOW)).groups.flatMap((g) => g.lines).find((l) => l.variantId === V(1))!;
+    // Shopify's flag: the POS store is not online → 5 on hand; Keha 3 sent − 2 landed → 1 incoming.
+    expect(await line()).toMatchObject({ onHand: 5, incoming: 1 });
+    // The merchant counts the POS store for online sales → its 500 join the pool.
+    db.tables.location[1]!.onlinePool = true;
+    expect(await line()).toMatchObject({ onHand: 505 });
+  });
+
   it("edits and deletes are scoped to the shop", async () => {
     db.tables.scenario.push({ id: "theirs", shop: OTHER, name: "Theirs", event: "custom", start: D("2026-11-01"), end: D("2026-11-02"), targetType: "keep_pace", targetValue: 0, result: null });
     expect(await updateScenario(SHOP, "theirs", BF, NOW)).toEqual({ ok: false, error: "notFound" });
@@ -269,7 +282,7 @@ describe("accuracy scorecard", () => {
     expect(await loadScorecard(SHOP, "2026-10-16")).toEqual({ kind: "empty", firstDate: "2026-11-01" });
   });
 
-  it("graded: the latest month and its top rows by that month's revenue", async () => {
+  it("graded: the latest month and its top rows by revenue in the month before (the ranking the grade used)", async () => {
     db.tables.accuracyMonth = [
       { shop: SHOP, month: D("2026-08-01"), storeErrorPct: 30, top20ErrorPct: 40, graded: 1 },
       { shop: SHOP, month: D("2026-09-01"), storeErrorPct: 12.5, top20ErrorPct: 18, graded: 2 },
@@ -280,8 +293,10 @@ describe("accuracy scorecard", () => {
       { shop: SHOP, month: D("2026-09-01"), variantId: V(2), predicted: 10, actual: 10 },
     ];
     db.tables.salesDaily = [
-      { shop: SHOP, day: D("2026-09-10"), variantId: V(2), locationKey: "all", channel: "Online Store", sold: 10, returned: 0, gross: 500 },
-      { shop: SHOP, day: D("2026-09-10"), variantId: V(1), locationKey: "all", channel: "Online Store", sold: 16, returned: 0, gross: 320 },
+      { shop: SHOP, day: D("2026-08-10"), variantId: V(2), locationKey: "all", channel: "Online Store", sold: 10, returned: 0, gross: 500 },
+      { shop: SHOP, day: D("2026-08-10"), variantId: V(1), locationKey: "all", channel: "Online Store", sold: 16, returned: 0, gross: 320 },
+      // The graded month's own revenue (look-ahead) would rank V(1) first: ignored.
+      { shop: SHOP, day: D("2026-09-10"), variantId: V(1), locationKey: "all", channel: "Online Store", sold: 16, returned: 0, gross: 9000 },
     ];
     const s = await loadScorecard(SHOP, "2026-10-16");
     expect(s).toMatchObject({ kind: "graded", month: "2026-09-01", storeErrorPct: 12.5, top20ErrorPct: 18, graded: 2 });

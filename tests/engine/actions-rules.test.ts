@@ -159,6 +159,27 @@ describe("push", () => {
     expect(of(generateActions([p({}, [v({ role: "A", status: "running_low", daysLeft: 5 })])], CTX), "push")).toBeUndefined();
   });
 
+  it("review fix: up or flat = the product's own sales vs last year; never Push and falling best seller together", () => {
+    // Store trend up (1.2) but the product sells half of last year → fix_falling, no push.
+    const falling = generateActions([p({ revenue28: 500, revenue28LastYear: 1000 }, [v({ role: "A", trend: 1.2 })])], CTX);
+    expect(of(falling, "fix_falling")).toBeDefined();
+    expect(of(falling, "push")).toBeUndefined();
+    // Down 10 % on last year (not falling yet): not "up or flat" → no push either.
+    expect(of(generateActions([p({ revenue28: 900, revenue28LastYear: 1000 }, [v({ role: "A", trend: 1.2 })])], CTX), "push")).toBeUndefined();
+    // Store trend down (0.9) but the product is up 20 % on last year → push_up 20 %.
+    const up = of(generateActions([p({ revenue28: 1200, revenue28LastYear: 1000 }, [v({ role: "A", trend: 0.9 })])], CTX), "push")!;
+    expect(up.reason).toMatchObject({ key: "push_up", params: { pct: 20 } });
+    expect(up.reason.facts).toMatchObject({ revenue28: 1200, revenue28LastYear: 1000 });
+    // Flat on last year → push_steady.
+    expect(of(generateActions([p({ revenue28: 1000, revenue28LastYear: 1000 }, [v({ role: "B", trend: 0.8 })])], CTX), "push")?.reason.key).toBe("push_steady");
+    // Too much + converts never pushes a falling best seller.
+    const tm = p({ revenue28: 100, revenue28LastYear: 1000, sessions28: 1000, checkouts28: 50 }, [v({ status: "too_much", daysLeft: 300, rate: 1 })]);
+    const peers = [p({ productId: "Q1", sessions28: 1000, checkouts28: 20 }), p({ productId: "Q2", sessions28: 1000, checkouts28: 20 })];
+    const drafts = generateActions([tm, ...peers], CTX);
+    expect(of(drafts, "fix_falling")).toBeDefined();
+    expect(of(drafts, "push")).toBeUndefined();
+  });
+
   it("too much with landing conversion ≥ the store median and ≥ 200 sessions", () => {
     const tm = (sessions: number, checkouts: number, id = "P1") =>
       p({ productId: id, sessions28: sessions, checkouts28: checkouts }, [v({ id: `${id}v`, status: "too_much", daysLeft: 300, rate: 1 })]);

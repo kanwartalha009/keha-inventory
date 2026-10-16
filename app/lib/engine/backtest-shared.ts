@@ -12,7 +12,9 @@
  *  - actual:    units sold in M+1 in the online pool (location view, pool keys), as accuracy's
  *               grading reads them;
  *  - errors:    gradeMonth (the app's own accuracy maths) with the top 20 ranked by revenue in
- *               MONTH M (the as-of month — no look-ahead), plus one row per top-20 variant;
+ *               MONTH M (the as-of month — no look-ahead; accuracy-shared rankingWindow, the
+ *               same rule the app's accuracy job and scorecard use), plus one row per top-20
+ *               variant;
  *  - money:     the 4 money-at-stake cards as of the end of M (salesAtRisk,
  *               salesLostToSellOuts, cashStuck, soldOutPageTraffic over computeVariant results).
  *
@@ -35,6 +37,7 @@ import {
   gradeMonth,
   monthEnd,
   nextMonthStart,
+  rankingWindow,
   snapshotRows,
 } from "./accuracy-shared";
 import {
@@ -275,7 +278,9 @@ export function backtestMonth(data: BacktestData, month: string): BacktestMonthR
   // ---- actuals and grading ----
   const fCoverage = spanStats({ units: new Map(), coverage: data.coverage }, fStart, fEnd).coverage;
   const actualUnits = sumBy(data.poolSales, fStart, fEnd, (r) => r.sold);
-  const revenueM = sumBy(data.channelSales, mStart, yesterday, (r) => r.gross);
+  // Top-20 ranking: revenue in the month before the graded month — the app's rule (rankingWindow).
+  const rank = rankingWindow(fStart);
+  const revenueM = sumBy(data.channelSales, rank.from, rank.to, (r) => r.gross);
   let reason: BacktestReason = null;
   if (!snapshot.length) reason = "no_forecast";
   else if (!data.coverage.to || data.coverage.to < fEnd) reason = "actuals_incomplete";
