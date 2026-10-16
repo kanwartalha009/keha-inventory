@@ -1,0 +1,643 @@
+/* ==========================================================================
+   Keha Inventory admin — design layer on top of Polaris (loaded from app/routes/app.tsx)
+
+   Polaris stays the structure (Page / Card / Text / IndexTable) so the app
+   keeps its native feel for App Store review. This file adds:
+     · brand tokens (accent, icon-tile palette, motion curves)
+     · colourful icon tiles + stat cards
+     · calm, purposeful motion (reveal-on-enter, hover lift, count-up)
+     · navigation feedback that doesn't look cheap: the admin's own loading
+       bar (App Bridge) + a soft content fade, no fake progress strips
+   ========================================================================== */
+
+:root {
+  /* Brand */
+  --keha-accent: #5b4fd6;
+  --keha-accent-strong: #4338ca;
+  --keha-accent-soft: #eeedfb;
+  --keha-hero-a: #1f1b4d;
+  --keha-hero-b: #4338ca;
+  --keha-hero-c: #7c5cff;
+
+  /* Icon tile palette — bg tint / foreground */
+  --tile-violet-bg: #efeafe;  --tile-violet-fg: #5b4fd6;
+  --tile-teal-bg:   #e0f5f2;  --tile-teal-fg:   #0f8f7a;
+  --tile-amber-bg:  #fff3d6;  --tile-amber-fg:  #b45309;
+  --tile-rose-bg:   #ffe6ec;  --tile-rose-fg:   #c2255c;
+  --tile-sky-bg:    #e3f1ff;  --tile-sky-fg:    #1d6fd1;
+  --tile-emerald-bg:#e3f7e8;  --tile-emerald-fg:#15803d;
+  --tile-slate-bg:  #eef1f4;  --tile-slate-fg:  #475467;
+
+  /* Admin-matched typography + neutrals (2026-10-09 design-consistency pass).
+     One scale for every hand-built element, matched to the admin's new look
+     that Polaris 2 draws (ShopifyInter; weights measured in the admin title
+     bar: body 450, secondary button 500, primary button 600; 12/13/14px).
+     Change these values — not individual rules — if Polaris restyles again. */
+  --keha-font-size-xs: 11px;   /* storefront mock badges only */
+  --keha-font-size-sm: 12px;   /* meta, captions, table heads */
+  --keha-font-size-md: 13px;   /* body — the admin default */
+  --keha-font-size-lg: 14px;   /* card titles */
+  --keha-font-size-xl: 20px;   /* page-level figures */
+  --keha-font-size-2xl: 24px;  /* KPI values */
+  --keha-font-size-3xl: 30px;
+  --keha-line-height-sm: 16px;
+  --keha-line-height-md: 20px;
+  --keha-weight-regular: 450;
+  --keha-weight-medium: 500;
+  --keha-weight-semibold: 600;
+  --keha-weight-bold: 700;
+  --keha-text: #303030;
+  --keha-text-secondary: #616161;
+  --keha-text-tertiary: #8a8a8a;
+  --keha-border: #e3e3e3;
+  --keha-border-secondary: #ebebeb;
+  --keha-surface: #fff;
+  --keha-surface-subdued: #f7f7f7;
+  --keha-surface-hover: #f7f7f7;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+  --dur-slow: 520ms;
+}
+
+/* --------------------------------------------------------------------------
+   Navigation feedback
+   -------------------------------------------------------------------------- */
+.keha-content {
+  transition: opacity var(--dur-fast) ease;
+}
+.keha-content--busy {
+  opacity: 0.62;
+  pointer-events: none;
+  transition-delay: 120ms; /* ignore sub-120 ms transitions — no flicker */
+}
+
+/* --------------------------------------------------------------------------
+   Reveal on enter (staggered by --i)
+   -------------------------------------------------------------------------- */
+.keha-reveal {
+  animation: keha-reveal var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+@keyframes keha-reveal {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Icon tiles
+   -------------------------------------------------------------------------- */
+.keha-tile {
+  --tile-bg: var(--tile-slate-bg);
+  --tile-fg: var(--tile-slate-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--tile-bg);
+  color: var(--tile-fg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile-fg) 10%, transparent);
+  transition: transform var(--dur-base) var(--ease-spring), box-shadow var(--dur-base) ease;
+}
+.keha-tile--sm { width: 32px; height: 32px; border-radius: 9px; }
+.keha-tile--lg { width: 52px; height: 52px; border-radius: 16px; }
+.keha-tile svg { width: 20px; height: 20px; fill: currentColor; }
+.keha-tile--sm svg { width: 16px; height: 16px; }
+.keha-tile--lg svg { width: 26px; height: 26px; }
+.keha-tile--violet  { --tile-bg: var(--tile-violet-bg);  --tile-fg: var(--tile-violet-fg); }
+.keha-tile--teal    { --tile-bg: var(--tile-teal-bg);    --tile-fg: var(--tile-teal-fg); }
+.keha-tile--amber   { --tile-bg: var(--tile-amber-bg);   --tile-fg: var(--tile-amber-fg); }
+.keha-tile--rose    { --tile-bg: var(--tile-rose-bg);    --tile-fg: var(--tile-rose-fg); }
+.keha-tile--sky     { --tile-bg: var(--tile-sky-bg);     --tile-fg: var(--tile-sky-fg); }
+.keha-tile--emerald { --tile-bg: var(--tile-emerald-bg); --tile-fg: var(--tile-emerald-fg); }
+.keha-tile--slate   { --tile-bg: var(--tile-slate-bg);   --tile-fg: var(--tile-slate-fg); }
+
+/* --------------------------------------------------------------------------
+   Interactive cards (stat cards, quick actions)
+   -------------------------------------------------------------------------- */
+.keha-lift {
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) ease;
+  will-change: transform;
+}
+.keha-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -14px rgba(20, 18, 60, 0.35), 0 2px 6px -2px rgba(20, 18, 60, 0.12);
+}
+.keha-lift:hover .keha-tile {
+  transform: translateY(-1px) scale(1.06);
+}
+
+/* Stat card */
+.keha-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 118px;
+}
+.keha-stat__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.keha-stat__value {
+  font-size: var(--keha-font-size-3xl);
+  line-height: 1.1;
+  font-weight: var(--keha-weight-semibold);
+  letter-spacing: -0.02em;
+  color: var(--keha-text);
+  font-variant-numeric: tabular-nums;
+}
+.keha-stat__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--keha-font-size-sm);
+  color: var(--keha-text-secondary);
+}
+.keha-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: var(--keha-weight-semibold);
+  font-size: var(--keha-font-size-sm);
+  background: var(--tile-slate-bg);
+  color: var(--tile-slate-fg);
+}
+.keha-delta--up   { background: var(--tile-emerald-bg); color: var(--tile-emerald-fg); }
+.keha-delta--down { background: var(--tile-rose-bg);    color: var(--tile-rose-fg); }
+.keha-delta svg { width: 12px; height: 12px; fill: currentColor; }
+
+/* Quick action tile */
+.keha-quick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--keha-border);
+  border-radius: 12px;
+  background: var(--keha-surface);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.keha-quick:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: 2px; }
+.keha-quick__title { font-weight: var(--keha-weight-semibold); font-size: var(--keha-font-size-md); }
+.keha-quick__sub { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); margin-top: 2px; }
+.keha-quick__arrow { margin-left: auto; color: var(--keha-text-tertiary); transition: transform var(--dur-base) var(--ease-out); }
+.keha-quick__arrow svg { width: 16px; height: 16px; fill: currentColor; }
+.keha-quick:hover .keha-quick__arrow { transform: translateX(3px); color: var(--keha-accent); }
+
+/* --------------------------------------------------------------------------
+   Hero (dashboard header)
+   -------------------------------------------------------------------------- */
+.keha-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 26px 28px;
+  color: #fff;
+  background:
+    radial-gradient(900px 300px at 110% -40%, color-mix(in srgb, var(--keha-hero-c) 70%, transparent), transparent 60%),
+    radial-gradient(600px 240px at -10% 120%, color-mix(in srgb, #22d3ee 35%, transparent), transparent 60%),
+    linear-gradient(120deg, var(--keha-hero-a), var(--keha-hero-b) 70%, var(--keha-hero-c));
+  box-shadow: 0 18px 40px -24px rgba(67, 56, 202, 0.6);
+}
+.keha-hero__grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: center;
+}
+@media (max-width: 760px) { .keha-hero__grid { grid-template-columns: 1fr; } }
+.keha-hero__eyebrow {
+  font-size: var(--keha-font-size-sm);
+  font-weight: var(--keha-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.keha-hero__title {
+  font-size: var(--keha-font-size-2xl);
+  font-weight: var(--keha-weight-bold);
+  letter-spacing: -0.02em;
+  margin: 6px 0 4px;
+}
+.keha-hero__sub { font-size: var(--keha-font-size-lg); opacity: 0.85; max-width: 52ch; }
+.keha-hero__actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.keha-hero__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font: inherit;
+  font-weight: var(--keha-weight-semibold);
+  font-size: var(--keha-font-size-md);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background var(--dur-fast) ease, transform var(--dur-base) var(--ease-spring);
+}
+.keha-hero__btn:hover { background: rgba(255,255,255,0.2); transform: translateY(-1px); }
+.keha-hero__btn--primary { background: #fff; color: var(--keha-hero-b); border-color: #fff; }
+.keha-hero__btn--primary:hover { background: #f4f2ff; }
+.keha-hero__btn svg { width: 16px; height: 16px; fill: currentColor; }
+.keha-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.keha-hero__stat {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.16);
+  backdrop-filter: blur(6px);
+}
+.keha-hero__stat b {
+  display: block;
+  font-size: var(--keha-font-size-xl);
+  font-weight: var(--keha-weight-bold);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.keha-hero__stat span { font-size: var(--keha-font-size-sm); opacity: 0.8; }
+/* decorative orbs */
+.keha-hero::before, .keha-hero::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(2px);
+}
+.keha-hero::before { width: 220px; height: 220px; right: -60px; top: -110px; background: rgba(255,255,255,0.08); animation: keha-float 9s ease-in-out infinite; }
+.keha-hero::after  { width: 140px; height: 140px; right: 140px; bottom: -90px; background: rgba(255,255,255,0.06); animation: keha-float 11s ease-in-out infinite reverse; }
+@keyframes keha-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+/* --------------------------------------------------------------------------
+   Section headers with a tile
+   -------------------------------------------------------------------------- */
+.keha-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.keha-section-head__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Progress ring (cohorts) */
+.keha-ring {
+  --p: 0;
+  --ring: var(--keha-accent);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--ring) calc(var(--p) * 1%), var(--tile-slate-bg) 0);
+  font-size: var(--keha-font-size-xs);
+  font-weight: var(--keha-weight-bold);
+  color: var(--keha-text);
+  transition: --p var(--dur-slow) var(--ease-out);
+}
+.keha-ring::before {
+  content: "";
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--keha-surface);
+}
+.keha-ring > span { position: relative; }
+
+/* Status dot */
+.keha-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+.keha-dot--live { color: #15803d; animation: keha-pulse 2s ease-in-out infinite; }
+@keyframes keha-pulse {
+  0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); }
+  50%     { box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 8%, transparent); }
+}
+
+/* Reduced motion: keep everything readable, drop movement */
+@media (prefers-reduced-motion: reduce) {
+  .keha-reveal { animation: none; }
+  .keha-lift, .keha-tile, .keha-quick__arrow, .keha-hero__btn { transition: none; }
+  .keha-hero::before, .keha-hero::after, .keha-dot--live { animation: none; }
+}
+
+/* Responsive grids (KPIs, quick actions) */
+.keha-grid { display: grid; gap: 16px; }
+.keha-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.keha-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.keha-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1040px) { .keha-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px)  { .keha-grid--4, .keha-grid--3, .keha-grid--2 { grid-template-columns: 1fr; } }
+.keha-grid > .keha-reveal, .keha-grid > .keha-reveal > .keha-lift, .keha-grid .keha-lift > * { height: 100%; }
+.keha-delta { white-space: nowrap; }
+.keha-stat__foot { flex-wrap: wrap; row-gap: 4px; }
+.keha-stat__top > p { min-height: 2.4em; display: flex; align-items: flex-start; }
+
+/* --------------------------------------------------------------------------
+   Page hero (every page except the dashboard): light tinted band with a
+   large icon tile, title, subtitle, actions and optional inline stats.
+   -------------------------------------------------------------------------- */
+.keha-page-hero {
+  --hero-tint: var(--tile-violet-bg);
+  --hero-fg: var(--tile-violet-fg);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background:
+    radial-gradient(520px 180px at 100% 0%, color-mix(in srgb, var(--hero-fg) 14%, transparent), transparent 70%),
+    linear-gradient(120deg, var(--keha-surface), var(--hero-tint));
+  border: 1px solid color-mix(in srgb, var(--hero-fg) 14%, var(--keha-border));
+  box-shadow: 0 12px 30px -24px color-mix(in srgb, var(--hero-fg) 60%, transparent);
+}
+.keha-page-hero--violet  { --hero-tint: var(--tile-violet-bg);  --hero-fg: var(--tile-violet-fg); }
+.keha-page-hero--teal    { --hero-tint: var(--tile-teal-bg);    --hero-fg: var(--tile-teal-fg); }
+.keha-page-hero--amber   { --hero-tint: var(--tile-amber-bg);   --hero-fg: var(--tile-amber-fg); }
+.keha-page-hero--rose    { --hero-tint: var(--tile-rose-bg);    --hero-fg: var(--tile-rose-fg); }
+.keha-page-hero--sky     { --hero-tint: var(--tile-sky-bg);     --hero-fg: var(--tile-sky-fg); }
+.keha-page-hero--emerald { --hero-tint: var(--tile-emerald-bg); --hero-fg: var(--tile-emerald-fg); }
+.keha-page-hero--slate   { --hero-tint: var(--tile-slate-bg);   --hero-fg: var(--tile-slate-fg); }
+.keha-page-hero__main { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 320px; }
+.keha-page-hero__text { min-width: 0; }
+.keha-page-hero__title {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: var(--keha-font-size-xl); font-weight: var(--keha-weight-bold); letter-spacing: -0.015em; margin: 0;
+  color: var(--keha-text);
+}
+.keha-page-hero__sub { margin: 3px 0 0; font-size: var(--keha-font-size-md); color: var(--keha-text-secondary); max-width: 64ch; }
+.keha-page-hero__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.keha-page-hero__stats { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
+.keha-page-hero__chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--keha-surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hero-fg) 16%, transparent);
+  font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary);
+}
+.keha-page-hero__chip b { font-size: var(--keha-font-size-lg); font-weight: var(--keha-weight-bold); color: var(--keha-text); font-variant-numeric: tabular-nums; }
+.keha-page-hero .keha-tile--lg { box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--hero-fg) 55%, transparent); }
+.keha-page-hero { margin-bottom: 4px; }
+.Polaris-Page > .Polaris-Page__Content > .keha-reveal:first-child > .keha-page-hero,
+.Polaris-Page__Content > .keha-reveal:first-child > .keha-page-hero { margin-bottom: 16px; }
+
+/* ---------- Click-through list rows ---------- */
+.keha-row {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 12px 16px; border: 0; border-bottom: 1px solid var(--keha-border-secondary);
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit;
+  transition: background var(--keha-fast, 140ms) ease;
+}
+.keha-row:last-child { border-bottom: 0; }
+.keha-row:hover { background: var(--keha-surface-hover); }
+.keha-row:focus-visible { outline: 2px solid var(--keha-accent, #5b4fd6); outline-offset: -2px; }
+.keha-row__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.keha-row__title { font-weight: var(--keha-weight-semibold); font-size: var(--keha-font-size-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-row__sub { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-row__meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.keha-row__units { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); font-variant-numeric: tabular-nums; }
+.keha-row__arrow { display: inline-flex; color: var(--keha-text-tertiary); transition: transform var(--keha-fast, 140ms) ease; }
+.keha-row:hover .keha-row__arrow { transform: translateX(3px); }
+@media (max-width: 720px) { .keha-row__units { display: none; } }
+
+/* ---------- Tabs (Polaris web components ship none; styled after the admin) ---------- */
+.keha-tabs { display: flex; gap: 4px; padding: 8px 8px 0; border-bottom: 1px solid var(--keha-border-secondary); overflow-x: auto; }
+.keha-tab {
+  appearance: none; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-medium);
+  color: var(--keha-text-secondary); padding: 8px 12px 10px; border-radius: 8px 8px 0 0; position: relative; white-space: nowrap;
+  transition: color var(--keha-fast, 140ms) ease, background var(--keha-fast, 140ms) ease;
+}
+.keha-tab:hover { background: var(--keha-surface-hover); color: var(--keha-text); }
+.keha-tab--active { color: var(--keha-text); font-weight: var(--keha-weight-semibold); }
+.keha-tab--active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--keha-accent, #5b4fd6); }
+.keha-tab:focus-visible { outline: 2px solid var(--keha-accent, #5b4fd6); outline-offset: -2px; }
+
+/* Layout grids used in place of Polaris React <Layout> (2/3 + 1/3 columns). */
+.keha-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.keha-layout--equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) { .keha-layout, .keha-layout--equal { grid-template-columns: 1fr; } }
+.keha-stack { display: flex; flex-direction: column; gap: 16px; }
+.keha-stack--tight { gap: 8px; }
+.keha-row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.keha-page { max-width: 1120px; margin: 0 auto; padding: 0 0 40px; }
+
+/* ==========================================================================
+   Dashboard v2 (2026-09-25) — denser, calmer, aligned with the refreshed admin
+   ========================================================================== */
+.keha-tile--xs { width: 24px; height: 24px; border-radius: 7px; }
+.keha-tile--xs svg { width: 14px; height: 14px; }
+
+/* Metric strip: one card, hairline dividers */
+.keha-metrics { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); }
+.keha-metric {
+  appearance: none; border: 0; background: transparent; font: inherit; color: inherit; text-align: left;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  padding: 14px 18px 16px;
+  border-left: 1px solid var(--keha-border-secondary);
+}
+.keha-metric:first-child { border-left: 0; }
+.keha-metric--link { cursor: pointer; transition: background var(--dur-fast) ease; }
+.keha-metric--link:hover { background: var(--keha-surface-hover); }
+.keha-metric--link:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: -2px; }
+.keha-metric__label { display: flex; align-items: center; gap: 8px; font-size: var(--keha-font-size-sm); font-weight: var(--keha-weight-medium); color: var(--keha-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-metric__value { font-size: var(--keha-font-size-2xl); line-height: 1.15; font-weight: var(--keha-weight-semibold); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--keha-text); }
+.keha-metric__foot { display: flex; align-items: center; gap: 6px; min-height: 20px; font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-metric__foot .keha-delta { padding: 1px 7px; }
+@media (max-width: 900px) {
+  .keha-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .keha-metric:nth-child(odd) { border-left: 0; }
+  .keha-metric:nth-child(n + 3) { border-top: 1px solid var(--keha-border-secondary); }
+}
+
+/* Compact card header */
+.keha-card-head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.keha-card-head__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.keha-card-head__title { font-size: var(--keha-font-size-lg); line-height: 20px; font-weight: var(--keha-weight-semibold); color: var(--keha-text); }
+.keha-card-head__sub { font-size: var(--keha-font-size-md); line-height: 18px; color: var(--keha-text-secondary); }
+.keha-card-head__action { flex-shrink: 0; }
+.keha-card-body { margin-top: 12px; }
+
+/* Hairline list rows (health, activity, cohorts) */
+.keha-list { display: flex; flex-direction: column; }
+.keha-list-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--keha-border-secondary); min-width: 0; }
+.keha-list-row:first-child { border-top: 0; padding-top: 0; }
+.keha-list-row:last-child { padding-bottom: 0; }
+.keha-list-row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.keha-list-row__title { font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-list-row__sub { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-list-row__meta { flex-shrink: 0; font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); font-variant-numeric: tabular-nums; }
+.keha-list-row__value { flex-shrink: 0; font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-semibold); font-variant-numeric: tabular-nums; }
+.keha-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--tile-emerald-fg); box-shadow: 0 0 0 3px var(--tile-emerald-bg); }
+.keha-status-dot--warn { background: var(--tile-amber-fg); box-shadow: 0 0 0 3px var(--tile-amber-bg); }
+.keha-status-dot--bad { background: var(--tile-rose-fg); box-shadow: 0 0 0 3px var(--tile-rose-bg); }
+.keha-status-dot--idle { background: #b5b5b5; box-shadow: 0 0 0 3px #f1f1f1; }
+
+/* Cohort progress (thin bar) */
+.keha-bar { height: 6px; border-radius: 999px; background: var(--tile-slate-bg); overflow: hidden; }
+.keha-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--keha-accent); transition: width var(--dur-slow) var(--ease-out); }
+.keha-bar--amber > span { background: var(--tile-amber-fg); }
+.keha-bar--emerald > span { background: var(--tile-emerald-fg); }
+
+/* List rows inside cards: flush to the card edges */
+.keha-flush { margin: 0 -16px -16px; }
+.keha-flush .keha-row { padding: 11px 16px; }
+.keha-flush .keha-row:first-child { border-top: 1px solid var(--keha-border-secondary); }
+.keha-flush .keha-row:last-child { border-radius: 0 0 12px 12px; }
+.keha-list-row__value--bad { color: var(--tile-rose-fg); }
+.keha-list-row__value--warn { color: var(--tile-amber-fg); }
+.keha-card-foot { display: flex; justify-content: flex-end; margin: 4px -8px -8px 0; }
+
+/* ==========================================================================
+   Form layout — Shopify product-page pattern
+   ========================================================================== */
+.keha-layout--form { grid-template-columns: minmax(0, 1fr) 300px; }
+@media (max-width: 900px) { .keha-layout--form { grid-template-columns: 1fr; } }
+
+/* Card anatomy: <s-heading> + <s-paragraph color="subdued"> (Polaris typography), action on the right */
+.keha-form-card { display: flex; flex-direction: column; gap: 14px; }
+.keha-form-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+/* View switcher (Back in stock: Subscribers / Storefront setup). Hand-drawn on
+   purpose: <s-button-group> only renders slotted <s-button>s and has no
+   pressed state, so press buttons inside it never appeared (seen live
+   2026-10-09). Typography from the token scale. */
+.keha-seg { display: inline-flex; align-self: flex-start; padding: 3px; gap: 2px; border-radius: 10px; background: rgba(0, 0, 0, 0.06); max-width: 100%; overflow-x: auto; }
+.keha-seg__btn {
+  appearance: none; border: 0; background: transparent; font: inherit; cursor: pointer; white-space: nowrap;
+  padding: 6px 12px; border-radius: 8px; font-size: var(--keha-font-size-sm); line-height: var(--keha-line-height-sm); font-weight: var(--keha-weight-medium); color: var(--keha-text-secondary);
+  transition: background var(--dur-fast, 140ms) ease, color var(--dur-fast, 140ms) ease, box-shadow var(--dur-fast, 140ms) ease;
+}
+.keha-seg__btn:hover { color: var(--keha-text); }
+.keha-seg__btn--active { background: var(--keha-surface); color: var(--keha-text); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.04); }
+.keha-seg__btn:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: 1px; }
+
+/* Empty product state: dashed area around native Polaris icon/text/button
+   (the button is the keyboard target; the whole area is a mouse shortcut). */
+.keha-dropzone {
+  cursor: pointer; text-align: center;
+  padding: 28px 16px; border-radius: 12px; border: 1px dashed var(--keha-border); background: var(--keha-surface-subdued);
+  transition: border-color var(--dur-fast, 140ms) ease;
+}
+.keha-dropzone:hover { border-color: var(--keha-text-tertiary); }
+
+/* Thumbnails */
+.keha-thumb { flex-shrink: 0; display: inline-grid; place-items: center; border-radius: 8px; object-fit: cover; background: #f4f4f5; border: 1px solid rgba(0,0,0,.08); color: #8a8a8a; }
+.keha-thumb--empty svg { width: 55%; height: 55%; fill: currentColor; }
+
+/* Variant rows: native <s-table>; only the product cell layout is ours (.keha-cell-product) */
+
+/* Field grids + nested panel */
+.keha-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
+.keha-form-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .keha-form-grid, .keha-form-grid--3 { grid-template-columns: 1fr; } }
+
+/* Disclosure card (More options) */
+.keha-disclosure { appearance: none; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; width: 100%; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.keha-disclosure:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: 4px; border-radius: 6px; }
+.keha-adv { display: flex; flex-direction: column; margin-top: 16px; }
+.keha-adv__group { display: flex; flex-direction: column; gap: 10px; padding: 16px 0; border-top: 1px solid var(--keha-border-secondary); }
+.keha-adv__group:last-child { padding-bottom: 0; }
+
+/* Summary / checklist */
+.keha-checklist { display: flex; flex-direction: column; gap: 10px; }
+.keha-check { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); align-items: center; gap: 8px; }
+
+.keha-check__value { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keha-kv { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--keha-border-secondary); }
+.keha-kv__row { display: flex; justify-content: space-between; gap: 12px; }
+.keha-kv__row > :last-child { text-align: right; }
+
+/* Storefront buy-box preview */
+.keha-preview { border: 1px solid var(--keha-border-secondary); border-radius: 12px; overflow: hidden; background: #fff; }
+.keha-preview__media { position: relative; aspect-ratio: 16 / 10; background: linear-gradient(135deg, #f4f4f5, #ececf1); display: grid; place-items: center; }
+.keha-preview__media img { width: 100%; height: 100%; object-fit: cover; }
+.keha-preview__ph { width: 44px; height: 44px; color: #b5b5bd; }
+.keha-preview__ph svg { width: 100%; height: 100%; fill: currentColor; }
+.keha-preview__badge { position: absolute; top: 10px; left: 10px; padding: 2px 8px; border-radius: 999px; background: #303030; color: #fff; font-size: var(--keha-font-size-xs); font-weight: var(--keha-weight-semibold); letter-spacing: .02em; }
+.keha-preview__body { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 14px; }
+.keha-preview__title { font-size: var(--keha-font-size-lg); font-weight: var(--keha-weight-semibold); line-height: 1.3; }
+.keha-preview__meta { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); }
+.keha-preview__btn { margin-top: 6px; display: block; text-align: center; padding: 10px 12px; border-radius: 8px; background: #303030; color: #fff; font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-semibold); }
+.keha-preview__note { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); text-align: center; }
+.keha-preview__pay { font-size: var(--keha-font-size-sm); font-weight: var(--keha-weight-semibold); color: var(--tile-emerald-fg); text-align: center; }
+
+/* Bottom action bar */
+.keha-actionbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 16px; border-top: 1px solid var(--keha-border); }
+.keha-actionbar__right { display: flex; gap: 8px; }
+
+/* App page intro line (under the admin title bar) */
+.keha-page-intro { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 0; font-size: var(--keha-font-size-md); line-height: 18px; color: var(--keha-text-secondary); }
+.keha-navlist { border-radius: 12px; overflow: hidden; }
+.keha-navlist .keha-row { padding: 14px 16px; }
+.keha-cell-product { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+/* Sections inside one card, separated by hairlines */
+.keha-overview > .keha-stack { gap: 0; }
+.keha-overview > .keha-stack > s-section + s-section { display: block; border-top: 1px solid var(--keha-border-secondary); margin-top: 16px; padding-top: 16px; }
+@media (min-width: 901px) { .keha-overview > .keha-stack + .keha-stack { border-left: 1px solid var(--keha-border-secondary); padding-left: 16px; } }
+.keha-navlist__head { display: flex; flex-direction: column; gap: 2px; padding: 16px 16px 12px; border-bottom: 1px solid var(--keha-border-secondary); }
+.keha-cell-progress { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+
+/* Back-in-stock preview: sold-out badge, ghost button, sign-up popup mock */
+.keha-preview__badge--muted { background: #616161; }
+.keha-preview__btn--ghost { background: #fff !important; color: #303030; box-shadow: inset 0 0 0 1px #c9c9c9; }
+.keha-popup { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; border: 1px solid var(--keha-border-secondary); background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.keha-popup__title { font-size: var(--keha-font-size-lg); font-weight: var(--keha-weight-semibold); }
+.keha-popup__product { display: flex; align-items: center; gap: 8px; font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); }
+.keha-popup__input { display: block; padding: 8px 10px; border-radius: 8px; border: 1px solid #d4d4d8; font-size: var(--keha-font-size-md); color: #8a8a8a; }
+
+/* Low stock: style picker with live mini-samples, steps list, preview slot */
+.keha-style-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .keha-style-grid { grid-template-columns: 1fr 1fr; } }
+.keha-style-card {
+  appearance: none; font: inherit; color: inherit; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px;
+  border: 1px solid var(--keha-border-secondary); background: #fff;
+  transition: border-color var(--dur-fast, 140ms) ease, box-shadow var(--dur-fast, 140ms) ease;
+}
+.keha-style-card:hover { border-color: #c9c9c9; }
+.keha-style-card--active { border-color: var(--keha-accent); box-shadow: 0 0 0 1px var(--keha-accent); }
+.keha-style-card:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: 2px; }
+.keha-style-card__sample { display: flex; align-items: center; min-height: 44px; padding: 8px; margin-bottom: 4px; border-radius: 8px; background: #fafafa; overflow: hidden; pointer-events: none; }
+.keha-style-card__sample > * { width: 100%; }
+.keha-style-card__name { font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-semibold); }
+.keha-style-card__desc { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); }
+.keha-steps { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: #f7f7f7; font-size: var(--keha-font-size-md); color: var(--keha-text-secondary); }
+.keha-steps__title { color: var(--keha-text); font-weight: var(--keha-weight-semibold); }
+.keha-preview__slot { padding: 2px 0; }
+.keha-kv--flush { padding-top: 0; border-top: 0; }
+.keha-curve-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; gap: 12px; }
+.keha-curve-row > :last-child { text-align: end; }
+.keha-bar--lg { height: 12px; }
+
+/* Dashboard setup guide (2026-09-28) */
+.keha-setup > * + * { margin-top: 12px; }
+.keha-setup .keha-list-row__sub { white-space: normal; }
+.keha-setup .keha-list-row__title s { color: var(--keha-text-secondary); }

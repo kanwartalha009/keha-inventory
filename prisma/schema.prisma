@@ -1,0 +1,98 @@
+// Keha Inventory Intelligence — Prisma schema (PostgreSQL on Railway, private network).
+// Schema changes go through real migrations (`prisma migrate`), never `db push`
+// (spec §8, decision D6). Add-only: never drop or rename a column without a
+// written impact note and Kanwar's approval.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model NovaReferral {
+  shop      String   @id
+  ref       String
+  createdAt DateTime @default(now())
+}
+
+model NovaOutbox {
+  id            String    @id @default(cuid())
+  kind          String
+  url           String
+  body          String
+  headers       String    @default("{}") // JSON map of request headers (incl. X-Nova-Signature)
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  lastError     String?
+  nextAttemptAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model UninstalledShop {
+  shop          String    @id
+  uninstalledAt DateTime  @default(now())
+  purgedAt      DateTime?
+}
+
+model BillingState {
+  shop             String    @id
+  planCode         String?   // free | growth | pro
+  interval         String?   // EVERY_30_DAYS | ANNUAL
+  status           String?   // ACTIVE | PENDING | CANCELLED | FROZEN | DECLINED | EXPIRED
+  subscriptionId   String?   // gid://shopify/AppSubscription/...
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model OwnerEmailLog {
+  id        String   @id @default(cuid())
+  shop      String
+  kind      String   // monday | alert …
+  periodKey String   // e.g. 2026-10 (monthly), 2026-10-11 (daily), 2026-W41 (weekly)
+  sentAt    DateTime @default(now())
+  status    String   @default("SENT") // SENT | FAILED
+  error     String?
+
+  @@unique([shop, kind, periodKey])
+  @@index([shop])
+}
+
+model PersonalDataAccessLog {
+  id        String   @id @default(cuid())
+  shop      String
+  actor     String   // staff:<Shopify user id> | customer:<id> | system
+  action    String   // view | export | import | share | gdpr_export | customer_view
+  resource  String   // e.g. customer_data_request
+  records   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([shop, createdAt])
+  @@index([createdAt])
+}

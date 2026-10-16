@@ -1,0 +1,55 @@
+/**
+ * SSR: the Plans page renders Free / Growth / Pro with the spec prices, a
+ * visible billing-period switch, and the comparison table.
+ */
+import { describe, expect, it, vi } from "vitest";
+import { renderToString } from "react-dom/server";
+import { createRoutesStub } from "react-router";
+
+vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
+vi.mock("../app/services/plans.server", () => ({ getPlans: vi.fn(), getPlanOverride: vi.fn() }));
+vi.mock("../app/services/billing.server", () => ({ getBillingState: vi.fn() }));
+vi.mock("../app/services/app-pricing.server", () => ({ syncPlan: vi.fn(), pricingConfigured: () => false }));
+vi.mock("../app/services/entitlements.server", () => ({ forgetEntitlements: vi.fn(), getEntitlements: vi.fn() }));
+vi.mock("../app/lib/admin-url.server", () => ({ planSelectionUrl: () => "https://admin.shopify.com/x" }));
+
+import PlansPage from "../app/routes/app.plans";
+
+const plans = [
+  { code: "free", name: "Free", amountMonthly: 0, amountAnnual: 0, currency: "USD", trialDays: 0 },
+  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 14 },
+  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 14 },
+];
+
+function render(data: Record<string, unknown>) {
+  const Stub = createRoutesStub([{ id: "plans", path: "/app/plans", Component: PlansPage, loader: () => data }]);
+  return renderToString(<Stub initialEntries={["/app/plans"]} hydrationData={{ loaderData: { plans: data } }} />);
+}
+
+describe("Plans page", () => {
+  it("renders the three plans, prices, the switch and the comparison", () => {
+    const html = render({
+      plans,
+      plan: "free",
+      billing: { status: "NONE", planCode: null },
+      comped: false,
+      checked: true,
+      manageUrl: "https://admin.shopify.com/x",
+    });
+    for (const name of ["Free", "Growth", "Pro"]) expect(html).toContain(name);
+    expect(html).toContain("keha-seg"); // visible Monthly / Annual switch
+    expect(html).toContain("$49.00");
+    expect(html).toContain("$99.00");
+    expect(html).toContain("14-day free trial");
+    expect(html).toContain("Most popular");
+    expect(html).toContain("Compare plans");
+    expect(html).toContain("Planning per location and per POS store");
+    expect(html).toContain("Choose plan");
+  });
+
+  it("doesn't present an unchecked plan as the merchant's plan", () => {
+    const html = render({ plans, plan: "pro", billing: null, comped: false, checked: false, manageUrl: "x" });
+    expect(html).toContain("Plan not checked yet");
+    expect(html).not.toContain("Current plan");
+  });
+});

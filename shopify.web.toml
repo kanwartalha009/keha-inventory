@@ -1,0 +1,7 @@
+name = "React Router"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+[commands]
+predev = "npm exec prisma generate"
+# Schema: switches to `prisma migrate` in task 1.1c (until then the kit db push).
+dev = "npm exec prisma db push && npm exec react-router dev"

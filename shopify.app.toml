@@ -1,0 +1,57 @@
+# Keha Inventory Intelligence — PRODUCTION app config.
+# API version 2026-10, pinned in four places together (playbook §4):
+#   app/shopify.server.ts (ApiVersion.October26), [webhooks] api_version below,
+#   each extension's api_version, and .graphqlrc.ts.
+# 2026-10 is required for the purchase-order reads (spec §6.3, §9).
+
+# Set by `shopify app config link` once the Partner app exists (task 0.1).
+client_id = ""
+# Must equal the App Store listing name (requirement 4.1.1 / 4.1.2), ≤30 characters.
+name = "Keha Inventory Intelligence"
+# Admin URL slug (admin.shopify.com/store/<store>/apps/keha-inventory). Set before
+# the first deploy so Shopify never auto-assigns one. Must match APP_HANDLE in
+# app/lib/admin-url.server.ts (or the SHOPIFY_APP_HANDLE env var).
+handle = "keha-inventory"
+application_url = "https://inventory.keha.io"
+embedded = true
+
+[access_scopes]
+# Only scopes the code uses (unused scopes get apps rejected). Keep the SCOPES env
+# var identical. Spec §10 scopes join as their features land:
+#   read_inventory_purchase_orders + read_inventory_transfers (2.2 Shopify POs),
+#   write_discounts (2.3 Clear), write_inventory_transfers (3.1 transfers).
+# read_reports needs Protected Customer Data Level 2 approval (task 0.1).
+scopes = "read_products,read_inventory,read_locations,read_reports"
+
+[auth]
+redirect_urls = [ "https://inventory.keha.io/auth/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+topics = [ "app/uninstalled" ]
+uri = "/webhooks/app/uninstalled"
+
+[[webhooks.subscriptions]]
+topics = [ "app/scopes_update" ]
+uri = "/webhooks/app/scopes_update"
+
+# Mandatory privacy-compliance webhooks. `authenticate.webhook` verifies the HMAC
+# and returns 401 on a bad signature (app/services/gdpr.server.ts).
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request" ]
+uri = "/webhooks/customers/data_request"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/redact" ]
+uri = "/webhooks/customers/redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "shop/redact" ]
+uri = "/webhooks/shop/redact"
+
+[build]
+# Production config: never let `shopify app dev` rewrite the URLs here.
+# Local development uses shopify.app.dev.toml (its own dev app).
+automatically_update_urls_on_dev = false

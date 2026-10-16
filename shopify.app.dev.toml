@@ -1,0 +1,43 @@
+# Keha Inventory Intelligence — DEVELOPMENT app config (a separate dev app in
+# the Partner Dashboard, so `shopify app dev` never touches production URLs).
+# Use: shopify app config use shopify.app.dev.toml && shopify app dev
+# Keep scopes, webhooks and api_version identical to shopify.app.toml.
+
+client_id = ""
+name = "Keha Inventory (dev)"
+handle = "keha-inventory-dev"
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,read_inventory,read_locations,read_reports"
+
+[auth]
+redirect_urls = [ "https://example.com/auth/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+topics = [ "app/uninstalled" ]
+uri = "/webhooks/app/uninstalled"
+
+[[webhooks.subscriptions]]
+topics = [ "app/scopes_update" ]
+uri = "/webhooks/app/scopes_update"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request" ]
+uri = "/webhooks/customers/data_request"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/redact" ]
+uri = "/webhooks/customers/redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "shop/redact" ]
+uri = "/webhooks/shop/redact"
+
+[build]
+# Dev only: the CLI points the dev app at the tunnel.
+automatically_update_urls_on_dev = true
