@@ -14,7 +14,10 @@
  *     is still running makes the next one skip; a shop already busy (install
  *     kickoff) is skipped too.
  *
- * Monday email, alerts and accuracy (spec §6.6) are added by the tasks that build them.
+ *   - Monday email (spec §11): hourly; sends when it is Monday ≥ 08:00 in the
+ *     store's time zone, once per store week via OwnerEmailLog.
+ *
+ * Instant alerts and accuracy (spec §6.6) are added by the tasks that build them.
  *
  * The /cron/* HTTP endpoints remain (token-guarded) as manual triggers and as
  * an external-scheduler option. Set INVENTORY_DISABLE_INTERNAL_CRON=1 to turn
@@ -30,6 +33,7 @@ import { runBackfill, withShopLock, type DataJobDeps } from "./sync/backfill.ser
 import { runNightly } from "./sync/nightly.server";
 import { computeAfterSync } from "./compute.server";
 import { isBackfillDone, readBackfillState } from "../lib/sync/backfill-shared";
+import { runMondayEmailsAllShops } from "./monday.server";
 
 const OUTBOX_EVERY_MS = 2 * 60 * 1000;
 const HOURLY_EVERY_MS = 60 * 60 * 1000; // daily jobs run hourly — idempotent, so
@@ -144,6 +148,21 @@ async function purgeTick(): Promise<void> {
   }
 }
 
+/** Monday email (spec §11): due-time and send-once checks live in monday.server. */
+let mondayRunning = false;
+async function mondayTick(): Promise<void> {
+  if (mondayRunning) return;
+  mondayRunning = true;
+  try {
+    const r = await runMondayEmailsAllShops(new Date());
+    if (r.sent + r.failed > 0) console.log(`[scheduler/monday] sent=${r.sent} failed=${r.failed} skipped=${r.skipped}`);
+  } catch (e) {
+    console.error("[scheduler/monday]", e);
+  } finally {
+    mondayRunning = false;
+  }
+}
+
 /** Shopify App Pricing: re-check every shop's plan (no webhooks) — every 6th hourly tick. */
 let hourlyCount = 0;
 async function planSyncTick(): Promise<void> {
@@ -175,11 +194,13 @@ export function startScheduler(): void {
     void purgeTick();
     void planSyncTick();
     void dataTick();
+    void mondayTick();
     setInterval(() => void outboxTick(), OUTBOX_EVERY_MS);
     setInterval(() => {
       void purgeTick();
       void planSyncTick();
       void dataTick();
+      void mondayTick();
     }, HOURLY_EVERY_MS);
     console.log("[scheduler] started — outbox every 2 min; purge, access-log retention, plan sync and data sync hourly");
   }, BOOT_DELAY_MS);
