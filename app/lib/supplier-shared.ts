@@ -56,6 +56,8 @@ export interface PoLine {
   sku: string | null;
   /** Units already received (Shopify POs report it; Keha POs fill it on receive). */
   received?: number;
+  /** Keha orders: the line's on-hand (online pool) when the order was sent — the baseline for auto-receive. */
+  baseOnHand?: number;
 }
 
 export const OPEN_PO_STATUSES = ["sent", "confirmed"] as const;
@@ -81,6 +83,7 @@ export function readPoLines(raw: unknown): PoLine[] {
       variantTitle: typeof x.variantTitle === "string" ? x.variantTitle : "",
       sku: typeof x.sku === "string" ? x.sku : null,
       received: typeof x.received === "number" && Number.isFinite(x.received) ? Math.max(0, Math.floor(x.received)) : undefined,
+      baseOnHand: typeof x.baseOnHand === "number" && Number.isFinite(x.baseOnHand) ? Math.floor(x.baseOnHand) : undefined,
     });
   }
   return out;
