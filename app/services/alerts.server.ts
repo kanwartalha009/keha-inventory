@@ -13,6 +13,11 @@
  * an AlertLog row per product and channel is written only after a successful
  * send, so a failed send is tried again next hour and a product is alerted at
  * most once per 7 days on each channel.
+ *
+ * Flow triggers (Growth, not tied to the instant-alerts switch: the merchant opts
+ * in by building a workflow): "Product needs reorder" / "Product went dead",
+ * once per product per episode (lib/flow-shared episodeStep), at most
+ * MAX_FLOW_PER_TICK per store per tick.
  */
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
@@ -38,6 +43,24 @@ import { hasFeature, type PlanCode } from "../lib/plan-shared";
 import { variantNumericId } from "../lib/products-shared";
 import { readSettings, type ShopSettings } from "../lib/settings-shared";
 import { buildSlackAlerts } from "../lib/slack-shared";
+import {
+  FLOW_ENDED,
+  FLOW_FIRED,
+  FLOW_LOG_KIND,
+  FLOW_NEEDS_REORDER,
+  FLOW_WENT_DEAD,
+  MAX_FLOW_PER_TICK,
+  deadProductIds,
+  episodeStep,
+  needsReorderPayload,
+  needsReorderProducts,
+  productCash,
+  variantCash,
+  wentDeadPayload,
+  type FlowHandle,
+} from "../lib/flow-shared";
+import { unauthenticated } from "../shopify.server";
+import { fireFlowTrigger, type AdminGraphql } from "./flow.server";
 import { dayDate } from "../lib/sync/facts-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
@@ -265,23 +288,132 @@ export async function runInstantAlerts(
   return out;
 }
 
-export type AlertsShopResult = { instant: InstantResult["status"] | "skipped" };
+// ---------------------------------------------------------------- Flow triggers
 
-/** One store: instant alerts. A store that is uninstalled is skipped. */
-export async function runAlertsForShop(row: AlertsShopRow, now: Date = new Date()): Promise<AlertsShopResult> {
-  if (row.uninstalledAt) return { instant: "skipped" };
+export type FlowResult = { status: "fired" | "nothing" | "stale" | "error"; fired?: number; rejected?: number; ended?: number };
+
+export type FlowDeps = { getAdmin?: (shop: string) => Promise<AdminGraphql> };
+
+const defaultAdmin = async (shop: string): Promise<AdminGraphql> => (await unauthenticated.admin(shop)).admin as unknown as AdminGraphql;
+
+const dayKey = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
+/** Flow triggers for one store (Growth; the caller checks the plan). */
+export async function runFlowTriggers(
+  shop: string,
+  catalog: Map<string, CatalogProduct>,
+  metrics: { rows: MetricRowLite[]; fresh: boolean },
+  now: Date,
+  deps: FlowDeps = {},
+): Promise<FlowResult> {
+  // A stale run must not end episodes or fire on old numbers.
+  if (!metrics.fresh) return { status: "stale" };
+  const productOf = new Map<string, string>();
+  for (const [pid, p] of catalog) for (const v of p.variantIds) productOf.set(v, pid);
+  const rows = metrics.rows
+    .filter((m) => productOf.has(m.variantId))
+    .map((m) => ({ ...m, productId: productOf.get(m.variantId)!, orderBy: dayKey(m.orderBy) }));
+
+  const reorder = needsReorderProducts(rows);
+  const deadIds = deadProductIds(rows);
+  const dead = new Map<string, number>();
+  if (deadIds.size) {
+    const deadVariants = rows.filter((r) => deadIds.has(r.productId)).map((r) => r.variantId);
+    const inputs = await loadInputs(shop, deadVariants);
+    for (const pid of deadIds) {
+      const vids = rows.filter((r) => r.productId === pid).map((r) => r.variantId);
+      const cash = productCash(vids, (v) => variantCash(inputs.get(v)));
+      if (cash != null) dead.set(pid, cash);
+    }
+  }
+
+  const latestRows = await prisma.alertLog.findMany({
+    where: { shop, kind: { in: [FLOW_LOG_KIND[FLOW_NEEDS_REORDER], FLOW_LOG_KIND[FLOW_WENT_DEAD]] } },
+    orderBy: { sentAt: "desc" },
+    distinct: ["productId", "kind"],
+    select: { productId: true, kind: true, channel: true },
+  });
+  const latest = new Map(latestRows.map((r) => [`${r.kind}|${r.productId}`, r.channel]));
+
+  type Fire = { handle: FlowHandle; productId: string; payload: Record<string, unknown> };
+  const fires: Fire[] = [];
+  const fireIfNew = (handle: FlowHandle, productId: string, payload: Record<string, unknown> | null) => {
+    if (payload && episodeStep(latest.get(`${FLOW_LOG_KIND[handle]}|${productId}`), true) === "fire") fires.push({ handle, productId, payload });
+  };
+  // Most urgent first: fewest days left; most cash stuck.
+  for (const [pid, st] of [...reorder].sort((a, b) => a[1].daysLeft - b[1].daysLeft)) fireIfNew(FLOW_NEEDS_REORDER, pid, needsReorderPayload(pid, st));
+  for (const [pid, cash] of [...dead].sort((a, b) => b[1] - a[1])) fireIfNew(FLOW_WENT_DEAD, pid, wentDeadPayload(pid, cash));
+
+  // Products that left the state since their last fire: the episode ends.
+  const inState: Record<string, (productId: string) => boolean> = {
+    [FLOW_LOG_KIND[FLOW_NEEDS_REORDER]]: (pid) => reorder.has(pid),
+    [FLOW_LOG_KIND[FLOW_WENT_DEAD]]: (pid) => dead.has(pid),
+  };
+  const ends = latestRows.filter((r) => episodeStep(r.channel, inState[r.kind]?.(r.productId) ?? false) === "end");
+
+  if (ends.length) {
+    await prisma.alertLog.createMany({ data: ends.map((e) => ({ shop, productId: e.productId, kind: e.kind, channel: FLOW_ENDED, sentAt: now })) });
+  }
+  const out: FlowResult = { status: "nothing", fired: 0, rejected: 0, ended: ends.length };
+  if (!fires.length) return out;
+
+  const admin = await (deps.getAdmin ?? defaultAdmin)(shop);
+  for (const f of fires.slice(0, MAX_FLOW_PER_TICK)) {
+    const r = await fireFlowTrigger(admin, f.handle, f.payload);
+    if (r.status === "error") {
+      // Network / throttle / auth: stop here, the rest go next tick.
+      console.warn(`[flow] ${shop} ${f.handle}: ${r.error}`);
+      out.status = "error";
+      return out;
+    }
+    if (r.status === "rejected") {
+      out.rejected! += 1;
+      console.log(`[flow] ${shop} ${f.handle}: ${r.error}`);
+    } else out.fired! += 1;
+    await prisma.alertLog.create({ data: { shop, productId: f.productId, kind: FLOW_LOG_KIND[f.handle], channel: FLOW_FIRED, sentAt: now } });
+  }
+  out.status = "fired";
+  return out;
+}
+
+// ---------------------------------------------------------------- per store
+
+export type AlertsShopResult = { instant: InstantResult["status"] | "skipped"; flow: FlowResult["status"] | "off" | "skipped" };
+
+/** One store: instant alerts (if on) and Flow triggers (Growth). Each part's failure is logged and never stops the other. */
+export async function runAlertsForShop(row: AlertsShopRow, now: Date = new Date(), deps: FlowDeps = {}): Promise<AlertsShopResult> {
+  if (row.uninstalledAt) return { instant: "skipped", flow: "skipped" };
   const settings = readSettings(row.settings);
-  if (!settings.alerts.instant) return { instant: "off" };
   let plan: PlanCode;
   try {
     plan = await planFor(row.domain);
   } catch {
     plan = "pro"; // plan checks fail open (I-6)
   }
+  const flowOn = hasFeature(plan, "flowTriggers");
+  if (!settings.alerts.instant && !flowOn) return { instant: "off", flow: "off" };
   const catalog = await loadCatalog(row.domain);
   const metrics = await loadMetrics(row.domain, now);
-  const instant = await runInstantAlerts(row, settings, plan, catalog, metrics, now);
-  return { instant: instant.status };
+
+  let instant: AlertsShopResult["instant"] = "off";
+  if (settings.alerts.instant) {
+    try {
+      instant = (await runInstantAlerts(row, settings, plan, catalog, metrics, now)).status;
+    } catch (e) {
+      instant = "failed";
+      console.error(`[alerts] ${row.domain} instant alerts failed`, e);
+    }
+  }
+  let flow: AlertsShopResult["flow"] = "off";
+  if (flowOn) {
+    try {
+      flow = (await runFlowTriggers(row.domain, catalog, metrics, now, deps)).status;
+    } catch (e) {
+      flow = "error";
+      console.error(`[alerts] ${row.domain} Flow triggers failed`, e);
+    }
+  }
+  return { instant, flow };
 }
 
 /** Every installed store; one store's failure never stops the others. */
@@ -292,6 +424,7 @@ export async function runAlertsAllShops(now: Date = new Date()): Promise<Record<
     try {
       const r = await runAlertsForShop(row, now);
       counts[`instant:${r.instant}`] = (counts[`instant:${r.instant}`] ?? 0) + 1;
+      counts[`flow:${r.flow}`] = (counts[`flow:${r.flow}`] ?? 0) + 1;
     } catch (e) {
       counts.error = (counts.error ?? 0) + 1;
       console.error(`[alerts] ${row.domain} failed`, e);
@@ -307,7 +440,7 @@ export async function alertsTick(): Promise<void> {
   alertsRunning = true;
   try {
     const counts = await runAlertsAllShops(new Date());
-    const active = Object.entries(counts).filter(([k]) => !/:(nothing|off|skipped)$/.test(k));
+    const active = Object.entries(counts).filter(([k]) => !/:(nothing|off|skipped|stale)$/.test(k));
     if (active.length) console.log(`[scheduler/alerts] ${JSON.stringify(counts)}`);
   } catch (e) {
     console.error("[scheduler/alerts]", e);

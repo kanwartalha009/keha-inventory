@@ -1,0 +1,44 @@
+# Shopify Flow TRIGGER — "Product needs reorder" (spec §11; Growth plan, `flowTriggers`).
+# Fired by the hourly alerts job (app/services/alerts.server.ts → flow.server.ts,
+# flowTriggerReceive) when a variant is running low or out and Keha suggests an
+# order. Once per product per episode: again only after the product recovered
+# (app/lib/flow-shared.ts episodeStep).
+#
+# Field keys: letters and spaces only (shopify app deploy rejects anything else).
+# The payload keys are FLOW_FIELDS in app/lib/flow-shared.ts; product_reference
+# takes `product_id`. Descriptions ≤ 140 characters (server-side validation).
+# tests/flow-extensions.test.ts checks all of this.
+# Both Keha Flow triggers live in this folder as two *.extension.toml files
+# (the CLI loads extensions/*/*.extension.toml).
+
+[[extensions]]
+name = "Product needs reorder"
+type = "flow_trigger"
+handle = "product-needs-reorder"
+description = "Fires when a product will run out before new stock can arrive and Keha suggests an order. Once per product until it recovers."
+
+[settings]
+
+  [[settings.fields]]
+  type = "product_reference"
+  description = "The product that needs reordering."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Variant id"
+  description = "The variant that runs out first (Admin API ID)."
+
+  [[settings.fields]]
+  type = "number_decimal"
+  key = "Days left"
+  description = "Days of stock left for that variant (0 when it is sold out)."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Order by"
+  description = "The date to place the order by (YYYY-MM-DD), from the supplier lead time."
+
+  [[settings.fields]]
+  type = "number_decimal"
+  key = "Suggested quantity"
+  description = "Units Keha suggests ordering for that variant."

@@ -1,8 +1,10 @@
 /**
- * The hourly instant-alerts job (spec §11, task 2.6) on seeded tables: email on
- * every plan in the store's language, Slack only on Growth when connected, the
- * 7-day cap per product and channel (AlertLog written only after a send), the
- * "Send instant alerts" switch, stale metrics, and a sell-out that started.
+ * The hourly alerts job (spec §11, task 2.6) on seeded tables. Instant alerts:
+ * email on every plan in the store's language, Slack only on Growth when
+ * connected, the 7-day cap per product and channel (AlertLog written only after
+ * a send), the "Send instant alerts" switch, stale metrics, and a sell-out that
+ * started. Flow triggers (Growth): payloads, once per episode, re-fire after
+ * the product left the state, stale/plan/error handling.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FakeDb, Row } from "./helpers/fake-prisma";
@@ -24,9 +26,12 @@ vi.mock("../app/services/owner-email.server", () => ({
   sendOwnerEmailOnce: (...a: unknown[]) => sendOwnerEmailOnce(...a),
 }));
 vi.mock("../app/services/slack.server", () => ({ deliverSlack: (...a: unknown[]) => deliverSlack(...a) }));
+vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn(async () => { throw new Error("no Admin API in tests"); }) } }));
 
 import * as dbModule from "../app/db.server";
 import { runAlertsAllShops, runAlertsForShop, type AlertsShopRow } from "../app/services/alerts.server";
+import { fireFlowTrigger, type AdminGraphql } from "../app/services/flow.server";
+import { MAX_FLOW_PER_TICK } from "../app/lib/flow-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -93,7 +98,7 @@ beforeEach(() => {
 
 describe("instant alerts", () => {
   it("emails both alerts in the store's language, with links into the app, and logs them", async () => {
-    expect(await runAlertsForShop(shopRow(), NOW)).toEqual({ instant: "sent" });
+    expect(await runAlertsForShop(shopRow(), NOW)).toMatchObject({ instant: "sent" });
     expect(sendOwnerEmailOnce).toHaveBeenCalledTimes(1);
     const [shop, email, contact] = sendOwnerEmailOnce.mock.calls[0] as EmailCall;
     expect(shop).toBe(S);
@@ -117,13 +122,13 @@ describe("instant alerts", () => {
 
   it("at most once per product per 7 days", async () => {
     await runAlertsForShop(shopRow(), NOW);
-    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + HOUR))).toEqual({ instant: "nothing" });
-    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + 6 * 24 * HOUR))).toEqual({ instant: "nothing" });
+    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + HOUR))).toMatchObject({ instant: "nothing" });
+    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + 6 * 24 * HOUR))).toMatchObject({ instant: "nothing" });
     expect(sendOwnerEmailOnce).toHaveBeenCalledTimes(1);
     // 7 days later the best seller is still low (fresh metrics): alerted again.
     const later = new Date(NOW.getTime() + 7 * 24 * HOUR + HOUR);
     for (const m of db.tables.variantMetric) m.computedAt = new Date(later.getTime() - HOUR);
-    expect(await runAlertsForShop(shopRow(), later)).toEqual({ instant: "sent" });
+    expect(await runAlertsForShop(shopRow(), later)).toMatchObject({ instant: "sent" });
     const [, email] = sendOwnerEmailOnce.mock.calls[1] as EmailCall;
     expect(email.subject).toBe("Producto estrella a punto de agotarse: Tote");
   });
@@ -135,12 +140,12 @@ describe("instant alerts", () => {
 
   it("a failed or skipped email is not logged, so the next hour tries again", async () => {
     sendOwnerEmailOnce.mockResolvedValueOnce("failed");
-    expect(await runAlertsForShop(shopRow(), NOW)).toEqual({ instant: "failed" });
+    expect(await runAlertsForShop(shopRow(), NOW)).toMatchObject({ instant: "failed" });
     expect(db.tables.alertLog).toEqual([]);
     sendOwnerEmailOnce.mockResolvedValueOnce("skipped");
-    expect(await runAlertsForShop(shopRow(), NOW)).toEqual({ instant: "nothing" });
+    expect(await runAlertsForShop(shopRow(), NOW)).toMatchObject({ instant: "nothing" });
     expect(db.tables.alertLog).toEqual([]);
-    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + HOUR))).toEqual({ instant: "sent" });
+    expect(await runAlertsForShop(shopRow(), new Date(NOW.getTime() + HOUR))).toMatchObject({ instant: "sent" });
     expect(db.tables.alertLog).toHaveLength(2);
   });
 
@@ -169,15 +174,19 @@ describe("instant alerts", () => {
     seed();
     planFor.mockResolvedValue("free");
     deliverSlack.mockClear();
-    expect(await runAlertsForShop(shopRow({ alerts: { slackWebhook: "gcm:sealed" } }), NOW)).toEqual({ instant: "sent" });
+    expect(await runAlertsForShop(shopRow({ alerts: { slackWebhook: "gcm:sealed" } }), NOW)).toMatchObject({ instant: "sent" });
     expect(deliverSlack).not.toHaveBeenCalled();
     expect(sendOwnerEmailOnce).toHaveBeenCalled();
   });
 
-  it("off in Settings: nothing is read or sent", async () => {
-    expect(await runAlertsForShop(shopRow({ alerts: { instant: false } }), NOW)).toEqual({ instant: "off" });
+  it("off in Settings: no alert is sent (Free: nothing is even read)", async () => {
+    expect(await runAlertsForShop(shopRow({ alerts: { instant: false } }), NOW)).toMatchObject({ instant: "off" });
     expect(sendOwnerEmailOnce).not.toHaveBeenCalled();
-    expect(db.calls.filter((c) => c.table === "variantMetric")).toEqual([]);
+    expect(db.calls.filter((c) => c.table === "stockNow")).toEqual([]);
+    planFor.mockResolvedValue("free");
+    db.calls.length = 0;
+    expect(await runAlertsForShop(shopRow({ alerts: { instant: false } }), NOW)).toEqual({ instant: "off", flow: "off" });
+    expect(db.calls).toEqual([]);
   });
 
   it("stale metrics: no best-seller alert; the sell-out (live stock) still goes out", async () => {
@@ -202,7 +211,7 @@ describe("instant alerts", () => {
   it("nothing to say: no email", async () => {
     db.tables.variantMetric = [metric(1), metric(2), metric(3)];
     db.tables.stockNow[1].onHand = 4;
-    expect(await runAlertsForShop(shopRow(), NOW)).toEqual({ instant: "nothing" });
+    expect(await runAlertsForShop(shopRow(), NOW)).toMatchObject({ instant: "nothing" });
     expect(sendOwnerEmailOnce).not.toHaveBeenCalled();
   });
 
@@ -219,5 +228,149 @@ describe("instant alerts", () => {
     expect(counts["instant:sent"]).toBe(1);
     expect(counts["instant:nothing"]).toBe(1); // broken shop: plan fails open, no data of its own
     expect(counts.error).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------- Flow triggers
+
+type GqlCall = { query: string; variables: { handle: string; payload: Record<string, unknown> } };
+function fakeAdmin(answer: (call: GqlCall) => unknown = () => ({ data: { flowTriggerReceive: { userErrors: [] } } })) {
+  const calls: GqlCall[] = [];
+  const admin: AdminGraphql = {
+    graphql: async (query, options) => {
+      const call = { query, variables: options?.variables as GqlCall["variables"] };
+      calls.push(call);
+      const body = answer(call);
+      if (body instanceof Error) throw body;
+      return { json: async () => body };
+    },
+  };
+  return { admin, calls, deps: { getAdmin: async () => admin } };
+}
+
+describe("Flow triggers", () => {
+  /** P1 needs a reorder (40 units by 20 Oct); P3 went dead with €45 + €24 stuck. */
+  function seedFlow() {
+    db.tables.variant.push(variant(4, 3, "scarf", "Scarf", "Red"));
+    db.tables.variantMetric = [
+      metric(1, { role: "A", status: "running_low", daysLeft: 5.24, orderQty: 40, orderBy: d("2026-10-20") }),
+      metric(2, { status: "out", daysLeft: 0, orderQty: 0 }),
+      metric(3, { status: "dead", daysLeft: null, inputs: { onHand: 9, cost: 5, price: 20 } }),
+      metric(4, { status: "dead", daysLeft: null, inputs: { onHand: 2, cost: null, price: 12 } }),
+    ];
+  }
+  const settings = { alerts: { instant: false } };
+  const flowLog = () => db.tables.alertLog.filter((r) => String(r.kind).startsWith("flow_")).map((r) => [r.productId, r.kind, r.channel]);
+
+  beforeEach(() => seedFlow());
+
+  it("fires both triggers with the declared payloads and logs each fire", async () => {
+    const { calls, deps } = fakeAdmin();
+    expect(await runAlertsForShop(shopRow(settings), NOW, deps)).toEqual({ instant: "off", flow: "fired" });
+    expect(calls.map((c) => c.variables)).toEqual([
+      {
+        handle: "product-needs-reorder",
+        payload: { product_id: 1, "Variant id": V(1), "Days left": 5.2, "Order by": "2026-10-20", "Suggested quantity": 40 },
+      },
+      { handle: "product-went-dead", payload: { product_id: 3, "Cash stuck": 69 } },
+    ]);
+    expect(calls[0].query).toContain("flowTriggerReceive(handle: $handle, payload: $payload)");
+    expect(flowLog()).toEqual([
+      [P(1), "flow_reorder", "flow"],
+      [P(3), "flow_dead", "flow"],
+    ]);
+  });
+
+  it("once per episode; fires again only after the product left the state and came back", async () => {
+    const first = fakeAdmin();
+    await runAlertsForShop(shopRow(settings), NOW, first.deps);
+    const again = fakeAdmin();
+    expect(await runAlertsForShop(shopRow(settings), new Date(NOW.getTime() + HOUR), again.deps)).toMatchObject({ flow: "nothing" });
+    expect(again.calls).toEqual([]);
+
+    // P1 restocked (healthy): its episode ends. P3 still dead: nothing.
+    db.tables.variantMetric[0] = { ...db.tables.variantMetric[0], status: "healthy", orderQty: null };
+    const t2 = new Date(NOW.getTime() + 2 * HOUR);
+    await runAlertsForShop(shopRow(settings), t2, fakeAdmin().deps);
+    expect(flowLog()).toContainEqual([P(1), "flow_reorder", "flow_end"]);
+    expect(flowLog().filter((r) => r[2] === "flow_end")).toHaveLength(1);
+
+    // Low again later: a new episode fires once more.
+    db.tables.variantMetric[0] = { ...db.tables.variantMetric[0], status: "running_low", orderQty: 25 };
+    const t3 = fakeAdmin();
+    await runAlertsForShop(shopRow(settings), new Date(NOW.getTime() + 3 * HOUR), t3.deps);
+    expect(t3.calls.map((c) => c.variables.handle)).toEqual(["product-needs-reorder"]);
+    expect(t3.calls[0].variables.payload["Suggested quantity"]).toBe(25);
+  });
+
+  it("a product whose cash is unknown waits (never a made-up 0)", async () => {
+    db.tables.variantMetric[3] = { ...db.tables.variantMetric[3], inputs: { onHand: 2, cost: null, price: null } };
+    const { calls, deps } = fakeAdmin();
+    await runAlertsForShop(shopRow(settings), NOW, deps);
+    expect(calls.map((c) => c.variables.handle)).toEqual(["product-needs-reorder"]);
+  });
+
+  it("Free: no Flow; stale metrics: nothing fires or ends", async () => {
+    planFor.mockResolvedValue("free");
+    const a = fakeAdmin();
+    expect(await runAlertsForShop(shopRow(settings), NOW, a.deps)).toEqual({ instant: "off", flow: "off" });
+    expect(a.calls).toEqual([]);
+
+    planFor.mockResolvedValue("growth");
+    db.tables.alertLog = [{ shop: S, productId: P(9), kind: "flow_reorder", channel: "flow", sentAt: new Date(NOW.getTime() - 99 * HOUR) }];
+    for (const m of db.tables.variantMetric) m.computedAt = new Date(NOW.getTime() - 40 * HOUR);
+    const b = fakeAdmin();
+    expect(await runAlertsForShop(shopRow(settings), NOW, b.deps)).toMatchObject({ flow: "stale" });
+    expect(b.calls).toEqual([]);
+    expect(flowLog()).toEqual([[P(9), "flow_reorder", "flow"]]);
+  });
+
+  it("Shopify's userErrors count as fired; a network error stops the tick and logs nothing", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rejected = fakeAdmin(() => ({ data: { flowTriggerReceive: { userErrors: [{ field: ["handle"], message: "Invalid handle" }] } } }));
+    expect(await runAlertsForShop(shopRow(settings), NOW, rejected.deps)).toMatchObject({ flow: "fired" });
+    expect(flowLog()).toHaveLength(2);
+
+    seed();
+    seedFlow();
+    const down = fakeAdmin(() => new Error("socket hang up"));
+    expect(await runAlertsForShop(shopRow(settings), NOW, down.deps)).toMatchObject({ flow: "error" });
+    expect(down.calls).toHaveLength(1);
+    expect(flowLog()).toEqual([]);
+    log.mockRestore();
+    warn.mockRestore();
+  });
+
+  it(`at most ${MAX_FLOW_PER_TICK} per store per tick; the rest next tick`, async () => {
+    const n = MAX_FLOW_PER_TICK + 5;
+    db.tables.variant = Array.from({ length: n }, (_, i) => variant(100 + i, 100 + i, `p${i}`));
+    db.tables.variantMetric = Array.from({ length: n }, (_, i) =>
+      metric(100 + i, { status: "running_low", daysLeft: 1 + i, orderQty: 5, orderBy: d("2026-10-18") }),
+    );
+    const a = fakeAdmin();
+    await runAlertsForShop(shopRow(settings), NOW, a.deps);
+    expect(a.calls).toHaveLength(MAX_FLOW_PER_TICK);
+    expect(a.calls[0].variables.payload["Days left"]).toBe(1); // most urgent first
+    const b = fakeAdmin();
+    await runAlertsForShop(shopRow(settings), new Date(NOW.getTime() + HOUR), b.deps);
+    expect(b.calls).toHaveLength(5);
+  });
+});
+
+describe("fireFlowTrigger", () => {
+  const ok = { product_id: 1, "Cash stuck": 2 };
+  it("ok, rejected (userErrors), error (top-level errors or a throw)", async () => {
+    expect(await fireFlowTrigger(fakeAdmin().admin, "product-went-dead", ok)).toEqual({ status: "ok" });
+    expect(
+      await fireFlowTrigger(fakeAdmin(() => ({ data: { flowTriggerReceive: { userErrors: [{ message: "No workflow" }] } } })).admin, "product-went-dead", ok),
+    ).toEqual({ status: "rejected", error: "No workflow" });
+    expect(await fireFlowTrigger(fakeAdmin(() => ({ errors: [{ message: "Throttled" }] })).admin, "product-went-dead", ok)).toMatchObject({ status: "error" });
+    expect(await fireFlowTrigger(fakeAdmin(() => new Error("down")).admin, "product-went-dead", ok)).toEqual({ status: "error", error: "down" });
+  });
+  it("never sends a payload that doesn't match the toml", async () => {
+    const a = fakeAdmin();
+    expect(await fireFlowTrigger(a.admin, "product-went-dead", { product_id: 1 })).toMatchObject({ status: "rejected" });
+    expect(a.calls).toEqual([]);
   });
 });
