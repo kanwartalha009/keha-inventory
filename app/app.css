@@ -628,7 +628,7 @@
   display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
   gap: var(--keha-space-200); flex: 0 1 auto; min-width: 0; margin-inline-start: auto;
 }
-.keha-toolbar__filters > * { flex: 0 1 auto; width: 170px; max-width: 100%; min-width: 0; }
+.keha-toolbar__filters > * { flex: 0 1 auto; width: 180px; max-width: 100%; min-width: 0; }
 .keha-toolbar__filters > .keha-switcher { width: 220px; max-width: 100%; }
 .keha-toolbar__filters > .keha-switcher--link { width: auto; }
 @media (max-width: 600px) {
