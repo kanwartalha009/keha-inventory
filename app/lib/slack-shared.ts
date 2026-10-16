@@ -6,6 +6,7 @@
  */
 import { fill, translate, type Locale } from "./i18n";
 import type { MondaySummary } from "./monday-shared";
+import type { AlertMessage } from "./alerts-shared";
 
 /**
  * A Slack incoming-webhook link: https://hooks.slack.com/services/T…/B…/<secret>.
@@ -93,5 +94,14 @@ export function buildSlackMonday(m: MondaySummary): SlackMessage {
   }
   if (m.accuracy) lines.push("", e(m.accuracy));
   lines.push("", slackLink(m.links.app, m.openLabel));
+  return { text: lines.join("\n") };
+}
+
+/** Instant alerts for Slack: the heading and one linked line per product. */
+export function buildSlackAlerts(m: AlertMessage): SlackMessage {
+  const e = slackEscape;
+  const lines: string[] = [`*${e(m.heading)}*`];
+  for (const l of m.lines) lines.push(`• ${slackLink(l.link, l.title)}`, `    ${e(l.detail)}`);
+  lines.push("", slackLink(m.settingsLink, m.settingsLabel));
   return { text: lines.join("\n") };
 }
