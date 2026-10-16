@@ -10,6 +10,7 @@ import { confirmInstall } from "./lib/nova.server";
 import { consumeReferral } from "./lib/referral.server";
 import { cancelPendingPurge } from "./services/purge-stamp.server";
 import { POLARIS_URL } from "./lib/polaris-shared";
+import { kickoffBackfill } from "./services/sync/backfill.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -39,12 +40,23 @@ const shopify = shopifyApp({
         installedAt: new Date().toISOString(),
         ref: ref ?? undefined,
       });
+      // Start reading the store (spec §4 J1). Non-blocking and never throws; the scheduler
+      // resumes it if this process stops. A finished backfill returns at once.
+      kickoffBackfill(session.shop, { getAdmin: dataAdmin, afterSync: computeAfterSync });
     },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
 });
+
+/** Offline Admin client for background data jobs (refreshes expiring tokens). */
+export async function dataAdmin(shop: string) {
+  return (await shopify.unauthenticated.admin(shop)).admin;
+}
+
+/** Compute after sync. Wired to the engine in task 1.5. */
+export async function computeAfterSync(_shop: string): Promise<void> {}
 
 export default shopify;
 export const apiVersion = ApiVersion.October26;
