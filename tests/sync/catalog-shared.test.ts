@@ -18,6 +18,9 @@ import {
   levelRows,
   parseCatalogJsonl,
   parseShopInfo,
+  parsePrimaryLocale,
+  SHOP_LOCALE_QUERY,
+  SHOP_QUERY,
   stockPageSizes,
   toGid,
   toLocationRow,
@@ -221,6 +224,18 @@ describe("row helpers", () => {
       }),
     ).toEqual({ name: "Acme", currency: "EUR", timezone: "Europe/Madrid", locale: "es", myshopifyDomain: "acme.myshopify.com" });
     expect(parseShopInfo(null)).toMatchObject({ currency: "USD", timezone: "UTC", locale: "en" });
+  });
+
+  it("reads the language from its own query, and the shop query never asks for it", () => {
+    expect(SHOP_QUERY).not.toContain("shopLocales");
+    expect(SHOP_LOCALE_QUERY).toContain("shopLocales");
+    expect(parsePrimaryLocale({ shopLocales: [{ locale: "en", primary: false }, { locale: "pt-BR", primary: true }] })).toBe("pt-BR");
+    expect(parsePrimaryLocale({ shopLocales: [{ locale: "fr", primary: false }] })).toBe("fr");
+    expect(parsePrimaryLocale({ shopLocales: null })).toBeNull();
+    expect(parsePrimaryLocale(null)).toBeNull();
+    const shop = { shop: { name: "Acme", currencyCode: "EUR", ianaTimezone: "Europe/Madrid", myshopifyDomain: "acme.myshopify.com" } };
+    expect(parseShopInfo(shop, "de").locale).toBe("de");
+    expect(parseShopInfo(shop, null).locale).toBe("en");
   });
 });
 

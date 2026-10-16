@@ -10,6 +10,7 @@
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { emailTransportConfigured, sendEmail } from "./email.server";
+import { readShopLocale } from "./shop-locale.server";
 import { toSupportedLocale, type Locale } from "../lib/i18n";
 import { seal } from "../lib/seal.server";
 import { MONDAY_UNSUB_PURPOSE } from "../lib/monday-shared";
@@ -39,19 +40,22 @@ export function emailUnsubscribeUrl(shop: string, kind: UnsubKind, now = Date.no
 export type OwnerContact = { name: string; to: string | string[] | null; locale: Locale };
 
 const OWNER_QUERY = `#graphql
-  query KehaInvOwner { shop { name email contactEmail } shopLocales { locale primary } }`;
+  query KehaInvOwner { shop { name email contactEmail } }`;
 
-/** The store's name, owner email (or an override) and primary language. */
+/**
+ * The store's name, owner email (or an override) and primary language. The language is a
+ * separate read (it needs read_locales): when it fails the email still goes out, in English.
+ */
 export async function ownerContact(shop: string, override?: string | null): Promise<OwnerContact | null> {
   try {
     const { admin } = await unauthenticated.admin(shop);
     const res = await admin.graphql(OWNER_QUERY);
     const body = (await res.json()) as {
-      data?: { shop?: { name?: string; email?: string | null; contactEmail?: string | null }; shopLocales?: { locale: string; primary: boolean }[] };
+      data?: { shop?: { name?: string; email?: string | null; contactEmail?: string | null } };
     };
     const s = body.data?.shop;
     if (!s) return null;
-    const primary = body.data?.shopLocales?.find((l) => l.primary)?.locale;
+    const primary = await readShopLocale(admin, shop);
     return { name: s.name ?? shop, to: override || s.email || s.contactEmail || null, locale: toSupportedLocale(primary) };
   } catch (e) {
     console.error("[owner-email] shop read failed", shop, e);

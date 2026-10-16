@@ -4,7 +4,7 @@
  * What lives here (no server imports, no I/O):
  *  - every Admin GraphQL document the catalog sync sends, validated against the Admin schema
  *    (see the task report: bulkOperationRunQuery, bulkOperation, locations, location,
- *    inventoryItems, inventoryItem, product, shop + shopLocales);
+ *    inventoryItems, inventoryItem, product, shop, shopLocales);
  *  - the bulk JSONL parser: with `groupObjects: false` (the 2026-01+ default) child lines
  *    carry `__parentId` and may appear anywhere in the file, so children are collected
  *    first and attached to their product at the end;
@@ -150,9 +150,20 @@ export const PRODUCT_QUERY = `#graphql
     }
   }`;
 
+/** Needs no scope beyond the app's own (shop fields are always readable). */
 export const SHOP_QUERY = `#graphql
   query KehaInvShopInfo {
     shop { name currencyCode ianaTimezone myshopifyDomain }
+  }`;
+
+/**
+ * The store's languages, read on their own: `shopLocales` needs `read_locales` (or
+ * `read_markets_home`). A store that hasn't approved that scope yet must still sync, so the
+ * language is never part of SHOP_QUERY; a failed read falls back to "en"
+ * (services/shop-locale.server.ts).
+ */
+export const SHOP_LOCALE_QUERY = `#graphql
+  query KehaInvShopLocale {
     shopLocales { locale primary }
   }`;
 
@@ -475,19 +486,29 @@ export type ShopInfo = {
   myshopifyDomain: string | null;
 };
 
-/** `shop` + `shopLocales` → Shop fields. Falls back to USD / UTC / en when a field is missing. */
-export function parseShopInfo(data: unknown): ShopInfo {
+/** `shopLocales` data → the primary locale (else the first one); null when there is none. */
+export function parsePrimaryLocale(data: unknown): string | null {
   const d = (data && typeof data === "object" ? data : {}) as {
-    shop?: { name?: unknown; currencyCode?: unknown; ianaTimezone?: unknown; myshopifyDomain?: unknown } | null;
-    shopLocales?: Array<{ locale?: unknown; primary?: unknown }> | null;
+    shopLocales?: Array<{ locale?: unknown; primary?: unknown } | null> | null;
   };
   const locales = Array.isArray(d.shopLocales) ? d.shopLocales : [];
   const primary = locales.find((l) => l?.primary === true) ?? locales[0];
+  return str(primary?.locale);
+}
+
+/**
+ * `shop` data (+ the locale read separately with SHOP_LOCALE_QUERY) → Shop fields. Falls back
+ * to USD / UTC / en when a field is missing. `shopLocales` in `data` is still read when present.
+ */
+export function parseShopInfo(data: unknown, locale?: string | null): ShopInfo {
+  const d = (data && typeof data === "object" ? data : {}) as {
+    shop?: { name?: unknown; currencyCode?: unknown; ianaTimezone?: unknown; myshopifyDomain?: unknown } | null;
+  };
   return {
     name: str(d.shop?.name),
     currency: str(d.shop?.currencyCode) ?? "USD",
     timezone: str(d.shop?.ianaTimezone) ?? "UTC",
-    locale: str(primary?.locale) ?? "en",
+    locale: str(locale) ?? parsePrimaryLocale(data) ?? "en",
     myshopifyDomain: str(d.shop?.myshopifyDomain),
   };
 }

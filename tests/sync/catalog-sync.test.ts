@@ -314,18 +314,73 @@ describe("refreshStockForInventoryItem", () => {
   });
 });
 
+/** What @shopify/shopify-api throws for a GraphQL error response (as in the live Railway log). */
+class GraphqlQueryError extends Error {
+  body: unknown;
+  constructor(message: string, body: unknown) {
+    super(message);
+    this.name = "GraphqlQueryError";
+    this.body = body;
+  }
+}
+
+const SHOP_DATA = { shop: { name: "Acme", currencyCode: "EUR", ianaTimezone: "Europe/Madrid", myshopifyDomain: S } };
+const DENIED =
+  "Access denied for shopLocales field. Required access: `read_locales` access scope or `read_markets_home` access scope.";
+
+/** Admin without read_locales: shopLocales is denied, everything else answers. */
+function noLocalesAdmin(mode: "throw" | "errors") {
+  const calls: string[] = [];
+  const client: AdminGraphqlClient = {
+    graphql: async (query) => {
+      calls.push(query);
+      if (query.includes("shopLocales")) {
+        const body = { errors: [{ message: DENIED, extensions: { code: "ACCESS_DENIED" } }], data: null };
+        if (mode === "throw") throw new GraphqlQueryError(`GraphQL Client: ${DENIED}`, body);
+        return new Response(JSON.stringify(body), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: SHOP_DATA }), { status: 200 });
+    },
+  };
+  return { client, calls };
+}
+
 describe("ensureShop", () => {
-  it("upserts the Shop row from shop + shopLocales and clears uninstalledAt on reinstall", async () => {
+  it("upserts the Shop row from shop, then shopLocales, and clears uninstalledAt on reinstall", async () => {
     db.tables.shop = [{ domain: S, currency: "USD", timezone: "UTC", locale: "en", uninstalledAt: new Date() }];
-    const a = admin(() => ({
-      shop: { name: "Acme", currencyCode: "EUR", ianaTimezone: "Europe/Madrid", myshopifyDomain: S },
-      shopLocales: [{ locale: "es", primary: true }],
-    }));
+    const a = admin((q) => (q.includes("shopLocales") ? { shopLocales: [{ locale: "es", primary: true }] } : SHOP_DATA));
     const info = await ensureShop(a.client, S);
     expect(info.name).toBe("Acme");
-    expect(a.calls[0].query).toContain("shopLocales");
-    expect(a.calls[0].query).not.toContain("primaryLocale");
+    // The shop read never asks for shopLocales (read_locales): the language is its own query.
+    expect(a.calls[0].query).toContain("shop {");
+    expect(a.calls[0].query).not.toContain("shopLocales");
+    expect(a.calls[1].query).toContain("shopLocales");
+    expect(a.calls.map((c) => c.query).join()).not.toContain("primaryLocale");
     expect(db.tables.shop).toEqual([{ domain: S, currency: "EUR", timezone: "Europe/Madrid", locale: "es", uninstalledAt: null }]);
+  });
+
+  it.each(["throw", "errors"] as const)(
+    "still reads the shop when shopLocales is ACCESS_DENIED (%s): new row in English",
+    async (mode) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const a = noLocalesAdmin(mode);
+      const info = await ensureShop(a.client, `new-${mode}.myshopify.com`);
+      expect(info).toMatchObject({ currency: "EUR", timezone: "Europe/Madrid", locale: "en" });
+      expect(db.tables.shop).toEqual([
+        { domain: `new-${mode}.myshopify.com`, currency: "EUR", timezone: "Europe/Madrid", locale: "en" },
+      ]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("read_locales");
+      warn.mockRestore();
+    },
+  );
+
+  it("keeps the stored language when shopLocales is denied", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    db.tables.shop = [{ domain: S, currency: "USD", timezone: "UTC", locale: "es", uninstalledAt: new Date() }];
+    await ensureShop(noLocalesAdmin("throw").client, S);
+    expect(db.tables.shop).toEqual([{ domain: S, currency: "EUR", timezone: "Europe/Madrid", locale: "es", uninstalledAt: null }]);
+    warn.mockRestore();
   });
 
   it("surfaces GraphQL errors", async () => {

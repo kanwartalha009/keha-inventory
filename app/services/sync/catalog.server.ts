@@ -13,12 +13,14 @@
  *                   seen in a complete run are removed.
  *  - refreshStockForInventoryItem: one item (inventory_levels/update webhook).
  *  - syncProduct / deleteProduct: products/update and products/delete webhooks.
- *  - ensureShop:    shop + shopLocales → Shop upsert (domain = the myshopify domain we hold).
+ *  - ensureShop:    shop → Shop upsert (domain = the myshopify domain we hold); the language
+ *                   (shopLocales) is a separate read that may fail without stopping it.
  *
  * `sleep`, `fetch` and `now` are injectable so tests never wait or hit the network.
  */
 import prisma from "../../db.server";
 import type { AdminGraphqlClient } from "../../models/shop.server";
+import { readShopLocale } from "../shop-locale.server";
 import {
   ADMIN_MAX_ATTEMPTS,
   BULK_RUN_MUTATION,
@@ -176,13 +178,20 @@ async function inBatches<T>(items: T[], size: number, write: (batch: T[]) => Pro
 // Shop
 // ---------------------------------------------------------------------------
 
-/** Reads shop + shopLocales and upserts the Shop row. A reinstall clears uninstalledAt. */
+/**
+ * Reads the shop (currency, timezone) and upserts the Shop row. A reinstall clears uninstalledAt.
+ * The language is a second, separate read that never fails the shop read (a store without
+ * `read_locales` still syncs): unreadable → "en" on a new row, the stored language kept on an
+ * existing one.
+ */
 export async function ensureShop(admin: AdminGraphqlClient, shop: string, deps: SyncDeps = {}): Promise<ShopInfo> {
-  const info = parseShopInfo(await gql(admin, SHOP_QUERY, undefined, deps));
+  const data = await gql(admin, SHOP_QUERY, undefined, deps);
+  const locale = await readShopLocale(admin, shop);
+  const info = parseShopInfo(data, locale);
   await prisma.shop.upsert({
     where: { domain: shop },
     create: { domain: shop, currency: info.currency, timezone: info.timezone, locale: info.locale },
-    update: { currency: info.currency, timezone: info.timezone, locale: info.locale, uninstalledAt: null },
+    update: { currency: info.currency, timezone: info.timezone, ...(locale ? { locale: info.locale } : {}), uninstalledAt: null },
   });
   return info;
 }

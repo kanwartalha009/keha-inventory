@@ -10,6 +10,7 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import { pricingConfigured, syncPlan } from "../services/app-pricing.server";
 import { forgetEntitlements, getEntitlements } from "../services/entitlements.server";
+import { readShopLocale } from "../services/shop-locale.server";
 import { lockedPageFeature, type PlanCode } from "../lib/plan-shared";
 import { LockedPage } from "../components/plan";
 import {
@@ -59,15 +60,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } else if (cached && Date.now() - cached.at < LOCALE_TTL_MS) {
     storeLocale = cached.locale;
   } else {
-    try {
-      const res = await admin.graphql(`query KehaShopLocale { shopLocales { locale primary } }`);
-      const body = (await res.json()) as {
-        data?: { shopLocales?: { locale: string; primary: boolean }[] | null };
-      };
-      storeLocale = toSupportedLocale(body?.data?.shopLocales?.find((l) => l.primary)?.locale);
-    } catch {
-      // Locale detection must never block the admin — fall back to English.
-    }
+    // Never throws: locale detection must not block the admin (no read_locales → English).
+    storeLocale = toSupportedLocale(await readShopLocale(admin, session.shop));
     localeCache.set(session.shop, { locale: storeLocale, at: Date.now() });
   }
 
