@@ -285,7 +285,15 @@ export type Paging = {
   offset?: number;
 };
 
-export type BuildOptions = { paging?: Paging };
+export type BuildOptions = {
+  paging?: Paging;
+  /**
+   * Channel sales query only: also SHOW quantity_returned (spec §6.1 verified it live with
+   * GROUP BY product_id; with product_variant_id + sales_channel it is TO VERIFY on a dev
+   * store). storeSales falls back to the query without it on a parse error.
+   */
+  returns?: boolean;
+};
 
 function pagingClause(paging: Paging | undefined): string {
   if (!paging) return "";
@@ -346,14 +354,14 @@ export function buildDailySalesByLocationQuery(
   );
 }
 
-/** Verified fallback B: units sold and gross sales per variant per sales channel. */
+/** Verified fallback B: units sold and gross sales (+ units returned with `returns`) per variant per sales channel. */
 export function buildDailySalesByChannelQuery(
   range: DayRange,
   today: string,
   opts: BuildOptions = {},
 ): string {
   return (
-    "FROM sales SHOW net_items_sold, gross_sales " +
+    (opts.returns ? "FROM sales SHOW net_items_sold, gross_sales, quantity_returned " : "FROM sales SHOW net_items_sold, gross_sales ") +
     "GROUP BY product_variant_id, sales_channel TIMESERIES day " +
     dateClause(range, today) +
     pagingClause(opts.paging)

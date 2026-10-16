@@ -68,6 +68,15 @@ describe("query builders (exact strings)", () => {
     );
   });
 
+  it("channel query with returns (task 2.4; TO VERIFY on a dev store) keeps paging last", () => {
+    expect(buildDailySalesByChannelQuery(SEPT, TODAY, { returns: true })).toBe(
+      "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30",
+    );
+    expect(buildDailySalesByChannelQuery(SEPT, TODAY, { returns: true, paging: { orderBy: "product_variant_id", limit: 10, offset: 20 } })).toBe(
+      "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30 ORDER BY product_variant_id LIMIT 10 OFFSET 20",
+    );
+  });
+
   it("query 2 — daily stock per variant per location", () => {
     expect(buildDailyStockQuery(SEPT, TODAY)).toBe(
       "FROM inventory_by_location SHOW ending_inventory_units_at_location, days_out_of_stock_at_location GROUP BY product_variant_id, inventory_location_name TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30",
@@ -194,6 +203,23 @@ describe("parsers", () => {
       ["online", "unknown", 4, 0],
       ["Barcelona", "unknown", 2, 0],
     ]);
+  });
+
+  it("sales by channel with returns: quantity_returned read when present, 0 and reported when absent", () => {
+    const cols = [
+      { name: "day", dataType: "DAY_TIMESTAMP" },
+      { name: "product_variant_id", dataType: "INTEGER" },
+      { name: "sales_channel", dataType: "STRING" },
+      { name: "net_items_sold", dataType: "INTEGER" },
+      { name: "gross_sales", dataType: "MONEY" },
+    ];
+    const row = { day: "2026-09-01", product_variant_id: 7, sales_channel: "Online Store", net_items_sold: 8, gross_sales: "200.00" };
+    const withReturns = parseSalesRows({ columns: [...cols, { name: "quantity_returned", dataType: "INTEGER" }], rows: [{ ...row, quantity_returned: -2 }] });
+    expect(withReturns.rows[0]).toMatchObject({ sold: 8, gross: 200, returned: -2 });
+    expect(withReturns.missingColumns).toEqual(["pos_location_name"]);
+    const without = parseSalesRows({ columns: cols, rows: [row] });
+    expect(without.rows[0].returned).toBe(0);
+    expect(without.missingColumns).toEqual(["pos_location_name", "quantity_returned"]);
   });
 
   it("sales: a missing location column is 'unknown', not 'online'", () => {

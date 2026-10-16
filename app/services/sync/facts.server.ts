@@ -13,7 +13,7 @@
  */
 import prisma from "../../db.server";
 import type { ShopifyqlClient } from "./shopifyql.server";
-import { runChunkedPaged, type BuildOptions, type DayRange, type ParseResult } from "../../lib/sync/shopifyql-shared";
+import { ShopifyqlParseError, runChunkedPaged, type BuildOptions, type DayRange, type ParseResult } from "../../lib/sync/shopifyql-shared";
 import {
   dayDate,
   locationNameIndex,
@@ -121,13 +121,25 @@ export async function storeSales(
     ["pos_location_name", "net_items_sold"],
     "product_variant_id",
   );
-  const byChannel = await chunked(
-    range,
-    (r, o) => ql.salesDailyByChannel(r, today, o),
-    "sales by channel",
-    ["sales_channel", "net_items_sold", "gross_sales"],
-    "product_variant_id",
-  );
+  // Returns (task 2.4, fix_returns): ask for quantity_returned too. TO VERIFY on a dev store; if
+  // ShopifyQL rejects the column with this grouping, fall back to the verified query (returned = 0,
+  // and the engine then produces no returns actions).
+  const channelQuery = (returns: boolean) =>
+    chunked(
+      range,
+      (r, o) => ql.salesDailyByChannel(r, today, returns ? { ...o, returns: true } : o),
+      "sales by channel",
+      ["sales_channel", "net_items_sold", "gross_sales"],
+      "product_variant_id",
+    );
+  let byChannel: Awaited<ReturnType<typeof channelQuery>>;
+  try {
+    byChannel = await channelQuery(true);
+  } catch (e) {
+    if (!(e instanceof ShopifyqlParseError)) throw e;
+    console.warn(`[sync/sales] ${shop}: quantity_returned rejected (${e.messages.join("; ")}); storing sales without returns`);
+    byChannel = await channelQuery(false);
+  }
   const loc = salesByLocationFacts(byLocation.rows, range, locationNameIndex(locations));
   const facts = [...loc.facts, ...salesByChannelFacts(byChannel.rows, range)];
   await prisma.$transaction([
