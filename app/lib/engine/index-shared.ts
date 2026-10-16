@@ -125,6 +125,12 @@ export interface VariantInputs {
   incoming: number;
   caseQty: number | null;
   minOrder: number | null;
+  /**
+   * The unrounded need behind orderQty: demand(leadTime + cycle) + safety − (onHand + incoming),
+   * before the case pack and the minimum order; null when there is no order advice. The Reorder
+   * screen nets open drafts from it before rounding (review fix).
+   */
+  orderNeed: number | null;
   lastSaleDay: DayKey | null;
   /** Start of the no-sale period when the variant never sold (oldest day with data). */
   dataSinceDay: DayKey | null;
@@ -253,9 +259,12 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   // Order advice only with ≥ minInStockDays in-stock days.
   let orderQty: number | null = null;
   let orderBy: DayKey | null = null;
+  let orderNeed: number | null = null;
   if (advice) {
+    const need = demand(r.rate!, m, lead.days + cycle);
+    orderNeed = need + safety! - (onHand + incoming);
     orderQty = orderQuantity({
-      demand: demand(r.rate!, m, lead.days + cycle),
+      demand: need,
       safety: safety!,
       onHand,
       incoming,
@@ -312,6 +321,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       incoming,
       caseQty: input.caseQty ?? null,
       minOrder: input.minOrder ?? null,
+      orderNeed,
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,
       noSaleDays,

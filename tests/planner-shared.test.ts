@@ -41,6 +41,7 @@ import {
   type PlannerVariant,
   type ScenarioForm,
 } from "../app/lib/planner-shared";
+import { parseVariantsWithQty } from "../app/lib/reorder-shared";
 
 const TODAY = "2026-10-16";
 const SHORT: Coverage = { from: "2026-06-01", to: "2026-10-15" }; // < 13 months: no seasonality
@@ -289,6 +290,24 @@ describe("computeScenario", () => {
     expect(unitValueOf({ cost: 0, costCurrency: null, price: 9 }, "EUR")).toEqual({ value: 9, basis: "retail" });
   });
 
+  it("review fix: a supplier group below its order-total minimum is topped up like Reorder (and the cash follows)", () => {
+    const supplier = { id: "s1", name: "Acme Textiles", leadTimeDays: 14, minOrder: null, minOrderTotal: 100, casePack: null, vendorMatch: ["Acme"], currency: null };
+    const r = computeScenario(input({ variants: [V(1), V(2, { rate: 6 })], suppliers: [supplier] }));
+    const g = r.groups[0]!;
+    expect(g).toMatchObject({ kind: "supplier", minOrderTotal: 100, toppedUp: true, units: 100 });
+    expect(g.lines.reduce((a, l) => a + l.qty, 0)).toBe(100);
+    // Weighted by sales per day (2 vs 6): the faster seller takes most of the extra units.
+    const q = new Map(g.lines.map((l) => [l.variantId, l.qty]));
+    expect(q.get(V(2).id)!).toBeGreaterThan(q.get(V(1).id)!);
+    expect(r.order.units).toBe(100);
+    expect(r.cash.total).toBe(400); // 100 units × cost 4
+    expect(g.value).toBe(400);
+    // No minimum → untouched.
+    const plain = computeScenario(input({ variants: [V(1), V(2, { rate: 6 })], suppliers: [{ ...supplier, minOrderTotal: null }] }));
+    expect(plain.groups[0]!.toppedUp).toBe(false);
+    expect(plain.order.units).toBeLessThan(100);
+  });
+
   it("revenue target: plan = target ÷ baseline revenue", () => {
     // Baseline: 2/day × 5 days × €20 = €200 → target €500 → × 2.5.
     const r = computeScenario(input({ targetType: "revenue", targetValue: 500 }));
@@ -388,6 +407,21 @@ describe("cash per week", () => {
   it("links the order lines into the Reorder plan", () => {
     expect(reorderLink(["gid://shopify/ProductVariant/11", "gid://shopify/ProductVariant/12", "gid://shopify/ProductVariant/11"])).toBe("/app/reorder?variants=11,12");
     expect(reorderLink([])).toBe("/app/reorder");
+  });
+
+  it("review fix: the link carries the planned quantities (id:qty), Reorder's parser reads them back", () => {
+    const href = reorderLink([
+      { variantId: "gid://shopify/ProductVariant/11", qty: 40 },
+      { variantId: "gid://shopify/ProductVariant/12", qty: 6 },
+      { variantId: "gid://shopify/ProductVariant/13", qty: 0 },
+    ]);
+    expect(href).toBe("/app/reorder?variants=11:40,12:6,13");
+    const parsed = parseVariantsWithQty(new URL(`https://x${href}`).searchParams.get("variants"));
+    expect(parsed.ids).toEqual(["gid://shopify/ProductVariant/11", "gid://shopify/ProductVariant/12", "gid://shopify/ProductVariant/13"]);
+    expect([...parsed.planned]).toEqual([
+      ["gid://shopify/ProductVariant/11", 40],
+      ["gid://shopify/ProductVariant/12", 6],
+    ]);
   });
 });
 

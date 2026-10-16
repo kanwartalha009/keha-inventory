@@ -99,6 +99,12 @@ export type ReorderMetricIn = {
    * set orderQty (VariantMetric.inputs.kehaOnOrder). Optional: 0 when absent.
    */
   kehaCounted?: number;
+  /**
+   * The unrounded need behind orderQty (VariantMetric.inputs.orderNeed): drafts and uncounted
+   * Keha units are netted from it BEFORE the case pack and minimums are applied (review fix).
+   * Absent on rows computed before it existed: orderQty is used instead.
+   */
+  need?: number | null;
 };
 
 export type ReorderSupplierIn = SupplierLite & { currency: string | null; hasEmail: boolean };
@@ -126,6 +132,10 @@ export type ReorderLine = {
   rate: number | null;
   /** Asked for through ?variants= (Home "Add to reorder plan"). */
   selected: boolean;
+  /** Asked for by the Planner's "Add to reorder plan" with its planned quantity (?variants=id:qty). */
+  fromPlanner: boolean;
+  /** The planner's quantity for this line; null when not from the planner. */
+  planned: number | null;
 };
 
 export type ReorderGroup = {
@@ -171,6 +181,8 @@ export type BuildReorderInput = {
   storeCurrency: string;
   defaultLeadTimeDays: number;
   selected?: ReadonlySet<string>;
+  /** Planned quantities from the Planner (?variants=id:qty): the line starts at max(planned, suggestion). */
+  planned?: ReadonlyMap<string, number>;
 };
 
 /**
@@ -186,10 +198,16 @@ export function buildReorderGroups(input: BuildReorderInput): ReorderGroup[] {
     const m = input.metrics.get(v.id);
     const onOrder = Math.max(0, input.onOrder.get(v.id) ?? 0);
     // orderQty already nets out the Keha units compute counted; subtract only the rest
-    // (drafts, and orders sent since compute last ran).
+    // (drafts, and orders sent since compute last ran) — from the UNROUNDED need when compute
+    // stored it, then round (case pack, MOQ): need 3, MOQ 50, a 3-unit draft → nothing (review fix).
     const notCounted = Math.max(0, onOrder - Math.max(0, m?.kehaCounted ?? 0));
-    const need = Math.max(0, (m?.orderQty ?? 0) - notCounted);
-    const isSel = selected.has(v.id);
+    const rawNeed = m?.need;
+    const need =
+      typeof rawNeed === "number" && Number.isFinite(rawNeed)
+        ? Math.max(0, rawNeed - notCounted)
+        : Math.max(0, (m?.orderQty ?? 0) - notCounted);
+    const plannedQty = input.planned?.get(v.id);
+    const isSel = selected.has(v.id) || plannedQty !== undefined;
     if (need <= 0 && !isSel) continue;
     const supplier = supplierFor(v, input.suppliers);
     const key = supplier ? supplierGroupKey(supplier.id) : vendorGroupKey(v.vendor);
@@ -229,12 +247,14 @@ export function buildReorderGroups(input: BuildReorderInput): ReorderGroup[] {
       daysLeft: m?.daysLeft ?? null,
       neverRunsOut: !!m?.neverRunsOut,
       orderBy,
-      suggested: lineQuantity(need, pack, moq),
+      suggested: Math.max(lineQuantity(need, pack, moq), plannedQty !== undefined ? lineQuantity(plannedQty, pack, moq) : 0),
       pack,
       moq,
       unitCost: unitCostIn(v.cost, v.costCurrency, g.currency, input.storeCurrency),
       rate: m?.rate ?? null,
       selected: isSel,
+      fromPlanner: plannedQty !== undefined,
+      planned: plannedQty ?? null,
     });
     if (isSel) g.selected = true;
     if (orderBy && (!g.orderBy || orderBy < g.orderBy)) g.orderBy = orderBy;
@@ -314,17 +334,34 @@ export function readQty(v: unknown): number {
   return Number.isInteger(n) && n >= 0 && n <= 1_000_000 ? n : 0;
 }
 
-/** `?variants=gid,gid` (or numeric ids) → variant gids, at most 250. */
-export function parseVariantsParam(raw: string | null): string[] {
-  if (!raw) return [];
-  const out = new Set<string>();
+const VARIANT_ENTRY = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{1,20})(?::(\d{1,7}))?$/;
+
+/**
+ * `?variants=` → variant gids (at most 250) and planned quantities. Entries are a gid or a
+ * numeric id (Home's "Add to reorder plan"), optionally `:qty` (the Planner's, whole units
+ * 1…1,000,000); anything else is ignored.
+ */
+export function parseVariantsWithQty(raw: string | null): { ids: string[]; planned: Map<string, number> } {
+  const ids = new Set<string>();
+  const planned = new Map<string, number>();
+  if (!raw) return { ids: [], planned };
   for (const part of raw.split(",")) {
-    const s = part.trim();
-    const m = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{1,20})$/.exec(s);
-    if (m) out.add(`gid://shopify/ProductVariant/${m[1]}`);
-    if (out.size >= 250) break;
+    if (ids.size >= 250) break;
+    const m = VARIANT_ENTRY.exec(part.trim());
+    if (!m) continue;
+    const id = `gid://shopify/ProductVariant/${m[1]}`;
+    ids.add(id);
+    if (m[2] !== undefined) {
+      const q = readQty(m[2]);
+      if (q > 0) planned.set(id, Math.max(planned.get(id) ?? 0, q));
+    }
   }
-  return [...out];
+  return { ids: [...ids], planned };
+}
+
+/** `?variants=gid,gid` (or numeric ids, optionally `id:qty`) → variant gids, at most 250. */
+export function parseVariantsParam(raw: string | null): string[] {
+  return parseVariantsWithQty(raw).ids;
 }
 
 /** The group's heading: the supplier, or "No supplier — grouped by vendor". */

@@ -7,6 +7,7 @@ import {
   lineQuantity,
   minimumWarnings,
   parseVariantsParam,
+  parseVariantsWithQty,
   readQty,
   topUpToMinimum,
   unitCostIn,
@@ -163,6 +164,47 @@ describe("buildReorderGroups", () => {
     expect(run(0, 20)).toBe(30);
   });
 
+  it("review fix: drafts are netted from the UNROUNDED need, then rounded (need 3, MOQ 50, draft 3 → nothing)", () => {
+    const id = variant(1).id;
+    const run = (m: ReorderMetricIn, onOrder: number) =>
+      buildReorderGroups({
+        ...base,
+        variants: [variant(1)],
+        metrics: new Map([[id, m]]),
+        onOrder: new Map([[id, onOrder]]),
+        suppliers: [supplier({ minOrder: 50 })],
+      })[0]?.lines[0]?.suggested ?? 0;
+    // compute: need 3 → orderQty 50 (the MOQ). A 3-unit draft covers the need.
+    expect(run(metric(50, { need: 3 }), 3)).toBe(0);
+    // Need 10, draft 3 → 7 left → the MOQ again.
+    expect(run(metric(50, { need: 10 }), 3)).toBe(50);
+    // Rows without the stored need: orderQty as before.
+    expect(run(metric(50), 3)).toBe(50);
+  });
+
+  it("review fix: planned quantities from the Planner start their lines at max(planned, suggestion), marked from the planner", () => {
+    const groups = buildReorderGroups({
+      ...base,
+      variants: [variant(1), variant(2), variant(3)],
+      metrics: new Map([
+        [variant(1).id, metric(10)],
+        [variant(2).id, metric(30)],
+      ]),
+      onOrder: new Map(),
+      suppliers: [supplier({ casePack: 6 })],
+      planned: new Map([
+        [variant(1).id, 24],
+        [variant(2).id, 12],
+        [variant(3).id, 7],
+      ]),
+    });
+    const line = (n: number) => groups[0]!.lines.find((l) => l.variantId === variant(n).id)!;
+    expect(line(1)).toMatchObject({ suggested: 24, fromPlanner: true, planned: 24, selected: true });
+    expect(line(2)).toMatchObject({ suggested: 30, fromPlanner: true }); // the everyday suggestion is higher
+    expect(line(3)).toMatchObject({ suggested: 12, fromPlanner: true }); // no metric: planned, rounded to the pack
+    expect(groups[0]!.selected).toBe(true);
+  });
+
   it("subtracts open Keha orders and drops lines with nothing left to order", () => {
     const groups = buildReorderGroups({
       ...base,
@@ -261,5 +303,9 @@ describe("inputs", () => {
       "gid://shopify/ProductVariant/22",
     ]);
     expect(parseVariantsParam(null)).toEqual([]);
+    // Planner links: id:qty (ids still parse; a bad quantity keeps the id without a plan).
+    expect(parseVariantsParam("11:40,12")).toEqual(["gid://shopify/ProductVariant/11", "gid://shopify/ProductVariant/12"]);
+    expect([...parseVariantsWithQty("11:40,12,13:0,14:abc").planned]).toEqual([["gid://shopify/ProductVariant/11", 40]]);
+    expect(parseVariantsWithQty("13:0").ids).toEqual(["gid://shopify/ProductVariant/13"]);
   });
 });

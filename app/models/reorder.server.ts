@@ -105,6 +105,12 @@ function kehaCountedOf(inputs: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
 }
 
+/** VariantMetric.inputs.orderNeed (engine): the unrounded need; null when absent (older rows). */
+function needOf(inputs: unknown): number | null {
+  const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>).orderNeed : undefined;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 /**
  * Units on open Keha orders per variant (ordered − received) and the earliest
  * arrival. `statuses`: draft/sent/confirmed for the Reorder suggestions;
@@ -201,8 +207,16 @@ export type ReorderData = {
   missingSelected: number;
 };
 
-/** The Reorder screen: suggestions grouped by supplier, and the open orders. `scope`: "online" or a Location.id. */
-export async function loadReorder(shop: string, selected: string[] = [], scope: string = METRIC_SCOPE): Promise<ReorderData> {
+/**
+ * The Reorder screen: suggestions grouped by supplier, and the open orders. `scope`: "online"
+ * or a Location.id. `planned`: the Planner's quantities (?variants=id:qty) for those lines.
+ */
+export async function loadReorder(
+  shop: string,
+  selected: string[] = [],
+  scope: string = METRIC_SCOPE,
+  planned: ReadonlyMap<string, number> = new Map(),
+): Promise<ReorderData> {
   const basics = await shopBasics(shop);
   const metrics = await prisma.variantMetric.findMany({
     where: { shop, scope, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
@@ -245,6 +259,7 @@ export async function loadReorder(shop: string, selected: string[] = [], scope: 
         neverRunsOut: m.neverRunsOut,
         rate: m.rate,
         kehaCounted: kehaCountedOf(m.inputs),
+        need: needOf(m.inputs),
       },
     ]),
   );
@@ -259,6 +274,7 @@ export async function loadReorder(shop: string, selected: string[] = [], scope: 
     storeCurrency: basics.currency,
     defaultLeadTimeDays: basics.leadTimeDays,
     selected: new Set(selected.filter((s) => known.has(s))),
+    planned: new Map([...planned].filter(([id]) => known.has(id))),
   });
   return { groups, openOrders: open, currency: basics.currency, missingSelected: selected.filter((s) => !known.has(s)).length };
 }

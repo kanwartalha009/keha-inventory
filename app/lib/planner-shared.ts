@@ -23,7 +23,9 @@
  *    trend × days until the start); plan 1 before the period. Never below 0: sales lost before
  *    the period are the Reorder screen's job, not the season order's.
  *  - Units needed = demand + safety (z × σ × √lead time) − stock at start; rounded up to the case
- *    pack and the per-variant minimum exactly as Reorder (lineQuantity). ≤ 0 → no line.
+ *    pack and the per-variant minimum exactly as Reorder (lineQuantity). ≤ 0 → no line. Then
+ *    the supplier's order-total minimum: a group below it is topped up exactly as Reorder
+ *    (topUpToMinimum, weights = sales per day), before cash per week is summed.
  *  - Order by = start − lead time − safety days (orderByDate with 0 days left); before today →
  *    "Late — order now".
  *  - Cash: unit cost × qty in the store currency (cost in another currency is not converted);
@@ -52,7 +54,7 @@ import {
   type UnitsSeries,
 } from "./engine/season-shared";
 import { absPctError, ACCURACY_TOP, nextMonthStart, STORE_ROW } from "./engine/accuracy-shared";
-import { lineQuantity, supplierGroupKey, unitCostIn, vendorGroupKey } from "./reorder-shared";
+import { lineQuantity, supplierGroupKey, topUpToMinimum, unitCostIn, vendorGroupKey } from "./reorder-shared";
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
 
 type T = (s: string) => string;
@@ -507,6 +509,10 @@ export interface PlannerGroup {
   name: string;
   leadTimeDays: number;
   leadTimeSource: "supplier" | "default";
+  /** The supplier's minimum total units per order (null = none); lines are topped up to it. */
+  minOrderTotal?: number | null;
+  /** Lines were raised to reach the supplier's order minimum. */
+  toppedUp?: boolean;
   orderBy: DayKey | null;
   late: boolean;
   units: number;
@@ -675,6 +681,8 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
   let totalRevenue = 0;
   let missingPrice = 0;
   const groups = new Map<string, PlannerGroup>();
+  /** Forecast sales per day per ordered variant: the top-up weight (as Reorder). */
+  const weightOf = new Map<string, number>();
   if (status === "ok") {
     for (const r of rows) {
       const demand = r.base * plan;
@@ -701,6 +709,7 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
       const moq = supplier?.minOrder ?? null;
       const qty = lineQuantity(demand + safety - stockAtStart, pack, moq);
       if (!(qty > 0)) continue;
+      weightOf.set(r.v.id, r.v.rate!);
       const orderBy = orderByDate(from, 0, lead.days, sDays)!;
       const late = orderBy < today;
       const value = unitValueOf(r.v, input.currency);
@@ -740,6 +749,8 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
             name: supplier ? supplier.name : (r.v.vendor ?? "").trim(),
             leadTimeDays: lead.days,
             leadTimeSource: lead.source,
+            minOrderTotal: supplier?.minOrderTotal ?? null,
+            toppedUp: false,
             orderBy: null,
             late: false,
             units: 0,
@@ -768,6 +779,22 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
         a.variantTitle.localeCompare(b.variantTitle) ||
         (a.variantId < b.variantId ? -1 : 1),
     );
+    // The supplier's order-total minimum, topped up exactly as Reorder does (review fix).
+    const top = topUpToMinimum(
+      g.lines.map((l) => ({ qty: l.qty, pack: l.pack, weight: weightOf.get(l.variantId) ?? 0 })),
+      g.minOrderTotal ?? null,
+    );
+    if (top.toppedUp) {
+      g.toppedUp = true;
+      g.units = 0;
+      g.value = null;
+      g.lines.forEach((l, i) => {
+        l.qty = top.qtys[i]!;
+        l.lineValue = l.unitValue === null ? null : round2(l.unitValue * l.qty);
+        g.units += l.qty;
+        if (l.lineValue !== null) g.value = round2((g.value ?? 0) + l.lineValue);
+      });
+    }
   }
   groupList.sort(
     (a, b) => (a.orderBy ?? "9999").localeCompare(b.orderBy ?? "9999") || Number(a.kind === "vendor") - Number(b.kind === "vendor") || a.name.localeCompare(b.name),
@@ -839,13 +866,23 @@ export function readScenarioResult(raw: unknown): ScenarioResult | null {
   return r as ScenarioResult;
 }
 
-/** `/app/reorder?variants=…` for the scenario's order lines (numeric ids, at most 250 — Reorder's cap). */
-export function reorderLink(variantIds: readonly string[]): string {
-  const ids = [...new Set(variantIds)]
-    .map((id) => /(\d+)$/.exec(id)?.[1])
-    .filter((x): x is string => !!x)
-    .slice(0, 250);
-  return ids.length ? `/app/reorder?variants=${ids.join(",")}` : "/app/reorder";
+/**
+ * `/app/reorder?variants=…` for the scenario's order lines (numeric ids, at most 250 — Reorder's
+ * cap). Lines with a planned quantity are written `id:qty` so Reorder starts them at
+ * max(planned, its everyday suggestion) (review fix: the planned quantities used to be lost).
+ */
+export function reorderLink(lines: readonly (string | { variantId: string; qty?: number | null })[]): string {
+  const qtyOf = new Map<string, number | null>();
+  for (const l of lines) {
+    const id = /(\d+)$/.exec(typeof l === "string" ? l : l.variantId)?.[1];
+    if (!id) continue;
+    const q = typeof l === "string" ? null : l.qty;
+    const qty = typeof q === "number" && Number.isInteger(q) && q > 0 ? q : null;
+    const cur = qtyOf.get(id);
+    qtyOf.set(id, cur == null ? qty : qty == null ? cur : Math.max(cur, qty));
+  }
+  const parts = [...qtyOf].slice(0, 250).map(([id, q]) => (q == null ? id : `${id}:${q}`));
+  return parts.length ? `/app/reorder?variants=${parts.join(",")}` : "/app/reorder";
 }
 
 // ---------------------------------------------------------------------------

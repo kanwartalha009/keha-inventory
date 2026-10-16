@@ -679,7 +679,7 @@ function groupName(g: PlannerGroup, t: T): string {
 function OrderList({ result }: { result: ScenarioResult }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const all = result.groups.flatMap((g) => g.lines.map((l) => l.variantId));
+  const all = result.groups.flatMap((g) => g.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })));
   return (
     <s-section heading={t("What to order, and by when")}>
       <s-stack direction="block" gap="base">
@@ -726,13 +726,21 @@ function GroupTable({ group, currency }: { group: PlannerGroup; currency: string
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.late && <s-badge tone="critical">{t("Late — order now")}</s-badge>}
           </s-stack>
-          <s-link {...link(reorderLink(group.lines.map((l) => l.variantId)))}>{t("Add to reorder plan")}</s-link>
+          <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty }))))}>{t("Add to reorder plan")}</s-link>
         </s-stack>
         <s-text color="subdued">
           {`${t("Lead time")}: ${lead} · ${t("Order by")}: ${formatDay(group.orderBy, locale)} · ${fill(t("Units: {n}"), { n: formatCount(group.units, locale) })} · ${fill(t("Cost: {amount}"), {
             amount: group.missing ? "—" : formatAmount(group.value, currency, locale),
           })}`}
         </s-text>
+        {group.toppedUp && (
+          <s-text color="subdued">
+            {fill(t("Topped up to reach {supplier}'s minimum of {min} units."), {
+              supplier: groupName(group, t),
+              min: formatCount(group.minOrderTotal ?? null, locale),
+            })}
+          </s-text>
+        )}
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>

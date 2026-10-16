@@ -41,7 +41,7 @@ import {
   groupTitle,
   groupTotals,
   minimumWarnings,
-  parseVariantsParam,
+  parseVariantsWithQty,
   readQty,
   type ReorderGroup,
   type ReorderLine,
@@ -61,11 +61,12 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
     return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false, ...NO_LOCATIONS, transfers: LOCKED_TRANSFERS };
   }
   const url = new URL(request.url);
-  const selected = parseVariantsParam(url.searchParams.get("variants"));
+  // `?variants=id,id` (Home) or `id:qty,…` (Planner: the planned quantities start those lines).
+  const { ids: selected, planned } = parseVariantsWithQty(url.searchParams.get("variants"));
   const locations = features.locations ? await listPlanningLocations(session.shop) : [];
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
   const [reorder, transfers] = await Promise.all([
-    loadReorder(session.shop, selected, view.scope),
+    loadReorder(session.shop, selected, view.scope, planned),
     features.transfers ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
   ]);
   return {
@@ -113,6 +114,7 @@ export default function Reorder() {
   const { t } = useLocale();
   const data = useLoaderData<typeof loader>() as ReorderPageData;
   const anySelected = data.groups.some((g) => g.selected);
+  const fromPlanner = data.groups.some((g) => g.lines.some((l) => l.fromPlanner));
   const location = data.location;
   return (
     <AppPage
@@ -126,7 +128,13 @@ export default function Reorder() {
       }
     >
       <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
-      {anySelected && <s-banner tone="info">{t("The products from your action list are highlighted.")}</s-banner>}
+      {anySelected && (
+        <s-banner tone="info">
+          {fromPlanner
+            ? t("The products from the planner are highlighted, starting at the quantities you planned.")
+            : t("The products from your action list are highlighted.")}
+        </s-banner>
+      )}
       {data.missingSelected > 0 && (
         <s-banner tone="warning">{t("Some products from the link aren't tracked in your store any more.")}</s-banner>
       )}
@@ -174,7 +182,9 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
       <s-stack direction="block" gap="base">
         <s-stack direction="inline" gap="base" alignItems="center">
           {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
-          {group.selected && <s-badge tone="info">{t("From your action list")}</s-badge>}
+          {group.selected && (
+            <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the planner") : t("From your action list")}</s-badge>
+          )}
           <s-text color="subdued">{`${t("Lead time")}: ${leadLabel}`}</s-text>
           <s-text color="subdued">{`${t("Order by")}: ${formatDay(group.orderBy, locale)}`}</s-text>
         </s-stack>
@@ -292,7 +302,7 @@ function LineRow({
           <s-stack direction="block" gap="none">
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
-            {l.selected && <s-badge tone="info">{t("From your action list")}</s-badge>}
+            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From the planner") : t("From your action list")}</s-badge>}
           </s-stack>
         </div>
       </s-table-cell>
