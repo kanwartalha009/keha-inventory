@@ -5,6 +5,7 @@
  * app/services/slack.server.ts; the link is stored encrypted and never shown back.
  */
 import { fill, translate, type Locale } from "./i18n";
+import type { MondaySummary } from "./monday-shared";
 
 /**
  * A Slack incoming-webhook link: https://hooks.slack.com/services/T…/B…/<secret>.
@@ -70,4 +71,27 @@ export function buildSlackTest(locale: Locale, storeName: string): SlackMessage 
       }),
     ),
   };
+}
+
+/**
+ * The Monday summary for Slack (spec §11: "same content, shorter"): headline,
+ * the 4 numbers with their change, the top actions as links, the accuracy line.
+ * No unsubscribe line — the Slack summary is switched off on the Alerts tab.
+ */
+export function buildSlackMonday(m: MondaySummary): SlackMessage {
+  const e = slackEscape;
+  const lines: string[] = [`*${e(m.atStake)}*`, e(m.heading), ""];
+  for (const r of m.rows) lines.push(`• ${e(r.label)}: *${e(r.value)}*${r.changeText ? ` (${e(r.changeText)})` : ""}`);
+  if (m.refreshNote) lines.push(`_${e(m.refreshNote)}_`);
+  if (m.actions.length || m.lockedFixes) {
+    lines.push("", `*${e(m.topHeading)}*`);
+    m.actions.forEach((a, i) => {
+      lines.push(`${i + 1}. ${slackLink(a.link, a.title)}${a.amountText ? ` · ${e(a.amountText)}` : ""}`);
+      if (a.reason) lines.push(`    ${e(a.reason)}`);
+    });
+    if (m.lockedFixes) lines.push(`${m.actions.length + 1}. ${e(m.lockedFixes.text)} ${slackLink(m.lockedFixes.link, m.lockedFixes.label)}`);
+  }
+  if (m.accuracy) lines.push("", e(m.accuracy));
+  lines.push("", slackLink(m.links.app, m.openLabel));
+  return { text: lines.join("\n") };
 }

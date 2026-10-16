@@ -11,8 +11,15 @@ import { createElement } from "react";
 import { createRoutesStub } from "react-router";
 
 type Row = Record<string, unknown>;
-const { tables, sendEmail, planFor, fakeDb } = vi.hoisted(() => {
-  const tables: { shop: Row[]; moneyAtStake: Row[]; ownerEmailLog: Row[] } = { shop: [], moneyAtStake: [], ownerEmailLog: [] };
+const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce } = vi.hoisted(() => {
+  const tables: { shop: Row[]; moneyAtStake: Row[]; ownerEmailLog: Row[]; action: Row[]; variant: Row[]; accuracyMonth: Row[] } = {
+    shop: [],
+    moneyAtStake: [],
+    ownerEmailLog: [],
+    action: [],
+    variant: [],
+    accuracyMonth: [],
+  };
   const dayIn = (d: unknown, c: { gte?: Date; lte?: Date }) =>
     d instanceof Date && (!c.gte || d >= c.gte) && (!c.lte || d <= c.lte);
   const byDay = (dir: "asc" | "desc") => (a: Row, b: Row) =>
@@ -34,6 +41,20 @@ const { tables, sendEmail, planFor, fakeDb } = vi.hoisted(() => {
         tables.moneyAtStake.filter((r) => r.shop === where.shop).sort(byDay(orderBy.day))[0] ?? null,
       findMany: async ({ where, orderBy }: { where: { shop: string; day: { gte?: Date; lte?: Date } }; orderBy: { day: "asc" | "desc" } }) =>
         tables.moneyAtStake.filter((r) => r.shop === where.shop && dayIn(r.day, where.day)).sort(byDay(orderBy.day)),
+    },
+    action: {
+      findMany: async ({ where }: { where: { shop: string; state: { in: string[] } } }) =>
+        tables.action.filter((r) => r.shop === where.shop && where.state.in.includes(r.state as string)),
+    },
+    variant: {
+      findMany: async ({ where }: { where: { shop: string; productId: { in: string[] } } }) =>
+        tables.variant.filter((r) => r.shop === where.shop && where.productId.in.includes(r.productId as string)),
+    },
+    accuracyMonth: {
+      findFirst: async ({ where }: { where: { shop: string } }) =>
+        tables.accuracyMonth
+          .filter((r) => r.shop === where.shop)
+          .sort((a, b) => (b.month as Date).getTime() - (a.month as Date).getTime())[0] ?? null,
     },
     ownerEmailLog: {
       findUnique: async ({ where }: { where: { shop_kind_periodKey: { shop: string; kind: string; periodKey: string } } }) => {
@@ -65,7 +86,8 @@ const { tables, sendEmail, planFor, fakeDb } = vi.hoisted(() => {
   };
   const sendEmail = vi.fn(async (_input: Record<string, unknown>) => ({ ok: true }) as { ok: true } | { ok: false; reason: string });
   const planFor = vi.fn(async (_shop: string) => "growth");
-  return { tables, sendEmail, planFor, fakeDb };
+  const deliverSlackOnce = vi.fn(async (..._a: unknown[]) => "sent" as "sent" | "failed" | "skipped");
+  return { tables, sendEmail, planFor, fakeDb, deliverSlackOnce };
 });
 
 vi.mock("../app/db.server", () => ({ default: fakeDb }));
@@ -83,6 +105,7 @@ vi.mock("../app/shopify.server", () => ({
   },
 }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: (shop: string) => planFor(shop) }));
+vi.mock("../app/services/slack.server", () => ({ deliverSlackOnce: (...a: unknown[]) => deliverSlackOnce(...a) }));
 vi.mock("../app/services/email.server", () => ({
   emailTransportConfigured: () => true,
   sendEmail: (input: Record<string, unknown>) => sendEmail(input),
@@ -94,10 +117,14 @@ beforeAll(() => {
 });
 
 import {
+  actionReasonText,
   composeMondayEmail,
   formatMoneyWhole,
   isMondaySendTime,
+  lastMonthAccuracy,
   MONDAY_UNSUB_PURPOSE,
+  selectMondayActions,
+  type MondayActionRow,
   type MondayEmailInput,
 } from "../app/lib/monday-shared";
 import { runMondayEmails, runMondayEmailsAllShops } from "../app/services/monday.server";
@@ -234,12 +261,12 @@ describe("composeMondayEmail", () => {
 
   it("later phases: actions add '— 5 things to do' and the top 5; accuracy adds its line", () => {
     const actions = Array.from({ length: 7 }, (_, i) => ({ title: `Reorder item ${i + 1}`, reason: "Runs out in 9 days", amount: 100 * (i + 1), link: `https://x/${i + 1}` }));
-    const e = composeMondayEmail({ ...base, actions, accuracy: "Last month we predicted 412 units, you sold 398 (96%)." });
+    const e = composeMondayEmail({ ...base, actions, accuracyPct: 7.4 });
     expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
     expect(e.text).toContain("Top things to do this week");
     expect(e.text).toContain("5. Reorder item 5 (€500)");
     expect(e.text).not.toContain("Reorder item 6");
-    expect(e.text).toContain("Last month we predicted 412 units");
+    expect(e.text).toContain("Last month we were within 7% on your store total.");
     expect(e.html).toContain('href="https://x/5"');
     expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,601 at stake this week — 1 thing to do");
     const pastOnly = { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 };
@@ -266,6 +293,10 @@ beforeEach(() => {
   tables.shop = [];
   tables.moneyAtStake = [];
   tables.ownerEmailLog = [];
+  tables.action = [];
+  tables.variant = [];
+  tables.accuracyMonth = [];
+  deliverSlackOnce.mockClear();
   sendEmail.mockClear();
   planFor.mockReset();
   planFor.mockResolvedValue("growth");
@@ -436,6 +467,205 @@ describe("one retry within the week", () => {
     expect(results.sort()).toEqual(["sent", "skipped"]);
     expect(sendEmail).toHaveBeenCalledTimes(2);
     expect(log()).toMatchObject({ status: "SENT" });
+  });
+});
+
+// ---------------------------------------------------------------- full email (task 2.6)
+
+const P = (n: number) => `gid://shopify/Product/${n}`;
+function act(n: number, over: Partial<MondayActionRow> = {}): MondayActionRow {
+  return { kind: "reorder", productId: P(n), amount: n * 100, state: "open", stateAmount: null, snoozeUntil: null, reason: null, ...over };
+}
+
+describe("selectMondayActions", () => {
+  const now = new Date("2026-10-19T07:00:00Z");
+
+  it("visible rows only, ranked by €, top 5", () => {
+    const rows = [
+      act(1),
+      act(2, { state: "dismissed", stateAmount: 200 }), // dismissed, not doubled → hidden
+      act(3, { state: "dismissed", stateAmount: 100 }), // doubled since → back
+      act(4, { state: "snoozed", snoozeUntil: new Date("2026-10-20T00:00:00Z"), stateAmount: 400 }), // still snoozed
+      act(5, { state: "snoozed", snoozeUntil: new Date("2026-10-18T00:00:00Z"), stateAmount: 500 }), // snooze over
+      act(6, { kind: "clear" }),
+      act(7, { kind: "push" }),
+      act(8, { kind: "bridge" }),
+      act(9, { state: "done" }),
+    ];
+    const r = selectMondayActions(rows, "growth", now);
+    expect(r.listed.map((x) => x.productId)).toEqual([P(8), P(7), P(6), P(5), P(3)]);
+    expect(r.lockedFixes).toBe(0);
+  });
+
+  it("Growth lists Fix rows; Free only counts them, and only within its top 10", () => {
+    const rows = [act(9, { kind: "fix_sizes" }), act(8), act(7, { kind: "fix_page" }), act(6), act(5), act(4), act(3)];
+    expect(selectMondayActions(rows, "growth", new Date()).listed.map((x) => x.kind)).toEqual(["fix_sizes", "reorder", "fix_page", "reorder", "reorder"]);
+    const free = selectMondayActions(rows, "free", new Date());
+    expect(free.listed.map((x) => x.productId)).toEqual([P(8), P(6), P(5)]);
+    expect(free.lockedFixes).toBe(2);
+    // Free never sees past its top 10: a Fix row ranked 11th isn't counted either.
+    const many = Array.from({ length: 10 }, (_, i) => act(100 + i)).concat(act(1, { kind: "fix_returns" }));
+    expect(selectMondayActions(many, "free", new Date())).toMatchObject({ lockedFixes: 0 });
+    expect(selectMondayActions(many, "free", new Date()).listed).toHaveLength(5);
+  });
+});
+
+describe("action reasons and accuracy", () => {
+  it("translates the reason template and fills its params; an unknown key shows as is", () => {
+    expect(actionReasonText("es", { key: "reorder.low", params: { days: 9 } })).toBe("reorder.low");
+    expect(actionReasonText("en", { key: "Runs out in {days} days", params: { days: 9 } })).toBe("Runs out in 9 days");
+    expect(actionReasonText("en", null)).toBe("");
+    expect(actionReasonText("en", { params: {} })).toBe("");
+  });
+
+  it("uses last month's store total only", () => {
+    const row = (month: string, pct: number | null) => ({ month: new Date(`${month}-01T00:00:00Z`), storeErrorPct: pct });
+    expect(lastMonthAccuracy(row("2026-09", 7.4), "2026-10-19")).toBe(7.4);
+    expect(lastMonthAccuracy(row("2026-08", 7.4), "2026-10-19")).toBeNull(); // stale: not "last month"
+    expect(lastMonthAccuracy(row("2026-09", null), "2026-10-19")).toBeNull();
+    expect(lastMonthAccuracy(row("2025-12", 3), "2026-01-05")).toBe(3);
+    expect(lastMonthAccuracy(null, "2026-10-19")).toBeNull();
+  });
+});
+
+describe("composeMondayEmail — full", () => {
+  const actions = Array.from({ length: 3 }, (_, i) => ({ title: `Tee ${i + 1}`, reason: "Runs out in 9 days", amount: 300 - i * 100, link: `https://x/${i}` }));
+
+  it("Free: Fix rows become one count line with a plans button; they count as things to do", () => {
+    const e = composeMondayEmail({ ...base, actions, lockedFixes: { count: 2, link: "https://x/plans" } });
+    expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
+    expect(e.text).toContain("4. Products holding sales back: 2. See which ones on the Growth plan.");
+    expect(e.text).toContain("See plans: https://x/plans");
+    expect(e.html).toContain('href="https://x/plans"');
+    expect(composeMondayEmail({ ...base, lockedFixes: { count: 1, link: "https://x/plans" } }).subject).toBe("€4,601 at stake this week — 1 thing to do");
+  });
+
+  it("no accuracy line without a number; translated with one", () => {
+    expect(composeMondayEmail({ ...base, accuracyPct: null }).text).not.toContain("Last month");
+    expect(composeMondayEmail({ ...base, accuracyPct: 12.6, locale: "es" }).text).toContain(
+      "El mes pasado acertamos con un margen del 13% en el total de tu tienda.",
+    );
+    const de = composeMondayEmail({ ...base, locale: "de", actions, lockedFixes: { count: 1, link: "https://x/plans" } });
+    expect(de.subject).toMatch(/— 4 Aufgaben$/);
+    expect(de.text).toContain("Produkte, die deinen Umsatz bremsen: 1.");
+  });
+});
+
+describe("runMondayEmails — full email", () => {
+  function seedActions() {
+    tables.variant = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ shop: S, productId: P(n), productTitle: `Product ${n}` }));
+    tables.action = [
+      { shop: S, kind: "reorder", productId: P(1), amount: "900.00", state: "open", stateAmount: null, snoozeUntil: null, reason: { key: "Runs out in {days} days", params: { days: 9 } } },
+      { shop: S, kind: "fix_sizes", productId: P(2), amount: "800.00", state: "open", stateAmount: null, snoozeUntil: null, reason: { key: "fix.sizes", params: {} } },
+      { shop: S, kind: "clear", productId: P(3), amount: "700.00", state: "open", stateAmount: null, snoozeUntil: null, reason: {} },
+      { shop: S, kind: "bridge", productId: P(4), amount: "600.00", state: "open", stateAmount: null, snoozeUntil: null, reason: {} },
+      { shop: S, kind: "push", productId: P(5), amount: "500.00", state: "open", stateAmount: null, snoozeUntil: null, reason: {} },
+      { shop: S, kind: "reorder", productId: P(6), amount: "400.00", state: "open", stateAmount: null, snoozeUntil: null, reason: {} },
+      { shop: S, kind: "reorder", productId: P(7), amount: "9999.00", state: "dismissed", stateAmount: "9000.00", snoozeUntil: null, reason: {} },
+      { shop: "other.myshopify.com", kind: "reorder", productId: P(8), amount: "99999.00", state: "open", stateAmount: null, snoozeUntil: null, reason: {} },
+    ];
+    tables.accuracyMonth = [
+      { shop: S, month: day("2026-08-01"), storeErrorPct: 20 },
+      { shop: S, month: day("2026-09-01"), storeErrorPct: 8.2 },
+    ];
+  }
+
+  it("Growth: top 5 actions with buttons into the app, and the accuracy line", async () => {
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    seedActions();
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string; html: string };
+    expect(sent.subject).toMatch(/at stake this week — 5 things to do$/);
+    expect(sent.text).toContain("1. Product 1 (€900)");
+    expect(sent.text).toContain("   Runs out in 9 days");
+    expect(sent.text).toContain("2. Product 2 (€800)");
+    expect(sent.text).toContain("   fix.sizes"); // ACTION_REASONS not filled on this branch: raw key
+    expect(sent.text).toContain("5. Product 5 (€500)");
+    expect(sent.text).not.toContain("Product 6");
+    expect(sent.text).not.toContain("Product 7");
+    expect(sent.text).toContain("Open: https://admin.shopify.com/store/acme/apps/keha-inventory/app?tab=reorder");
+    expect(sent.html).toContain('href="https://admin.shopify.com/store/acme/apps/keha-inventory/app?tab=fix"');
+    expect(sent.html).toContain('href="https://admin.shopify.com/store/acme/apps/keha-inventory/app?tab=clear"');
+    expect(sent.text).toContain("Last month we were within 8% on your store total.");
+    expect(deliverSlackOnce).not.toHaveBeenCalled(); // Slack not connected
+  });
+
+  it("Free: Fix rows only as a count, no accuracy line", async () => {
+    planFor.mockResolvedValue("free");
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    seedActions();
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
+    expect(sent.subject).toMatch(/— 5 things to do$/);
+    expect(sent.text).not.toContain("Product 2");
+    expect(sent.text).not.toContain("fix.sizes");
+    expect(sent.text).toContain("5. Products holding sales back: 1. See which ones on the Growth plan.");
+    expect(sent.text).toContain("See plans: https://admin.shopify.com/store/acme/apps/keha-inventory/app/plans");
+    expect(sent.text).not.toContain("Last month we were within");
+  });
+
+  it("no actions yet: the Phase 1 email (no list, no count in the subject)", async () => {
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
+    expect(sent.subject).toMatch(/at stake this week$/);
+    expect(sent.text).not.toContain("Top things to do");
+  });
+
+  const slackSettings = (over: Row = {}) => ({
+    mondayEmail: { enabled: false, recipients: [] },
+    alerts: { slackWebhook: "gcm:sealed", slackMonday: true, instant: true },
+    ...over,
+  });
+
+  it("Slack (Growth): the same summary once per store week, even with the email off", async () => {
+    tables.shop = [shopRow({ locale: "en", settings: slackSettings() })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    seedActions();
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(deliverSlackOnce).toHaveBeenCalledTimes(1);
+    const [shop, key, , message] = deliverSlackOnce.mock.calls[0] as [string, { kind: string; periodKey: string }, unknown, { text: string }];
+    expect(shop).toBe(S);
+    expect(key).toEqual({ kind: "monday_slack", periodKey: "2026-W43" });
+    expect(message.text).toMatch(/^\*€\d.* at stake this week\*/);
+    expect(message.text).toContain("<https://admin.shopify.com/store/acme/apps/keha-inventory/app?tab=reorder|Product 1> · €900");
+    expect(message.text).toContain("Last month we were within 8% on your store total.");
+    expect(message.text).not.toContain("Unsubscribe");
+
+    // Already sent this week (log row): nothing more.
+    tables.ownerEmailLog.push({ shop: S, kind: "monday_slack", periodKey: "2026-W43", status: "SENT", error: null, sentAt: MON });
+    expect(await runMondayEmails(S, new Date("2026-10-19T09:00:00Z"))).toBe("skipped:unsubscribed");
+    expect(deliverSlackOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it("Slack and email both on: both go out; Slack's failure never stops the email", async () => {
+    tables.shop = [shopRow({ locale: "en", settings: slackSettings({ mondayEmail: { enabled: true, recipients: [] } }) })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    deliverSlackOnce.mockRejectedValueOnce(new Error("boom"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    expect(deliverSlackOnce).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  it("Slack: not on Free, not when the Slack summary is off, not when stale", async () => {
+    planFor.mockResolvedValue("free");
+    tables.shop = [shopRow({ settings: slackSettings() })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+    planFor.mockResolvedValue("growth");
+    tables.shop = [shopRow({ settings: slackSettings({ alerts: { slackWebhook: "gcm:sealed", slackMonday: false } }) })];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    tables.shop = [shopRow({ settings: slackSettings() })];
+    tables.moneyAtStake = [money("2026-10-16", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+    warn.mockRestore();
+    expect(deliverSlackOnce).not.toHaveBeenCalled();
   });
 });
 

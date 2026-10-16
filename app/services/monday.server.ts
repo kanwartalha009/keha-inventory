@@ -11,20 +11,45 @@
  * Not sent: no money-at-stake numbers yet, numbers too old (over 36 h on paid
  * plans, 35 days on Free), unsubscribed, no recipient, or no app URL to build
  * the unsubscribe link from. A failed send is retried once (sendOwnerEmailOnce).
+ *
+ * Task 2.6 (full email): the top 5 actions (visible now, ranked, only rows the
+ * plan may see; Free counts its Fix rows instead of listing them), each with a
+ * button into the app, and last month's accuracy line (Growth). The same
+ * summary goes to Slack when it is connected and "Send the Monday summary to
+ * Slack" is on (Growth) — once per store week (OwnerEmailLog kind
+ * "monday_slack"), independent of the email being on.
  */
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
-import { composeMondayEmail, isMondaySendTime, MONDAY_UNSUB_PURPOSE, type MondayValues } from "../lib/monday-shared";
+import {
+  actionReasonText,
+  composeMondayEmail,
+  isMondaySendTime,
+  lastMonthAccuracy,
+  mondaySummary,
+  MONDAY_UNSUB_PURPOSE,
+  selectMondayActions,
+  type MondayAction,
+  type MondayActionRow,
+  type MondayEmailInput,
+  type MondayValues,
+} from "../lib/monday-shared";
 import { MONEY_CARDS } from "../lib/money-shared";
 import { canRetryOwnerEmail, weekKey } from "../lib/owner-email-shared";
-import { MONEY_REFRESH } from "../lib/plan-shared";
+import { hasFeature, MONEY_REFRESH, type PlanCode } from "../lib/plan-shared";
+import { tabOf, type ActionKind, type ActionState } from "../lib/actions-shared";
+import { buildSlackMonday } from "../lib/slack-shared";
 import { seal } from "../lib/seal.server";
 import { readSettings } from "../lib/settings-shared";
+import type { Locale } from "../lib/i18n";
 import { planFor } from "./entitlements.server";
 import { ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
+import { deliverSlackOnce } from "./slack.server";
 
 export const MONDAY_KIND = "monday";
+/** OwnerEmailLog kind for the Monday summary in Slack (once per store week). */
+export const MONDAY_SLACK_KIND = "monday_slack";
 const UNSUB_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -100,29 +125,83 @@ async function moneyRows(shop: string): Promise<{ latest: MoneyRow; before: Mone
   return { latest, before };
 }
 
+/** Is this (kind, week) still to send? (cheap pre-check; the unique insert is the guarantee) */
+async function pending(shop: string, kind: string, periodKey: string, now: Date): Promise<boolean> {
+  const row = await prisma.ownerEmailLog.findUnique({ where: { shop_kind_periodKey: { shop, kind, periodKey } } });
+  return !row || canRetryOwnerEmail(row, now);
+}
+
+const ACTION_STATES_READ: ActionState[] = ["open", "snoozed", "dismissed"];
+
+/** The email's actions (top 5, plan rules) and accuracy line inputs. */
+async function mondayExtras(
+  shop: string,
+  plan: PlanCode,
+  locale: Locale,
+  localDate: string,
+  now: Date,
+): Promise<Pick<MondayEmailInput, "actions" | "lockedFixes" | "accuracyPct">> {
+  const raw = await prisma.action.findMany({
+    where: { shop, state: { in: ACTION_STATES_READ } },
+    select: { kind: true, productId: true, amount: true, state: true, stateAmount: true, snoozeUntil: true, reason: true },
+  });
+  const rows: MondayActionRow[] = raw.map((r) => ({
+    kind: r.kind as ActionKind,
+    productId: r.productId,
+    amount: num(r.amount) ?? 0,
+    state: r.state as ActionState,
+    stateAmount: num(r.stateAmount),
+    snoozeUntil: r.snoozeUntil,
+    reason: r.reason,
+  }));
+  const { listed, lockedFixes } = selectMondayActions(rows, plan, now);
+  const titles = new Map<string, string>();
+  if (listed.length) {
+    const variants = await prisma.variant.findMany({
+      where: { shop, productId: { in: listed.map((r) => r.productId) } },
+      select: { productId: true, productTitle: true },
+    });
+    for (const v of variants) if (!titles.has(v.productId)) titles.set(v.productId, v.productTitle);
+  }
+  const actions: MondayAction[] = listed.map((r) => ({
+    title: titles.get(r.productId) ?? "—",
+    reason: actionReasonText(locale, r.reason),
+    amount: r.amount,
+    link: adminAppUrl(shop, `/app?tab=${tabOf(r.kind)}`),
+  }));
+
+  let accuracyPct: number | null = null;
+  if (hasFeature(plan, "accuracy")) {
+    const acc = await prisma.accuracyMonth.findFirst({ where: { shop }, orderBy: { month: "desc" }, select: { month: true, storeErrorPct: true } });
+    accuracyPct = lastMonthAccuracy(acc, localDate);
+  }
+  return { actions, lockedFixes: lockedFixes > 0 ? { count: lockedFixes, link: adminAppUrl(shop, "/app/plans") } : null, accuracyPct };
+}
+
 async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const shop = row.domain;
   if (row.uninstalledAt) return "skipped:not_installed";
   const settings = readSettings(row.settings);
-  if (!settings.mondayEmail.enabled) return "skipped:unsubscribed";
+  const emailOn = settings.mondayEmail.enabled;
+  const slackOn = Boolean(settings.alerts.slackWebhook) && settings.alerts.slackMonday;
+  if (!emailOn && !slackOn) return "skipped:unsubscribed";
 
   const { due, localDate } = isMondaySendTime(now, row.timezone);
   if (!due) return "skipped:not_due";
   const periodKey = weekKey(new Date(`${localDate}T00:00:00Z`));
 
   // Cheap pre-check so hourly ticks don't re-read Shopify after the send;
-  // sendOwnerEmailOnce's unique insert is the real guarantee.
-  const sent = await prisma.ownerEmailLog.findUnique({
-    where: { shop_kind_periodKey: { shop, kind: MONDAY_KIND, periodKey } },
-  });
-  if (sent && !canRetryOwnerEmail(sent, now)) return "skipped:already_sent";
+  // the unique insert (sendOwnerEmailOnce / deliverSlackOnce) is the real guarantee.
+  const emailPending = emailOn && (await pending(shop, MONDAY_KIND, periodKey, now));
+  const slackPending = slackOn && (await pending(shop, MONDAY_SLACK_KIND, periodKey, now));
+  if (!emailPending && !slackPending) return emailOn ? "skipped:already_sent" : "skipped:unsubscribed";
 
   const money = await moneyRows(shop);
   if (!money) return "skipped:no_data";
   const nowValues = values(money.latest);
   if (MONEY_CARDS.every((k) => nowValues[k] == null)) return "skipped:no_data";
 
-  // Never email stale numbers: paid plans refresh daily, Free monthly.
+  // Never send stale numbers: paid plans refresh daily, Free monthly.
   const plan = await planFor(shop);
   const refresh = MONEY_REFRESH[plan];
   const computedAt = moneyComputedAt(money.latest);
@@ -134,19 +213,10 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     return "skipped:stale_data";
   }
 
-  const unsubscribe = mondayUnsubscribeUrl(shop, now.getTime());
-  if (!unsubscribe) {
-    console.error(`[monday] ${shop}: SHOPIFY_APP_URL not set — no unsubscribe link, not sending`);
-    return "skipped:no_app_url";
-  }
-
-  const recipients = settings.mondayEmail.recipients.map((r) => r.trim()).filter((r) => r.includes("@"));
-  const contact = await ownerContact(shop, null);
-  const to = recipients.length ? recipients : contact?.to ?? null;
-  if (!to || (Array.isArray(to) && !to.length)) return "skipped:no_recipient";
-
   const locale = toSupportedLocale(row.locale);
-  const content = composeMondayEmail({
+  const contact = await ownerContact(shop, null);
+  const unsubscribe = mondayUnsubscribeUrl(shop, now.getTime());
+  const input: MondayEmailInput = {
     locale,
     numberLocale: row.locale,
     currency: row.currency,
@@ -154,9 +224,32 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     now: nowValues,
     before: money.before ? values(money.before) : null,
     refresh,
-    links: { app: adminAppUrl(shop, "/app"), unsubscribe },
-  });
+    links: { app: adminAppUrl(shop, "/app"), unsubscribe: unsubscribe ?? "" },
+    ...(await mondayExtras(shop, plan, locale, localDate, now)),
+  };
 
+  // Slack (Growth): the same summary, shorter. Its failure never stops the email.
+  if (slackPending && hasFeature(plan, "slack")) {
+    try {
+      const r = await deliverSlackOnce(shop, { kind: MONDAY_SLACK_KIND, periodKey }, settings, buildSlackMonday(mondaySummary(input)), now);
+      if (r !== "skipped") console.log(`[monday] ${shop}: Slack summary ${r}`);
+    } catch (e) {
+      console.error(`[monday] ${shop}: Slack summary failed`, e);
+    }
+  }
+
+  if (!emailOn) return "skipped:unsubscribed";
+  if (!emailPending) return "skipped:already_sent";
+  if (!unsubscribe) {
+    console.error(`[monday] ${shop}: SHOPIFY_APP_URL not set — no unsubscribe link, not sending`);
+    return "skipped:no_app_url";
+  }
+
+  const recipients = settings.mondayEmail.recipients.map((r) => r.trim()).filter((r) => r.includes("@"));
+  const to = recipients.length ? recipients : contact?.to ?? null;
+  if (!to || (Array.isArray(to) && !to.length)) return "skipped:no_recipient";
+
+  const content = composeMondayEmail(input);
   return sendOwnerEmailOnce(
     shop,
     { kind: MONDAY_KIND, periodKey, ...content },

@@ -3,13 +3,16 @@
  * store's time zone, and what it says. The sending (once per store week,
  * unsubscribe, recipients) is app/services/monday.server.ts.
  *
- * Phase 1: the action list and the accuracy scorecard don't exist yet, so the
- * subject is "<money> at stake this week" and those sections are left out.
- * Passing `actions` (top 5 shown) adds "— N things to do" to the subject and
- * the actions section; passing `accuracy` adds its line.
+ * Task 2.6 (full email): subject "<money> at stake this week — N things to do",
+ * the 4 numbers with week-on-week change, the top 5 actions (each with a button
+ * into the app), on Free the Fix rows only as a count, the accuracy line, and
+ * the unsubscribe link. `mondaySummary` builds the content once; the email
+ * (composeMondayEmail) and Slack (lib/slack-shared buildSlackMonday) render it.
  */
 import { fill, translate, type Locale } from "./i18n";
 import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
+import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
+import { hasFeature, visibleRows, type PlanCode } from "./plan-shared";
 
 // ---------------------------------------------------------------- send time
 
@@ -128,20 +131,41 @@ export type MondayEmailInput = {
   /** "monthly" on Free (adds the "Refreshed monthly on Free" line). */
   refresh: "monthly" | "daily";
   links: { app: string; unsubscribe: string };
-  /** The ranked action list (top 5 shown). Not built yet in phase 1. */
+  /** The ranked action list (top 5 shown). */
   actions?: MondayAction[];
-  /** The forecast accuracy line, already worded. Not built yet in phase 1. */
-  accuracy?: string | null;
+  /** Free: Fix rows in the top 5, shown only as a count with a link to the plans (spec §3 fixDetails). */
+  lockedFixes?: { count: number; link: string } | null;
+  /** Last month's absolute % error on the store total (AccuracyMonth.storeErrorPct); null/undefined = no line. */
+  accuracyPct?: number | null;
 };
 
 export type MondayEmailContent = { subject: string; text: string; html: string };
+
+/** Everything the email and the Slack message show, worded and translated. */
+export type MondaySummary = {
+  locale: Locale;
+  subject: string;
+  heading: string;
+  atStake: string;
+  rows: { label: string; value: string; changeText: string | null }[];
+  refreshNote: string | null;
+  topHeading: string;
+  actions: { title: string; reason: string; amountText: string | null; link: string }[];
+  lockedFixes: { text: string; link: string; label: string } | null;
+  accuracy: string | null;
+  openLabel: string;
+  openAction: string;
+  footer: string;
+  unsubscribe: string;
+  links: { app: string; unsubscribe: string };
+};
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 const DASH = "—";
 
-export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent {
+export function mondaySummary(input: MondayEmailInput): MondaySummary {
   const { locale, currency, storeName } = input;
   const tr = (key: string) => translate(locale, key);
   const numLocale = input.numberLocale || locale;
@@ -170,37 +194,66 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
   const total = headlineAtStake(input.now);
   const atStake = total == null ? tr("Your stock this week") : fill(tr("{money} at stake this week"), { money: money(total) });
 
-  const actions = (input.actions ?? []).slice(0, MONDAY_TOP_ACTIONS);
-  const todo =
-    actions.length === 0
-      ? null
-      : actions.length === 1
-        ? tr("1 thing to do")
-        : fill(tr("{count} things to do"), { count: actions.length });
+  const actions = (input.actions ?? []).slice(0, MONDAY_TOP_ACTIONS).map((a) => ({
+    title: a.title,
+    reason: a.reason,
+    amountText: a.amount != null ? money(a.amount) : null,
+    link: a.link,
+  }));
+  const locked = input.lockedFixes && input.lockedFixes.count > 0 ? input.lockedFixes : null;
+  const count = actions.length + (locked?.count ?? 0);
+  const todo = count === 0 ? null : count === 1 ? tr("1 thing to do") : fill(tr("{count} things to do"), { count });
   const subject = todo ? `${atStake} — ${todo}` : atStake;
 
-  const heading = fill(tr("Your Monday summary for {store}"), { store: storeName });
-  const refreshNote = input.refresh === "monthly" ? tr("Refreshed monthly on Free") : null;
-  const accuracy = input.accuracy?.trim() || null;
-  const openLabel = tr("Open Keha");
-  const footer = fill(tr("You get this email every Monday because Keha Inventory Intelligence is installed on {store}."), {
-    store: storeName,
-  });
-  const unsubscribe = tr("Unsubscribe");
-  const topHeading = tr("Top things to do this week");
-  const openAction = tr("Open");
+  const pct = input.accuracyPct;
+  const accuracy =
+    pct != null && Number.isFinite(pct) && pct >= 0
+      ? fill(tr("Last month we were within {pct}% on your store total."), { pct: Math.round(pct) })
+      : null;
 
+  return {
+    locale,
+    subject,
+    heading: fill(tr("Your Monday summary for {store}"), { store: storeName }),
+    atStake,
+    rows,
+    refreshNote: input.refresh === "monthly" ? tr("Refreshed monthly on Free") : null,
+    topHeading: tr("Top things to do this week"),
+    actions,
+    lockedFixes: locked
+      ? {
+          text: fill(tr("Products holding sales back: {count}. See which ones on the Growth plan."), { count: locked.count }),
+          link: locked.link,
+          label: tr("See plans"),
+        }
+      : null,
+    accuracy,
+    openLabel: tr("Open Keha"),
+    openAction: tr("Open"),
+    footer: fill(tr("You get this email every Monday because Keha Inventory Intelligence is installed on {store}."), {
+      store: storeName,
+    }),
+    unsubscribe: tr("Unsubscribe"),
+    links: input.links,
+  };
+}
+
+export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent {
+  const m = mondaySummary(input);
+  const { subject, heading, atStake, rows, refreshNote, actions, accuracy, openLabel, footer, unsubscribe, topHeading, openAction } = m;
+  const locale = m.locale;
   // ---- plain text ----
   const lines: string[] = [heading, "", atStake, ""];
   for (const r of rows) lines.push(`${r.label}: ${r.value}${r.changeText ? ` (${r.changeText})` : ""}`);
   if (refreshNote) lines.push("", refreshNote);
-  if (actions.length) {
+  if (actions.length || m.lockedFixes) {
     lines.push("", topHeading);
     actions.forEach((a, i) => {
-      lines.push(`${i + 1}. ${a.title}${a.amount != null ? ` (${money(a.amount)})` : ""}`);
+      lines.push(`${i + 1}. ${a.title}${a.amountText ? ` (${a.amountText})` : ""}`);
       if (a.reason) lines.push(`   ${a.reason}`);
       lines.push(`   ${openAction}: ${a.link}`);
     });
+    if (m.lockedFixes) lines.push(`${actions.length + 1}. ${m.lockedFixes.text}`, `   ${m.lockedFixes.label}: ${m.lockedFixes.link}`);
   }
   if (accuracy) lines.push("", accuracy);
   lines.push("", `${openLabel}: ${input.links.app}`, "", "—", footer, `${unsubscribe}: ${input.links.unsubscribe}`);
@@ -229,7 +282,7 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
     .map(
       (a, i) =>
         `<tr><td style="padding:10px 0;border-bottom:1px solid #ebebeb;"><strong>${i + 1}. ${esc(a.title)}</strong>${
-          a.amount != null ? ` <span style="${muted}">${esc(money(a.amount))}</span>` : ""
+          a.amountText ? ` <span style="${muted}">${esc(a.amountText)}</span>` : ""
         }${a.reason ? `<br><span style="${muted}">${esc(a.reason)}</span>` : ""}</td><td style="padding:10px 0 10px 12px;border-bottom:1px solid #ebebeb;text-align:right;">${button(
           a.link,
           openAction,
@@ -237,6 +290,13 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
         )}</td></tr>`,
     )
     .join("");
+  const lockedRow = m.lockedFixes
+    ? `<tr><td style="padding:10px 0;border-bottom:1px solid #ebebeb;">${esc(m.lockedFixes.text)}</td><td style="padding:10px 0 10px 12px;border-bottom:1px solid #ebebeb;text-align:right;">${button(
+        m.lockedFixes.link,
+        m.lockedFixes.label,
+        true,
+      )}</td></tr>`
+    : "";
 
   const html = [
     `<!doctype html><html lang="${esc(locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(subject)}</title></head>`,
@@ -247,8 +307,8 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
     `<h1 style="margin:6px 0 16px;font-size:22px;line-height:1.3;">${esc(atStake)}</h1></td></tr>`,
     `<tr><td style="padding:0 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cardRows}</table></td></tr>`,
     refreshNote ? `<tr><td style="padding:12px 24px 0;"><p style="margin:0;${muted}">${esc(refreshNote)}</p></td></tr>` : "",
-    actions.length
-      ? `<tr><td style="padding:20px 24px 0;"><h2 style="margin:0 0 4px;font-size:16px;">${esc(topHeading)}</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${actionRows}</table></td></tr>`
+    actions.length || lockedRow
+      ? `<tr><td style="padding:20px 24px 0;"><h2 style="margin:0 0 4px;font-size:16px;">${esc(topHeading)}</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${actionRows}${lockedRow}</table></td></tr>`
       : "",
     accuracy ? `<tr><td style="padding:16px 24px 0;"><p style="margin:0;">${esc(accuracy)}</p></td></tr>` : "",
     `<tr><td style="padding:20px 24px 24px;">${button(input.links.app, openLabel)}</td></tr>`,
@@ -260,4 +320,58 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
   ].join("");
 
   return { subject, text, html };
+}
+
+// ---------------------------------------------------------------- actions & accuracy
+
+/** An Action row as the email reads it (amounts as numbers). */
+export type MondayActionRow = {
+  kind: ActionKind;
+  productId: string;
+  amount: number;
+  state: ActionState;
+  stateAmount: number | null;
+  snoozeUntil: Date | null;
+  reason: unknown;
+};
+
+/**
+ * The email's actions (spec §7.7, §3): rows visible now (`isVisible`), ranked by €
+ * (`rankActions`), only those the plan may see (Free: the top 10), then the top 5.
+ * Without `fixDetails` (Free) the Fix rows among them are not listed, only counted.
+ */
+export function selectMondayActions<T extends MondayActionRow>(
+  rows: T[],
+  plan: PlanCode,
+  now: Date,
+): { listed: T[]; lockedFixes: number } {
+  const visible = rows.filter((r) => isVisible(r, now));
+  const top = visibleRows(plan, rankActions(visible)).slice(0, MONDAY_TOP_ACTIONS);
+  if (hasFeature(plan, "fixDetails")) return { listed: top, lockedFixes: 0 };
+  const listed = top.filter((r) => tabOf(r.kind) !== "fix");
+  return { listed, lockedFixes: top.length - listed.length };
+}
+
+/**
+ * The action's sentence in the store's language: ACTION_REASONS[key] (an English
+ * template, translated) filled with its params; an unknown key is shown as is.
+ */
+export function actionReasonText(locale: Locale, reason: unknown): string {
+  const r = (reason && typeof reason === "object" ? reason : {}) as { key?: unknown; params?: unknown };
+  const key = typeof r.key === "string" ? r.key : "";
+  if (!key) return "";
+  const params = (r.params && typeof r.params === "object" ? r.params : {}) as ReasonParams;
+  return fill(translate(locale, ACTION_REASONS[key] ?? key), params);
+}
+
+/**
+ * The accuracy line's number: last month's store-total error, only when the
+ * latest AccuracyMonth row IS last month (store-local) — an older row would
+ * make "Last month" untrue. `localDate` is the store-local YYYY-MM-DD.
+ */
+export function lastMonthAccuracy(row: { month: Date; storeErrorPct: number | null } | null, localDate: string): number | null {
+  if (!row || row.storeErrorPct == null || !Number.isFinite(row.storeErrorPct)) return null;
+  const [y, m] = localDate.split("-").map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  return row.month.toISOString().slice(0, 7) === prev ? row.storeErrorPct : null;
 }
