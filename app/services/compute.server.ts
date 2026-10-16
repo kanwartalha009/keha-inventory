@@ -17,6 +17,11 @@
  *  - safety level → z per ABC role (engineSettingsFrom).
  *  - the action list (§7.7, engine/actions-rules-shared) is written with the money cards, on the
  *    same cadence (Free: monthly, paid: daily), so Free's € figures refresh monthly everywhere.
+ *
+ * Phase 3 (Pro `locations`): after the online pool, one call to syncLocationMetrics writes a
+ * VariantMetric per variant × warehouse / store (scope = Location.id) from that location's
+ * own sales and stock, reusing the roles, suppliers and seasonal × trend built here. The pool
+ * honours the merchant's "counts for online sales" override (compute-shared countsForOnline).
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -42,6 +47,7 @@ import { kehaOpenUnits,
   poolSalesKeys,
   metricRow,
   moneyDue,
+  POOL_LOCATION_SELECT,
   poolLocationIds,
   productHandleFromPath,
   productTraffic,
@@ -62,12 +68,13 @@ import { OPEN_PO_STATUSES, casePackFor, poArrival, readPoLines, supplierFor } fr
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { loadSeasonContext } from "./season.server";
 import { readSettings } from "../lib/settings-shared";
-import { MONEY_REFRESH, type PlanCode } from "../lib/plan-shared";
+import { MONEY_REFRESH, hasFeature, type PlanCode } from "../lib/plan-shared";
 import type { MoneyBasisJson } from "../lib/money-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
+import { syncLocationMetrics } from "./compute-locations.server";
 
 const HISTORY_DAYS = 90;
 const TRAFFIC_DAYS = 30;
@@ -77,6 +84,8 @@ export type ComputeResult = {
   status: "computed" | "skipped";
   today?: string;
   variants?: number;
+  /** VariantMetric rows written for warehouses and stores (Pro; 0 otherwise). */
+  locationMetrics?: number;
   money?: "computed" | "not_due";
   /** Actions written (with the money cards; absent when money was not due). */
   actions?: number;
@@ -108,7 +117,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
 
   // ---- catalog and pool ----
   const [locations, variants, suppliers] = await Promise.all([
-    prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } }),
+    prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT }),
     prisma.variant.findMany({
       where: { shop },
       select: {
@@ -251,6 +260,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1),
   });
 
+  // Plan: per-location planning (Pro) and the money cadence. Plan checks fail open (I-6).
+  let plan: PlanCode;
+  try {
+    plan = await (opts.plan ?? planFor)(shop);
+  } catch {
+    plan = "pro";
+  }
+
   // ---- engine ----
   const roles = abcRoles(
     considered.map((v) => ({ id: v.id, revenue90: revenue.get(v.id) ?? 0 })),
@@ -322,17 +339,24 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // Variants no longer tracked / no longer in the catalog lose their metric.
   await prisma.variantMetric.deleteMany({ where: { shop, scope: SCOPE_ONLINE, computedAt: { lt: startedAt } } });
 
+  // ---- per location (Pro): warehouses and stores, metrics only ----
+  const perLocation = await syncLocationMetrics(shop, hasFeature(plan, "locations"), {
+    startedAt,
+    today,
+    from,
+    range,
+    overrides,
+    safetyLevel: shopSettings.safetyLevel,
+    plans,
+    roles,
+    seasonOf,
+  });
+
   // ---- money at stake ----
-  let plan: PlanCode;
-  try {
-    plan = await (opts.plan ?? planFor)(shop);
-  } catch {
-    plan = "pro"; // plan checks fail open (I-6)
-  }
   const refresh = MONEY_REFRESH[plan];
   const last = await prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" }, select: { day: true } });
   if (!moneyDue(refresh, last ? dayKey(last.day) : null, today)) {
-    return { status: "computed", today, variants: results.length, money: "not_due" };
+    return { status: "computed", today, variants: results.length, locationMetrics: perLocation.metrics, money: "not_due" };
   }
 
   const trafficFrom = addDays(today, -TRAFFIC_DAYS);
@@ -407,7 +431,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     landing,
     store: storeConversion(totals),
   });
-  return { status: "computed", today, variants: results.length, money: "computed", actions };
+  return { status: "computed", today, variants: results.length, locationMetrics: perLocation.metrics, money: "computed", actions };
 }
 
 const ACTION_WINDOW = 28;

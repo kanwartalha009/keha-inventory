@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { readSettings } from "../lib/settings-shared";
-import { poolLocationIds } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, poArrival, type PoLine } from "../lib/supplier-shared";
 import {
@@ -57,7 +57,7 @@ export async function shopBasics(shop: string): Promise<ShopBasics> {
 }
 
 async function poolIds(shop: string): Promise<string[]> {
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   return poolLocationIds(locations);
 }
 

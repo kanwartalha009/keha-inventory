@@ -2,10 +2,16 @@
  * Compute — pure part (spec §7, task 1.5): stored daily facts → engine inputs, and engine
  * results → stored rows. No I/O.
  *
- * Phase 1 rule (spec §3: one stock pool on Free / Growth; per-location planning is Pro,
- * phase 3; spec §7.1 "Online pool" = the sum over active, fulfillsOnlineOrders locations):
+ * Online pool rule (spec §3: one stock pool on Free / Growth; per-location planning is Pro;
+ * spec §7.1 "Online pool" = the sum over active, fulfillsOnlineOrders locations; §5.5 the
+ * merchant may override which locations count, Pro):
  * scope "online" =
- *   pool:  the ACTIVE locations that FULFIL ONLINE ORDERS;
+ *   pool:  the ACTIVE locations that count for online sales: the merchant's override
+ *          (Location.onlinePool) when set, else Shopify's fulfillsOnlineOrders. The override
+ *          applies on every plan (a downgrade keeps the merchant's earlier choice; changing it
+ *          is Pro). Online orders are keyed "online" in the sales view whichever location
+ *          fulfils them, so the override moves STOCK in or out of the pool, plus the POS
+ *          sales of a store the merchant adds;
  *   sales: the SalesDaily LOCATION view (channel "all") for locationKey "online" (sales with
  *          no POS location) plus the pool location ids — never the channel view, which
  *          includes POS stores outside the pool;
@@ -41,8 +47,19 @@ export type PooledStockDay = {
   outReported: number;
 };
 
-export function poolLocationIds(locations: { id: string; active: boolean; online: boolean }[]): string[] {
-  return locations.filter((l) => l.active && l.online).map((l) => l.id);
+/** A Location as the pool rule reads it. `onlinePool` null / absent = follow Shopify (`online`). */
+export type PoolLocation = { id: string; active: boolean; online: boolean; onlinePool?: boolean | null };
+
+/** The Location columns every pool reader selects (keep the override in every select). */
+export const POOL_LOCATION_SELECT = { id: true, active: true, online: true, onlinePool: true } as const;
+
+/** Does this location count for online sales? Active, and the override when set, else Shopify's flag. */
+export function countsForOnline(l: Omit<PoolLocation, "id">): boolean {
+  return l.active && (l.onlinePool ?? l.online);
+}
+
+export function poolLocationIds(locations: PoolLocation[]): string[] {
+  return locations.filter(countsForOnline).map((l) => l.id);
 }
 
 export function pooledOutOfStock(s: Pick<PooledStockDay, "endUnits" | "reported" | "outReported">): boolean {

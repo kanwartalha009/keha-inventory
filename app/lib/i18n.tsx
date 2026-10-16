@@ -28,6 +28,7 @@ import { REORDER_TR } from "./i18n-reorder";
 import { ACTIONS_TR } from "./i18n-actions";
 import { ALERTS_TR } from "./i18n-alerts";
 import { PLANNER_TR } from "./i18n-planner";
+import { STORES_TR } from "./i18n-stores";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -77,6 +78,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   actions: ACTIONS_TR,
   alerts: ALERTS_TR,
   planner: PLANNER_TR,
+  stores: STORES_TR,
 };
 
 for (const area of Object.values(AREAS)) {

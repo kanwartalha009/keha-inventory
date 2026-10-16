@@ -38,7 +38,7 @@ import {
   type InstantAlert,
   type MetricLite,
 } from "../lib/alerts-shared";
-import { poolLocationIds, pooledOutOfStock, productHandleFromPath, SCOPE_ONLINE } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds, pooledOutOfStock, productHandleFromPath, SCOPE_ONLINE } from "../lib/compute-shared";
 import { hasFeature, type PlanCode } from "../lib/plan-shared";
 import { variantNumericId } from "../lib/products-shared";
 import { readSettings, type ShopSettings } from "../lib/settings-shared";
@@ -163,7 +163,7 @@ async function bestSellerMetrics(
 
 /** Rule (b): products fully out now that were not fully out on the last stock day, with ≥ 50 sessions a week. */
 async function startedSellOuts(shop: string, timezone: string, catalog: Map<string, CatalogProduct>, now: Date): Promise<Map<string, number>> {
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const pool = poolLocationIds(locations);
   if (!pool.length) return new Map();
   const stock = await prisma.stockNow.findMany({ where: { shop, locationId: { in: pool } }, select: { variantId: true, onHand: true } });

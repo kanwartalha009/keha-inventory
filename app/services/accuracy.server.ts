@@ -23,7 +23,7 @@ import {
   snapshotRows,
 } from "../lib/engine/accuracy-shared";
 import { spanStats } from "../lib/engine/season-shared";
-import { poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
@@ -48,7 +48,7 @@ export async function runAccuracy(shop: string, now: Date = new Date()): Promise
   if (!row || row.uninstalledAt) return { status: "skipped" };
   const today = localDate(now, safeTimeZone(row.timezone));
   const coverage = salesCoverage(readBackfillState(row.backfillState));
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const poolKeys = poolSalesKeys(poolLocationIds(locations));
   return {
     status: "ok",

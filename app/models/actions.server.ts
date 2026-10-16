@@ -9,7 +9,7 @@
  */
 import prisma from "../db.server";
 import { decimalToNumber } from "./dashboard.server";
-import { poolLocationIds } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import {
   ACTION_FETCH_LIMIT,
@@ -31,7 +31,7 @@ type Decimalish = Parameters<typeof decimalToNumber>[0];
 const LIVE_STATES = ["open", "snoozed", "dismissed"];
 
 async function poolIds(shop: string): Promise<string[]> {
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   return poolLocationIds(locations);
 }
 

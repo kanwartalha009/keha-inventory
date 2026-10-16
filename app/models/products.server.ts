@@ -25,7 +25,7 @@ import {
 } from "../lib/products-shared";
 import { addDays } from "../lib/engine/dates-shared";
 import { todayIn } from "../lib/dashboard-shared";
-import { poolLocationIds } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { ALL } from "../lib/sync/facts-shared";
 import { kehaOnOrder } from "./reorder.server";
 
@@ -34,7 +34,7 @@ const ON_ORDER_STATUSES = ["sent", "confirmed"] as const;
 
 /** The online stock pool's location ids (same rule as compute.server). */
 async function poolIds(shop: string): Promise<string[]> {
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   return poolLocationIds(locations);
 }
 

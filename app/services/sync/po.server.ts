@@ -34,7 +34,7 @@ import { poArrival, readPoLines, type PoLine } from "../../lib/supplier-shared";
 import { localDate, safeTimeZone } from "../../lib/sync/store-time-shared";
 import { addDays } from "../../lib/engine/dates-shared";
 import { ALL, dayDate } from "../../lib/sync/facts-shared";
-import { poolLocationIds, poolSalesKeys } from "../../lib/compute-shared";
+import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys } from "../../lib/compute-shared";
 import { syncErrorCode } from "../../lib/sync/errors-shared";
 
 type PoPage = {
@@ -167,7 +167,7 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
   if (!orders.length) return 0;
   const tz = safeTimeZone(shopRow?.timezone);
   const today = localDate(now, tz);
-  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, active: true, online: true } });
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const pool = poolLocationIds(locations);
   let closed = 0;
   for (const o of orders) {
