@@ -21,10 +21,10 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { activeLocations, listLocationSettings, saveLocationSettings } from "../models/locations.server";
-import { AppPage } from "../components/ui";
+import { AppPage, EmptyState, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner } from "../components/plan";
-import { SelectField, flag } from "../components/wc";
+import { SelectField } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import {
   LOCATION_ROLES,
@@ -76,6 +76,8 @@ export default function LocationsSettings() {
   const initial = useMemo(() => data.locations.map((l) => ({ id: l.id, role: l.role, pool: l.pool })), [data.locations]);
   const [form, setForm] = useState<FormRow[]>(initial);
   useEffect(() => setForm(initial), [initial]);
+  const saving = fetcher.state !== "idle";
+  const dirty = data.enabled && !sameValues(form, initial);
   const result = fetcher.data;
   const set = (id: string, patch: Partial<FormRow>) => setForm((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const save = () =>
@@ -83,16 +85,10 @@ export default function LocationsSettings() {
   const counting = data.locations.filter((l) => l.counts).map((l) => l.name);
 
   return (
-    <AppPage
-      heading={t("Settings")}
-      primaryAction={
-        data.enabled && data.locations.length > 0 ? (
-          <s-button variant="primary" loading={flag(fetcher.state !== "idle")} onClick={save}>
-            {t("Save")}
-          </s-button>
-        ) : undefined
-      }
-    >
+    <AppPage heading={t("Settings")}>
+      {data.enabled && data.locations.length > 0 && (
+        <FormSaveBar id="keha-settings-locations" dirty={dirty} saving={saving} onSave={save} onDiscard={() => setForm(initial)} />
+      )}
       <SettingsTabs current="locations" />
       {!data.enabled && <UpgradeBanner feature="locations" />}
       {result?.ok && (
@@ -101,10 +97,9 @@ export default function LocationsSettings() {
       {result && !result.ok && <s-banner tone="critical">{locationsErrorText(result.error, t)}</s-banner>}
 
       {!data.enabled && (
-        <s-section heading={t("Your online stock pool")}>
+        <FormCard title={t("Your online stock pool")} sub={t("Free and Growth plan all your stock as one pool.")}>
           <s-stack direction="block" gap="small">
             <s-paragraph>
-              {t("Free and Growth plan all your stock as one pool.")}{" "}
               {t("It is made of the active locations that count for online sales. Sales per day, days left and order advice are worked out for the pool as a whole.")}
             </s-paragraph>
             <s-paragraph color="subdued">
@@ -116,17 +111,12 @@ export default function LocationsSettings() {
               {t("On Pro you choose which locations are warehouses and stores, see each store's own sales and days left, and move stock from your warehouse to your stores.")}
             </s-paragraph>
           </s-stack>
-        </s-section>
+        </FormCard>
       )}
 
-      <s-section padding="none" accessibilityLabel={t("Locations")}>
+      <FormCard flush title={t("Locations")} sub={t("Choose each location's role and whether it counts for online sales.")}>
         {data.locations.length === 0 ? (
-          <s-box padding="base">
-            <s-stack direction="block" gap="small" alignItems="center">
-              <s-heading>{t("No active locations yet")}</s-heading>
-              <s-paragraph color="subdued">{t("Your locations appear here once your store is read.")}</s-paragraph>
-            </s-stack>
-          </s-box>
+          <EmptyState heading={t("No active locations yet")} body={t("Your locations appear here once your store is read.")} />
         ) : (
           <s-table>
             <s-table-header-row>
@@ -173,9 +163,9 @@ export default function LocationsSettings() {
             </s-table-body>
           </s-table>
         )}
-      </s-section>
+      </FormCard>
 
-      <s-section heading={t("How this is used")}>
+      <FormCard title={t("How this is used")}>
         <s-stack direction="block" gap="small">
           <s-paragraph color="subdued">
             {t("Warehouses and stores get their own plan: switch between them on Products and Reorder.")}
@@ -187,7 +177,7 @@ export default function LocationsSettings() {
             {t("Locations that count for online sales make up the online stock pool, the default view everywhere.")}
           </s-paragraph>
         </s-stack>
-      </s-section>
+      </FormCard>
     </AppPage>
   );
 }

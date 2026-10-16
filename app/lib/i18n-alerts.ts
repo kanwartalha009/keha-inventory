@@ -10,14 +10,24 @@ export const ALERTS_TR: Record<string, Tr> = {
   // ---- Instant alerts ----
   "Instant alerts": { es: "Alertas inmediatas", fr: "Alertes instantanées", de: "Sofortbenachrichtigungen", it: "Avvisi immediati", pt: "Alertas imediatos", nl: "Directe meldingen", pl: "Natychmiastowe alerty" },
   "Send instant alerts": { es: "Enviar alertas inmediatas", fr: "Envoyer des alertes instantanées", de: "Sofortbenachrichtigungen senden", it: "Invia avvisi immediati", pt: "Enviar alertas imediatos", nl: "Directe meldingen sturen", pl: "Wysyłaj natychmiastowe alerty" },
-  "When a best seller will run out before new stock can arrive, or a busy product sells out. By email to the addresses above, and to Slack when it's connected. At most once per product per week.": {
-    es: "Cuando un producto estrella se vaya a agotar antes de que pueda llegar stock nuevo, o se agote un producto con muchas visitas. Por email a las direcciones de arriba, y a Slack si está conectado. Como máximo una vez por producto y semana.",
-    fr: "Quand un best-seller va être en rupture avant l'arrivée du nouveau stock, ou qu'un produit très visité est épuisé. Par e-mail aux adresses ci-dessus, et sur Slack s'il est connecté. Au plus une fois par produit et par semaine.",
-    de: "Wenn ein Bestseller ausverkauft sein wird, bevor neue Ware ankommen kann, oder ein viel besuchtes Produkt ausverkauft ist. Per E-Mail an die Adressen oben und in Slack, wenn es verbunden ist. Höchstens einmal pro Produkt und Woche.",
-    it: "Quando un best seller finirà prima che possa arrivare nuovo stock, o un prodotto molto visitato va esaurito. Via email agli indirizzi sopra e su Slack se è collegato. Al massimo una volta per prodotto a settimana.",
-    pt: "Quando um best-seller vai esgotar antes de poder chegar stock novo, ou um produto muito visitado esgota. Por email para os endereços acima e para o Slack, se estiver ligado. No máximo uma vez por produto por semana.",
-    nl: "Als een bestseller op raakt voordat er nieuwe voorraad kan zijn, of een veelbezocht product uitverkocht raakt. Per e-mail naar de adressen hierboven, en naar Slack als het gekoppeld is. Hooguit één keer per product per week.",
-    pl: "Gdy bestseller skończy się, zanim zdąży dotrzeć nowy towar, albo wyprzeda się często odwiedzany produkt. E-mailem na adresy powyżej oraz na Slacka, jeśli jest połączony. Najwyżej raz na produkt w tygodniu.",
+  // Section description (one sentence) and the checkbox details, split from one long text (2026-10-17).
+  "When a best seller will run out before new stock can arrive, or a busy product sells out.": {
+    es: "Cuando un producto estrella se vaya a agotar antes de que pueda llegar stock nuevo, o se agote un producto con muchas visitas.",
+    fr: "Quand un best-seller va être en rupture avant l'arrivée du nouveau stock, ou qu'un produit très visité est épuisé.",
+    de: "Wenn ein Bestseller ausverkauft sein wird, bevor neue Ware ankommen kann, oder ein viel besuchtes Produkt ausverkauft ist.",
+    it: "Quando un best seller finirà prima che possa arrivare nuovo stock, o un prodotto molto visitato va esaurito.",
+    pt: "Quando um best-seller vai esgotar antes de poder chegar stock novo, ou um produto muito visitado esgota.",
+    nl: "Als een bestseller op raakt voordat er nieuwe voorraad kan zijn, of een veelbezocht product uitverkocht raakt.",
+    pl: "Gdy bestseller skończy się, zanim zdąży dotrzeć nowy towar, albo wyprzeda się często odwiedzany produkt.",
+  },
+  "By email to the addresses above, and to Slack when it's connected. At most once per product per week.": {
+    es: "Por email a las direcciones de arriba, y a Slack si está conectado. Como máximo una vez por producto y semana.",
+    fr: "Par e-mail aux adresses ci-dessus, et sur Slack s'il est connecté. Au plus une fois par produit et par semaine.",
+    de: "Per E-Mail an die Adressen oben und in Slack, wenn es verbunden ist. Höchstens einmal pro Produkt und Woche.",
+    it: "Via email agli indirizzi sopra e su Slack se è collegato. Al massimo una volta per prodotto a settimana.",
+    pt: "Por email para os endereços acima e para o Slack, se estiver ligado. No máximo uma vez por produto por semana.",
+    nl: "Per e-mail naar de adressen hierboven, en naar Slack als het gekoppeld is. Hooguit één keer per product per week.",
+    pl: "E-mailem na adresy powyżej oraz na Slacka, jeśli jest połączony. Najwyżej raz na produkt w tygodniu.",
   },
 
   // ---- Slack ----

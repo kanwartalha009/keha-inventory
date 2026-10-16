@@ -30,7 +30,7 @@ import {
   type SupplierListRow,
 } from "../models/suppliers.server";
 import { secretsWritable } from "../lib/crypto.server";
-import { AppPage, Disclosure, FormCard } from "../components/ui";
+import { AppPage, Disclosure, EmptyState, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
@@ -183,21 +183,17 @@ export default function SuppliersSettings() {
         />
       )}
 
-      <s-section padding="none" accessibilityLabel={t("Suppliers")}>
+      <FormCard flush title={t("Suppliers")} sub={t("Keep lead times, minimum orders and case packs for each supplier.")}>
         {data.suppliers.length === 0 ? (
-          <s-box padding="base">
-            <s-stack direction="block" gap="small" alignItems="center">
-              <s-heading>{t("No suppliers yet")}</s-heading>
-              <s-paragraph color="subdued">
-                {t("Add your suppliers so every product gets the right lead time, minimum order and case pack. Until then the default lead time is used.")}
-              </s-paragraph>
-            </s-stack>
-          </s-box>
+          <EmptyState
+            heading={t("No suppliers yet")}
+            body={t("Add your suppliers so every product gets the right lead time, minimum order and case pack. Until then the default lead time is used.")}
+          />
         ) : (
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Lead time")}</s-table-header>
+              <s-table-header listSlot="labeled" format="numeric">{t("Lead time")}</s-table-header>
               <s-table-header listSlot="labeled">{t("Minimum orders")}</s-table-header>
               <s-table-header listSlot="labeled">{t("Assigned by")}</s-table-header>
               <s-table-header>{t("Manage")}</s-table-header>
@@ -217,7 +213,7 @@ export default function SuppliersSettings() {
             </s-table-body>
           </s-table>
         )}
-      </s-section>
+      </FormCard>
 
       <ConfirmModal
         open={!!confirm}
@@ -259,6 +255,7 @@ function SupplierRow({
 }) {
   const { t, locale } = useLocale();
   const shopify = useAppBridge();
+  const menuId = `keha-supplier-menu-${s.id}`;
   const minimums = [
     s.minOrder ? fill(t("{n} per item"), { n: formatCount(s.minOrder, locale) }) : null,
     s.minOrderTotal ? fill(t("{n} per order"), { n: formatCount(s.minOrderTotal, locale) }) : null,
@@ -281,7 +278,9 @@ function SupplierRow({
           <s-text color="subdued">{s.hasEmail ? t("Email saved") : t("No email")}</s-text>
         </s-stack>
       </s-table-cell>
-      <s-table-cell>{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</s-table-cell>
+      <s-table-cell>
+        <span className="keha-num">{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</span>
+      </s-table-cell>
       <s-table-cell>{minimums.length ? minimums.join(" · ") : "—"}</s-table-cell>
       <s-table-cell>
         <s-stack direction="block" gap="none">
@@ -292,22 +291,28 @@ function SupplierRow({
         </s-stack>
       </s-table-cell>
       <s-table-cell>
-        <s-stack direction="inline" gap="small-200">
+        {/* Two actions in view, the rest one click away: the row's buttons never wrap. */}
+        <span className="keha-inline">
           <s-button variant="tertiary" disabled={flag(!enabled)} onClick={onEdit}>
             {t("Edit")}
           </s-button>
           <s-button variant="tertiary" disabled={flag(!enabled)} onClick={pick}>
             {t("Assign products")}
           </s-button>
-          {s.products > 0 && (
-            <s-button variant="tertiary" disabled={flag(!enabled)} onClick={onClear}>
-              {t("Remove assignments")}
+          <s-button
+            variant="tertiary"
+            icon="menu-horizontal"
+            disabled={flag(!enabled)}
+            commandFor={menuId}
+            accessibilityLabel={`${t("More actions")}: ${s.name}`}
+          />
+          <s-menu id={menuId} accessibilityLabel={t("More actions")}>
+            {s.products > 0 && <s-button onClick={onClear}>{t("Remove assignments")}</s-button>}
+            <s-button tone="critical" onClick={onDelete}>
+              {t("Delete")}
             </s-button>
-          )}
-          <s-button variant="tertiary" tone="critical" disabled={flag(!enabled)} onClick={onDelete}>
-            {t("Delete")}
-          </s-button>
-        </s-stack>
+          </s-menu>
+        </span>
       </s-table-cell>
     </s-table-row>
   );
@@ -335,6 +340,8 @@ function SupplierEditor({
   const { t } = useLocale();
   const [form, setForm] = useState<SupplierForm>(initial);
   const [more, setMore] = useState(false);
+  // A new supplier counts as changed from the start, so Save is there as soon as it opens.
+  const dirty = id === null || !sameValues(form, initial);
   const set = <K extends keyof SupplierForm>(key: K, value: SupplierForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const err = (key: keyof SupplierForm) => {
     const code = errors[key];
@@ -361,7 +368,19 @@ function SupplierEditor({
     <FormCard
       title={id ? t("Edit supplier") : t("New supplier")}
       sub={t("Lead time and minimums apply to every product this supplier delivers.")}
+      action={
+        <s-button variant="tertiary" onClick={onCancel}>
+          {t("Cancel")}
+        </s-button>
+      }
     >
+      <FormSaveBar
+        id="keha-settings-supplier"
+        dirty={dirty}
+        saving={saving}
+        onSave={() => onSave(form)}
+        onDiscard={id === null ? onCancel : () => setForm(initial)}
+      />
       <s-stack direction="block" gap="base">
         <s-text-field label={t("Supplier name")} value={form.name} error={err("name")} onInput={(e) => set("name", val(e))} />
         <s-email-field
@@ -407,12 +426,6 @@ function SupplierEditor({
             />
           </s-stack>
         </Disclosure>
-        <s-stack direction="inline" gap="small" justifyContent="end">
-          <s-button onClick={onCancel}>{t("Cancel")}</s-button>
-          <s-button variant="primary" loading={flag(saving)} onClick={() => onSave(form)}>
-            {t("Save")}
-          </s-button>
-        </s-stack>
       </s-stack>
     </FormCard>
   );

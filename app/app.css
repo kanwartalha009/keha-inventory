@@ -646,7 +646,7 @@
 /* Text that must stay on one line: table header labels (with their lock
    badge), badges, buttons, values. Long forms go in a tooltip (HeaderLabel). */
 .keha-nowrap { white-space: nowrap; }
-.keha-th { display: inline-flex; align-items: center; gap: var(--keha-space-150); white-space: nowrap; }
+.keha-th, .keha-inline { display: inline-flex; align-items: center; gap: var(--keha-space-150); white-space: nowrap; }
 /* Digits line up down a column; numeric columns are right-aligned through
    <s-table-header format="numeric">. */
 s-table { font-variant-numeric: tabular-nums; }

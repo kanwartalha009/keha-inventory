@@ -11,7 +11,7 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "re
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { AppPage } from "../components/ui";
+import { AppPage, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { flag, isChecked, val } from "../components/wc";
@@ -110,17 +110,22 @@ export default function AlertsSettings() {
   const { form: initial, slack, canSlack } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<AlertsActionData>();
   const [form, setForm] = useState<AlertsForm>(initial);
+  const [saved, setSaved] = useState<AlertsForm>(initial);
   const busy = fetcher.state !== "idle";
   const pending = (fetcher.json as { intent?: string } | undefined)?.intent ?? "save";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
 
   useEffect(() => {
-    if (result?.ok && result.form) setForm(result.form);
+    if (result?.ok && result.form) {
+      setForm(result.form);
+      setSaved(result.form);
+    }
   }, [result]);
   useEffect(() => {
     if (slack.connected) setForm((f) => ({ ...f, slackWebhook: "" }));
   }, [slack.connected]);
+  const dirty = !sameValues(form, saved);
 
   const set = <K extends keyof AlertsForm>(key: K, value: AlertsForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const submit = (intent: Intent) =>
@@ -141,14 +146,14 @@ export default function AlertsSettings() {
   };
 
   return (
-    <AppPage
-      heading={t("Settings")}
-      primaryAction={
-        <s-button variant="primary" onClick={() => submit("save")} loading={flag(busy && pending === "save")}>
-          {t("Save")}
-        </s-button>
-      }
-    >
+    <AppPage heading={t("Settings")}>
+      <FormSaveBar
+        id="keha-settings-alerts"
+        dirty={dirty}
+        saving={busy && pending === "save"}
+        onSave={() => submit("save")}
+        onDiscard={() => setForm(saved)}
+      />
       <SettingsTabs current="alerts" />
       {result?.ok && result.intent === "save" && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result?.ok && result.intent === "test" && (
@@ -163,11 +168,10 @@ export default function AlertsSettings() {
         <s-banner tone="warning">{t("Slack didn't answer. Try again in a minute.")}</s-banner>
       )}
 
-      <s-section heading={t("Monday email")}>
+      <FormCard title={t("Monday email")} sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}>
         <s-stack direction="block" gap="base">
           <s-checkbox
             label={t("Send the Monday email")}
-            details={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}
             checked={flag(form.mondayEnabled)}
             onChange={(e) => set("mondayEnabled", isChecked(e))}
           />
@@ -179,18 +183,19 @@ export default function AlertsSettings() {
             onInput={(e) => set("recipients", val(e))}
           />
         </s-stack>
-      </s-section>
+      </FormCard>
 
-      <s-section heading={t("Instant alerts")}>
+      <FormCard title={t("Instant alerts")} sub={t("When a best seller will run out before new stock can arrive, or a busy product sells out.")}>
         <s-checkbox
           label={t("Send instant alerts")}
-          details={t("When a best seller will run out before new stock can arrive, or a busy product sells out. By email to the addresses above, and to Slack when it's connected. At most once per product per week.")}
+          details={t("By email to the addresses above, and to Slack when it's connected. At most once per product per week.")}
           checked={flag(form.instant)}
           onChange={(e) => set("instant", isChecked(e))}
         />
-      </s-section>
+      </FormCard>
 
-      <s-section heading={t("Slack")}>
+      {/* Below Growth the Upgrade banner says what Slack does; no second copy of it as the description. */}
+      <FormCard title={t("Slack")} sub={canSlack ? t("Get the Monday summary and urgent alerts in Slack.") : undefined}>
         <s-stack direction="block" gap="base">
           {!canSlack && <UpgradeBanner feature="slack" />}
           {slack.connected && slack.error && (
@@ -231,7 +236,7 @@ export default function AlertsSettings() {
             onChange={(e) => set("slackMonday", isChecked(e))}
           />
         </s-stack>
-      </s-section>
+      </FormCard>
     </AppPage>
   );
 }

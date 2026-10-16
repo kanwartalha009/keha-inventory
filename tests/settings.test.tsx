@@ -12,6 +12,7 @@ vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
 vi.mock("../app/models/settings.server", () => ({ getShopSettings: vi.fn(), saveShopSettings: vi.fn() }));
 
 import Settings from "../app/routes/app.settings";
+import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
 
 const now = new Date("2026-10-16T10:00:00Z");
 
@@ -62,5 +63,14 @@ describe("Settings page", () => {
     expect(html).toContain("More options");
     expect(html).toContain("App language");
     expect(html).toMatch(/<s-number-field[^>]*value="14"/);
+  });
+
+  it("same anatomy as every tab: cards with a heading and a one-line description, Save in the save bar", () => {
+    const data = { form: settingsToForm(DEFAULT_SETTINGS) };
+    const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
+    const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expectSettingsAnatomy(html, { cards: ["Defaults", "Language"], saveBar: "keha-settings-defaults" });
+    expect(html).toContain("Lead time and stock thresholds used for every product.");
+    expect(html).toContain("Only changes the app for you in this browser.");
   });
 });

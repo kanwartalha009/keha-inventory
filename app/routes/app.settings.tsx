@@ -4,15 +4,16 @@
  * Monday email, Slack and instant alerts live on the Alerts tab
  * (app.settings_.alerts.tsx); suppliers and locations on their own tabs.
  * At most 8 visible fields per section (spec §5.5); everything has a default.
+ * Saves through the contextual save bar, like every settings tab.
  */
 import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { AppPage, Disclosure } from "../components/ui";
+import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
-import { SelectField, flag, val } from "../components/wc";
+import { SelectField, val } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
 import {
   SETTINGS_BOUNDS,
@@ -64,13 +65,17 @@ export default function Settings() {
   const { form: initial } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionData>();
   const [form, setForm] = useState<SettingsForm>(initial);
+  const [saved, setSaved] = useState<SettingsForm>(initial);
   const [more, setMore] = useState(false);
   const saving = fetcher.state !== "idle";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
 
   useEffect(() => {
-    if (result?.ok) setForm(result.form);
+    if (result?.ok) {
+      setForm(result.form);
+      setSaved(result.form);
+    }
   }, [result]);
 
   const err = (key: keyof SettingsForm) => {
@@ -96,21 +101,15 @@ export default function Settings() {
   );
 
   return (
-    <AppPage
-      heading={t("Settings")}
-      primaryAction={
-        <s-button variant="primary" onClick={save} loading={flag(saving)}>
-          {t("Save")}
-        </s-button>
-      }
-    >
+    <AppPage heading={t("Settings")}>
+      <FormSaveBar id="keha-settings-defaults" dirty={!sameValues(form, saved)} saving={saving} onSave={save} onDiscard={() => setForm(saved)} />
       <SettingsTabs current="defaults" />
       {result?.ok && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result && !result.ok && result.notReady && (
         <s-banner tone="info">{t("We're still reading your store. Try again in a minute.")}</s-banner>
       )}
 
-      <s-section heading={t("Defaults")}>
+      <FormCard title={t("Defaults")} sub={t("Lead time and stock thresholds used for every product.")}>
         <s-stack direction="block" gap="base">
           {numberField(
             "leadTimeDays",
@@ -136,17 +135,16 @@ export default function Settings() {
             </s-stack>
           </Disclosure>
         </s-stack>
-      </s-section>
+      </FormCard>
 
-      <s-section heading={t("Language")}>
+      <FormCard title={t("Language")} sub={t("Only changes the app for you in this browser. Emails use your store's language.")}>
         <SelectField<Locale>
           label={t("App language")}
           value={locale}
           options={LOCALES.map((l) => ({ value: l, label: LOCALE_NAMES[l] }))}
           onChange={setLocale}
-          details={t("Only changes the app for you in this browser. Emails use your store's language.")}
         />
-      </s-section>
+      </FormCard>
     </AppPage>
   );
 }

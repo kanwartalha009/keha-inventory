@@ -18,6 +18,7 @@ import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
 import { featureMap } from "../app/lib/plan-shared";
 import { newSupplierForm } from "../app/lib/suppliers-shared";
+import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
 
 function render(path: string, id: string, Component: React.ComponentType, data: unknown) {
   const Stub = createRoutesStub([{ id, path: path.split("?")[0]!, Component, loader: () => data }]);
@@ -66,6 +67,27 @@ describe("Settings → Suppliers", () => {
     expect(html).not.toContain("Hide prices from the supplier"); // collapsed
     const visible = (html.match(/<s-(text|email|number)-field/g) ?? []).length + (html.match(/<s-choice-list/g) ?? []).length;
     expect(visible).toBeLessThanOrEqual(8);
+  });
+
+  it("same anatomy as every tab: a Suppliers card with heading and description; Add supplier stays a title-bar action", () => {
+    const html = render("/app/settings/suppliers", "suppliers", SuppliersSettings, suppliers());
+    expectSettingsAnatomy(html, { cards: ["Suppliers"] });
+    expect(html).toMatch(/<s-button[^>]*slot="primary-action"[^>]*>Add supplier</);
+    // Row actions: two in view, the rest in a menu, so the row never wraps.
+    expect(html).toContain('<s-menu id="keha-supplier-menu-s1"');
+    expect(html).toMatch(/<s-menu id="keha-supplier-menu-s1"[^>]*>.*Remove assignments.*Delete<\/s-button><\/s-menu>/s);
+    expect(html).not.toMatch(/<s-menu id="keha-supplier-menu-s2"[^>]*>[^]*?Remove assignments[^]*?<\/s-menu>/);
+  });
+
+  it("the editor saves through the save bar (a new supplier can be saved straight away), Cancel closes it", () => {
+    const html = render(
+      "/app/settings/suppliers?edit=new",
+      "suppliers",
+      SuppliersSettings,
+      suppliers({ editing: { id: null, form: newSupplierForm(14, "EUR") } }),
+    );
+    expectSettingsAnatomy(html, { cards: ["New supplier", "Suppliers"], saveBar: "keha-settings-supplier" });
+    expect(html).toContain("Cancel");
   });
 
   it("Free: teaches the plan, actions locked", () => {

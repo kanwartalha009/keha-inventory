@@ -61,6 +61,7 @@ import {
 import { normalizeSlackWebhook } from "../app/lib/slack-shared";
 import { decryptSecret } from "../app/lib/crypto.server";
 import AlertsSettings, { action, type AlertsLoaderData } from "../app/routes/app.settings_.alerts";
+import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
 
 const HOOK = "https://hooks.slack.com/services/" + "T0ABCDEF1/B0ABCDEF2/abcdefghijklmnopqrstuvwx";
 const now = new Date("2026-10-16T10:00:00Z");
@@ -264,6 +265,10 @@ describe("Alerts tab", () => {
     expect(html).toContain("keha-tab--active");
     const fields = (html.match(/<s-(?:checkbox|text-field|number-field|select)\b/g) ?? []).length;
     expect(fields).toBeLessThanOrEqual(8);
+    expectSettingsAnatomy(html, { cards: ["Monday email", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
+    // The long instant-alert text is split: one sentence as the card description, the rest as the checkbox details.
+    expect(html).toContain("When a best seller will run out before new stock can arrive, or a busy product sells out.</s-paragraph>");
+    expect(html).toContain('details="By email to the addresses above, and to Slack when it&#x27;s connected. At most once per product per week."');
   });
 
   it("connected: shows Connected, test and disconnect — never the link", () => {

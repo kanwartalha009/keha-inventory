@@ -27,6 +27,7 @@ vi.mock("../app/services/entitlements.server", () => ({
 
 import * as dbModule from "../app/db.server";
 import LocationsSettings, { action, loader, type LocationsData } from "../app/routes/app.settings_.locations";
+import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const SHOP = "acme.myshopify.com";
@@ -134,6 +135,8 @@ describe("Settings → Locations SSR", () => {
     expect(html).toContain("Save");
     expect(html).not.toContain("disabled");
     expect(html).not.toContain("See plans");
+    expectSettingsAnatomy(html, { cards: ["Locations", "How this is used"], saveBar: "keha-settings-locations" });
+    expect(html).toContain("Choose each location&#x27;s role and whether it counts for online sales.");
   });
 
   it("Growth: read-only, teaches the one stock pool, Upgrade", () => {
@@ -143,6 +146,8 @@ describe("Settings → Locations SSR", () => {
     expect(html).toContain("Locations and stores");
     expect(html).toContain("See plans");
     expect(html).toContain("disabled");
+    // Read-only: nothing to save, so no save bar.
+    expectSettingsAnatomy(html, { cards: ["Your online stock pool", "Locations", "How this is used"] });
   });
 
   it("empty state", () => {
