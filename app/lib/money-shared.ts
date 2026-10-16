@@ -1,0 +1,39 @@
+/**
+ * The four money-at-stake cards as stored in MoneyAtStake (one row per shop
+ * per day) and shown on Home and in the Monday email (spec §5.1, §7.6, §11).
+ * `basis` holds each card's engine basis for the "how we got this" popover.
+ * Pure, client-safe.
+ */
+import type { AtRiskBasis, CashStuckBasis, LostBasis, TrafficBasis } from "./engine/money-shared";
+import type { CostBasis, MoneyWindow } from "./engine/types-shared";
+
+export const MONEY_CARDS = ["atRisk", "lost90", "cashStuck", "soldOutTraffic"] as const;
+export type MoneyCardKey = (typeof MONEY_CARDS)[number];
+
+type Basis<B> = B & { window: MoneyWindow; currency: string; costBasis: CostBasis };
+
+/** MoneyAtStake.basis JSON. */
+export type MoneyBasisJson = {
+  computedAt: string;
+  currency: string;
+  /** "monthly" on Free (spec §3), "daily" on paid plans. */
+  refresh: "monthly" | "daily";
+  atRisk: Basis<AtRiskBasis>;
+  lost90: Basis<LostBasis>;
+  cashStuck: Basis<CashStuckBasis>;
+  soldOutTraffic: Basis<TrafficBasis>;
+};
+
+/** One day's cards for display: null = "—" (not enough data), never 0. */
+export type MoneySnapshot = {
+  day: string;
+  currency: string;
+  values: Record<MoneyCardKey, number | null>;
+  basis: MoneyBasisJson | null;
+};
+
+/** Week-on-week change; null when either side is unknown. */
+export function change(now: number | null, before: number | null): number | null {
+  if (now == null || before == null) return null;
+  return Math.round((now - before) * 100) / 100;
+}
