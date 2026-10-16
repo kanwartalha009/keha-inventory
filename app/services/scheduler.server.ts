@@ -36,6 +36,7 @@ import { computeAfterSync } from "./compute.server";
 import { isBackfillDone, readBackfillState } from "../lib/sync/backfill-shared";
 import { STEPS_PER_TICK, THROTTLE_BUDGET_MS, createSleepBudget } from "../lib/sync/budget-shared";
 import { runMondayEmailsAllShops } from "./monday.server";
+import { runAccuracyAllShops } from "./accuracy.server";
 
 const OUTBOX_EVERY_MS = 2 * 60 * 1000;
 const HOURLY_EVERY_MS = 60 * 60 * 1000; // daily jobs run hourly — idempotent, so
@@ -219,6 +220,7 @@ export function startScheduler(): void {
       void planSyncTick();
       void dataTick();
       void mondayTick();
+      void runAccuracyAllShops(new Date()); // spec §7.8: snapshot on the 1st, grade last month (idempotent)
     }, HOURLY_EVERY_MS);
     console.log("[scheduler] started — outbox every 2 min; purge, access-log retention, plan sync and data sync hourly");
   }, BOOT_DELAY_MS);
