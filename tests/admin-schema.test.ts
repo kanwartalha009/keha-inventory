@@ -10,48 +10,15 @@
  * Documents checked: every `#graphql` template literal under app/ plus the
  * bulk catalog query (sent as a string inside bulkOperationRunQuery). The
  * Partner API query in app-pricing.server.ts is not tagged `#graphql` and is
- * not an Admin document, so it is not checked here.
+ * not an Admin document, so it is not checked here. The collector lives in
+ * tests/helpers/admin-documents.ts (shared with tests/admin-scopes.test.ts).
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-import { gunzipSync } from "node:zlib";
-import { buildSchema, parse, validate, type GraphQLSchema } from "graphql";
+import { parse, validate } from "graphql";
 import { describe, expect, it } from "vitest";
-import { CATALOG_BULK_QUERY } from "../app/lib/sync/catalog-shared";
+import { adminDocuments, loadAdminSchema } from "./helpers/admin-documents";
 
-const ROOT = join(__dirname, "..");
-
-function loadSchema(): GraphQLSchema {
-  const sdl = gunzipSync(readFileSync(join(ROOT, "tests/fixtures/admin-2026-10.graphql.gz"))).toString("utf8");
-  return buildSchema(sdl);
-}
-
-function files(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const p = join(dir, name);
-    return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
-  });
-}
-
-type Doc = { where: string; source: string };
-
-const TAGGED = /`#graphql([\s\S]*?)`/g;
-
-function documents(): Doc[] {
-  const out: Doc[] = [];
-  for (const f of files(join(ROOT, "app"))) {
-    const src = readFileSync(f, "utf8");
-    for (const m of src.matchAll(TAGGED)) {
-      const line = src.slice(0, m.index).split("\n").length;
-      out.push({ where: `${relative(ROOT, f)}:${line}`, source: m[1] });
-    }
-  }
-  out.push({ where: "app/lib/sync/catalog-shared.ts CATALOG_BULK_QUERY", source: CATALOG_BULK_QUERY });
-  return out;
-}
-
-const schema = loadSchema();
-const DOCS = documents();
+const schema = loadAdminSchema();
+const DOCS = adminDocuments();
 
 describe("Admin GraphQL documents vs the 2026-10 schema", () => {
   it("loads the pinned schema", () => {
