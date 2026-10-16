@@ -55,6 +55,17 @@
   --keha-surface-subdued: #f7f7f7;
   --keha-surface-hover: #f7f7f7;
 
+  /* Spacing scale (2026-10-17): every hand-built gap, padding and margin uses
+     these steps (the same 4px grid Polaris uses). docs/DESIGN-RULES.md */
+  --keha-space-050: 2px;
+  --keha-space-100: 4px;
+  --keha-space-150: 6px;
+  --keha-space-200: 8px;
+  --keha-space-300: 12px;
+  --keha-space-400: 16px;
+  --keha-space-500: 20px;
+  --keha-space-600: 24px;
+
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
@@ -345,7 +356,7 @@
 }
 
 /* Responsive grids (KPIs, quick actions) */
-.keha-grid { display: grid; gap: 16px; }
+.keha-grid { display: grid; gap: var(--keha-space-400); }
 .keha-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .keha-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .keha-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -440,12 +451,12 @@
 .keha-tab:focus-visible { outline: 2px solid var(--keha-accent, #5b4fd6); outline-offset: -2px; }
 
 /* Layout grids used in place of Polaris React <Layout> (2/3 + 1/3 columns). */
-.keha-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.keha-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--keha-space-400); align-items: start; }
 .keha-layout--equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 900px) { .keha-layout, .keha-layout--equal { grid-template-columns: 1fr; } }
-.keha-stack { display: flex; flex-direction: column; gap: 16px; }
-.keha-stack--tight { gap: 8px; }
-.keha-row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.keha-stack { display: flex; flex-direction: column; gap: var(--keha-space-400); }
+.keha-stack--tight { gap: var(--keha-space-200); }
+.keha-row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--keha-space-300); flex-wrap: wrap; }
 .keha-page { max-width: 1120px; margin: 0 auto; padding: 0 0 40px; }
 
 /* ==========================================================================
@@ -521,8 +532,12 @@
 @media (max-width: 900px) { .keha-layout--form { grid-template-columns: 1fr; } }
 
 /* Card anatomy: <s-heading> + <s-paragraph color="subdued"> (Polaris typography), action on the right */
-.keha-form-card { display: flex; flex-direction: column; gap: 14px; }
-.keha-form-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.keha-form-card { display: flex; flex-direction: column; gap: var(--keha-space-400); }
+.keha-form-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--keha-space-300); }
+.keha-form-card__head > :last-child:not(:first-child) { flex-shrink: 0; }
+/* Card head of a flush card (a table fills the card edge to edge): the same
+   padding s-section gives a padded card, so headings line up across cards. */
+.keha-form-card__head--pad { padding: var(--keha-space-400) var(--keha-space-400) var(--keha-space-300); }
 
 /* View switcher (Back in stock: Subscribers / Storefront setup). Hand-drawn on
    purpose: <s-button-group> only renders slotted <s-button>s and has no
@@ -554,7 +569,7 @@
 /* Variant rows: native <s-table>; only the product cell layout is ours (.keha-cell-product) */
 
 /* Field grids + nested panel */
-.keha-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
+.keha-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--keha-space-300) var(--keha-space-400); align-items: start; }
 .keha-form-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 640px) { .keha-form-grid, .keha-form-grid--3 { grid-template-columns: 1fr; } }
 
@@ -589,14 +604,60 @@
 .keha-preview__pay { font-size: var(--keha-font-size-sm); font-weight: var(--keha-weight-semibold); color: var(--tile-emerald-fg); text-align: center; }
 
 /* Bottom action bar */
-.keha-actionbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 16px; border-top: 1px solid var(--keha-border); }
-.keha-actionbar__right { display: flex; gap: 8px; }
+.keha-actionbar { display: flex; align-items: center; justify-content: space-between; gap: var(--keha-space-200); padding-top: var(--keha-space-400); border-top: 1px solid var(--keha-border); }
+.keha-actionbar__right { display: flex; gap: var(--keha-space-200); }
 
 /* App page intro line (under the admin title bar) */
 .keha-page-intro { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 0; font-size: var(--keha-font-size-md); line-height: 18px; color: var(--keha-text-secondary); }
 .keha-navlist { border-radius: 12px; overflow: hidden; }
 .keha-navlist .keha-row { padding: 14px 16px; }
 .keha-cell-product { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+/* ==========================================================================
+   Layout rules (2026-10-17 design-consistency pass) — docs/DESIGN-RULES.md
+   ========================================================================== */
+
+/* Page toolbar (ui.tsx <Toolbar>): search grows on the left, filters and
+   selects sit on the right, all vertically centred. When the filters don't
+   fit beside a usable search box (240px) the filter group moves to its own
+   row, still right-aligned; below 600px every control takes a full row.
+   Filters get a fixed width so their size never depends on the label. */
+.keha-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); width: 100%; min-width: 0; }
+.keha-toolbar__search { flex: 1 1 240px; min-width: 0; }
+.keha-toolbar__filters {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+  gap: var(--keha-space-200); flex: 0 1 auto; min-width: 0; margin-inline-start: auto;
+}
+.keha-toolbar__filters > * { flex: 0 1 auto; width: 170px; max-width: 100%; min-width: 0; }
+.keha-toolbar__filters > .keha-switcher { width: 220px; max-width: 100%; }
+.keha-toolbar__filters > .keha-switcher--link { width: auto; }
+@media (max-width: 600px) {
+  .keha-toolbar__search, .keha-toolbar__filters { flex: 1 1 100%; }
+  .keha-toolbar__filters { justify-content: stretch; margin-inline-start: 0; }
+  .keha-toolbar__filters > *, .keha-toolbar__filters > .keha-switcher { flex: 1 1 140px; width: auto; }
+}
+
+/* Location switcher (components/location-switcher.tsx): a compact select, or
+   one link (teaching or set-up). Outside a toolbar it keeps a compact width. */
+.keha-switcher { display: flex; align-items: center; gap: var(--keha-space-200); min-width: 0; max-width: 320px; }
+.keha-switcher > s-select { flex: 1 1 auto; min-width: 0; }
+.keha-switcher--link { max-width: none; white-space: nowrap; }
+
+/* Text that must stay on one line: table header labels (with their lock
+   badge), badges, buttons, values. Long forms go in a tooltip (HeaderLabel). */
+.keha-nowrap { white-space: nowrap; }
+.keha-th { display: inline-flex; align-items: center; gap: var(--keha-space-150); white-space: nowrap; }
+/* Digits line up down a column; numeric columns are right-aligned through
+   <s-table-header format="numeric">. */
+s-table { font-variant-numeric: tabular-nums; }
+.keha-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Plans: one row per plan — name, price and button on the left, what it
+   includes on the right — so each point has room for one line. */
+.keha-plan { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: var(--keha-space-400) var(--keha-space-600); align-items: start; }
+.keha-plan__points { display: flex; flex-direction: column; gap: var(--keha-space-200); }
+.keha-point { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--keha-space-200); align-items: start; }
+@media (max-width: 720px) { .keha-plan { grid-template-columns: 1fr; } }
 
 /* Sections inside one card, separated by hairlines */
 .keha-overview > .keha-stack { gap: 0; }

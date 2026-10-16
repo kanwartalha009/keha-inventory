@@ -28,6 +28,7 @@ export const COMMON_TR: Record<string, Tr> = {
 
   // ---- Settings (defaults, Monday email) ----
   "Save": { es: "Guardar", fr: "Enregistrer", de: "Speichern", it: "Salva", pt: "Guardar", nl: "Opslaan", pl: "Zapisz" },
+  "Discard": { es: "Descartar", fr: "Ignorer", de: "Verwerfen", it: "Scarta", pt: "Descartar", nl: "Negeren", pl: "Odrzuć" },
   "Settings saved.": { es: "Ajustes guardados.", fr: "Paramètres enregistrés.", de: "Einstellungen gespeichert.", it: "Impostazioni salvate.", pt: "Definições guardadas.", nl: "Instellingen opgeslagen.", pl: "Ustawienia zapisane." },
   "We're still reading your store. Try again in a minute.": { es: "Todavía estamos leyendo tu tienda. Inténtalo de nuevo en un minuto.", fr: "Nous lisons encore votre boutique. Réessayez dans une minute.", de: "Wir lesen deinen Shop noch. Versuche es in einer Minute noch einmal.", it: "Stiamo ancora leggendo il tuo negozio. Riprova tra un minuto.", pt: "Ainda estamos a ler a sua loja. Tente novamente daqui a um minuto.", nl: "We lezen je winkel nog. Probeer het over een minuut opnieuw.", pl: "Wciąż odczytujemy Twój sklep. Spróbuj ponownie za minutę." },
   "Defaults": { es: "Valores predeterminados", fr: "Valeurs par défaut", de: "Standardwerte", it: "Valori predefiniti", pt: "Predefinições", nl: "Standaardwaarden", pl: "Ustawienia domyślne" },

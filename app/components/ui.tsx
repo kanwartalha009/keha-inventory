@@ -5,6 +5,7 @@
  * take the tile's colour; everything else in the admin is an `<s-*>` element.
  */
 import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { SaveBar } from "@shopify/app-bridge-react";
 import { useLinkProps } from "./wc";
 import { UpgradeFromQuery } from "./plan";
 import { useLocale } from "../lib/i18n";
@@ -438,7 +439,10 @@ export function ProductThumb({ src, alt, size = 40 }: { src?: string | null; alt
  * `size="base"` (every page, including tables — one width across the app)
  * keeps line lengths readable on wide screens.
  *
- * Action elements are cloned with the right `slot`; pass plain `<s-button>`s.
+ * Action elements are cloned with the right `slot`; pass plain `<s-button>`s,
+ * or a component that forwards its `slot` prop to its `<s-button>` (like
+ * DownloadButton). A component that drops `slot` renders its button as page
+ * content above the intro — the "Export CSV floats above the text" bug.
  */
 export function AppPage({
   heading,
@@ -542,27 +546,134 @@ export function FormCard({
   title,
   sub,
   action,
+  flush,
   children,
 }: {
   title: string;
   sub?: string;
   action?: ReactNode;
+  /** The content (a table, an empty state) runs edge to edge; only the head is padded. */
+  flush?: boolean;
   children?: ReactNode;
 }) {
+  const head = (
+    <div className={`keha-form-card__head${flush ? " keha-form-card__head--pad" : ""}`}>
+      <s-stack gap="small-500">
+        <s-heading>{title}</s-heading>
+        {sub && <s-paragraph color="subdued">{sub}</s-paragraph>}
+      </s-stack>
+      {action}
+    </div>
+  );
+  if (flush) {
+    return (
+      <s-section padding="none" accessibilityLabel={title}>
+        {head}
+        {children}
+      </s-section>
+    );
+  }
   return (
     <s-section>
       <s-stack gap="base">
-        <div className="keha-form-card__head">
-          <s-stack gap="small-500">
-            <s-heading>{title}</s-heading>
-            {sub && <s-paragraph color="subdued">{sub}</s-paragraph>}
-          </s-stack>
-          {action}
-        </div>
+        {head}
         {children}
       </s-stack>
     </s-section>
   );
+}
+
+/**
+ * Page toolbar (2026-10-17 layout rules, docs/DESIGN-RULES.md): the search
+ * grows on the left, filters and selects sit on the right, all vertically
+ * centred; the filters move to their own row when they don't fit, and every
+ * control takes a full row below 600px (`.keha-toolbar` in app.css). Pass
+ * `slot="filters"` to put it in an `<s-table>`'s filter area.
+ */
+export function Toolbar({ search, filters, slot }: { search?: ReactNode; filters?: ReactNode; slot?: string }) {
+  return (
+    <div className="keha-toolbar" slot={slot}>
+      {search && <div className="keha-toolbar__search">{search}</div>}
+      {filters && <div className="keha-toolbar__filters">{filters}</div>}
+    </div>
+  );
+}
+
+/**
+ * Table column header label that never wraps: a short label, the long form in
+ * a tooltip (linked with interestFor, so screen readers get it too), an
+ * optional trailing badge (plan lock). Use inside `<s-table-header>`.
+ */
+export function HeaderLabel({ id, label, hint, badge }: { id: string; label: string; hint?: string; badge?: ReactNode }) {
+  return (
+    <span className="keha-th">
+      {hint ? (
+        <>
+          <s-text interestFor={id}>{label}</s-text>
+          <s-tooltip id={id}>{hint}</s-tooltip>
+        </>
+      ) : (
+        <span>{label}</span>
+      )}
+      {badge}
+    </span>
+  );
+}
+
+/**
+ * Empty state inside a card or a table card: optional heading, one line of
+ * text, optional action — centred, the same on every screen.
+ */
+export function EmptyState({ heading, body, action }: { heading?: string; body: string; action?: ReactNode }) {
+  return (
+    <s-box padding="base">
+      <s-stack direction="block" gap="small" alignItems="center">
+        {heading && <s-heading>{heading}</s-heading>}
+        <s-paragraph color="subdued">{body}</s-paragraph>
+        {action}
+      </s-stack>
+    </s-box>
+  );
+}
+
+/**
+ * The one save pattern for forms (2026-10-17): Shopify's contextual save bar
+ * (App Bridge `<ui-save-bar>`), shown while the form differs from what is
+ * saved — Save / Discard live there, never in the title bar or the page. The
+ * programmatic save bar (not `<form data-save-bar>`) because the fields are
+ * React-controlled (React 18), which the automatic form tracking can't see
+ * (shopify.dev "Migrate ContextualSaveBar"). It stays open while saving and
+ * after a failed save, so the merchant keeps the values and can retry.
+ */
+export function FormSaveBar({
+  id,
+  dirty,
+  saving,
+  onSave,
+  onDiscard,
+}: {
+  id: string;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  const { t } = useLocale();
+  return (
+    <SaveBar id={id} open={dirty || saving}>
+      <button variant="primary" onClick={onSave} loading={saving ? "" : undefined}>
+        {t("Save")}
+      </button>
+      <button onClick={onDiscard} disabled={saving}>
+        {t("Discard")}
+      </button>
+    </SaveBar>
+  );
+}
+
+/** Two form states hold the same values (dirty check for FormSaveBar). */
+export function sameValues(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Collapsed card for optional settings ("More options"). */
