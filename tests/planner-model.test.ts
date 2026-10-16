@@ -124,6 +124,15 @@ describe("scenario limit (checked on the server)", () => {
     expect(db.tables.scenario).toHaveLength(1);
   });
 
+  it("Growth: two saves at once still leave exactly 1 scenario (the later one is refused)", async () => {
+    const [a, b] = await Promise.all([createScenario(SHOP, "growth", BF, NOW), createScenario(SHOP, "growth", { ...BF, name: "Christmas" }, NOW)]);
+    expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+    expect([a, b].find((r) => !r.ok)).toEqual({ ok: false, error: "limit" });
+    expect(db.tables.scenario.filter((s) => s.shop === SHOP)).toHaveLength(1);
+    const winner = [a, b].find((r) => r.ok) as { ok: true; id: string };
+    expect(db.tables.scenario.find((s) => s.shop === SHOP)!.id).toBe(winner.id);
+  });
+
   it("Pro is unlimited; Free has none; other shops' scenarios don't count", async () => {
     db.tables.scenario.push({ id: "x", shop: OTHER, name: "Theirs", start: D("2026-11-01"), end: D("2026-11-02") });
     for (let i = 0; i < 3; i++) expect((await createScenario(SHOP, "pro", { ...BF, name: `S${i}` }, NOW)).ok).toBe(true);

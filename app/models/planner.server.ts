@@ -109,6 +109,19 @@ export async function createScenario(shop: string, plan: PlanCode, input: Scenar
     },
     select: { id: true },
   });
+  // Two saves at once can both pass the count above (review fix 2026-10-17).
+  // Re-read after the insert: when the plan's limit is exceeded, the scenarios
+  // beyond it (oldest first by createdAt, then id — the same order for every
+  // request) delete themselves, so exactly `limit` survive.
+  const limit = SCENARIO_LIMIT[plan];
+  if (limit !== null && limit !== undefined) {
+    const ids = await prisma.scenario.findMany({ where: { shop }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const keep = ids.slice(0, limit).some((r) => r.id === row.id);
+    if (!keep) {
+      await prisma.scenario.deleteMany({ where: { id: row.id, shop } });
+      return { ok: false, error: "limit" };
+    }
+  }
   return { ok: true, id: row.id };
 }
 

@@ -432,7 +432,7 @@ function ClearDialog({
   const err = (k: ClearFormError) => (errors[k] ? clearErrorText(k, t) : undefined);
   const set = (k: keyof ClearForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const submit = () => {
-    if (!row) return;
+    if (!row || busy) return; // one request at a time (the server also claims the action atomically)
     fetcher.submit({ op: "clear", id: row.id, ...form }, { method: "post", action: ENDPOINT, encType: "application/json" });
   };
 
@@ -442,7 +442,7 @@ function ClearDialog({
       onClose={onClose}
       heading={t("Create a discount")}
       primaryAction={
-        <s-button variant="primary" onClick={submit} loading={flag(busy)} disabled={flag(!row)}>
+        <s-button variant="primary" onClick={submit} loading={flag(busy)} disabled={flag(!row || busy)}>
           {t("Create discount")}
         </s-button>
       }

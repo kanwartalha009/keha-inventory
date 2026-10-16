@@ -37,9 +37,27 @@ export function createRateLimiter(opts: { limit: number; windowMs: number; maxKe
   };
 }
 
-/** The client address: first X-Forwarded-For hop (Railway's proxy sets it), else a fixed key. */
+/**
+ * The client address for per-IP limits (review fix 2026-10-17).
+ *
+ *  1. CF-Connecting-IP when present: Cloudflare in front of the app sets it
+ *     to the real client and overwrites any value the client sent.
+ *  2. Else the RIGHT-most X-Forwarded-For entry: the one our own proxy
+ *     (Railway's edge) appended for the connection it received. Everything
+ *     to its left was sent by the client and can be anything, so the
+ *     left-most entry would let a guesser pick a new "address" per request.
+ *  3. Else X-Real-IP, else a fixed key (all such requests share one bucket).
+ *
+ * Caveat: with Cloudflare in front, the right-most XFF entry is a Cloudflare
+ * edge, which is why (1) comes first. Without Cloudflare in front, a client
+ * can send its own CF-Connecting-IP; the per-token limit still applies then.
+ */
 export function clientIp(headers: Headers): string {
-  const xff = headers.get("x-forwarded-for");
-  const first = xff?.split(",")[0]?.trim();
-  return first || headers.get("x-real-ip")?.trim() || "unknown";
+  const cf = headers.get("cf-connecting-ip")?.trim();
+  if (cf) return cf;
+  const hops = (headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  return hops[hops.length - 1] || headers.get("x-real-ip")?.trim() || "unknown";
 }

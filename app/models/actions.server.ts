@@ -192,6 +192,8 @@ export type ClearTarget = {
   variantIds: string[];
   currency: string;
   timezone: string | null;
+  /** The action's state before the claim (put back if Shopify refuses). */
+  prev: { state: string; snoozeUntil: Date | null; stateAmount: unknown; doneAt: Date | null };
 };
 
 /** The Clear action to discount: this shop's, kind "clear", not done yet. */
@@ -199,12 +201,45 @@ export async function getClearTarget(shop: string, id: string): Promise<ClearTar
   const [a, s] = await Promise.all([
     prisma.action.findFirst({
       where: { id, shop, kind: "clear", state: { in: LIVE_STATES } },
-      select: { id: true, productId: true, variantIds: true, currency: true },
+      select: { id: true, productId: true, variantIds: true, currency: true, state: true, snoozeUntil: true, stateAmount: true, doneAt: true },
     }),
     prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true, currency: true } }),
   ]);
   if (!a) return null;
-  return { ...a, currency: a.currency || s?.currency || "USD", timezone: s?.timezone ?? null };
+  const { state, snoozeUntil, stateAmount, doneAt, ...rest } = a;
+  return {
+    ...rest,
+    currency: a.currency || s?.currency || "USD",
+    timezone: s?.timezone ?? null,
+    prev: { state, snoozeUntil: snoozeUntil ?? null, stateAmount: stateAmount ?? null, doneAt: doneAt ?? null },
+  };
+}
+
+/**
+ * Claims the Clear action BEFORE Shopify is asked for a discount (review fix
+ * 2026-10-17): a conditional update from a live state to "done" that only one
+ * request can win, so a double submit can't create two discounts. false =
+ * another request (or tab) already took it.
+ */
+export async function claimClearAction(shop: string, id: string, now: Date): Promise<boolean> {
+  const r = await prisma.action.updateMany({
+    where: { id, shop, kind: "clear", state: { in: LIVE_STATES } },
+    data: { state: "done", snoozeUntil: null, stateAmount: null, doneAt: now },
+  });
+  return r.count === 1;
+}
+
+/** Shopify refused or failed: the action goes back to the state it had (only if it is still this claim). */
+export async function releaseClearAction(shop: string, target: ClearTarget, now: Date): Promise<void> {
+  await prisma.action.updateMany({
+    where: { id: target.id, shop, state: "done", doneAt: now },
+    data: {
+      state: target.prev.state,
+      snoozeUntil: target.prev.snoozeUntil,
+      stateAmount: target.prev.stateAmount as never,
+      doneAt: target.prev.doneAt,
+    },
+  });
 }
 
 /**

@@ -16,8 +16,9 @@ import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { flag, isChecked, val } from "../components/wc";
 import { useLocale } from "../lib/i18n";
-import { encryptSecret } from "../lib/crypto.server";
+import { encryptSecret, secretsWritable } from "../lib/crypto.server";
 import {
+  SETTINGS_ERRORS,
   alertsToForm,
   applyAlertsForm,
   type AlertsErrors,
@@ -92,6 +93,8 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<AlertsAct
   if (!r.ok) return { ok: false, errors: r.errors };
   // Plan check where something is created (plan-shared rules): connecting Slack needs Growth.
   if (r.webhook && !features.slack) return { ok: false, upgrade: true };
+  // The webhook is stored encrypted only; never in the clear (lib/crypto.server).
+  if (r.webhook && !secretsWritable()) return { ok: false, errors: { slackWebhook: SETTINGS_ERRORS.secretStorage } };
   const next = r.webhook
     ? { ...r.settings, alerts: { ...r.settings.alerts, slackWebhook: encryptSecret(r.webhook), slackError: null } }
     : r.settings;

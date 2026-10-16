@@ -133,7 +133,14 @@ describe("rate limiter", () => {
   });
 
   it("reads the client address from the proxy header", () => {
-    expect(clientIp(new Headers({ "x-forwarded-for": "1.2.3.4, 10.0.0.1" }))).toBe("1.2.3.4");
+    // The right-most hop is the one our proxy appended; the left ones are client-supplied.
+    expect(clientIp(new Headers({ "x-forwarded-for": "1.2.3.4, 10.0.0.1" }))).toBe("10.0.0.1");
+    expect(clientIp(new Headers({ "x-forwarded-for": "spoofed-1, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientIp(new Headers({ "x-forwarded-for": "spoofed-2, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientIp(new Headers({ "x-forwarded-for": " 203.0.113.9 ,  " }))).toBe("203.0.113.9");
+    // Cloudflare in front: its CF-Connecting-IP wins over the (Cloudflare-edge) XFF hop.
+    expect(clientIp(new Headers({ "cf-connecting-ip": "198.51.100.4", "x-forwarded-for": "198.51.100.4, 172.68.1.1" }))).toBe("198.51.100.4");
+    expect(clientIp(new Headers({ "x-real-ip": "192.0.2.1" }))).toBe("192.0.2.1");
     expect(clientIp(new Headers())).toBe("unknown");
   });
 });

@@ -29,6 +29,7 @@ import {
   supplierForm,
   type SupplierListRow,
 } from "../models/suppliers.server";
+import { secretsWritable } from "../lib/crypto.server";
 import { AppPage, Disclosure, FormCard } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -92,6 +93,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const form = readSupplierForm(body.form);
       const v = validateSupplierForm(form, await otherSupplierNames(shop, id));
       if (!v.ok) return { ok: false, errors: v.errors } satisfies SuppliersAction;
+      // Supplier emails are stored encrypted only; never in the clear (lib/crypto.server).
+      if (v.input.email && !secretsWritable()) return { ok: false, errors: { email: "emailStorage" } } satisfies SuppliersAction;
       const saved = await saveSupplier(shop, id, v.input);
       if (!saved) return { ok: false, error: "notFound" } satisfies SuppliersAction;
       return { ok: true, intent: "save", name: v.input.name } satisfies SuppliersAction;

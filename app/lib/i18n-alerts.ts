@@ -31,6 +31,15 @@ export const ALERTS_TR: Record<string, Tr> = {
     nl: "Voeg in Slack een inkomende webhook toe voor het kanaal dat je wilt, plak de link hier en sla op. We bewaren hem versleuteld.",
     pl: "W Slacku dodaj przychodzący webhook dla wybranego kanału, wklej tu jego link i zapisz. Przechowujemy go zaszyfrowany.",
   },
+  "Secure storage isn't set up for this app yet, so this can't be saved. Contact Keha support.": {
+    es: "El almacenamiento seguro aún no está configurado en esta app, así que esto no se puede guardar. Contacta con el soporte de Keha.",
+    fr: "Le stockage sécurisé n'est pas encore configuré pour cette application, cela ne peut donc pas être enregistré. Contactez le support Keha.",
+    de: "Der sichere Speicher ist für diese App noch nicht eingerichtet, daher kann das nicht gespeichert werden. Wende dich an den Keha-Support.",
+    it: "L'archiviazione sicura non è ancora configurata per questa app, quindi non è possibile salvare. Contatta l'assistenza Keha.",
+    pt: "O armazenamento seguro ainda não está configurado nesta app, por isso não é possível guardar. Contacte o suporte da Keha.",
+    nl: "Veilige opslag is nog niet ingesteld voor deze app, dus dit kan niet worden opgeslagen. Neem contact op met Keha-support.",
+    pl: "Bezpieczne przechowywanie nie jest jeszcze skonfigurowane w tej aplikacji, więc nie można tego zapisać. Skontaktuj się z pomocą Keha.",
+  },
   "Paste a Slack incoming webhook link. It starts with https://hooks.slack.com/services/": {
     es: "Pega un enlace de webhook entrante de Slack. Empieza por https://hooks.slack.com/services/",
     fr: "Collez un lien de webhook entrant Slack. Il commence par https://hooks.slack.com/services/",

@@ -6,8 +6,17 @@ import { createRoutesStub } from "react-router";
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() }, unauthenticated: { admin: vi.fn() } }));
 vi.mock("../app/db.server", () => ({ default: {} }));
 vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn(), upgradeResponse: vi.fn() }));
+const saveSupplier = vi.hoisted(() => vi.fn(async () => "s9"));
+vi.mock("../app/models/suppliers.server", async (orig) => ({
+  ...(await orig<typeof import("../app/models/suppliers.server")>()),
+  otherSupplierNames: async () => [],
+  saveSupplier,
+}));
 
-import SuppliersSettings, { type SuppliersData } from "../app/routes/app.settings_.suppliers";
+import SuppliersSettings, { action, type SuppliersData } from "../app/routes/app.settings_.suppliers";
+import { authenticate } from "../app/shopify.server";
+import { getEntitlements } from "../app/services/entitlements.server";
+import { featureMap } from "../app/lib/plan-shared";
 import { newSupplierForm } from "../app/lib/suppliers-shared";
 
 function render(path: string, id: string, Component: React.ComponentType, data: unknown) {
@@ -63,5 +72,31 @@ describe("Settings → Suppliers", () => {
     const html = render("/app/settings/suppliers", "suppliers", SuppliersSettings, suppliers({ enabled: false }));
     expect(html).toContain("Keep lead times, minimum orders and case packs for each supplier.");
     expect(html).toContain("Growth plan");
+  });
+});
+
+describe("Settings → Suppliers save without secure storage", () => {
+  it("production without a valid APP_ENCRYPTION_KEY: a supplier with an email isn't saved (translated error); without an email it is", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    const env = { key: process.env.APP_ENCRYPTION_KEY, node: process.env.NODE_ENV };
+    const post = (form: Record<string, unknown>) =>
+      action({
+        request: new Request("https://x/app/settings/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intent: "save", form }) }),
+        params: {},
+        context: {},
+      } as never);
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.APP_ENCRYPTION_KEY = "";
+      const form = { ...newSupplierForm(14, "EUR"), name: "Acme Textiles", email: "orders@acme.test" };
+      expect(await post(form)).toEqual({ ok: false, errors: { email: "emailStorage" } });
+      expect(saveSupplier).not.toHaveBeenCalled();
+      expect(await post({ ...form, email: "" })).toMatchObject({ ok: true });
+      expect(saveSupplier).toHaveBeenCalledTimes(1);
+    } finally {
+      process.env.APP_ENCRYPTION_KEY = env.key;
+      process.env.NODE_ENV = env.node;
+    }
   });
 });

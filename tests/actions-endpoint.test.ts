@@ -195,6 +195,31 @@ describe("clear → discount", () => {
     expect(act.doneAt).toBeInstanceOf(Date);
   });
 
+  it("two submits at once: one Shopify call, one discount; the other gets not_found", async () => {
+    let calls = 0;
+    m.graphql.mockImplementation(async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 5));
+      return okDiscount("discountAutomaticBasicCreate", `gid://shopify/DiscountAutomaticNode/${calls}`);
+    });
+    const [a, b] = await Promise.all([post(form), post(form)]);
+    expect(calls).toBe(1);
+    expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+    expect([a, b].find((r) => !r.ok)).toEqual({ ok: false, error: "not_found" });
+    expect(db.tables.clearance).toHaveLength(1);
+  });
+
+  it("Shopify refusing or failing gives the action back its previous state (a snoozed one stays snoozed)", async () => {
+    const until = new Date("2099-01-01T00:00:00Z");
+    Object.assign(db.tables.action!.find((r) => r.id === "c1")!, { state: "snoozed", snoozeUntil: until, stateAmount: 900 });
+    m.graphql.mockRejectedValueOnce(new Error("network"));
+    expect(await post(form)).toEqual({ ok: false, error: "failed" });
+    expect(db.tables.action!.find((r) => r.id === "c1")).toMatchObject({ state: "snoozed", snoozeUntil: until, stateAmount: 900, doneAt: null });
+    // …and a retry can still create the discount.
+    m.graphql.mockResolvedValue(okDiscount("discountAutomaticBasicCreate", "gid://shopify/DiscountAutomaticNode/9"));
+    expect(await post(form)).toMatchObject({ ok: true });
+  });
+
   it("code: sends the normalised code", async () => {
     m.graphql.mockResolvedValue(okDiscount("discountCodeBasicCreate", "gid://shopify/DiscountCodeNode/3"));
     const r = await post({ ...form, kind: "code", code: "clear-ab12", endsOn: "" });

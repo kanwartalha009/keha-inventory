@@ -105,7 +105,7 @@ Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
 | `SHOPIFY_ORG_ID` | Fallback for `SHOPIFY_PARTNER_ORG_ID` |
 | `SHOPIFY_PARTNER_API_TOKEN` | Partner API token ("Manage apps" + "View financials") |
 | `DATABASE_URL` | Railway Postgres (private network); also read by `npm run backtest` |
-| `APP_ENCRYPTION_KEY` | 64 hex chars, AES-256-GCM for the Slack webhook and supplier emails |
+| `APP_ENCRYPTION_KEY` | 64 hex chars, AES-256-GCM for the Slack webhook and supplier emails. Required in production (without a valid key those secrets are not saved); rotating it is not supported (stored values must be entered again) |
 | `NOVA_API` | Nova platform base URL |
 | `NOVA_INGRESS_HMAC_SECRET` | Signs forwarded webhooks (`X-Nova-Signature`) |
 | `NOVA_INSTALL_CONFIRM_SECRET` | Signs the install-confirm callback |

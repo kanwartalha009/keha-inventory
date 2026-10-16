@@ -188,6 +188,24 @@ describe("Alerts action", () => {
     expect(readSettings(store.settings).alerts.instant).toBe(false);
   });
 
+  it("production without a valid APP_ENCRYPTION_KEY: refuses to store the link (translated error), nothing saved in the clear", async () => {
+    const env = { key: process.env.APP_ENCRYPTION_KEY, node: process.env.NODE_ENV };
+    try {
+      process.env.NODE_ENV = "production";
+      for (const key of ["", "z".repeat(64)]) {
+        process.env.APP_ENCRYPTION_KEY = key;
+        expect(await post({ ...alertsToForm(DEFAULT_SETTINGS), slackWebhook: HOOK })).toEqual({
+          ok: false,
+          errors: { slackWebhook: SETTINGS_ERRORS.secretStorage },
+        });
+        expect(store.settings).toEqual({ leadTimeDays: 30 });
+      }
+    } finally {
+      process.env.APP_ENCRYPTION_KEY = env.key;
+      process.env.NODE_ENV = env.node;
+    }
+  });
+
   it("rejects a bad link with a translatable message", async () => {
     expect(await post({ ...alertsToForm(DEFAULT_SETTINGS), slackWebhook: "http://hooks.slack.com/services/" + "T0ABCDEF1/B0ABCDEF2/abcdefghijklmnopqrstuvwx" })).toEqual({
       ok: false,

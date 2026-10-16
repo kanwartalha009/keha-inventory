@@ -35,7 +35,7 @@ export type SupplierInput = {
   vendorMatch: string[];
 };
 
-export type SupplierErrorCode = "name" | "nameLong" | "nameTaken" | "email" | "range" | "currency" | "vendors";
+export type SupplierErrorCode = "name" | "nameLong" | "nameTaken" | "email" | "emailStorage" | "range" | "currency" | "vendors";
 export type SupplierErrors = Partial<Record<keyof SupplierForm, SupplierErrorCode>>;
 
 export const SUPPLIER_BOUNDS = {
@@ -194,6 +194,8 @@ export function supplierErrorText(code: SupplierErrorCode, t: T): string {
       return t("You already have a supplier with this name.");
     case "email":
       return t("Check the email address.");
+    case "emailStorage":
+      return t("Secure storage isn't set up for this app yet, so this can't be saved. Contact Keha support.");
     case "range":
       return t("Enter a whole number from {min} to {max}.");
     case "currency":

@@ -113,6 +113,8 @@ export const SETTINGS_ERRORS = {
   emails: "Check the email addresses.",
   tooMany: "Up to 10 addresses.",
   slackUrl: "Paste a Slack incoming webhook link. It starts with https://hooks.slack.com/services/",
+  /** No valid APP_ENCRYPTION_KEY in production: secrets are never stored unencrypted (lib/crypto.server). */
+  secretStorage: "Secure storage isn't set up for this app yet, so this can't be saved. Contact Keha support.",
 } as const;
 
 /**

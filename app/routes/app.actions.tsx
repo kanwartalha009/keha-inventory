@@ -14,7 +14,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { can } from "../services/entitlements.server";
 import { createClearanceDiscount } from "../services/clearance.server";
-import { getClearTarget, recordClearance, updateActionState } from "../models/actions.server";
+import { claimClearAction, getClearTarget, recordClearance, releaseClearAction, updateActionState } from "../models/actions.server";
 import { isActionOp, type ActionOp } from "../lib/action-list-shared";
 import { endOfLocalDay, validateClearForm, type ClearFormError } from "../lib/clearance-shared";
 import { todayIn } from "../lib/dashboard-shared";
@@ -71,6 +71,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
   if (!form.ok) return reply({ ok: false, error: "invalid", errors: form.errors });
 
+  // Claim the action first (atomic live → done): a double submit or a second
+  // tab gets "not_found" instead of creating a second discount in Shopify.
+  if (!(await claimClearAction(shop, id, now))) return reply({ ok: false, error: "not_found" });
+  const release = () => releaseClearAction(shop, target, now).catch((e) => console.error("[actions] clear release failed", shop, id, e));
+
   const startsAt = now;
   const endsAt = form.value.endsOn ? endOfLocalDay(form.value.endsOn, target.timezone) : null;
   let created;
@@ -78,9 +83,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     created = await createClearanceDiscount(admin, form.value, { productIds: [target.productId], startsAt, endsAt });
   } catch (e) {
     console.error("[actions] discount create failed", shop, e);
+    await release();
     return reply({ ok: false, error: "failed" });
   }
-  if (!created.ok) return reply({ ok: false, error: "shopify", userErrors: created.userErrors });
+  if (!created.ok) {
+    await release();
+    return reply({ ok: false, error: "shopify", userErrors: created.userErrors });
+  }
 
   // The discount exists in Shopify now; a failed bookkeeping write must not
   // invite a second click that would create a second discount.
