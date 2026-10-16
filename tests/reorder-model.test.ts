@@ -31,6 +31,10 @@ import * as dbModule from "../app/db.server";
 import { insertWithNumber, transitionOrder, kehaOnOrder } from "../app/models/reorder.server";
 import { allowConfirmRequest, confirmShipDate, lookupConfirm } from "../app/services/supplier-confirm.server";
 import { autoReceiveOrders, syncShopifyPurchaseOrders } from "../app/services/sync/po.server";
+import { loader as confirmLoader } from "../app/routes/supplier.confirm.$token";
+import { deleteSupplier } from "../app/models/suppliers.server";
+import { documentFor } from "../app/services/po-document.server";
+import { getOrder } from "../app/models/reorder.server";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -136,6 +140,51 @@ describe("supplier page", () => {
     }
     expect(await lookupConfirm("b".repeat(43), NOW)).toEqual({ ok: false });
     expect(await lookupConfirm("short", NOW)).toEqual({ ok: false });
+  });
+
+  // Review fix 2026-10-17: the page's loader data is serialized into public HTML.
+  const loadPage = async (t: string) => {
+    const request = new Request(`https://x/supplier/confirm/${t}`, { headers: { "x-forwarded-for": "198.51.100.7" } });
+    const r = (await confirmLoader({ request, params: { token: t }, context: {} } as never)) as unknown as { data: unknown };
+    return JSON.stringify(r.data);
+  };
+
+  it("sends the browser no prices, stock or variant ids when prices are hidden", async () => {
+    fake.tables.purchaseOrder = [];
+    seed({ lines: [{ ...line(V1, 12), unitCost: 7.25, baseOnHand: 4, received: 3 }], confirmExpiresAt: new Date(Date.now() + 86_400_000) });
+    const json = await loadPage(token);
+    expect(json).toContain('"state":"open"');
+    expect(json).toContain("Shirt");
+    expect(json).toContain('"qty":12');
+    for (const leak of ["unitCost", "7.25", "totalCost", "EUR", "baseOnHand", "received", "variantId", "gid://shopify"]) expect(json).not.toContain(leak);
+  });
+
+  it("with prices shown: unit costs and the total, still no stock or variant ids", async () => {
+    fake.tables.purchaseOrder = [];
+    fake.tables.supplier![0]!.hidePrices = false;
+    seed({ lines: [{ ...line(V1, 12), unitCost: 7.25, baseOnHand: 4 }], confirmExpiresAt: new Date(Date.now() + 86_400_000) });
+    const json = await loadPage(token);
+    expect(json).toContain('"unitCost":7.25');
+    expect(json).toContain('"totalCost":87');
+    for (const leak of ["baseOnHand", "variantId", "gid://shopify"]) expect(json).not.toContain(leak);
+  });
+
+  it("deleting the supplier keeps its order's prices hidden (page, PDF / email input)", async () => {
+    fake.tables.purchaseOrder = [];
+    fake.tables.supplier![0]!.hidePrices = true;
+    seed({ lines: [{ ...line(V1, 12), unitCost: 7.25 }] });
+    expect(await deleteSupplier(S, "s1")).toBe(true);
+    const found = await lookupConfirm(token, NOW);
+    expect(found.ok && found.view.hidePrices).toBe(true);
+    const order = await getOrder(S, "po9");
+    const doc = await documentFor(S, order!, NOW);
+    expect(doc.hidePrices).toBe(true);
+    expect(JSON.stringify(doc.lines)).not.toContain("unitCost");
+    // An order that never had a supplier (vendor group) still shows its prices.
+    fake.tables.purchaseOrder = [];
+    seed({ supplierId: null });
+    const vendorOrder = await lookupConfirm(token, NOW);
+    expect(vendorOrder.ok && vendorOrder.view.hidePrices).toBe(false);
   });
 
   it("rate-limits per token: 20 requests in 10 minutes", () => {

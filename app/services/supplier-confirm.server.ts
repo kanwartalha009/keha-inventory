@@ -9,8 +9,7 @@ import prisma from "../db.server";
 import { toSupportedLocale, type Locale } from "../lib/i18n";
 import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import { clientIp, createRateLimiter } from "../lib/rate-limit-shared";
-import { confirmLinkOpen, validShipDate } from "../lib/purchase-order-shared";
-import { readPoLines, type PoLine } from "../lib/supplier-shared";
+import { confirmLinkOpen, supplierLines, supplierTotals, validShipDate, type SupplierLine } from "../lib/purchase-order-shared";
 import { getShopContact } from "./shop-contact.server";
 import { getOrder, hidePricesFor, type OrderDetail } from "../models/reorder.server";
 
@@ -29,12 +28,23 @@ export function allowConfirmRequest(request: Request, token: string, now: number
 /** Tokens are 43 base64url characters; anything else is refused without a database read. */
 export const plausibleToken = (token: string) => /^[A-Za-z0-9_-]{43}$/.test(token);
 
+/**
+ * What the public page sends to the browser (serialized into the HTML), so
+ * only what the supplier may see: lines without variant ids, received units
+ * or the merchant's on-hand baseline, and no unit costs, cost total or
+ * currency when the supplier sees no prices (lib/purchase-order-shared
+ * supplierLines).
+ */
 export type ConfirmView = {
   number: string;
   storeName: string;
   supplierName: string | null;
-  lines: PoLine[];
-  currency: string | null;
+  lines: SupplierLine[];
+  totalUnits: number;
+  /** Only when prices are shown. */
+  totalCost?: number | null;
+  /** Only when prices are shown. */
+  currency?: string | null;
   hidePrices: boolean;
   confirmedShipDate: string | null;
   expectedDate: string | null;
@@ -59,6 +69,9 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
   ]);
   if (!order || !shopRow || shopRow.uninstalledAt) return { ok: false };
   const today = todayIn(shopRow.timezone, now);
+  const hidePrices = hidePricesFor(order);
+  const lines = supplierLines(order.lines, hidePrices);
+  const totals = supplierTotals(lines, hidePrices);
   const max = new Date(new Date(`${today}T00:00:00Z`).getTime() + 366 * 86_400_000).toISOString().slice(0, 10);
   return {
     ok: true,
@@ -69,9 +82,10 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
       number: order.number,
       storeName: contact?.name || storeLabel(row.shop),
       supplierName: order.supplier?.name ?? order.supplierName,
-      lines: readPoLines(order.lines),
-      currency: order.currency,
-      hidePrices: hidePricesFor(order),
+      lines,
+      totalUnits: totals.units,
+      ...(hidePrices ? {} : { totalCost: totals.cost ?? null, currency: order.currency }),
+      hidePrices,
       confirmedShipDate: order.confirmedShipDate,
       expectedDate: order.expectedDate,
       minDate: today,

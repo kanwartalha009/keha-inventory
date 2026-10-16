@@ -11,8 +11,7 @@
  */
 import PDFDocument from "pdfkit";
 import { translate, fill, type Locale } from "../lib/i18n";
-import type { PoLine } from "../lib/supplier-shared";
-import { lineVariant, poTotals } from "../lib/purchase-order-shared";
+import { lineVariant, supplierTotals, type SupplierLine } from "../lib/purchase-order-shared";
 
 export type PoPdfInput = {
   locale: Locale;
@@ -25,7 +24,8 @@ export type PoPdfInput = {
   confirmedShipDate: string | null;
   currency: string | null;
   hidePrices: boolean;
-  lines: PoLine[];
+  /** Supplier-safe lines (lib/purchase-order-shared supplierLines): no unit cost when prices are hidden. */
+  lines: SupplierLine[];
   confirmUrl: string | null;
 };
 
@@ -150,18 +150,18 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
         sku: l.sku ?? "—",
         product: variant ? `${l.productTitle} — ${variant}` : l.productTitle,
         qty: new Intl.NumberFormat(input.locale).format(l.qty),
-        unit: money(l.unitCost, input.currency, input.locale),
-        total: money(l.unitCost === null ? null : l.unitCost * l.qty, input.currency, input.locale),
+        unit: money(l.unitCost ?? null, input.currency, input.locale),
+        total: money(l.unitCost == null ? null : l.unitCost * l.qty, input.currency, input.locale),
       },
       false,
     );
   }
-  const totals = poTotals(input.lines);
+  const totals = supplierTotals(input.lines, input.hidePrices);
   doc.moveDown(0.8);
   doc.font("Helvetica-Bold").fontSize(10);
   doc.text(s(fill(tr("Total units: {n}"), { n: new Intl.NumberFormat(input.locale).format(totals.units) })), left, doc.y, { width, align: "right" });
   if (!input.hidePrices) {
-    doc.text(s(fill(tr("Total cost: {amount}"), { amount: money(totals.cost, input.currency, input.locale) })), left, doc.y, { width, align: "right" });
+    doc.text(s(fill(tr("Total cost: {amount}"), { amount: money(totals.cost ?? null, input.currency, input.locale) })), left, doc.y, { width, align: "right" });
   }
   if (input.confirmUrl) {
     doc.moveDown(1.5);

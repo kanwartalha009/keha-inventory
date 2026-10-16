@@ -85,11 +85,17 @@ export async function saveSupplier(shop: string, id: string | null, input: Suppl
 /**
  * Deletes a supplier. Its products go back to vendor matching, and its
  * orders keep their snapshot (number, supplier name, lines).
+ *
+ * The orders also keep `supplierId` (now pointing at no supplier): that is
+ * how they remember "this order's supplier was deleted", so its prices stay
+ * hidden from the supplier page, PDF and email (models/reorder hidePricesFor:
+ * a supplier id with no supplier = hidden, the safe default). Nulling it
+ * would make the order look like a never-assigned vendor order and show the
+ * prices the merchant had hidden (review fix 2026-10-17).
  */
 export async function deleteSupplier(shop: string, id: string): Promise<boolean> {
-  const [, , del] = await prisma.$transaction([
+  const [, del] = await prisma.$transaction([
     prisma.variant.updateMany({ where: { shop, supplierId: id }, data: { supplierId: null } }),
-    prisma.purchaseOrder.updateMany({ where: { shop, supplierId: id }, data: { supplierId: null } }),
     prisma.supplier.deleteMany({ where: { id, shop } }),
   ]);
   return del.count === 1;

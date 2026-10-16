@@ -7,7 +7,7 @@
 import prisma from "../db.server";
 import { toSupportedLocale } from "../lib/i18n";
 import { storeLabel } from "../lib/dashboard-shared";
-import { confirmLinkOpen } from "../lib/purchase-order-shared";
+import { confirmLinkOpen, supplierLines } from "../lib/purchase-order-shared";
 import { confirmUrl } from "../lib/po-email-shared";
 import { getShopContact } from "./shop-contact.server";
 import { getOrder, hidePricesFor, type OrderDetail } from "../models/reorder.server";
@@ -19,6 +19,7 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
     getShopContact(shop),
   ]);
   const appUrl = process.env.SHOPIFY_APP_URL || "";
+  const hidePrices = hidePricesFor(order);
   const linkOpen = confirmLinkOpen({ source: order.source, status: order.status, confirmExpiresAt: order.confirmExpiresAt }, now);
   return {
     locale: toSupportedLocale(shopRow?.locale),
@@ -29,8 +30,9 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
     expectedDate: order.expectedDate,
     confirmedShipDate: order.confirmedShipDate,
     currency: order.currency,
-    hidePrices: hidePricesFor(order),
-    lines: order.lines,
+    hidePrices,
+    // Supplier-safe lines: no variant ids / stock, and no unit cost when prices are hidden.
+    lines: supplierLines(order.lines, hidePrices),
     confirmUrl: linkOpen && appUrl ? confirmUrl(appUrl, order.confirmToken) : null,
   };
 }

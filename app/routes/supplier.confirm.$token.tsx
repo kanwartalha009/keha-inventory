@@ -1,7 +1,8 @@
 /**
  * /supplier/confirm/:token — the supplier's page for one order (spec §5.3,
  * §14). Public: no Shopify auth, no login. Shows only that order's lines (no
- * prices when the merchant hides them) and a date picker; confirming sets
+ * prices when the merchant hides them — the loader doesn't even send them,
+ * see ConfirmView) and a date picker; confirming sets
  * the ship date and moves the order to Confirmed. In the store's language.
  *
  * The link works only for a sent / confirmed order, until 60 days after it
@@ -15,7 +16,7 @@ import { Form, data, useActionData, useLoaderData } from "react-router";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { fill, toSupportedLocale, translate, type Locale } from "../lib/i18n";
 import { formatCount, formatDay } from "../lib/dashboard-shared";
-import { formatPrice, lineVariant, poTotals } from "../lib/purchase-order-shared";
+import { formatPrice, lineVariant } from "../lib/purchase-order-shared";
 import { allowConfirmRequest, confirmShipDate, lookupConfirm, type ConfirmView } from "../services/supplier-confirm.server";
 
 export type ConfirmPageData =
@@ -104,7 +105,6 @@ export default function SupplierConfirm() {
   }
 
   const { view, locale } = d;
-  const totals = poTotals(view.lines);
   const shown = d.state === "done" ? d.date : view.confirmedShipDate;
   return (
     <main lang={locale} style={page}>
@@ -134,8 +134,8 @@ export default function SupplierConfirm() {
           </tr>
         </thead>
         <tbody>
-          {view.lines.map((l) => (
-            <tr key={l.variantId}>
+          {view.lines.map((l, i) => (
+            <tr key={i}>
               <td style={td}>
                 {l.productTitle}
                 {lineVariant(l.variantTitle) && <span style={{ color: "#616161" }}>{` — ${lineVariant(l.variantTitle)}`}</span>}
@@ -145,7 +145,7 @@ export default function SupplierConfirm() {
               {!view.hidePrices && <td style={{ ...td, textAlign: "right" }}>{formatPrice(l.unitCost, view.currency, locale)}</td>}
               {!view.hidePrices && (
                 <td style={{ ...td, textAlign: "right" }}>
-                  {formatPrice(l.unitCost === null ? null : l.unitCost * l.qty, view.currency, locale)}
+                  {formatPrice(l.unitCost == null ? null : l.unitCost * l.qty, view.currency, locale)}
                 </td>
               )}
             </tr>
@@ -153,8 +153,8 @@ export default function SupplierConfirm() {
         </tbody>
       </table>
       <p style={{ textAlign: "right", fontWeight: 600, margin: "0 0 24px" }}>
-        {fill(tr("Total units: {n}"), { n: formatCount(totals.units, locale) })}
-        {!view.hidePrices && ` · ${fill(tr("Total cost: {amount}"), { amount: formatPrice(totals.cost, view.currency, locale) })}`}
+        {fill(tr("Total units: {n}"), { n: formatCount(view.totalUnits, locale) })}
+        {!view.hidePrices && ` · ${fill(tr("Total cost: {amount}"), { amount: formatPrice(view.totalCost, view.currency, locale) })}`}
       </p>
 
       {view.expectedDate && !shown && (

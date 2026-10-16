@@ -6,8 +6,7 @@
  * Pure: `tr` translates into the store language.
  */
 import { fill } from "./i18n";
-import type { PoLine } from "./supplier-shared";
-import { lineVariant, poTotals } from "./purchase-order-shared";
+import { lineVariant, supplierTotals, type SupplierLine } from "./purchase-order-shared";
 
 type T = (s: string) => string;
 
@@ -15,7 +14,8 @@ export type SupplierEmailInput = {
   storeName: string;
   supplierName: string | null;
   number: string;
-  lines: readonly PoLine[];
+  /** Supplier-safe lines (purchase-order-shared supplierLines). */
+  lines: readonly SupplierLine[];
   currency: string | null;
   hidePrices: boolean;
   confirmUrl: string;
@@ -38,18 +38,18 @@ export function supplierEmail(input: SupplierEmailInput, tr: T): { subject: stri
   const greeting = input.supplierName ? fill(tr("Hello {name},"), { name: input.supplierName }) : tr("Hello,");
   const intro = fill(tr("{store} would like to order the items below."), { store: input.storeName });
   const ask = tr("Please confirm the ship date with the link below. You can also download the order as a PDF there.");
-  const totals = poTotals(input.lines);
+  const totals = supplierTotals(input.lines, input.hidePrices);
   const num = (n: number) => new Intl.NumberFormat(input.locale).format(n);
-  const lineText = (l: PoLine) => {
+  const lineText = (l: SupplierLine) => {
     const name = [l.productTitle, lineVariant(l.variantTitle)].filter(Boolean).join(" — ");
     const sku = l.sku ? ` (${tr("SKU")} ${l.sku})` : "";
-    const price = input.hidePrices ? "" : ` · ${money(l.unitCost, input.currency, input.locale)}`;
+    const price = input.hidePrices ? "" : ` · ${money(l.unitCost ?? null, input.currency, input.locale)}`;
     return `${num(l.qty)} × ${name}${sku}${price}`;
   };
   const totalLine = input.hidePrices
     ? fill(tr("Total units: {n}"), { n: num(totals.units) })
     : `${fill(tr("Total units: {n}"), { n: num(totals.units) })} · ${fill(tr("Total cost: {amount}"), {
-        amount: money(totals.cost, input.currency, input.locale),
+        amount: money(totals.cost ?? null, input.currency, input.locale),
       })}`;
   const text = [
     greeting,

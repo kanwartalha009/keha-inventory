@@ -14,6 +14,7 @@ import { getShopContact } from "./shop-contact.server";
 import { toSupportedLocale, translate } from "../lib/i18n";
 import { storeLabel } from "../lib/dashboard-shared";
 import { confirmUrl, supplierEmail } from "../lib/po-email-shared";
+import { supplierLines } from "../lib/purchase-order-shared";
 import { getOrder, hidePricesFor, transitionOrder } from "../models/reorder.server";
 
 export type EmailSupplierResult =
@@ -39,14 +40,15 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
   ]);
   const locale = toSupportedLocale(shopRow?.locale);
   const storeName = contact?.name || storeLabel(shop);
+  const hidePrices = hidePricesFor(order);
   const mail = supplierEmail(
     {
       storeName,
       supplierName: supplier?.name ?? order.supplierName,
       number: order.number,
-      lines: order.lines,
+      lines: supplierLines(order.lines, hidePrices),
       currency: order.currency,
-      hidePrices: hidePricesFor(order),
+      hidePrices,
       confirmUrl: confirmUrl(appUrl, order.confirmToken),
       locale,
     },

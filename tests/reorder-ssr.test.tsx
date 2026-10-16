@@ -187,6 +187,8 @@ const view = {
   storeName: "Acme Store",
   supplierName: "Acme Textiles",
   lines: [line(1, 12, 2.5)],
+  totalUnits: 12,
+  totalCost: 30,
   currency: "EUR",
   hidePrices: true,
   confirmedShipDate: null,

@@ -105,6 +105,36 @@ export function poTotals(lines: readonly Pick<PoLine, "qty" | "unitCost">[]): { 
   return { units, cost: cost === null ? null : Math.round(cost * 100) / 100 };
 }
 
+/**
+ * One order line as the SUPPLIER may see it (public page, supplier PDF and
+ * email — spec §14). Only what's needed to fill the order: no variant ids,
+ * no received units, no on-hand baseline (the merchant's stock), and no unit
+ * cost at all when the supplier sees no prices (the key is left out, not
+ * nulled, so nothing hidden reaches a browser or a document).
+ */
+export type SupplierLine = {
+  productTitle: string;
+  variantTitle: string;
+  sku: string | null;
+  qty: number;
+  /** Present only when prices are shown. */
+  unitCost?: number | null;
+};
+
+export function supplierLines(lines: readonly PoLine[], hidePrices: boolean): SupplierLine[] {
+  return lines.map((l) => {
+    const out: SupplierLine = { productTitle: l.productTitle, variantTitle: l.variantTitle, sku: l.sku, qty: l.qty };
+    if (!hidePrices) out.unitCost = l.unitCost;
+    return out;
+  });
+}
+
+/** Totals a supplier may see: units always, the cost only when prices are shown. */
+export function supplierTotals(lines: readonly SupplierLine[], hidePrices: boolean): { units: number; cost?: number | null } {
+  const t = poTotals(lines.map((l) => ({ qty: l.qty, unitCost: l.unitCost ?? null })));
+  return hidePrices ? { units: t.units } : t;
+}
+
 /** "Default Title" is Shopify's name for a product's only variant. */
 export const lineVariant = (title: string) => (title && title !== "Default Title" ? title : "");
 
@@ -114,12 +144,12 @@ const money2 = (n: number | null) => (n === null ? null : Math.round(n * 100) / 
  * The order as CSV (headers in the store / admin language). Unit cost and
  * line total are left out when the supplier sees no prices.
  */
-export function poCsv(lines: readonly PoLine[], t: T, opts: { hidePrices: boolean; currency: string | null }): string {
+export function poCsv(lines: readonly SupplierLine[], t: T, opts: { hidePrices: boolean; currency: string | null }): string {
   const header = [t("SKU"), t("Product"), t("Variant"), t("Quantity")];
   if (!opts.hidePrices) header.push(t("Unit cost"), t("Line total"), t("Currency"));
   const rows = lines.map((l) => {
     const row: (string | number | null)[] = [l.sku, l.productTitle, lineVariant(l.variantTitle), l.qty];
-    if (!opts.hidePrices) row.push(money2(l.unitCost), l.unitCost === null ? null : money2(l.unitCost * l.qty), opts.currency);
+    if (!opts.hidePrices) row.push(money2(l.unitCost ?? null), l.unitCost == null ? null : money2(l.unitCost * l.qty), opts.currency);
     return row;
   });
   return toCsv(header, rows);
