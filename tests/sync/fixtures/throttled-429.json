@@ -1,0 +1,6 @@
+{
+  "errors": [{ "message": "ShopifyQL query budget exceeded", "extensions": { "code": "THROTTLED" } }],
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 40, "maximumAvailable": 1000, "currentlyAvailable": 0, "windowResetAt": "2026-10-16T10:00:30Z" }
+  }
+}

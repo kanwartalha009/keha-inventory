@@ -1,0 +1,30 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": {
+        "columns": [
+          { "name": "gross_sales", "dataType": "MONEY", "displayName": "Gross sales" },
+          { "name": "sales_channel", "dataType": "STRING", "displayName": "Sales channel" },
+          { "name": "product_variant_id", "dataType": "IDENTITY", "displayName": "Product variant ID" },
+          { "name": "net_items_sold", "dataType": "INTEGER", "displayName": "Net items sold" },
+          { "name": "day", "dataType": "DAY_TIMESTAMP", "displayName": "Day" },
+          { "name": "quantity_returned", "dataType": "INTEGER", "displayName": "Quantity returned" },
+          { "name": "pos_location_name", "dataType": "STRING", "displayName": "POS location name" }
+        ],
+        "rows": [
+          { "day": "2026-09-01", "product_variant_id": "44012345678901", "pos_location_name": null, "sales_channel": "Online Store", "net_items_sold": "3", "gross_sales": "123.456", "quantity_returned": "1" },
+          { "day": "2026-09-01T00:00:00Z", "product_variant_id": "gid://shopify/ProductVariant/44012345678902", "pos_location_name": "Madrid Centro", "sales_channel": "Point of Sale", "net_items_sold": 2, "gross_sales": 80, "quantity_returned": 0 },
+          { "day": "2026-09-02T00:00:00+02:00", "product_variant_id": 44012345678903, "pos_location_name": "", "sales_channel": "Shop", "net_items_sold": "1", "gross_sales": "not-a-number", "quantity_returned": null },
+          { "day": null, "product_variant_id": "44012345678901", "pos_location_name": null, "sales_channel": "Online Store", "net_items_sold": "5", "gross_sales": "50.00", "quantity_returned": "0" },
+          { "day": "2026-09-02", "product_variant_id": null, "pos_location_name": null, "sales_channel": "Online Store", "net_items_sold": "7", "gross_sales": "70.00", "quantity_returned": "0" },
+          { "day": "2026-09-02", "product_variant_id": "gid://shopify/Product/999", "pos_location_name": null, "sales_channel": "Online Store", "net_items_sold": "1", "gross_sales": "10.00", "quantity_returned": "0" }
+        ]
+      },
+      "parseErrors": []
+    }
+  },
+  "extensions": {
+    "cost": { "requestedQueryCost": 3, "actualQueryCost": 3, "throttleStatus": { "maximumAvailable": 2000, "currentlyAvailable": 1997, "restoreRate": 100 } },
+    "shopifyqlCost": { "requestedQueryCost": 12, "maximumAvailable": 1000, "currentlyAvailable": 988, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

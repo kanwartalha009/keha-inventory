@@ -1,0 +1,7 @@
+{
+  "data": { "shopifyqlQuery": null },
+  "errors": [{ "message": "Throttled", "extensions": { "code": "THROTTLED", "documentation": "https://shopify.dev/api/usage/rate-limits" } }],
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 40, "maximumAvailable": 1000, "currentlyAvailable": 5, "windowResetAt": "2026-10-16T10:00:45Z" }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "data": { "shopifyqlQuery": null },
+  "errors": [
+    {
+      "message": "The response is too large. Reduce the date range or the number of dimensions.",
+      "locations": [{ "line": 2, "column": 3 }],
+      "path": ["shopifyqlQuery"],
+      "extensions": { "code": "RESPONSE_TOO_LARGE" }
+    }
+  ],
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 50, "maximumAvailable": 1000, "currentlyAvailable": 900, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

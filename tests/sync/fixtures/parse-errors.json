@@ -1,0 +1,11 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": null,
+      "parseErrors": ["Column 'net_itemz_sold' does not exist in dataset 'sales'"]
+    }
+  },
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 0, "maximumAvailable": 1000, "currentlyAvailable": 1000, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

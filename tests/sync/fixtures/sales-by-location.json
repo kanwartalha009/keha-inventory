@@ -1,0 +1,22 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": {
+        "columns": [
+          { "name": "day", "dataType": "DAY_TIMESTAMP", "displayName": "Day" },
+          { "name": "product_variant_id", "dataType": "IDENTITY", "displayName": "Product variant ID" },
+          { "name": "pos_location_name", "dataType": "STRING", "displayName": "POS location name" },
+          { "name": "net_items_sold", "dataType": "INTEGER", "displayName": "Net items sold" }
+        ],
+        "rows": [
+          { "day": "2026-09-01", "product_variant_id": "44012345678901", "pos_location_name": null, "net_items_sold": "4" },
+          { "day": "2026-09-01", "product_variant_id": "44012345678901", "pos_location_name": "Barcelona", "net_items_sold": "2" }
+        ]
+      },
+      "parseErrors": []
+    }
+  },
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 8, "maximumAvailable": 1000, "currentlyAvailable": 992, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

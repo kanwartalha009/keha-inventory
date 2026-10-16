@@ -1,0 +1,25 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": {
+        "columns": [
+          { "name": "sessions", "dataType": "INTEGER", "displayName": "Sessions" },
+          { "name": "referrer_source", "dataType": "STRING", "displayName": "Referrer source" },
+          { "name": "day", "dataType": "DAY_TIMESTAMP", "displayName": "Day" },
+          { "name": "sessions_that_completed_checkout", "dataType": "INTEGER", "displayName": "Sessions that completed checkout" },
+          { "name": "landing_page_path", "dataType": "STRING", "displayName": "Landing page path" }
+        ],
+        "rows": [
+          { "day": "2026-09-01", "landing_page_path": "/products/red-sneaker", "referrer_source": "Search", "sessions": "120", "sessions_that_completed_checkout": "4" },
+          { "day": "2026-09-01", "landing_page_path": "/", "referrer_source": null, "sessions": "300", "sessions_that_completed_checkout": "9" },
+          { "day": "2026-09-01", "landing_page_path": null, "referrer_source": "Direct", "sessions": "7", "sessions_that_completed_checkout": null },
+          { "day": "", "landing_page_path": "/collections/all", "referrer_source": "Social", "sessions": "10", "sessions_that_completed_checkout": "0" }
+        ]
+      },
+      "parseErrors": []
+    }
+  },
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 6, "maximumAvailable": 1000, "currentlyAvailable": 954, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": {
+        "columns": [
+          { "name": "days_out_of_stock_at_location", "dataType": "INTEGER", "displayName": "Days out of stock at location" },
+          { "name": "inventory_location_name", "dataType": "STRING", "displayName": "Inventory location name" },
+          { "name": "day", "dataType": "DAY_TIMESTAMP", "displayName": "Day" },
+          { "name": "ending_inventory_units_at_location", "dataType": "INTEGER", "displayName": "Ending inventory units at location" },
+          { "name": "product_variant_id", "dataType": "IDENTITY", "displayName": "Product variant ID" }
+        ],
+        "rows": [
+          { "day": "2026-09-01", "product_variant_id": "44012345678901", "inventory_location_name": "Main Warehouse", "ending_inventory_units_at_location": "12", "days_out_of_stock_at_location": "0" },
+          { "day": "2026-09-01", "product_variant_id": "44012345678901", "inventory_location_name": "Madrid Centro", "ending_inventory_units_at_location": "0", "days_out_of_stock_at_location": "1" },
+          { "day": "2026-09-01", "product_variant_id": "44012345678902", "inventory_location_name": null, "ending_inventory_units_at_location": "3", "days_out_of_stock_at_location": "0" },
+          { "day": "2026-09-02", "product_variant_id": "44012345678902", "inventory_location_name": "Main Warehouse", "ending_inventory_units_at_location": "-2", "days_out_of_stock_at_location": null }
+        ]
+      },
+      "parseErrors": []
+    }
+  },
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 20, "maximumAvailable": 1000, "currentlyAvailable": 960, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "data": {
+    "shopifyqlQuery": {
+      "tableData": {
+        "columns": [
+          { "name": "orders", "dataType": "INTEGER", "displayName": "Orders" },
+          { "name": "day", "dataType": "DAY_TIMESTAMP", "displayName": "Day" },
+          { "name": "gross_sales", "dataType": "MONEY", "displayName": "Gross sales" }
+        ],
+        "rows": [
+          { "day": "2026-09-01", "orders": "14", "gross_sales": "1234.50" },
+          { "day": "2026-09-02", "orders": "0", "gross_sales": "0.00" }
+        ]
+      },
+      "parseErrors": []
+    }
+  },
+  "extensions": {
+    "shopifyqlCost": { "requestedQueryCost": 2, "maximumAvailable": 1000, "currentlyAvailable": 952, "windowResetAt": "2026-10-16T10:01:00Z" }
+  }
+}
