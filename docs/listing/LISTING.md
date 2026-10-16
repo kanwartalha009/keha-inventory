@@ -2,7 +2,7 @@
 
 Partner Dashboard → Apps → Keha Inventory Intelligence → Distribution → Manage listing.
 English is the primary listing. Every claim below is something the code does today
-(checked 2026-10-16, task 2.7); `tests/listing.test.ts` enforces the limits, the name and the
+(checked 2026-10-16, task 2.7; rechecked 2026-10-17 after the Planner and Pro stores merged); `tests/listing.test.ts` enforces the limits, the name and the
 pricing table. Edit a value only inside its ```text block, then run `npx vitest run tests/listing.test.ts`.
 
 Limits used (shopify.dev "App Store requirements checklist", playbook §8):
@@ -32,7 +32,7 @@ See what your stock is costing you in money, and get a ranked to-do list every M
 ## App details
 
 ```text
-Keha reads your own Shopify sales, stock and store visits and puts a money figure on four problems: sales at risk, sales lost to sell-outs, cash stuck in slow stock, and visits to sold-out product pages. Every Monday you get a ranked list of what to reorder, push, fix and clear, in the app and by email. Sales per day count only the days a product was in stock, so sell-outs never drag a forecast down. Build purchase orders per supplier and let suppliers confirm the ship date through a link.
+Keha reads your own Shopify sales, stock and store visits and puts a money figure on four problems: sales at risk, sales lost to sell-outs, cash stuck and visits to sold-out pages. Every Monday you get a ranked list of what to reorder, push, fix and clear. Sales per day count only in-stock days, so sell-outs never drag a forecast down. Send purchase orders that suppliers confirm through a link, plan a season's orders and cash per week, and on Pro plan each warehouse and POS store.
 ```
 
 ## Feature list
@@ -44,6 +44,8 @@ Forecasts ignore sold-out days and use seasonality once 13 months exist
 Purchase orders per supplier as PDF, CSV or email, with a ship-date link
 Clear dead stock with a Shopify discount, created only after you confirm
 Monday email in your store's language, plus Slack and Shopify Flow alerts
+Season planner: order list with order-by dates and cash needed per week
+Pro: plan each warehouse and POS store, and create draft transfers in Shopify
 ```
 
 Where each claim lives in the code:
@@ -56,10 +58,13 @@ Where each claim lives in the code:
 | Purchase orders PDF / CSV / email, ship-date link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
 | Discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Monday email translated, Slack, Flow | `app/services/monday.server.ts`, `slack.server.ts`, `flow.server.ts` (Slack, Flow: Growth) |
+| Season planner: order list, order-by dates, cash per week (also collection goals, accuracy scorecard) | `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
+| Plan per warehouse and POS store | `app/routes/app.settings_.locations.tsx` (roles), location switcher on Products and Reorder (Pro) |
+| Draft transfers in Shopify | Reorder → "Transfers: warehouse → stores", `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
 
-Not claimed anywhere in the text because it is not built yet: the season planner, collection
-goals, the accuracy scorecard screen (the accuracy line is in the Monday email), planning per
-location / POS store, and stock transfers.
+Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
+merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks
+as "Store" in Settings → Locations.
 
 ## Search terms
 
@@ -88,10 +93,10 @@ App pricing. Plan handles: `free`, `growth`, `pro`. Annual = 2 months free (10 �
 | Growth | $49 | $490 | 14 days |
 | Pro | $99 | $990 | 14 days |
 
-Plan card features, word for word from `PLAN_POINTS` (`app/lib/plan-matrix.ts`), with what is
-shipped today. **Do not publish a "Not built yet" line**: playbook mistake #18 (a listing
-promise the app didn't keep). **[Kanwar to confirm]** whether to submit before the planner
-(task 2.5) and Pro (phase 3) ship — see `REVIEWER.md`.
+Plan card features, word for word from `PLAN_POINTS` (`app/lib/plan-matrix.ts`), each marked
+with whether the code ships it (all do as of the merge of the Planner and Pro stores). Never
+publish a line marked "Not built yet": playbook mistake #18 (a listing promise the app didn't
+keep).
 
 ### Free
 
@@ -104,14 +109,14 @@ promise the app didn't keep). **[Kanwar to confirm]** whether to submit before t
 - Shipped — Numbers refreshed daily, and every action
 - Shipped — Reorder plan with suppliers and purchase orders
 - Shipped — Preorder bridge and dead-stock discounts
-- Not built yet — Season planner (1 scenario) and forecast accuracy
+- Shipped — Season planner (1 scenario) and forecast accuracy
 - Shipped — Slack and Shopify Flow
 
 ### Pro
 
-- Not built yet — Planning per location and per POS store
-- Not built yet — Transfers from warehouse to stores, created in Shopify
-- Not built yet — Unlimited planner scenarios
+- Shipped — Planning per location and per POS store
+- Shipped — Transfers from warehouse to stores, created in Shopify
+- Shipped — Unlimited planner scenarios
 
 ## Links and contacts
 

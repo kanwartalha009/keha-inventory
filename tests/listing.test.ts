@@ -96,6 +96,10 @@ describe("listing pricing", () => {
       expect(rows).toEqual(PLAN_POINTS[code]);
     }
   });
+
+  it("publishes no plan-card line the app doesn't ship", () => {
+    expect(listing).not.toMatch(/^- Not built yet — /m);
+  });
 });
 
 describe("reviewer instructions", () => {

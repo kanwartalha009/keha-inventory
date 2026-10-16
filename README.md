@@ -9,25 +9,28 @@ Shopify app: *every Monday, Keha tells you what to do with each product — reor
 
 Built from the Encore (Keha Preorder) app kit (playbook §2): React Router 7, Polaris web components, Prisma + Postgres, Railway, vitest.
 
-## What the app does today (phases 1–2)
+## What the app does today (phases 1–3)
 
 | Area | What the merchant gets | Plan |
 |---|---|---|
 | Home (`/app`) | 4 money cards (sales at risk, sales lost to sell-outs, cash stuck, sold-out page visits) with "how we got this"; this week's actions (Reorder · Bridge · Push · Fix · Clear) with snooze / dismiss / done; setup guide; sync progress | Free: monthly refresh, top 10 · Growth+: daily, all |
 | Products (`/app/products`) | One row per variant (status, stock, incoming, sales per day while in stock, days left, order by, suggested qty), filters, CSV export; variant page with 13 months of sales (sold-out days shaded) and how the forecast was built | Forecast columns and CSV: Growth |
 | Reorder (`/app/reorder`) | Lines grouped by supplier with order-by dates, case packs and minimums; orders Draft → Sent → Confirmed → Received; PDF / CSV / email to the supplier; Shopify purchase orders read as "From Shopify"; landed orders close themselves | Growth |
+| Planner (`/app/planner`) | Scenarios (Black Friday, Christmas, custom dates; grow X %, revenue target or keep pace): demand per collection, order list with order-by dates, cash needed per week (chart + table), last year's same period; collection goals; accuracy scorecard ("How accurate we were"). Read-only: changes nothing in the store | Growth: 1 scenario · Pro: unlimited |
+| Locations and stores | Settings → Locations (warehouse / store roles, "counts for online sales"); per-location metrics; location switcher on Products, its CSV and Reorder; transfer plan warehouse → stores on Reorder, "Create transfer in Shopify" after a confirm creates a **draft** transfer (`inventoryTransferCreate`, idempotent) | Pro (Free / Growth: read-only Locations tab, one stock pool) |
 | Supplier link (`/supplier/confirm/:token`) | Public page, no login: the supplier sees only that order, picks the ship date, downloads the PDF; expires 60 days after sending; rate-limited | Growth |
 | Clear | A Shopify discount (automatic or code) for dead / too-much stock, created only after a confirm; cash freed tracked | Growth |
 | Bridge | "Take preorders for the gap" opens Keha Preorder pre-filled when it is installed; otherwise a back-in-stock how-to | Growth |
-| Settings | Defaults (lead time, cycle, safety level, thresholds), Suppliers (email encrypted), Alerts (Monday email recipients, instant alerts, Slack webhook encrypted) | Suppliers, Slack: Growth |
+| Settings | Defaults (lead time, cycle, safety level, thresholds), Suppliers (email encrypted), Locations, Alerts (Monday email recipients, instant alerts, Slack webhook encrypted) | Suppliers, Slack: Growth · Locations: Pro |
 | Monday email | 08:00 store time: the 4 numbers with week-on-week change, top 5 actions with buttons, last month's accuracy line, unsubscribe link; in the store's language; same summary to Slack | Free: top 10 · Growth+: full; Slack: Growth |
 | Instant alerts | Hourly: a best seller will run out within its lead time, or a busy product sold out; email on every plan, Slack on Growth; once per product per 7 days | All |
 | Shopify Flow | Triggers "Product needs reorder" and "Product went dead" (`extensions/keha-inventory-flow`) | Growth |
-| Accuracy | Monthly forecast snapshot and grading of last month (top 20 variants + store total); shown in the Monday email | Growth |
+| Accuracy | Monthly forecast snapshot and grading of last month (top 20 variants + store total); in the Monday email and the Planner's scorecard | Growth |
 | Privacy | No shopper data stored; GDPR webhooks; 48 h purge after uninstall; access log | All |
 
-Not built yet (do not list or demo them): the Planner (task 2.5: scenarios, cash per week,
-collection goals), an accuracy screen, planning per location / POS store and transfers (phase 3, Pro).
+Every plan-card line in `PLAN_POINTS` is built; `tests/listing.test.ts` fails if the listing
+ever marks one "Not built yet". Spec phase 4 (Sidekick, ad-stock control, linked stores,
+benchmarks) is not started and needs separate approval.
 
 ## Backtest (spec §16, Phase 0.3)
 
