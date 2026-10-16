@@ -3,16 +3,16 @@
  * on the app's own domain. English only by design (like /terms): the App Store listing and
  * Shopify's review read it in English; the admin UI is what is translated.
  *
- * Checked against the code for task 2.7 (2026-10-16). Every period comes from the module that
- * enforces it (lib/legal.server LEGAL_FACTS), every scope sentence from SCOPE_PURPOSES (held
- * equal to shopify.app.toml by tests/legal.test.ts), and the email provider from the API the
- * app really sends through. Company and support email come from env (INVENTORY_LEGAL_NAME,
+ * Checked against the code for task 2.7 (2026-10-16); read_locales added 2026-10-17.
+ * Every period comes from the module that enforces it (lib/legal.server LEGAL_FACTS), every
+ * scope sentence from SCOPE_PURPOSES (held equal to shopify.app.toml by tests/legal.test.ts),
+ * and the email provider from the API the app really sends through. Company and support email come from env (INVENTORY_LEGAL_NAME,
  * INVENTORY_SUPPORT_EMAIL; falls back to support@keha.io).
  */
 import { useLoaderData } from "react-router";
 import { privacyData } from "../lib/legal.server";
 
-const UPDATED = "October 16, 2026";
+const UPDATED = "October 17, 2026";
 
 export const loader = () => privacyData();
 

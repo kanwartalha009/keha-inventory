@@ -96,6 +96,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 | `read_products` | Products and variants (titles, SKUs, vendors, collections, prices, costs) — what the store sells. |
 | `read_inventory` | Stock per location now and per day — in stock, running low, sold out. |
 | `read_locations` | Which locations fulfil online orders (the online stock pool). |
+| `read_locales` | The store's primary language, so owner emails, the supplier page and the admin open in it. |
 | `read_reports` | ShopifyQL analytics: daily sales totals per variant / location / channel, stock history, sessions per landing page. |
 | `read_inventory_purchase_orders` | Shopify purchase orders, so stock already ordered counts as incoming. |
 | `write_inventory_transfers` | Reads the transfers linked to Shopify purchase orders (received units); on Pro, creates a draft transfer from a warehouse to a store only after the merchant confirms. |

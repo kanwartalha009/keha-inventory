@@ -47,6 +47,7 @@ export const SCOPE_PURPOSES: Record<string, string> = {
   read_products: "Reads your products and variants (titles, SKUs, vendors, collections, prices and costs) to know what you sell.",
   read_inventory: "Reads stock levels per location, so we know what is in stock, running low or sold out.",
   read_locations: "Reads your locations, to tell which ones fulfil online orders.",
+  read_locales: "Reads your store's primary language, so emails to you, the supplier page and the app open in it.",
   read_reports:
     "Runs Shopify's own analytics reports (ShopifyQL) for daily sales totals per product, stock history and store visits per landing page. These reports are totals: the app never asks them for customer details.",
   read_inventory_purchase_orders: "Reads purchase orders you create in Shopify, so stock you have already ordered is counted as incoming.",
