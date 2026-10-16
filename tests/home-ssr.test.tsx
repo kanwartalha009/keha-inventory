@@ -2,6 +2,8 @@
  * SSR: Home (task 1.6) in its four states — syncing (no Shop row yet),
  * ready (4 money cards, one null card shows "—"), not enough sales, no stock
  * tracked — plus the data-late banner, the Free refresh note and the setup guide.
+ * Task 2.3: "This week's actions" — every tab and button, `?tab=`, Free
+ * (top 10, Fix as a count, locked Bridge / Clear) vs Growth, and the empty state.
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
@@ -10,17 +12,20 @@ import { createRoutesStub } from "react-router";
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: vi.fn(), getEntitlements: vi.fn() }));
 vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn() }));
+vi.mock("../app/models/actions.server", () => ({ getActionList: vi.fn() }));
+vi.mock("../app/services/keha-preorder.server", () => ({ kehaPreorderInstalled: vi.fn() }));
 
-import Home from "../app/routes/app._index";
-import { buildHome, type HomeData, type HomeRaw } from "../app/lib/dashboard-shared";
+import Home, { type HomeLoaderData } from "../app/routes/app._index";
+import { buildHome, type HomeRaw } from "../app/lib/dashboard-shared";
 import type { PlanCode } from "../app/lib/plan-shared";
-import { homeRaw } from "./home-fixtures";
+import type { ActionListView } from "../app/lib/action-list-shared";
+import { actionList, homeRaw } from "./home-fixtures";
 
 const NOW = new Date("2026-10-16T10:00:00Z");
 
-function render(data: HomeData) {
+function render(data: HomeLoaderData, url = "/app") {
   const Stub = createRoutesStub([{ id: "home", path: "/app", Component: Home, loader: () => data }]);
-  return renderToString(<Stub initialEntries={["/app"]} hydrationData={{ loaderData: { home: data } }} />);
+  return renderToString(<Stub initialEntries={[url]} hydrationData={{ loaderData: { home: data } }} />);
 }
 
 const home = (raw: HomeRaw, plan: PlanCode = "growth") => render(buildHome(raw, plan, NOW));
@@ -122,5 +127,114 @@ describe("Home", () => {
     const partial = home(raw);
     expect(partial).toContain("Every Monday at 08:00 to ops@acme.test");
     expect(partial).toContain("Done");
+  });
+});
+
+describe("Home: this week's actions (task 2.3)", () => {
+  const withActions = (plan: PlanCode, actions: ActionListView | null, url?: string) =>
+    render({ ...buildHome(homeRaw(), plan, NOW), actions }, url);
+
+  it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
+    const html = withActions("growth", actionList("growth"));
+    expect(html).toContain("This week&#x27;s actions");
+    for (const tab of ["All (8)", "Reorder (1)", "Bridge (1)", "Push (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
+    expect(html).toContain("€8,200");
+    expect(html).toContain("€3,400");
+    // Ranked by € across groups: Clear (8,200) first, Reorder (3,400) next.
+    expect(html.indexOf("Clear Cardigan")).toBeLessThan(html.indexOf("Reorder Tee"));
+    expect(html.indexOf("Reorder Tee")).toBeLessThan(html.indexOf("Returns Romper"));
+    // The reason: raw key fallback filled with its params.
+    expect(html).toContain("Runs out in 1 days");
+    expect(html).toContain("S, M");
+    // Buttons per kind (spec §7.7).
+    expect(html).toContain("Add to reorder plan");
+    expect(html).toContain(`href="/app/reorder?variants=${encodeURIComponent("gid://shopify/ProductVariant/11,gid://shopify/ProductVariant/12")}"`);
+    expect(html).toContain(">Collect back-in-stock sign-ups</s-button>");
+    expect(html).toContain("Show how");
+    expect(html).toContain("See why");
+    expect(html).toContain('href="/app/products/41"');
+    expect(html).toContain("Restock sizes");
+    expect(html).toContain("Check the page");
+    expect(html).toContain('href="shopify://admin/products/6"');
+    expect(html).toContain("Check sizing / quality");
+    expect(html).toContain("Create discount");
+    // The … menu.
+    expect(count(html, "<s-menu")).toBe(8);
+    expect(html).toContain("Snooze 7 days");
+    expect(html).toContain("Dismiss");
+    expect(html).toContain(">Why<");
+    // Keha Preorder isn't installed: never named or linked (Shopify 2.2.6).
+    expect(html).not.toContain("keha-preorder");
+    expect(html).not.toContain("Take preorders");
+    // Nothing locked on Growth.
+    expect(html).not.toContain("Product details to fix:");
+    expect(html).not.toContain("More actions on the Growth plan");
+  });
+
+  it("Growth with Keha Preorder installed: the bridge opens its pre-filled form top-level", () => {
+    const html = withActions("growth", actionList("growth", { preorderInstalled: true }));
+    expect(html).toContain("Take preorders for the gap");
+    expect(html).toContain(
+      'href="https://admin.shopify.com/store/acme/apps/keha-preorder/app/campaigns/new?variants=21%2C22&amp;trigger=stock&amp;ship=2026-11-02&amp;name=Bridge+Boots" target="_top"',
+    );
+    expect(html).not.toContain(">Collect back-in-stock sign-ups</s-button>");
+  });
+
+  it("?tab=clear opens the Clear tab with the clearances running and the cash freed", () => {
+    const html = withActions("growth", actionList("growth"), "/app?tab=clear");
+    expect(html).toContain("Clear Cardigan");
+    expect(html).not.toContain("Reorder Tee");
+    expect(html).toContain('aria-selected="true" class="keha-tab keha-tab--active">Clear (1)');
+    expect(html).toContain("Clearances running");
+    expect(html).toContain("Old Overcoat");
+    expect(html).toContain("Discount code CLEAR-7Q3K");
+    expect(html).toContain("Ends Nov 15, 2026");
+    expect(html).toContain("Cash freed so far: €1,200");
+    expect(html).toContain("Valued at retail price");
+  });
+
+  it("?tab=fix shows only Fix rows; an unknown tab falls back to All", () => {
+    const fix = withActions("growth", actionList("growth"), "/app?tab=fix");
+    expect(fix).toContain("Falling Fleece");
+    expect(fix).not.toContain("Clear Cardigan");
+    expect(fix).not.toContain("Clearances running");
+    const junk = withActions("growth", actionList("growth"), "/app?tab=nope");
+    expect(junk).toContain("Clear Cardigan");
+    expect(junk).toContain("Reorder Tee");
+  });
+
+  it("Free: top 10, Fix as a count, locked Bridge and Clear with an Upgrade link", () => {
+    const html = withActions("free", actionList("free", { fillers: 12 }));
+    expect(html).toContain("All (10)");
+    expect(html).toContain("Fix (4)");
+    expect(count(html, 'role="listitem"')).toBe(10);
+    // Fix rows are counted, not shown (and not sent: they aren't in the list).
+    expect(html).toContain("Product details to fix: 4");
+    expect(html).toContain("Upgrade to see them");
+    for (const title of ["Falling Fleece", "Sizes Sneaker", "Page Poncho", "Returns Romper"]) expect(html).not.toContain(title);
+    // Bridge and Clear stay, locked: disabled button, plan badge, upgrade link.
+    expect(html).toContain("Bridge Boots");
+    expect(html).toContain("Clear Cardigan");
+    expect(html).toContain('<s-button disabled="true">Bridge the gap</s-button>');
+    expect(html).toContain('<s-button disabled="true">Create discount</s-button>');
+    expect(html).toContain("Growth plan");
+    expect(html).not.toContain(">Collect back-in-stock sign-ups</s-button>");
+    // The rows past the top 10 are counted.
+    expect(html).toContain("More actions on the Growth plan: 6");
+    expect(html).toContain('href="/app/plans"');
+  });
+
+  it("empty state when there is nothing to do", () => {
+    const html = withActions("growth", actionList("growth", { empty: true }));
+    expect(html).toContain("This week&#x27;s actions");
+    expect(html).toContain("Nothing to do this week. We&#x27;ll tell you when something needs you.");
+    expect(html).not.toContain('role="tablist"');
+  });
+
+  it("no action list before the store is ready", () => {
+    const raw = homeRaw();
+    raw.salesDays = 3;
+    const html = render({ ...buildHome(raw, "growth", NOW), actions: actionList("growth") });
+    expect(html).not.toContain("This week&#x27;s actions");
   });
 });

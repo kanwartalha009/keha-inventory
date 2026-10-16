@@ -2,7 +2,10 @@
  * Home (/app) — spec §5.1, §4 J1. Money at stake (4 cards, each with "How we
  * got this"), the setup guide (ticked from real state), sync progress per
  * dataset and the empty states. The loader reads only the database
- * (models/dashboard.server.ts); "This week's actions" arrive in phase 2.
+ * (models/dashboard.server.ts, models/actions.server.ts). "This week's
+ * actions" (task 2.3) show once the store is ready; the only Shopify call is
+ * the cached, time-boxed "is Keha Preorder installed?" check, made only when a
+ * Growth store has a Bridge row to show.
  */
 import type { ReactNode } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -11,6 +14,10 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { planFor } from "../services/entitlements.server";
 import { getHomeData } from "../models/dashboard.server";
+import { getActionList } from "../models/actions.server";
+import { kehaPreorderInstalled } from "../services/keha-preorder.server";
+import { ActionList } from "../components/action-list";
+import type { ActionListView } from "../lib/action-list-shared";
 import { AppPage } from "../components/ui";
 import { useLinkProps } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
@@ -28,10 +35,18 @@ import {
   type HomeData,
 } from "../lib/dashboard-shared";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+export type HomeLoaderData = HomeData & { actions?: ActionListView | null };
+
+export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
+  const { admin, session } = await authenticate.admin(request);
   const plan = await planFor(session.shop);
-  return getHomeData(session.shop, plan);
+  const now = new Date();
+  const home = await getHomeData(session.shop, plan, now);
+  const actions =
+    home.state === "ready"
+      ? await getActionList(session.shop, plan, now, { preorderInstalled: () => kehaPreorderInstalled(admin, session.shop) })
+      : null;
+  return { ...home, actions };
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -41,7 +56,7 @@ const SHOPIFY_PRODUCTS = "shopify://admin/products";
 
 export default function Home() {
   const { t, locale } = useLocale();
-  const data = useLoaderData<typeof loader>() as HomeData;
+  const data = useLoaderData<typeof loader>() as HomeLoaderData;
   const updated = formatUpdatedAt(data.lastNightlyAt, data.timezone, locale);
 
   return (
@@ -49,6 +64,8 @@ export default function Home() {
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 
       {data.state === "ready" && <MoneyAtStake data={data} />}
+
+      {data.state === "ready" && data.actions && <ActionList list={data.actions} timezone={data.timezone} />}
 
       {data.state === "noSales" && (
         <s-section heading={t("Not enough sales yet to advise")}>
