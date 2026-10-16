@@ -13,7 +13,20 @@ vi.mock("../app/db.server", async () => {
   return { default: db.client, __fake: db };
 });
 
+const m = vi.hoisted(() => ({ plan: "growth" as "free" | "growth" | "pro" }));
+vi.mock("../app/shopify.server", () => ({
+  authenticate: { admin: vi.fn(async () => ({ session: { shop: "acme.myshopify.com" } })) },
+}));
+vi.mock("../app/services/entitlements.server", async () => {
+  const { featureMap } = await import("../app/lib/plan-shared");
+  return {
+    getEntitlements: vi.fn(async () => ({ plan: m.plan, features: featureMap(m.plan), comped: false, checked: true })),
+    upgradeResponse: (feature: string, message: string) => Response.json({ ok: false, error: message, upgrade: { feature } }, { status: 403 }),
+  };
+});
+
 import * as dbModule from "../app/db.server";
+import { action } from "../app/routes/app.planner";
 import {
   createScenario,
   deleteGoal,
@@ -131,6 +144,48 @@ describe("scenario limit (checked on the server)", () => {
     expect(data.selected).toMatchObject({ name: "Renamed", targetType: "keep_pace", computedAt: "2026-10-17T10:00:00.000Z" });
     expect(await deleteScenario(SHOP, a!.id)).toBe(true);
     expect(await listScenarios(SHOP)).toHaveLength(1);
+  });
+});
+
+describe("planner action (server-side plan checks)", () => {
+  const post = async (body: unknown) => {
+    const request = new Request("https://app.test/app/planner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const r = (await action({ request, params: {}, context: {} } as never)) as unknown;
+    return r instanceof Response ? { status: r.status, body: await r.json() } : { status: 200, body: r };
+  };
+  const form = { name: "Black Friday", event: "black_friday", start: "2026-11-26", end: "2026-11-30", targetType: "growth", targetValue: "20" };
+
+  it("Growth: the first save creates, the second is refused at the limit; validation errors come back", async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+    try {
+      m.plan = "growth";
+      expect((await post({ intent: "save", form })).body).toMatchObject({ ok: true, intent: "save" });
+      expect((await post({ intent: "save", form: { ...form, name: "Second" } })).body).toEqual({ ok: false, error: "limit" });
+      expect((await post({ intent: "save", form: { ...form, name: "" } })).body).toEqual({ ok: false, errors: { name: "name" } });
+      expect(db.tables.scenario).toHaveLength(1);
+      m.plan = "pro";
+      expect((await post({ intent: "save", form: { ...form, name: "Second" } })).body).toMatchObject({ ok: true });
+      expect(db.tables.scenario).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Free: every intent is refused with the upgrade answer", async () => {
+    m.plan = "free";
+    const r = await post({ intent: "save", form });
+    expect(r.status).toBe(403);
+    expect(r.body).toMatchObject({ ok: false, upgrade: { feature: "planner" } });
+    expect(db.tables.scenario).toHaveLength(0);
+    m.plan = "growth";
+  });
+
+  it("goals: saved and removed through the action; unknown intents are a 400", async () => {
+    m.plan = "growth";
+    expect((await post({ intent: "goal_save", collectionId: "C1", goalPct: "40" })).body).toEqual({ ok: true, intent: "goal_save" });
+    expect((await post({ intent: "goal_save", collectionId: "C1", goalPct: "400" })).body).toEqual({ ok: false, error: "pct" });
+    expect((await post({ intent: "goal_delete", collectionId: "C1" })).body).toEqual({ ok: true, intent: "goal_delete" });
+    await expect(post({ intent: "nope" })).rejects.toMatchObject({ status: 400 });
   });
 });
 

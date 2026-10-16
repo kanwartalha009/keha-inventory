@@ -126,6 +126,7 @@ function AppNav() {
       <s-link href="/app">{t("Home")}</s-link>
       <s-link href="/app/products">{t("Products")}</s-link>
       <s-link href="/app/reorder">{t("Reorder")}</s-link>
+      <s-link href="/app/planner">{t("Planner")}</s-link>
       <s-link href="/app/settings">{t("Settings")}</s-link>
       <s-link href="/app/plans">{t("Plans")}</s-link>
     </s-app-nav>
