@@ -1,17 +1,17 @@
 /**
- * Public terms of service — linked from the Shopify App Store listing.
- * Served unauthenticated on the app's own domain. Company + support email from
- * env (lib/legal.server) — 2026-09-28.
+ * Public terms of service — linked from the Shopify App Store listing. Served unauthenticated
+ * on the app's own domain. English only by design (like /privacy). Company + support email
+ * from env (lib/legal.server). Checked against the code for task 2.7 (2026-10-16).
  */
 import { useLoaderData } from "react-router";
-import { legalContact } from "../lib/legal.server";
+import { LEGAL_FACTS, legalContact } from "../lib/legal.server";
 
 const UPDATED = "October 16, 2026";
 
-export const loader = () => legalContact();
+export const loader = () => ({ ...legalContact(), facts: LEGAL_FACTS });
 
 export default function Terms() {
-  const { company, email } = useLoaderData<typeof loader>();
+  const { company, email, facts } = useLoaderData<typeof loader>();
   return (
     <main
       style={{
@@ -22,6 +22,7 @@ export default function Terms() {
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         lineHeight: 1.6,
         color: "#1a1a1a",
+        background: "#ffffff",
       }}
     >
       <h1>Keha Inventory Intelligence — Terms of Service</h1>
@@ -36,10 +37,12 @@ export default function Terms() {
 
       <h2>The service</h2>
       <p>
-        The App reads a store’s products, stock, sales and store visits, and
-        gives the merchant stock advice: money at stake, a weekly list of what
-        to reorder, push, fix and clear, reorder plans, and season plans.
-        Features may be added, changed, or removed as the App evolves.
+        The App reads a store’s products, stock, sales totals and store visits,
+        and gives the merchant stock advice: the money at stake, a weekly list
+        of what to reorder, push, fix and clear, reorder plans with purchase
+        orders, a confirmation link for suppliers, and emails, Slack messages
+        and Shopify Flow events about stock. Features may be added, changed, or
+        removed as the App evolves.
       </p>
 
       <h2>Fees and billing</h2>
@@ -52,13 +55,30 @@ export default function Terms() {
       </p>
 
       <h2>Merchant responsibilities</h2>
-      <p>
-        The App’s numbers and suggestions are estimates based on the store’s
-        own history; they are not guarantees of future sales. Merchants decide
-        what to order, discount or transfer: the App changes nothing in the
-        store until the merchant confirms. Purchasing decisions and supplier
-        relationships remain the merchant’s.
-      </p>
+      <ul>
+        <li>
+          The App’s numbers and suggestions are estimates based on the store’s
+          own history; they are not guarantees of future sales. Purchasing
+          decisions and supplier relationships remain the merchant’s.
+        </li>
+        <li>
+          The App changes nothing in the store until the merchant confirms.
+          Discounts and stock transfers the merchant confirms are created in
+          Shopify as the merchant set them up; the merchant can edit or end them
+          in Shopify at any time.
+        </li>
+        <li>
+          The merchant must have the right to give us the supplier details they
+          enter, and is responsible for the purchase orders they send. A
+          supplier confirmation link works without a login for anyone who has
+          it, so it should only be shared with that supplier; it stops working{" "}
+          {facts.confirmLinkDays} days after the order is sent.
+        </li>
+        <li>
+          Slack messages go to the webhook the merchant connects; the merchant
+          is responsible for who can read that Slack channel.
+        </li>
+      </ul>
 
       <h2>Availability and liability</h2>
       <p>
@@ -72,7 +92,7 @@ export default function Terms() {
 
       <h2>Data</h2>
       <p>
-        Handling of merchant and customer data is described in our{" "}
+        Handling of merchant, supplier and customer data is described in our{" "}
         <a href="/privacy">Privacy Policy</a>, which forms part of these terms.
       </p>
 
@@ -80,19 +100,14 @@ export default function Terms() {
       <p>
         Merchants can stop using the App at any time by uninstalling it. We may
         suspend or terminate access for abuse, non-payment, or use that risks
-        harm to Shopify, other merchants, or customers. Stored data is purged
-        after uninstall as described in the Privacy Policy.
+        harm to Shopify, other merchants, or customers. Stored data is deleted{" "}
+        {facts.purgeAfterHours} hours after uninstall, as described in the
+        Privacy Policy.
       </p>
 
       <h2>Contact</h2>
       <p>
-        {email ? (
-          <>
-            Questions about these terms: <a href={`mailto:${email}`}>{email}</a>.
-          </>
-        ) : (
-          <>Questions about these terms: support@keha.io.</>
-        )}
+        Questions about these terms: <a href={`mailto:${email}`}>{email}</a>.
       </p>
     </main>
   );
