@@ -17,6 +17,7 @@ import {
   SETTINGS_BOUNDS,
   applySettingsForm,
   settingsToForm,
+  type SafetyLevel,
   type SettingsErrors,
   type SettingsForm,
 } from "../lib/settings-shared";
@@ -43,6 +44,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     cycleDays: String(body.cycleDays ?? ""),
     tooMuchDays: String(body.tooMuchDays ?? ""),
     deadDays: String(body.deadDays ?? ""),
+    safetyLevel: String(body.safetyLevel ?? ""),
     mondayEnabled: body.mondayEnabled === true,
     recipients: String(body.recipients ?? ""),
   };
@@ -121,6 +123,17 @@ export default function Settings() {
               {numberField("cycleDays", t("Order cycle"), t("How often you place orders. Suggested quantities cover the lead time plus one cycle."))}
               {numberField("tooMuchDays", t("Too much stock after"), t("A product is marked Too much when its stock would last longer than this."))}
               {numberField("deadDays", t("Dead after"), t("A product is marked Dead when it hasn't sold for this long."))}
+              <SelectField<SafetyLevel>
+                label={t("Safety level")}
+                value={form.safetyLevel as SafetyLevel}
+                options={[
+                  { value: "lean", label: t("Lean") },
+                  { value: "balanced", label: t("Balanced") },
+                  { value: "safe", label: t("Safe") },
+                ]}
+                onChange={(v) => set("safetyLevel", v)}
+                details={t("Extra stock for surprises in demand: Safe runs out less often but ties up more cash, Lean the opposite.")}
+              />
             </s-stack>
           </Disclosure>
         </s-stack>

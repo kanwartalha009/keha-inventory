@@ -38,7 +38,25 @@ export const SNOOZE_DAYS = 7;
  * `reason.params`). Owned by the engine task (2.1/2.4); every value here is a
  * translation key (registered in tests/i18n-coverage.test.ts).
  */
-export const ACTION_REASONS: Record<string, string> = {};
+export const ACTION_REASONS: Record<string, string> = {
+  // Params: {days} {lead} whole days; {date} an ISO day "YYYY-MM-DD" shown as "12 Nov";
+  // {rate} units per day (1 decimal); {pct} {conv} {median} percentages; {gap} {out} {total} {units} counts.
+  reorder_low: "Runs out in {days} days; a new order takes {lead} days to arrive. Order by {date}.",
+  reorder_now: "Runs out in {days} days; a new order takes {lead} days to arrive. Order now.",
+  reorder_out: "Sold out. It sells {rate} a day while in stock.",
+  bridge_gap: "Runs out {gap} days before new stock arrives on {date}.",
+  bridge_out: "Sold out for about {gap} more days, until new stock arrives on {date}.",
+  push_up: "Sales are up {pct}% on last year and stock is healthy. Feature it to sell more.",
+  push_steady: "One of your best sellers, with healthy stock. Feature it to sell more.",
+  push_converts: "{conv}% of visitors buy it (store median {median}%), but you have too much stock. Send it more traffic.",
+  fix_falling: "Sales are down {pct}% on the same weeks last year, when it was one of your top 20 products.",
+  fix_sizes: "{out} of {total} variants are sold out while the product still sells.",
+  fix_page: "{conv}% of visitors who land on this page buy, against {median}% for products at a similar price.",
+  fix_returns: "{pct}% of units sold come back, against {median}% across your store.",
+  clear_dead: "No sale for {days} days; {units} units are sitting in stock.",
+  clear_too_much: "{days} days of stock left at the current pace, far more than you need.",
+  clear_no_sales: "No recent sales, and the stock isn't moving.",
+};
 
 export type ReasonParams = Record<string, string | number>;
 

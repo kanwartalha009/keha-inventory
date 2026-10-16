@@ -79,12 +79,16 @@ export type SettingsForm = {
   cycleDays: string;
   tooMuchDays: string;
   deadDays: string;
+  /** "lean" | "balanced" | "safe"; anything else keeps the current level. */
+  safetyLevel: string;
   mondayEnabled: boolean;
   /** Comma or newline separated; empty = the store owner. */
   recipients: string;
 };
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
+
+const isLevel = (v: unknown): v is SafetyLevel => v === "lean" || v === "balanced" || v === "safe";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -144,6 +148,7 @@ export function applySettingsForm(
       cycleDays,
       tooMuchDays,
       deadDays,
+      safetyLevel: isLevel(form.safetyLevel) ? form.safetyLevel : current.safetyLevel,
       mondayEmail: { enabled: form.mondayEnabled, recipients: Array.from(new Set(recipients.map((r) => r.toLowerCase()))) },
     },
   };
@@ -155,6 +160,7 @@ export function settingsToForm(s: ShopSettings): SettingsForm {
     cycleDays: String(s.cycleDays),
     tooMuchDays: String(s.tooMuchDays),
     deadDays: String(s.deadDays),
+    safetyLevel: s.safetyLevel,
     mondayEnabled: s.mondayEmail.enabled,
     recipients: s.mondayEmail.recipients.join(", "),
   };

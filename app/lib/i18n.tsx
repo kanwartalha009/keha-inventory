@@ -23,6 +23,7 @@ import { PLANS_TR } from "./i18n-plans";
 import { HOME_TR } from "./i18n-home";
 import { PRODUCTS_TR } from "./i18n-products";
 import { EMAIL_TR } from "./i18n-email";
+import { REASONS_TR } from "./i18n-reasons";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -67,6 +68,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   home: HOME_TR,
   products: PRODUCTS_TR,
   email: EMAIL_TR,
+  reasons: REASONS_TR,
 };
 
 for (const area of Object.values(AREAS)) {

@@ -48,6 +48,15 @@ describe("settings form", () => {
     expect(!bad.ok && bad.errors.recipients).toBe(SETTINGS_ERRORS.emails);
   });
 
+  it("saves the safety level; an unknown value keeps the current one", () => {
+    expect(settingsToForm(DEFAULT_SETTINGS).safetyLevel).toBe("balanced");
+    const safe = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), safetyLevel: "safe" }, now);
+    expect(safe.ok && safe.settings.safetyLevel).toBe("safe");
+    const lean = { ...DEFAULT_SETTINGS, safetyLevel: "lean" as const };
+    const bad = applySettingsForm(lean, { ...settingsToForm(lean), safetyLevel: "reckless" }, now);
+    expect(bad.ok && bad.settings.safetyLevel).toBe("lean");
+  });
+
   it("can turn the Monday email off", () => {
     const r = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), mondayEnabled: false }, now);
     expect(r.ok && r.settings.mondayEmail.enabled).toBe(false);
