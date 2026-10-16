@@ -8,6 +8,8 @@
 import type { Tr } from "./i18n";
 
 export const STORES_TR: Record<string, Tr> = {
+  // ---- Location switcher (compact teaching link below Pro) ----
+  "Plan per location": { es: "Planificar por ubicación", fr: "Planifier par emplacement", de: "Pro Standort planen", it: "Pianifica per sede", pt: "Planear por localização", nl: "Per locatie plannen", pl: "Planuj według lokalizacji" },
   // ---- Roles and the online pool choice ----
   "Warehouse": { es: "Almacén", fr: "Entrepôt", de: "Lager", it: "Magazzino", pt: "Armazém", nl: "Magazijn", pl: "Magazyn" },
   "Store": { es: "Tienda física", fr: "Magasin", de: "Filiale", it: "Negozio", pt: "Loja física", nl: "Winkel", pl: "Sklep stacjonarny" },

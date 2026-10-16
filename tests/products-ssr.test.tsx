@@ -50,6 +50,7 @@ function data(forecast: boolean, over: Partial<ProductsData> = {}): ProductsData
     locationsEnabled: false,
     locations: [],
     location: null,
+    locationCount: 1,
     ...over,
   };
 }
@@ -76,17 +77,24 @@ describe("Products page", () => {
     expect(html).toContain('src="https://cdn.shopify.com/a.jpg"');
     expect(html).toContain('href="/app/products/1"');
     expect(html).toContain("Page 2 of 3 · Variants: 120");
-    for (const h of ["Stock now", "Incoming", "Sales per day while in stock", "Days of stock left", "Order by", "Suggested qty"]) {
+    // Short headers that never wrap; the long form is each header's tooltip.
+    for (const h of ["Stock now", "Incoming", "Sales/day", "Days left", "Order by", "To order"]) {
+      expect(html).toContain(h);
+    }
+    for (const h of ["Sales per day while in stock", "Days of stock left", "Suggested qty"]) {
+      expect(html).toContain(`<s-tooltip id="keha-col-`);
       expect(html).toContain(h);
     }
     // Filters: status, collection, vendor, search.
     expect(html).toContain("All statuses");
     expect(html).toContain("All collections");
     expect(html).toContain("All vendors");
-    expect(html).toContain("Search by product, variant or SKU");
+    expect(html).toContain('placeholder="Product, variant or SKU"');
     // Stock now / Incoming say which locations they cover.
     expect(html).toContain("Online stock pool: active locations that fulfil online orders.");
     expect(html).toContain('<s-text interestFor="keha-pool-stock">Stock now</s-text><s-tooltip id="keha-pool-stock">');
+    // Numbers are right-aligned: numeric columns use the Polaris numeric format.
+    expect(count(html, 'format="numeric"')).toBe(5);
   });
 
   it("Growth: forecast values, ∞ with an accessible label, and dashes for unknowns", () => {
@@ -105,7 +113,9 @@ describe("Products page", () => {
   it("Free: forecast columns locked in the header with empty cells, CSV locked to Plans", () => {
     const html = render(data(false));
     expect(count(html, 'icon="lock"')).toBeGreaterThanOrEqual(4); // 3 headers + CSV button
-    expect(count(html, "Growth plan")).toBeGreaterThanOrEqual(4);
+    // Headers carry a compact lock badge with the plan name, on the header's own line.
+    expect(count(html, '<s-badge icon="lock" tone="info">Growth</s-badge>')).toBe(3);
+    expect(html).toMatch(/<span class="keha-th">.*?Days left.*?<s-badge icon="lock"/);
     expect(html).not.toContain("∞");
     expect(html).not.toContain("Oct 20, 2026");
     expect(html).not.toMatch(/<s-table-cell>30<\/s-table-cell>/);
@@ -121,6 +131,35 @@ describe("Products page", () => {
     const html = render(data(true, { rows: [], total: 0, info: pageInfo(0, 1), filters: { status: "dead", collection: null, vendor: null, q: null } }));
     expect(html).toContain("No variants match these filters.");
     expect(html).toContain("Clear filters");
+  });
+});
+
+describe("Products layout (2026-10-17 design rules)", () => {
+  it("one toolbar in the table's filter slot: search on the left, every filter in one group on the right", () => {
+    const html = render(data(true));
+    const bar = /<div class="keha-toolbar" slot="filters">(.*?)<s-table-header-row>/s.exec(html)?.[1] ?? "";
+    expect(bar).toContain('<div class="keha-toolbar__search"><s-search-field');
+    const filters = /<div class="keha-toolbar__filters">(.*)$/s.exec(bar)?.[1] ?? "";
+    for (const f of ["All statuses", "All collections", "All vendors"]) expect(filters).toContain(f);
+    expect(html).not.toContain("keha-filters");
+  });
+
+  it("Export CSV is a page header action, not part of the content", () => {
+    const html = render(data(true));
+    expect(html).toMatch(/<s-button slot="secondary-actions"[^>]*icon="export"/);
+  });
+
+  it("a single-location store gets no location switcher at all", () => {
+    const html = render(data(true, { locationCount: 1 }));
+    expect(html).not.toContain("keha-switcher");
+    expect(html).not.toContain("Online stock pool</s-option>");
+    expect(html).not.toContain("upgrade=locations");
+  });
+
+  it("empty states use the shared centred pattern", () => {
+    const html = render(data(true, { rows: [], total: 0, info: pageInfo(0, 1) }));
+    expect(html).toContain("Your products appear here once your catalog is read.");
+    expect(html).toMatch(/<s-box padding="base"><s-stack direction="block" gap="small" alignItems="center">/);
   });
 });
 

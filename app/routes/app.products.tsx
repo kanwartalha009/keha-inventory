@@ -12,11 +12,12 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { listProducts, productFilterOptions } from "../models/products.server";
-import { listPlanningLocations } from "../models/locations.server";
+import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
-import { AppPage, ProductThumb } from "../components/ui";
+import { AppPage, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
-import { UpgradeBanner, planTag } from "../components/plan";
+import { UpgradeBanner, planName, planTag } from "../components/plan";
+import { requiredPlan } from "../lib/plan-shared";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay } from "../lib/dashboard-shared";
 import {
@@ -41,7 +42,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
   // Location view (Pro): ?location is ignored below Pro and for anything but a warehouse / store.
-  const locations = features.locations ? await listPlanningLocations(session.shop) : [];
+  // The store's location count decides whether the switcher shows at all (one location: no).
+  const [locations, active] = await Promise.all([
+    features.locations ? listPlanningLocations(session.shop) : Promise.resolve([]),
+    activeLocations(session.shop),
+  ]);
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
   const [page, options] = await Promise.all([
     listProducts(session.shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
@@ -56,6 +61,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locationsEnabled: features.locations,
     locations,
     location: view.location,
+    locationCount: active.length,
   };
 };
 
@@ -75,6 +81,8 @@ export type ProductsData = {
   locations: PlanningLocation[];
   /** The location shown; null = the online stock pool. */
   location: PlanningLocation | null;
+  /** Active locations in the store (any role): fewer than 2 hides the switcher. */
+  locationCount: number;
 };
 
 type FilterKey = "status" | "collection" | "vendor" | "q";
@@ -108,20 +116,12 @@ export default function Products() {
   const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.q);
   const locked = !forecast;
 
-  const lockedHead = (label: string) => (
-    <s-table-header>
-      {locked ? (
-        <s-stack direction="inline" gap="small-100" alignItems="center">
-          <span>{label}</span>
-          <s-badge icon="lock" tone="info">
-            {planTag("forecast", t)}
-          </s-badge>
-        </s-stack>
-      ) : (
-        label
-      )}
-    </s-table-header>
-  );
+  // Forecast columns on Free: the short label plus a compact lock badge with the plan name.
+  const lockBadge = locked ? (
+    <s-badge icon="lock" tone="info">
+      {planName(requiredPlan("forecast"), t)}
+    </s-badge>
+  ) : undefined;
 
   return (
     <AppPage
@@ -144,59 +144,77 @@ export default function Products() {
           onNextPage={() => goPage(info.page + 1)}
           loading={flag(navigation.state === "loading")}
         >
-          <div slot="filters" className="keha-filters">
-            <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
-            <s-search-field
-              label={t("Search")}
-              labelAccessibilityVisibility="exclusive"
-              placeholder={t("Search by product, variant or SKU")}
-              value={filters.q ?? ""}
-              onChange={(e) => apply({ q: val(e).trim() })}
-            />
-            <SelectField
-              label={t("Status")}
-              labelHidden
-              value={filters.status ?? ""}
-              options={[
-                { value: "", label: t("All statuses") },
-                ...STATUS_ORDER.map((s) => ({ value: s, label: statusLabel(s, t) })),
-              ]}
-              onChange={(v) => apply({ status: v })}
-            />
-            {options.collections.length > 0 && (
-              <SelectField
-                label={t("Collection")}
-                labelHidden
-                value={filters.collection ?? ""}
-                options={[{ value: "", label: t("All collections") }, ...options.collections.map((c) => ({ value: c, label: c }))]}
-                onChange={(v) => apply({ collection: v })}
+          <Toolbar
+            slot="filters"
+            search={
+              <s-search-field
+                label={t("Search")}
+                labelAccessibilityVisibility="exclusive"
+                placeholder={t("Product, variant or SKU")}
+                value={filters.q ?? ""}
+                onChange={(e) => apply({ q: val(e).trim() })}
               />
-            )}
-            {options.vendors.length > 0 && (
-              <SelectField
-                label={t("Vendor")}
-                labelHidden
-                value={filters.vendor ?? ""}
-                options={[{ value: "", label: t("All vendors") }, ...options.vendors.map((v) => ({ value: v, label: v }))]}
-                onChange={(v) => apply({ vendor: v })}
-              />
-            )}
-          </div>
+            }
+            filters={
+              <>
+                <LocationSwitcher
+                  enabled={data.locationsEnabled}
+                  locations={data.locations}
+                  current={location}
+                  locationCount={data.locationCount}
+                />
+                <SelectField
+                  label={t("Status")}
+                  labelHidden
+                  value={filters.status ?? ""}
+                  options={[
+                    { value: "", label: t("All statuses") },
+                    ...STATUS_ORDER.map((s) => ({ value: s, label: statusLabel(s, t) })),
+                  ]}
+                  onChange={(v) => apply({ status: v })}
+                />
+                {options.collections.length > 0 && (
+                  <SelectField
+                    label={t("Collection")}
+                    labelHidden
+                    value={filters.collection ?? ""}
+                    options={[{ value: "", label: t("All collections") }, ...options.collections.map((c) => ({ value: c, label: c }))]}
+                    onChange={(v) => apply({ collection: v })}
+                  />
+                )}
+                {options.vendors.length > 0 && (
+                  <SelectField
+                    label={t("Vendor")}
+                    labelHidden
+                    value={filters.vendor ?? ""}
+                    options={[{ value: "", label: t("All vendors") }, ...options.vendors.map((v) => ({ value: v, label: v }))]}
+                    onChange={(v) => apply({ vendor: v })}
+                  />
+                )}
+              </>
+            }
+          />
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
             <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
-            <s-table-header listSlot="labeled">
-              <s-text interestFor="keha-pool-stock">{t("Stock now")}</s-text>
-              <s-tooltip id="keha-pool-stock">{stockScope}</s-tooltip>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id="keha-pool-stock" label={t("Stock now")} hint={stockScope} />
+            </s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id="keha-pool-incoming" label={t("Incoming")} hint={stockScope} />
+            </s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id="keha-col-rate" label={t("Sales/day")} hint={t("Sales per day while in stock")} />
+            </s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id="keha-col-left" label={t("Days left")} hint={t("Days of stock left")} badge={lockBadge} />
             </s-table-header>
             <s-table-header listSlot="labeled">
-              <s-text interestFor="keha-pool-incoming">{t("Incoming")}</s-text>
-              <s-tooltip id="keha-pool-incoming">{stockScope}</s-tooltip>
+              <HeaderLabel id="keha-col-by" label={t("Order by")} badge={lockBadge} />
             </s-table-header>
-            <s-table-header listSlot="labeled">{t("Sales per day while in stock")}</s-table-header>
-            {lockedHead(t("Days of stock left"))}
-            {lockedHead(t("Order by"))}
-            {lockedHead(t("Suggested qty"))}
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("Suggested qty")} badge={lockBadge} />
+            </s-table-header>
           </s-table-header-row>
           <s-table-body>
             {rows.map((r) => (
@@ -205,22 +223,22 @@ export default function Products() {
           </s-table-body>
         </s-table>
         {rows.length === 0 && (
-          <s-box padding="base">
-            <s-stack direction="block" gap="small" alignItems="center">
-              <s-paragraph color="subdued">
-                {anyFilter
-                  ? t("No variants match these filters.")
-                  : location
-                    ? t("No numbers for this location yet. They appear after the next nightly refresh, for the products it stocks.")
-                    : t("Your products appear here once your catalog is read.")}
-              </s-paragraph>
-              {anyFilter && (
+          <EmptyState
+            body={
+              anyFilter
+                ? t("No variants match these filters.")
+                : location
+                  ? t("No numbers for this location yet. They appear after the next nightly refresh, for the products it stocks.")
+                  : t("Your products appear here once your catalog is read.")
+            }
+            action={
+              anyFilter ? (
                 <s-button variant="secondary" onClick={() => apply({ status: "", collection: "", vendor: "", q: "" })}>
                   {t("Clear filters")}
                 </s-button>
-              )}
-            </s-stack>
-          </s-box>
+              ) : undefined
+            }
+          />
         )}
       </s-section>
 
@@ -260,7 +278,9 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
         {r.onOrder > 0 ? (
           <s-stack direction="block" gap="none">
             <span>{formatCount(r.incoming, locale)}</span>
-            <s-text color="subdued">{fill(t("+{n} on order with Keha"), { n: formatCount(r.onOrder, locale) })}</s-text>
+            <span className="keha-nowrap">
+              <s-text color="subdued">{fill(t("+{n} on order"), { n: formatCount(r.onOrder, locale) })}</s-text>
+            </span>
           </s-stack>
         ) : (
           formatCount(r.incoming, locale)
@@ -289,15 +309,27 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
 /**
  * CSV export. Growth: downloads the filtered table (fetch, so App Bridge adds
  * the session token). Free: the same button names the plan and opens Plans.
+ * A title-bar action: AppPage sets `slot`, which must reach the <s-button>
+ * (without it the button rendered as page content, above the intro).
  */
-function CsvButton({ enabled, filters, location }: { enabled: boolean; filters: ProductFilters; location: PlanningLocation | null }) {
+function CsvButton({
+  enabled,
+  filters,
+  location,
+  slot,
+}: {
+  enabled: boolean;
+  filters: ProductFilters;
+  location: PlanningLocation | null;
+  slot?: Lowercase<string>;
+}) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   if (!enabled) {
     return (
-      <s-button icon="lock" {...link("/app/plans?upgrade=csvExport")}>
+      <s-button slot={slot} icon="lock" {...link("/app/plans?upgrade=csvExport")}>
         {`${t("Export CSV")} · ${planTag("csvExport", t)}`}
       </s-button>
     );
@@ -326,7 +358,7 @@ function CsvButton({ enabled, filters, location }: { enabled: boolean; filters: 
     }
   };
   return (
-    <s-button icon="export" loading={flag(busy)} onClick={download} accessibilityLabel={failed ? t("The export didn't work. Try again.") : undefined}>
+    <s-button slot={slot} icon="export" loading={flag(busy)} onClick={download} accessibilityLabel={failed ? t("The export didn't work. Try again.") : undefined}>
       {failed ? t("Try again") : t("Export CSV")}
     </s-button>
   );

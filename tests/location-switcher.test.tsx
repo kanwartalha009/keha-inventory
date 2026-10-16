@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   loadReorder: vi.fn(),
   createOrderFromGroup: vi.fn(),
   listPlanningLocations: vi.fn(),
+  activeLocations: vi.fn(),
 }));
 
 vi.mock("../app/shopify.server", () => ({
@@ -35,7 +36,7 @@ vi.mock("../app/models/products.server", () => ({
   allProducts: m.allProducts,
   productFilterOptions: async () => ({ vendors: [], collections: [] }),
 }));
-vi.mock("../app/models/locations.server", () => ({ listPlanningLocations: m.listPlanningLocations }));
+vi.mock("../app/models/locations.server", () => ({ listPlanningLocations: m.listPlanningLocations, activeLocations: m.activeLocations }));
 vi.mock("../app/models/reorder.server", () => ({ loadReorder: m.loadReorder, createOrderFromGroup: m.createOrderFromGroup }));
 vi.mock("../app/models/transfers.server", () => ({
   loadTransfers: async () => ({ groups: [], recent: [], hasWarehouse: true, hasStore: true }),
@@ -43,6 +44,7 @@ vi.mock("../app/models/transfers.server", () => ({
 
 import Products, { loader as productsLoader, type ProductsData } from "../app/routes/app.products";
 import { loader as csvLoader } from "../app/routes/app.products.csv";
+import { switcherMode } from "../app/components/location-switcher";
 import Reorder, { action as reorderAction, loader as reorderLoader, type ReorderPageData } from "../app/routes/app.reorder";
 import { pageInfo } from "../app/lib/products-shared";
 import type { PlanningLocation } from "../app/lib/locations-shared";
@@ -56,6 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.locations = true;
   m.listPlanningLocations.mockResolvedValue([WH, STORE]);
+  m.activeLocations.mockResolvedValue([{ id: WH.id }, { id: STORE.id }, { id: "gid://shopify/Location/3" }]);
   m.listProducts.mockResolvedValue({ rows: [], total: 0, info: pageInfo(0, 1) });
   m.allProducts.mockResolvedValue([]);
   m.loadReorder.mockResolvedValue({ groups: [], openOrders: [], currency: "EUR", missingSelected: 0 });
@@ -68,6 +71,7 @@ describe("server: ?location", () => {
     expect(m.listProducts.mock.calls[0]![4]).toBe(STORE.id);
     expect(d.location).toEqual(STORE);
     expect(d.locations).toEqual([WH, STORE]);
+    expect(d.locationCount).toBe(3);
   });
 
   it("Products on Growth ignores it (and doesn't read the locations)", async () => {
@@ -77,6 +81,7 @@ describe("server: ?location", () => {
     expect(d.location).toBeNull();
     expect(d.locationsEnabled).toBe(false);
     expect(m.listPlanningLocations).not.toHaveBeenCalled();
+    expect(d.locationCount).toBe(3); // the count is read on every plan: it decides whether the switcher shows
   });
 
   it("an id that isn't one of the shop's warehouses / stores is the online pool", async () => {
@@ -130,7 +135,26 @@ const products = (over: Partial<ProductsData> = {}): ProductsData => ({
   locationsEnabled: true,
   locations: [WH, STORE],
   location: null,
+  locationCount: 3,
   ...over,
+});
+
+describe("switcherMode: one rule", () => {
+  it("fewer than 2 locations: nothing; below Pro: teach; Pro: select, or set up when no warehouse / store", () => {
+    expect(switcherMode({ enabled: false, planning: 0, locationCount: 1 })).toBe("none");
+    expect(switcherMode({ enabled: true, planning: 1, locationCount: 1 })).toBe("none");
+    expect(switcherMode({ enabled: true, planning: 0, locationCount: 0 })).toBe("none");
+    expect(switcherMode({ enabled: false, planning: 0, locationCount: 2 })).toBe("teach");
+    expect(switcherMode({ enabled: true, planning: 0, locationCount: 2 })).toBe("setup");
+    expect(switcherMode({ enabled: true, planning: 2, locationCount: 3 })).toBe("select");
+  });
+
+  it("a location view stays switchable; callers without a count keep the old behaviour", () => {
+    expect(switcherMode({ enabled: true, planning: 1, locationCount: 1, viewing: true })).toBe("select");
+    expect(switcherMode({ enabled: false, planning: 0 })).toBe("teach");
+    expect(switcherMode({ enabled: true, planning: 0 })).toBe("setup");
+    expect(switcherMode({ enabled: true, planning: 2 })).toBe("select");
+  });
 });
 
 describe("SSR: the switcher", () => {
@@ -155,13 +179,28 @@ describe("SSR: the switcher", () => {
     expect(html).toContain("Set up warehouses and stores");
   });
 
-  it("Growth: shown disabled with the Pro tag, what it does, and the plans link", () => {
+  it("Growth with several locations: one compact teaching link (Pro tag, what it does), no disabled select", () => {
     const html = render("/app/products", "products", Products, products({ locationsEnabled: false, locations: [] }));
-    expect(html).toContain("Online stock pool");
-    expect(html).toContain("Pro plan");
+    expect(html).toContain("Plan per location · Pro plan");
     expect(html).toContain("Plan stock per warehouse and per POS store, each with its own sales.");
     expect(html).toContain('href="/app/plans?upgrade=locations"');
-    expect(html).toMatch(/<s-select[^>]*disabled/);
+    expect(html).toContain('class="keha-switcher keha-switcher--link"');
+    expect(html).not.toContain("Online stock pool</s-option>");
+    expect(html).not.toMatch(/<s-select[^>]*disabled/);
+  });
+
+  it("one location: nothing on any plan", () => {
+    for (const over of [{ locationsEnabled: false, locations: [] }, { locationsEnabled: true, locations: [] }, { locationsEnabled: true }]) {
+      const html = render("/app/products", "products", Products, products({ ...over, locationCount: 1 }));
+      expect(html).not.toContain("keha-switcher");
+      expect(html).not.toContain("upgrade=locations");
+      expect(html).not.toContain("Set up warehouses and stores");
+    }
+  });
+
+  it("Pro: the select sits in the toolbar's filter group", () => {
+    const html = render("/app/products", "products", Products, products());
+    expect(html).toMatch(/<div class="keha-toolbar__filters"><div class="keha-switcher"><s-select/);
   });
 
   it("Reorder store view: the store's needs, with the switcher", () => {
