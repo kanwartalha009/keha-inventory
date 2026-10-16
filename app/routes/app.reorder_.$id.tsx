@@ -16,12 +16,13 @@ import { getEntitlements, upgradeResponse } from "../services/entitlements.serve
 import { getOrder, hidePricesFor, transitionOrder, type OrderDetail } from "../models/reorder.server";
 import { emailSupplier, type EmailSupplierResult } from "../services/po-email.server";
 import { AppPage, KvRow } from "../components/ui";
+import { LockedPage } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
 import { DownloadButton } from "../components/download-button";
 import { flag } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay } from "../lib/dashboard-shared";
-import { confirmUrl } from "../lib/po-email-shared";
+import { SUPPLIER_EMAIL_COOLDOWN_MS, SUPPLIER_EMAIL_DAILY_CAP, confirmUrl } from "../lib/po-email-shared";
 import {
   canTransition,
   confirmLinkOpen,
@@ -35,7 +36,15 @@ import {
   type PoStatus,
 } from "../lib/purchase-order-shared";
 
-export type OrderPageData = {
+/**
+ * `enabled: false` = the plan has no reorder plan (Free): nothing about the
+ * order is sent, and the page shows the teaching lock with "See plans" (the
+ * app layout does the same for /app/reorder/*) instead of a bare 404.
+ */
+export type OrderPageData = OrderPageView | { enabled: false };
+
+export type OrderPageView = {
+  enabled: true;
   order: OrderDetail;
   /** The supplier page URL while the link works (sent / confirmed, not expired); else null. */
   link: string | null;
@@ -46,7 +55,8 @@ export type OrderPageData = {
 export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<OrderPageData> => {
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
-  if (!features.reorderPlan) throw new Response("Not found", { status: 404 });
+  // Locked page (app.tsx shows the plan page): send nothing, like /app/reorder.
+  if (!features.reorderPlan) return { enabled: false };
   const order = await getOrder(session.shop, params.id ?? "");
   if (!order) throw new Response("Not found", { status: 404 });
   const appUrl = process.env.SHOPIFY_APP_URL || "";
@@ -55,6 +65,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<O
     new Date(),
   );
   return {
+    enabled: true,
     // The raw token never reaches the browser unless the link is usable.
     order: { ...order, confirmToken: "" },
     link: open && appUrl && features.supplierConfirm ? confirmUrl(appUrl, order.confirmToken) : null,
@@ -96,8 +107,13 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 type Pending = { kind: "transition"; to: PoStatus } | { kind: "email" };
 
 export default function OrderPage() {
-  const { t, locale } = useLocale();
   const data = useLoaderData<typeof loader>() as OrderPageData;
+  if (!data.enabled) return <LockedPage feature="reorderPlan" />;
+  return <OrderView data={data} />;
+}
+
+function OrderView({ data }: { data: OrderPageView }) {
+  const { t, locale } = useLocale();
   const fetcher = useFetcher<OrderAction>();
   const [pending, setPending] = useState<Pending | null>(null);
   const [copied, setCopied] = useState(false);
@@ -324,6 +340,14 @@ function orderError(code: string, t: (s: string) => string): string {
       return t("Email isn't set up for this app yet. Download the PDF and send it yourself.");
     case "failed":
       return t("The email didn't go out. Try again, or download the PDF and send it yourself.");
+    case "cooldown":
+      return fill(t("This order was emailed a moment ago. You can send it again after {minutes} minutes."), {
+        minutes: SUPPLIER_EMAIL_COOLDOWN_MS / 60_000,
+      });
+    case "dailyCap":
+      return fill(t("Your store sent {count} supplier emails today, the daily limit. Send this one tomorrow, or download the PDF and send it yourself."), {
+        count: SUPPLIER_EMAIL_DAILY_CAP,
+      });
     case "changed":
       return t("This order changed in the meantime. Reload the page.");
     case "notAllowed":

@@ -4,12 +4,12 @@
  * count, create, createMany (skipDuplicates by `keys`), upsert, update, updateMany, deleteMany,
  * aggregate (_max / _min), groupBy (_sum / _max / _count), and batch $transaction.
  *
- * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains }, OR / AND / NOT.
+ * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains, startsWith }, OR / AND / NOT.
  * Dates compare by time. Compound unique keys (`shop_variantId_locationId: {...}`) are flattened.
  */
 export type Row = Record<string, unknown>;
 
-const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "equals"]);
+const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "startsWith", "equals"]);
 
 function norm(v: unknown): unknown {
   if (v instanceof Date) return v.getTime();
@@ -63,6 +63,8 @@ export function matches(row: Row, where: Row | undefined): boolean {
             return a === null ? v != null : v !== a;
           case "contains":
             return typeof row[k] === "string" && (row[k] as string).includes(arg as string);
+          case "startsWith":
+            return typeof row[k] === "string" && (row[k] as string).startsWith(arg as string);
           default:
             return false;
         }

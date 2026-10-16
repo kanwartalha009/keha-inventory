@@ -11,7 +11,10 @@ vi.mock("../app/db.server", () => ({ default: {} }));
 vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn(), upgradeResponse: vi.fn() }));
 
 import Reorder, { type ReorderPageData } from "../app/routes/app.reorder";
-import OrderPage, { type OrderPageData } from "../app/routes/app.reorder_.$id";
+import OrderPage, { loader as orderLoader, type OrderPageData, type OrderPageView } from "../app/routes/app.reorder_.$id";
+import { authenticate } from "../app/shopify.server";
+import { getEntitlements } from "../app/services/entitlements.server";
+import { featureMap } from "../app/lib/plan-shared";
 import SupplierConfirm, { type ConfirmPageData } from "../app/routes/supplier.confirm.$token";
 import { buildReorderGroups, type ReorderVariantIn } from "../app/lib/reorder-shared";
 import { renderPoPdf, pdfSafe } from "../app/services/po-pdf.server";
@@ -131,7 +134,8 @@ const order = (over: Partial<OrderDetail> = {}): OrderDetail => ({
   ...over,
 });
 
-const pageData = (o: OrderDetail, over: Partial<OrderPageData> = {}): OrderPageData => ({
+const pageData = (o: OrderDetail, over: Partial<OrderPageView> = {}): OrderPageView => ({
+  enabled: true,
   order: o,
   link: null,
   hidePrices: false,
@@ -171,6 +175,17 @@ describe("Order page", () => {
     expect(html).toContain("Mark as confirmed");
     expect(html).toContain("Email again");
     expect(html).toContain("Nov 15, 2026");
+  });
+
+  it("Free opening an order link directly: the locked teaching page with See plans, not a 404 (nothing about the order sent)", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "free", features: featureMap("free"), comped: false, checked: true } as never);
+    const data = (await orderLoader({ request: new Request("https://x/app/reorder/po1"), params: { id: "po1" }, context: {} } as never)) as OrderPageData;
+    expect(data).toEqual({ enabled: false });
+    const html = render("/app/reorder/po1", "order", OrderPage, data);
+    expect(html).toContain("See plans");
+    expect(html).toContain("Growth plan");
+    expect(html).not.toContain("PO-0001");
   });
 
   it("Shopify orders are read-only", () => {

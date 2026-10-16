@@ -79,6 +79,23 @@ export function supplierEmail(input: SupplierEmailInput, tr: T): { subject: stri
   return { subject, text, html };
 }
 
+/**
+ * Abuse limits for "Email supplier" (review fix 2026-10-17): the email goes
+ * out from Keha's sending domain to an address the merchant typed, so a
+ * merchant account must not be able to use it as a mail cannon.
+ *  - one email per order per 10 minutes (OwnerEmailLog kind "supplier_po",
+ *    periodKey "order:<id>", sentAt = the last send);
+ *  - 50 supplier emails per store per UTC day (kind "supplier_po_day", one
+ *    row per send, periodKey "<YYYY-MM-DD>#<n>" — the unique
+ *    (shop, kind, periodKey) index makes each slot claimable once).
+ */
+export const SUPPLIER_EMAIL_KIND = "supplier_po";
+export const SUPPLIER_EMAIL_DAY_KIND = "supplier_po_day";
+export const SUPPLIER_EMAIL_COOLDOWN_MS = 10 * 60 * 1000;
+export const SUPPLIER_EMAIL_DAILY_CAP = 50;
+export const supplierEmailOrderKey = (orderId: string) => `order:${orderId}`;
+export const supplierEmailDayPrefix = (now: Date) => `${now.toISOString().slice(0, 10)}#`;
+
 /** The public supplier page for an order. */
 export function confirmUrl(appUrl: string, token: string): string {
   return `${appUrl.replace(/\/+$/, "")}/supplier/confirm/${encodeURIComponent(token)}`;
