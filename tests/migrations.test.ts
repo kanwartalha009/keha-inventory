@@ -22,8 +22,11 @@ function migratedColumns(): Set<string> {
         if (col) out.add(`${m[1]}.${col[1]}`);
       }
     }
-    for (const m of sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN "(\w+)"/g)) out.add(`${m[1]}.${m[2]}`);
-    for (const m of sql.matchAll(/ALTER TABLE "(\w+)" DROP COLUMN "(\w+)"/g)) out.delete(`${m[1]}.${m[2]}`);
+    // Prisma writes several columns per statement: ALTER TABLE "T" ADD COLUMN "a" …,\nADD COLUMN "b" …;
+    for (const m of sql.matchAll(/ALTER TABLE "(\w+)"([^;]*);/g)) {
+      for (const c of m[2].matchAll(/ADD COLUMN\s+"(\w+)"/g)) out.add(`${m[1]}.${c[1]}`);
+      for (const c of m[2].matchAll(/DROP COLUMN\s+"(\w+)"/g)) out.delete(`${m[1]}.${c[1]}`);
+    }
   }
   return out;
 }

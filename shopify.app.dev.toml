@@ -10,7 +10,7 @@ application_url = "https://example.com"
 embedded = true
 
 [access_scopes]
-scopes = "read_products,read_inventory,read_locations,read_reports"
+scopes = "read_products,read_inventory,read_locations,read_reports,read_inventory_purchase_orders,write_inventory_transfers,write_discounts"
 
 [auth]
 redirect_urls = [ "https://example.com/auth/callback" ]

@@ -14,6 +14,8 @@ import { AREAS, LOCALES, translate } from "../app/lib/i18n";
 import { INHERITS, PLAN_MATRIX, PLAN_PITCH, PLAN_POINTS } from "../app/lib/plan-matrix";
 import { PLAN_LABEL } from "../app/lib/plan-shared";
 import { SETTINGS_ERRORS } from "../app/lib/settings-shared";
+import { ACTION_REASONS } from "../app/lib/actions-shared";
+import { SETTINGS_TABS } from "../app/components/settings-tabs";
 
 /** Strings spelled the same in a language (brand words, loanwords). */
 const SAME_WORD: Record<string, string[]> = {
@@ -62,6 +64,8 @@ function dataKeys(): Set<string> {
     }
   }
   for (const v of Object.values(SETTINGS_ERRORS)) out.add(v);
+  for (const v of Object.values(ACTION_REASONS)) out.add(v);
+  for (const x of SETTINGS_TABS) out.add(x.label);
   for (const v of Object.values(PLAN_PITCH)) out.add(v);
   for (const list of Object.values(PLAN_POINTS)) for (const v of list) out.add(v);
   for (const v of Object.values(INHERITS)) if (v) out.add(v);

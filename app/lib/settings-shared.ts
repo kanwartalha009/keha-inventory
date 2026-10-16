@@ -24,6 +24,15 @@ export type ShopSettings = {
     /** Extra / replacement recipients; empty = the store owner email. */
     recipients: string[];
   };
+  /** Spec §5.5 Alerts tab / §11. Saved by the Alerts settings tab (task 2.6). */
+  alerts: {
+    /** Instant alerts (a best seller will run out within its lead time; a busy product sold out). */
+    instant: boolean;
+    /** Slack incoming-webhook URL, sealed with APP_ENCRYPTION_KEY (lib/seal.server). null = not connected. */
+    slackWebhook: string | null;
+    /** Send the Monday summary to Slack too (when connected). */
+    slackMonday: boolean;
+  };
 };
 
 export const DEFAULT_SETTINGS: ShopSettings = {
@@ -34,6 +43,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   tooMuchDays: 180,
   deadDays: 90,
   mondayEmail: { enabled: true, recipients: [] },
+  alerts: { instant: true, slackWebhook: null, slackMonday: true },
 };
 
 const int = (v: unknown, min: number, max: number, dflt: number) =>
@@ -44,6 +54,7 @@ export function readSettings(raw: unknown): ShopSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const me = (r.mondayEmail && typeof r.mondayEmail === "object" ? r.mondayEmail : {}) as Record<string, unknown>;
   const level = r.safetyLevel;
+  const al = (r.alerts && typeof r.alerts === "object" ? r.alerts : {}) as Record<string, unknown>;
   return {
     leadTimeDays: int(r.leadTimeDays, 0, 365, DEFAULT_SETTINGS.leadTimeDays),
     leadTimeConfirmedAt: typeof r.leadTimeConfirmedAt === "string" ? r.leadTimeConfirmedAt : null,
@@ -54,6 +65,11 @@ export function readSettings(raw: unknown): ShopSettings {
     mondayEmail: {
       enabled: typeof me.enabled === "boolean" ? me.enabled : DEFAULT_SETTINGS.mondayEmail.enabled,
       recipients: Array.isArray(me.recipients) ? me.recipients.filter((x): x is string => typeof x === "string") : [],
+    },
+    alerts: {
+      instant: typeof al.instant === "boolean" ? al.instant : DEFAULT_SETTINGS.alerts.instant,
+      slackWebhook: typeof al.slackWebhook === "string" && al.slackWebhook ? al.slackWebhook : null,
+      slackMonday: typeof al.slackMonday === "boolean" ? al.slackMonday : DEFAULT_SETTINGS.alerts.slackMonday,
     },
   };
 }

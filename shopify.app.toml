@@ -17,11 +17,15 @@ embedded = true
 
 [access_scopes]
 # Only scopes the code uses (unused scopes get apps rejected). Keep the SCOPES env
-# var identical. Spec §10 scopes join as their features land:
-#   read_inventory_purchase_orders + read_inventory_transfers (2.2 Shopify POs),
-#   write_discounts (2.3 Clear), write_inventory_transfers (3.1 transfers).
+# var identical. Each scope and the feature that uses it (spec §10):
+#   read_products, read_inventory, read_locations: catalog, stock, locations (1.3);
+#   read_reports: ShopifyQL sales, stock history and sessions (1.4);
+#   read_inventory_purchase_orders: Shopify purchase orders on Reorder (2.2);
+#   write_inventory_transfers: create transfers (3.1, Pro). Includes read access,
+#     which purchase orders' linked transfers need (Shopify changelog 2026-09-17);
+#   write_discounts: clearance discounts from a Clear action (2.3).
 # read_reports needs Protected Customer Data Level 2 approval (task 0.1).
-scopes = "read_products,read_inventory,read_locations,read_reports"
+scopes = "read_products,read_inventory,read_locations,read_reports,read_inventory_purchase_orders,write_inventory_transfers,write_discounts"
 
 [auth]
 redirect_urls = [ "https://inventory.keha.io/auth/callback" ]

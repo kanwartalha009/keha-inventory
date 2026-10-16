@@ -9,6 +9,8 @@ export const COMMON_TR: Record<string, Tr> = {
   "Home": { es: "Inicio", fr: "Accueil", de: "Start", it: "Home", pt: "Início", nl: "Home", pl: "Start" },
   "Settings": { es: "Ajustes", fr: "Paramètres", de: "Einstellungen", it: "Impostazioni", pt: "Definições", nl: "Instellingen", pl: "Ustawienia" },
   "Plans": { es: "Planes", fr: "Forfaits", de: "Tarife", it: "Piani", pt: "Planos", nl: "Abonnementen", pl: "Plany" },
+  "Locations": { es: "Ubicaciones", fr: "Emplacements", de: "Standorte", it: "Sedi", pt: "Localizações", nl: "Locaties", pl: "Lokalizacje" },
+  "Alerts": { es: "Alertas", fr: "Alertes", de: "Benachrichtigungen", it: "Avvisi", pt: "Alertas", nl: "Meldingen", pl: "Alerty" },
 
   // ---- Generic ----
   "Cancel": { es: "Cancelar", fr: "Annuler", de: "Abbrechen", it: "Annulla", pt: "Cancelar", nl: "Annuleren", pl: "Anuluj" },

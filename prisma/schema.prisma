@@ -124,6 +124,8 @@ model Location {
   active Boolean
   online Boolean // fulfillsOnlineOrders
   role   String  @default("other") // warehouse | store | other
+  /// Merchant override for the online stock pool (spec §5.5, Pro). null = follow Shopify's fulfillsOnlineOrders.
+  onlinePool Boolean?
 
   @@index([shop])
 }
@@ -237,7 +239,7 @@ model VariantMetric {
 model Action {
   id          String    @id @default(cuid())
   shop        String
-  kind        String
+  kind        String    // reorder | bridge | push | fix_falling | fix_sizes | fix_page | fix_returns | clear
   variantIds  String[]
   productId   String
   amount      Decimal   @db.Decimal(18, 2)
@@ -245,8 +247,15 @@ model Action {
   reason      Json
   state       String    @default("open") // open | snoozed | dismissed | done
   snoozeUntil DateTime?
+  /// One row per (kind, product); recomputes update it in place, e.g. "reorder:gid://shopify/Product/1".
+  dedupeKey   String
+  /// The figure when the merchant snoozed or dismissed it (spec §7.7: comes back at 2×).
+  stateAmount Decimal?  @db.Decimal(18, 2)
+  doneAt      DateTime?
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
+  @@unique([shop, dedupeKey])
   @@index([shop, state])
 }
 
@@ -263,14 +272,23 @@ model MoneyAtStake {
 }
 
 model Supplier {
-  id           String   @id @default(cuid())
-  shop         String
-  name         String
-  email        String?  // AES-256-GCM ciphertext (app/lib/crypto.server.ts)
-  leadTimeDays Int
-  minOrder     Int?
-  currency     String?
-  vendorMatch  String[]
+  id            String   @id @default(cuid())
+  shop          String
+  name          String
+  email         String?  // AES-256-GCM ciphertext (app/lib/crypto.server.ts)
+  leadTimeDays  Int
+  /// Minimum units per variant line (MOQ per SKU).
+  minOrder      Int?
+  /// Minimum total units for the whole order (optional). Kanwar 2026-10-16: both fields.
+  minOrderTotal Int?
+  /// Default case pack for this supplier's lines (a variant's own caseQty wins).
+  casePack      Int?
+  currency      String?
+  vendorMatch   String[]
+  /// Hide unit costs on the supplier confirmation page (spec §14).
+  hidePrices    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([shop])
 }
@@ -278,28 +296,44 @@ model Supplier {
 model PurchaseOrder {
   id                String    @id @default(cuid())
   shop              String
-  supplierId        String
+  supplierId        String?   // null for Shopify POs whose supplier isn't in Keha
   status            String    // draft | sent | confirmed | received | cancelled
   number            String
   lines             Json
   confirmToken      String    @unique
+  /// The confirm link stops working 60 days after the order is sent (spec §14).
+  confirmExpiresAt  DateTime?
   confirmedShipDate DateTime?
+  /// Lead-time based arrival estimate until the supplier confirms.
+  expectedDate      DateTime? @db.Date
   source            String    // keha | shopify
   shopifyPoId       String?
+  supplierName      String?   // snapshot (Shopify POs: origin.supplierName)
+  currency          String?
+  note              String?
+  sentAt            DateTime?
+  receivedAt        DateTime?
+  cancelledAt       DateTime?
   createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  @@index([shop])
+  @@unique([shop, number])
+  @@unique([shop, shopifyPoId])
+  @@index([shop, status])
 }
 
 model Scenario {
   id          String   @id @default(cuid())
   shop        String
   name        String
+  /// black_friday | christmas | custom
+  event       String   @default("custom")
   start       DateTime
   end         DateTime
-  targetType  String
+  targetType  String   // growth | revenue | keep_pace
   targetValue Decimal  @db.Decimal(18, 2)
   result      Json?
+  createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([shop])
@@ -321,4 +355,76 @@ model ForecastSnapshot {
   actual    Float?
 
   @@id([shop, month, variantId])
+}
+
+/// Collection titles for filters, the planner and collection goals (Variant.collections holds ids).
+model Collection {
+  id     String @id // gid://shopify/Collection/<n>
+  shop   String
+  title  String
+  handle String
+
+  @@index([shop])
+}
+
+/// Monthly accuracy result (spec §7.8). The rows behind it live in ForecastSnapshot.
+model AccuracyMonth {
+  shop          String
+  month         DateTime @db.Date
+  /// Absolute % error of the store total (null = not enough data).
+  storeErrorPct Float?
+  /// Mean absolute % error over the top 20 variants by revenue (null = not enough data).
+  top20ErrorPct Float?
+  graded        Int
+  computedAt    DateTime @default(now())
+
+  @@id([shop, month])
+}
+
+/// A discount Keha created from a Clear action (spec J5). Cash freed is tracked against the baseline.
+model Clearance {
+  id            String    @id @default(cuid())
+  shop          String
+  actionId      String?
+  discountId    String    // gid://shopify/DiscountAutomaticNode/<n> | gid://shopify/DiscountCodeNode/<n>
+  kind          String    // automatic | code
+  code          String?
+  percent       Int
+  productIds    String[]
+  variantIds    String[]
+  startsAt      DateTime
+  endsAt        DateTime?
+  /// Cash stuck in these variants when the discount was created.
+  baselineCash  Decimal   @db.Decimal(18, 2)
+  baselineUnits Int
+  currency      String
+  createdAt     DateTime  @default(now())
+
+  @@index([shop])
+}
+
+/// Instant alerts sent (spec §11: at most 1 per product per 7 days).
+model AlertLog {
+  id        String   @id @default(cuid())
+  shop      String
+  productId String
+  kind      String   // low_best_seller | sell_out
+  channel   String   // email | slack
+  sentAt    DateTime @default(now())
+
+  @@index([shop, productId, sentAt])
+}
+
+/// A stock transfer Keha created in Shopify (spec J7, Pro).
+model Transfer {
+  id                    String   @id @default(cuid())
+  shop                  String
+  shopifyTransferId     String
+  originLocationId      String
+  destinationLocationId String
+  lines                 Json
+  idempotencyKey        String   @unique
+  createdAt             DateTime @default(now())
+
+  @@index([shop])
 }

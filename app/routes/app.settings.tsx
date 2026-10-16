@@ -10,6 +10,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { AppPage, Disclosure } from "../components/ui";
+import { SettingsTabs } from "../components/settings-tabs";
 import { SelectField, flag, isChecked, val } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
 import {
@@ -102,6 +103,7 @@ export default function Settings() {
         </s-button>
       }
     >
+      <SettingsTabs current="defaults" />
       {result?.ok && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result && !result.ok && result.notReady && (
         <s-banner tone="info">{t("We're still reading your store. Try again in a minute.")}</s-banner>
