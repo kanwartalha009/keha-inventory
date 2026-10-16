@@ -81,6 +81,7 @@ import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
 import { syncLocationMetrics } from "./compute-locations.server";
+import { writeVariantMetrics } from "./metric-writes.server";
 
 const HISTORY_DAYS = 90;
 const TRAFFIC_DAYS = 30;
@@ -318,39 +319,34 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }
 
   const supplierIdOf = new Map(plans.map((p) => [p.v.id, p.supplier?.id ?? null]));
-  for (let i = 0; i < results.length; i += WRITE_BATCH) {
-    const batch = results.slice(i, i + WRITE_BATCH);
-    await prisma.$transaction(
-      batch.map((r) => {
-        const season = seasonOf.get(r.id);
-        const m = metricRow(r, {
-          season: season ? seasonFacts(season) : null,
-          safetyLevel: shopSettings.safetyLevel,
-          serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
-          supplierId: supplierIdOf.get(r.id) ?? null,
-          kehaOnOrder: kehaRaw.get(r.id) ?? 0,
-          kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
-        });
-        const data = {
-          rate: m.rate,
-          sigma: m.sigma,
-          daysLeft: m.daysLeft,
-          neverRunsOut: m.neverRunsOut,
-          status: m.status,
-          role: m.role,
-          orderQty: m.orderQty,
-          orderBy: m.orderBy ? dayDate(m.orderBy) : null,
-          computedAt: startedAt,
-          inputs: m.inputs as Prisma.InputJsonValue,
-        };
-        return prisma.variantMetric.upsert({
-          where: { shop_variantId_scope: { shop, variantId: r.id, scope: SCOPE_ONLINE } },
-          create: { shop, variantId: r.id, scope: SCOPE_ONLINE, ...data },
-          update: data,
-        });
-      }),
-    );
-  }
+  await writeVariantMetrics(
+    shop,
+    SCOPE_ONLINE,
+    results.map((r) => {
+      const season = seasonOf.get(r.id);
+      const m = metricRow(r, {
+        season: season ? seasonFacts(season) : null,
+        safetyLevel: shopSettings.safetyLevel,
+        serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
+        supplierId: supplierIdOf.get(r.id) ?? null,
+        kehaOnOrder: kehaRaw.get(r.id) ?? 0,
+        kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
+      });
+      return {
+        variantId: r.id,
+        rate: m.rate,
+        sigma: m.sigma,
+        daysLeft: m.daysLeft,
+        neverRunsOut: m.neverRunsOut,
+        status: m.status,
+        role: m.role,
+        orderQty: m.orderQty,
+        orderBy: m.orderBy ? dayDate(m.orderBy) : null,
+        computedAt: startedAt,
+        inputs: m.inputs as Prisma.InputJsonValue,
+      };
+    }),
+  );
   // Variants no longer tracked / no longer in the catalog lose their metric.
   await prisma.variantMetric.deleteMany({ where: { shop, scope: SCOPE_ONLINE, computedAt: { lt: startedAt } } });
 
@@ -365,6 +361,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     plans,
     roles,
     seasonOf,
+    pool: { series, lastSale, dataSince },
   });
 
   // ---- money at stake ----

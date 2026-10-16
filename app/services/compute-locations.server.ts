@@ -14,16 +14,18 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import { SCOPE_ONLINE, buildSeries, metricRow, type SalesDay } from "../lib/compute-shared";
-import { carriedAt, keptScopes, locationStockDays } from "../lib/compute-locations-shared";
-import { computeVariant, type AbcRole, type EngineSettings, type VariantResult } from "../lib/engine/index-shared";
+import { POOL_LOCATION_SELECT, SCOPE_ONLINE, buildSeries, countsForOnline, metricRow, type SalesDay } from "../lib/compute-shared";
+import { carriedAt, demandSourceFor, keptScopes, locationStockDays, neutralWarehouse, type DemandSource } from "../lib/compute-locations-shared";
+import { computeVariant, type AbcRole, type DailyRow, type EngineSettings, type VariantResult } from "../lib/engine/index-shared";
 import { seasonFacts, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor, type SafetyLevelKey } from "../lib/engine/safety-shared";
 import { casePackFor, type SupplierLite } from "../lib/supplier-shared";
 import { planningLocations } from "../lib/locations-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
+import { writeVariantMetrics } from "./metric-writes.server";
 
-const WRITE_BATCH = 200;
+/** Variant ids per `in` filter when reading one location's facts (bounded query size). */
+const READ_CHUNK = 1000;
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const numOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -51,6 +53,12 @@ export type LocationComputeInput = {
   plans: readonly LocationVariantPlan[];
   roles: ReadonlyMap<string, AbcRole>;
   seasonOf: ReadonlyMap<string, VariantSeason>;
+  /** The online pool's daily series, last sale and first stock day (warehouses in the pool). */
+  pool: {
+    series: ReadonlyMap<string, DailyRow[]>;
+    lastSale: ReadonlyMap<string, string | null>;
+    dataSince: ReadonlyMap<string, string | null>;
+  };
 };
 
 export type LocationComputeResult = { locations: number; metrics: number };
@@ -61,26 +69,43 @@ export async function syncLocationMetrics(shop: string, enabled: boolean, input:
     await prisma.variantMetric.deleteMany({ where: { shop, scope: { not: SCOPE_ONLINE } } });
     return { locations: 0, metrics: 0 };
   }
-  const rows = await prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true, role: true } });
+  const rows = await prisma.location.findMany({ where: { shop }, select: { ...POOL_LOCATION_SELECT, name: true, role: true } });
   const planning = planningLocations(rows);
+  const byId = new Map(rows.map((r) => [r.id, r]));
   await prisma.variantMetric.deleteMany({ where: { shop, scope: { notIn: keptScopes(planning.map((l) => l.id)) } } });
   let metrics = 0;
-  for (const l of planning) metrics += await computeLocation(shop, l.id, input);
+  for (const l of planning) {
+    const source = demandSourceFor(l.role, countsForOnline(byId.get(l.id)!));
+    metrics += await computeLocation(shop, l.id, l.role, source, input);
+  }
   return { locations: planning.length, metrics };
 }
 
-async function computeLocation(shop: string, locationId: string, x: LocationComputeInput): Promise<number> {
+/** Runs `read` over the planned variant ids in chunks and concatenates the rows. */
+async function chunked<T>(ids: readonly string[], read: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += READ_CHUNK) out.push(...(await read(ids.slice(i, i + READ_CHUNK))));
+  return out;
+}
+
+async function computeLocation(shop: string, locationId: string, role: string, source: DemandSource, x: LocationComputeInput): Promise<number> {
+  // Only the planned variants (active, tracked, not bundles), only the rate window (x.range).
+  const ids = x.plans.map((p) => p.v.id);
   const [salesG, stockRows, lastSaleG, dataSinceG, stockNow] = await Promise.all([
     // Location view only: this location's POS sales.
-    prisma.salesDaily.groupBy({
-      by: ["variantId", "day"],
-      where: { shop, channel: ALL, locationKey: locationId, day: x.range },
-      _sum: { sold: true },
-    }),
-    prisma.stockDaily.findMany({
-      where: { shop, locationId, day: x.range },
-      select: { variantId: true, day: true, endUnits: true, outOfStock: true },
-    }),
+    chunked(ids, (chunk) =>
+      prisma.salesDaily.groupBy({
+        by: ["variantId", "day"],
+        where: { shop, channel: ALL, locationKey: locationId, variantId: { in: chunk }, day: x.range },
+        _sum: { sold: true },
+      }),
+    ),
+    chunked(ids, (chunk) =>
+      prisma.stockDaily.findMany({
+        where: { shop, locationId, variantId: { in: chunk }, day: x.range },
+        select: { variantId: true, day: true, endUnits: true, outOfStock: true },
+      }),
+    ),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
       where: { shop, channel: ALL, locationKey: locationId, sold: { gt: 0 }, day: { lt: dayDate(x.from) } },
@@ -98,22 +123,27 @@ async function computeLocation(shop: string, locationId: string, x: LocationComp
   const now = new Map(stockNow.map((s) => [s.variantId, s]));
   const carried = carriedAt(now.keys(), new Set(stockRows.map((r) => r.variantId)));
 
+  const ownSold = new Map<string, number>();
+  for (const s of sales) ownSold.set(s.variantId, (ownSold.get(s.variantId) ?? 0) + s.sold);
+  const fromPool = source === "online_pool";
+
   const results: { r: VariantResult; supplierId: string | null }[] = [];
   for (const { v, supplier } of x.plans) {
     if (!carried.has(v.id)) continue;
     const s = now.get(v.id);
     const season = x.seasonOf.get(v.id);
-    const r = computeVariant({
+    const computed = computeVariant({
       id: v.id,
       isBundle: false,
-      series: series.get(v.id) ?? [],
+      // A warehouse in the online pool is measured at the online pool's pace (see the shared header).
+      series: (fromPool ? x.pool.series.get(v.id) : series.get(v.id)) ?? [],
       today: x.today,
       onHand: s?.onHand ?? 0,
       incoming: s?.incoming ?? 0,
       role: x.roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
-      lastSaleDay: lastSale.get(v.id) ?? null,
-      dataSinceDay: dataSince.get(v.id) ?? null,
+      lastSaleDay: (fromPool ? x.pool.lastSale.get(v.id) : lastSale.get(v.id)) ?? null,
+      dataSinceDay: (fromPool ? x.pool.dataSince.get(v.id) : dataSince.get(v.id)) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
       caseQty: casePackFor(v.caseQty, supplier),
       minOrder: supplier?.minOrder ?? null,
@@ -124,41 +154,39 @@ async function computeLocation(shop: string, locationId: string, x: LocationComp
       cost: numOrNull(v.cost),
       settings: x.overrides,
     });
+    const r = computed ? neutralWarehouse(computed, role, source, ownSold.get(v.id) ?? 0) : null;
     if (r) results.push({ r, supplierId: supplier?.id ?? null });
   }
 
-  for (let i = 0; i < results.length; i += WRITE_BATCH) {
-    await prisma.$transaction(
-      results.slice(i, i + WRITE_BATCH).map(({ r, supplierId }) => {
-        const season = x.seasonOf.get(r.id);
-        const m = metricRow(r, {
-          location: locationId,
-          season: season ? seasonFacts(season) : null,
-          safetyLevel: x.safetyLevel,
-          serviceLevel: serviceLevelFor(x.safetyLevel, r.role),
-          supplierId,
-          kehaOnOrder: 0,
-        });
-        const data = {
-          rate: m.rate,
-          sigma: m.sigma,
-          daysLeft: m.daysLeft,
-          neverRunsOut: m.neverRunsOut,
-          status: m.status,
-          role: m.role,
-          orderQty: m.orderQty,
-          orderBy: m.orderBy ? dayDate(m.orderBy) : null,
-          computedAt: x.startedAt,
-          inputs: m.inputs as Prisma.InputJsonValue,
-        };
-        return prisma.variantMetric.upsert({
-          where: { shop_variantId_scope: { shop, variantId: r.id, scope: locationId } },
-          create: { shop, variantId: r.id, scope: locationId, ...data },
-          update: data,
-        });
-      }),
-    );
-  }
+  await writeVariantMetrics(
+    shop,
+    locationId,
+    results.map(({ r, supplierId }) => {
+      const season = x.seasonOf.get(r.id);
+      const m = metricRow(r, {
+        location: locationId,
+        demandSource: source,
+        season: season ? seasonFacts(season) : null,
+        safetyLevel: x.safetyLevel,
+        serviceLevel: serviceLevelFor(x.safetyLevel, r.role),
+        supplierId,
+        kehaOnOrder: 0,
+      });
+      return {
+        variantId: r.id,
+        rate: m.rate,
+        sigma: m.sigma,
+        daysLeft: m.daysLeft,
+        neverRunsOut: m.neverRunsOut,
+        status: m.status,
+        role: m.role,
+        orderQty: m.orderQty,
+        orderBy: m.orderBy ? dayDate(m.orderBy) : null,
+        computedAt: x.startedAt,
+        inputs: m.inputs as Prisma.InputJsonValue,
+      };
+    }),
+  );
   // Variants no longer carried here (or no longer planned) lose their row for this location.
   await prisma.variantMetric.deleteMany({ where: { shop, scope: locationId, computedAt: { lt: x.startedAt } } });
   return results.length;

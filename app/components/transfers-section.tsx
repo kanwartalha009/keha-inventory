@@ -125,6 +125,9 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
         {result && !result.ok && result.error === "gone" && (
           <s-banner tone="warning">{t("This list changed. Reload the page and try again.")}</s-banner>
         )}
+        {result && !result.ok && result.error === "over_spare" && (
+          <s-banner tone="warning">{t("More than the warehouse can spare.")}</s-banner>
+        )}
         {result && !result.ok && result.error === "empty" && (
           <s-banner tone="warning">{t("Enter a quantity for at least one product.")}</s-banner>
         )}

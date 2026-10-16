@@ -8,7 +8,9 @@ import { POOL_LOCATION_SELECT, SCOPE_ONLINE, countsForOnline } from "../lib/comp
 import { planningLocations } from "../lib/locations-shared";
 import {
   NEED_STATUSES,
+  PENDING_TRANSFER_DAYS,
   buildTransferPlan,
+  pendingTransferUnits,
   readTransferLines,
   type PlanMetric,
   type PlanVariant,
@@ -28,7 +30,7 @@ export type TransfersData = {
 
 const RECENT = 10;
 
-export async function loadTransfers(shop: string): Promise<TransfersData> {
+export async function loadTransfers(shop: string, now: Date = new Date()): Promise<TransfersData> {
   const rows = await prisma.location.findMany({ where: { shop }, select: { ...POOL_LOCATION_SELECT, name: true, role: true } });
   const planning = planningLocations(rows);
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -48,7 +50,7 @@ export async function loadTransfers(shop: string): Promise<TransfersData> {
   const ids = [...new Set(storeMetrics.map((m) => m.variantId))];
   if (!ids.length) return { groups: [], ...base };
   const locationIds = [...warehouses.map((w) => w.id), ...stores.map((s) => s.id)];
-  const [otherMetrics, stockRows, variants] = await Promise.all([
+  const [otherMetrics, stockRows, variants, pendingRows] = await Promise.all([
     prisma.variantMetric.findMany({
       where: { shop, scope: { in: [SCOPE_ONLINE, ...warehouses.map((w) => w.id)] }, variantId: { in: ids } },
       select: { variantId: true, scope: true, status: true, rate: true, sigma: true, daysLeft: true, inputs: true },
@@ -60,6 +62,11 @@ export async function loadTransfers(shop: string): Promise<TransfersData> {
     prisma.variant.findMany({
       where: { shop, id: { in: ids }, tracked: true, isBundle: false },
       select: { id: true, productTitle: true, variantTitle: true, sku: true, image: true },
+    }),
+    // Keha transfers that may not have shipped yet (transfers-shared header): pending.
+    prisma.transfer.findMany({
+      where: { shop, createdAt: { gte: new Date(now.getTime() - PENDING_TRANSFER_DAYS * 86_400_000) } },
+      select: { originLocationId: true, destinationLocationId: true, lines: true },
     }),
   ]);
   const metrics = new Map<string, Map<string, PlanMetric & { daysLeft: number | null }>>();
@@ -80,6 +87,7 @@ export async function loadTransfers(shop: string): Promise<TransfersData> {
     variants: new Map<string, PlanVariant>(variants.map((v) => [v.id, v])),
     metrics,
     stock,
+    pending: pendingTransferUnits(pendingRows),
   });
   return { groups, ...base };
 }

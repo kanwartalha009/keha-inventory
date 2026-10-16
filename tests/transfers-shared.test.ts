@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildTransferPlan,
   keepLevel,
+  linesOverSpare,
+  pendingTransferUnits,
   readTransferLines,
   storeNeed,
   transferAdminHref,
@@ -98,6 +100,45 @@ function input(over: Partial<TransferPlanInput> = {}): TransferPlanInput {
     ...over,
   };
 }
+
+describe("review fix: pending Keha transfers and the spare cap", () => {
+  it("pendingTransferUnits sums stored lines per destination and per origin", () => {
+    const p = pendingTransferUnits([
+      { originLocationId: "W1", destinationLocationId: "S1", lines: [{ variantId: V(1), inventoryItemId: "i1", quantity: 5 }] },
+      { originLocationId: "W1", destinationLocationId: "S2", lines: [{ variantId: V(1), inventoryItemId: "i1", quantity: 7 }, { bad: true }] },
+    ]);
+    expect(p.inbound.get("S1")?.get(V(1))).toBe(5);
+    expect(p.outbound.get("W1")?.get(V(1))).toBe(12);
+  });
+
+  it("pending units reduce the store's need and the warehouse's spare: the same units are not proposed again", () => {
+    const base = input();
+    const before = buildTransferPlan(base);
+    const lineOf = (plan: ReturnType<typeof buildTransferPlan>, store: string, v: number) =>
+      plan.find((g) => g.destinationId === store)?.lines.find((l) => l.variantId === V(v));
+    expect(lineOf(before, "S2", 1)).toMatchObject({ qty: 30, originSpare: 35 });
+    // The 30 units for Madrid were sent with Keha yesterday: Madrid needs nothing more of V1,
+    // and the warehouse has 35 − 30 = 5 spare left for Barcelona.
+    const pending = pendingTransferUnits([{ originLocationId: "W1", destinationLocationId: "S2", lines: [{ variantId: V(1), inventoryItemId: "i1", quantity: 30 }] }]);
+    const after = buildTransferPlan({ ...base, pending });
+    expect(lineOf(after, "S2", 1)).toBeUndefined();
+    expect(lineOf(after, "S1", 1)).toMatchObject({ qty: 5, need: 20, originSpare: 5 });
+    expect(storeNeed(metric(1), stock(0), 15)).toBe(5);
+    expect(warehouseSpare(metric(0, "healthy"), null, false, stock(50), 45)).toBe(5);
+  });
+
+  it("review fix: a warehouse metric already at the online pool's pace keeps the online needs once, not twice", () => {
+    const pooled = metric(2, "healthy", { inputs: { leadTimeDays: 10, cycleDays: 10, z: 1.65, seasonal: 1, trend: 1, demandSource: "online_pool" } });
+    // Keep = 20 × 2 = 40 → 100 − 40 = 60 (not 100 − 40 − 40).
+    expect(warehouseSpare(pooled, metric(2, "healthy"), true, stock(100))).toBe(60);
+    // Older rows without the marker: as before (own + online).
+    expect(warehouseSpare(metric(2, "healthy"), metric(2, "healthy"), true, stock(100))).toBe(20);
+  });
+
+  it("linesOverSpare lists lines asked above the origin's spare", () => {
+    expect(linesOverSpare([{ variantId: "a", qty: 5, originSpare: 5 }, { variantId: "b", qty: 6, originSpare: 5 }])).toEqual(["b"]);
+  });
+});
 
 describe("buildTransferPlan", () => {
   it("serves the largest need first and never moves more than the spare", () => {

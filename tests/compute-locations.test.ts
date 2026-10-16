@@ -117,13 +117,35 @@ describe("per-location metrics (Pro)", () => {
     expect((online.inputs as { onHand: number }).onHand).toBe(300);
   });
 
-  it("writes a warehouse metric from the warehouse's own (POS) sales: none here", async () => {
+  it("review fix: a warehouse that counts for online sales is measured at the online pool's pace, never Dead from 0 POS sales", async () => {
+    await computeShop(S, { now: () => NOW });
+    // Reviewer's case: role A, 90 in-stock days at the warehouse, no POS sales there.
+    const w = metric(A, WH)!;
+    expect(w.role).toBe("A");
+    expect(w.rate).toBeCloseTo(2, 10); // the online pool's sales per day
+    expect(w.status).not.toBe("dead");
+    expect(w.status).toBe("healthy");
+    expect(w.daysLeft).toBeCloseTo(150, 10); // the warehouse's own 300 units at 2 a day
+    expect(w.neverRunsOut).toBe(false);
+    expect(w.inputs).toMatchObject({ onHand: 300, demandSource: "online_pool", location: WH });
+    // A product that sells nowhere is still dead (the online pool says so, not the 0 POS sales).
+    expect(metric(C, WH)!.status).toBe("dead");
+  });
+
+  it("review fix: a warehouse outside the online pool with no sales of its own shows a neutral 'Not enough data'", async () => {
+    db.tables.location.find((l) => l.id === WH)!.onlinePool = false;
     await computeShop(S, { now: () => NOW });
     const w = metric(A, WH)!;
-    expect(w.rate).toBe(0);
-    expect(w.neverRunsOut).toBe(true);
-    expect((w.inputs as { onHand: number }).onHand).toBe(300);
-    expect(metric(C, WH)).toBeDefined();
+    expect(w.status).toBe("not_enough_data");
+    expect(w).toMatchObject({ daysLeft: null, neverRunsOut: false, orderQty: null, orderBy: null });
+    expect(w.rate).toBe(0); // kept: the transfer plan sizes its spare from it
+    expect(w.inputs).toMatchObject({ demandSource: "own" });
+    expect(metric(C, WH)!.status).toBe("not_enough_data");
+  });
+
+  it("review fix: a store is unchanged (its own sales), whatever its pool setting", async () => {
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A, SHOP1)!.inputs).toMatchObject({ demandSource: "own" });
   });
 
   it("reuses the online pool's seasonal × trend and ABC role", async () => {
@@ -163,6 +185,29 @@ describe("per-location metrics (Pro)", () => {
   it("a failed plan check fails open: locations are computed", async () => {
     const r = await computeShop(S, { now: () => NOW, plan: async () => Promise.reject(new Error("down")) });
     expect(r.locationMetrics).toBeGreaterThan(0);
+  });
+});
+
+describe("review fix: performance", () => {
+  it("metric rows are written in batches (deleteMany + createMany per batch), not one upsert per row; reruns are identical", async () => {
+    await computeShop(S, { now: () => NOW });
+    const ops = db.calls.filter((c) => c.table === "variantMetric").map((c) => c.op);
+    expect(ops).not.toContain("upsert");
+    expect(ops.filter((o) => o === "createMany")).toHaveLength(3); // online, warehouse, store: one batch each
+    const strip = () => JSON.stringify([...db.tables.variantMetric].sort((a, b) => `${a.scope}${a.variantId}`.localeCompare(`${b.scope}${b.variantId}`)));
+    const first = strip();
+    await computeShop(S, { now: () => NOW });
+    expect(strip()).toBe(first);
+  });
+
+  it("a location's facts are read only for the planned variants and the rate window", async () => {
+    await computeShop(S, { now: () => NOW });
+    const reads = db.calls.filter((c) => c.table === "stockDaily" && c.op === "findMany").map((c) => (c.args as { where: Record<string, unknown> }).where);
+    expect(reads.length).toBeGreaterThan(0);
+    for (const w of reads) {
+      expect(w.variantId).toEqual({ in: [A, C] });
+      expect(w.day).toEqual({ gte: d("2026-07-18"), lte: d("2026-10-15") });
+    }
   });
 });
 

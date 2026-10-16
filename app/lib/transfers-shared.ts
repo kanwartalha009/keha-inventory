@@ -21,8 +21,19 @@
  *           − the online pool's keep level when the warehouse counts for online sales
  *             (online orders are keyed "online", not to the warehouse, so its own metric
  *             can't see them; the whole online keep level stays put even when other pool
- *             locations also hold stock);
+ *             locations also hold stock) — unless its own metric was already computed at the
+ *             online pool's pace (inputs.demandSource "online_pool"): then it is kept once;
  *   0 when the warehouse has no metric for the variant, or a keep level it needs is unknown.
+ *
+ * Transfers Keha created that may not have shipped yet (review fix: the plan used to propose
+ * the same units again). Keha can't see a transfer's status without a Shopify read, so every
+ * transfer Keha created in the last PENDING_TRANSFER_DAYS days counts as PENDING:
+ *   - its units are added to the destination store's incoming (the store's need shrinks);
+ *   - its units are taken off the origin warehouse's spare.
+ * Once a transfer is marked ready to ship, Shopify's own numbers may already show it (incoming
+ * at the store, less available at the warehouse) and the pending units are then counted twice
+ * for the rest of the window: the plan proposes LESS, never the same units twice (ASSUMED
+ * acceptable; reading each transfer's status from Shopify would remove it).
  *
  * Allocation, per variant: store needs largest first (ties: store name), each served from
  * the warehouse with the most spare left (ties: name), then the next one; quantities are
@@ -53,12 +64,37 @@ export function keepLevel(m: PlanMetric | null | undefined): number | null {
 
 export const NEED_STATUSES: readonly string[] = ["out", "running_low"];
 
-/** Units a store needs (fractional), or null when it doesn't qualify (see the header). */
-export function storeNeed(m: PlanMetric | null | undefined, stock: StockAt | null | undefined): number | null {
+/** Days a transfer Keha created counts as pending (see the header). */
+export const PENDING_TRANSFER_DAYS = 14;
+
+/** location id → variant id → units. */
+export type UnitsAt = ReadonlyMap<string, ReadonlyMap<string, number>>;
+
+/** Pending units per destination (`inbound`) and per origin (`outbound`) from stored transfers. */
+export function pendingTransferUnits(
+  transfers: readonly { originLocationId: string; destinationLocationId: string; lines: unknown }[],
+): { inbound: Map<string, Map<string, number>>; outbound: Map<string, Map<string, number>> } {
+  const inbound = new Map<string, Map<string, number>>();
+  const outbound = new Map<string, Map<string, number>>();
+  const add = (m: Map<string, Map<string, number>>, loc: string, v: string, q: number) => {
+    const at = m.get(loc) ?? m.set(loc, new Map()).get(loc)!;
+    at.set(v, (at.get(v) ?? 0) + q);
+  };
+  for (const t of transfers)
+    for (const l of readTransferLines(t.lines)) {
+      if (!(l.quantity > 0)) continue;
+      add(inbound, t.destinationLocationId, l.variantId, l.quantity);
+      add(outbound, t.originLocationId, l.variantId, l.quantity);
+    }
+  return { inbound, outbound };
+}
+
+/** Units a store needs (fractional), or null when it doesn't qualify (see the header). `pending`: units on Keha transfers on their way. */
+export function storeNeed(m: PlanMetric | null | undefined, stock: StockAt | null | undefined, pending = 0): number | null {
   if (!m || !NEED_STATUSES.includes(m.status)) return null;
   const keep = keepLevel(m);
   if (keep === null) return null;
-  const need = keep - ((stock?.onHand ?? 0) + Math.max(0, stock?.incoming ?? 0));
+  const need = keep - ((stock?.onHand ?? 0) + Math.max(0, stock?.incoming ?? 0) + Math.max(0, pending));
   return need >= 1 ? need : null;
 }
 
@@ -68,17 +104,21 @@ export function warehouseSpare(
   online: PlanMetric | null | undefined,
   inPool: boolean,
   stock: StockAt | null | undefined,
+  pendingOut = 0,
 ): number {
   if (!own || !stock) return 0;
   const ownKeep = keepLevel(own);
   if (ownKeep === null) return 0;
   let keep = ownKeep;
-  if (inPool) {
+  // A warehouse metric computed at the online pool's pace (compute-locations-shared,
+  // demandSource "online_pool") already keeps the online needs: never twice.
+  const ownInputs = own.inputs && typeof own.inputs === "object" ? (own.inputs as Record<string, unknown>) : {};
+  if (inPool && ownInputs.demandSource !== "online_pool") {
     const onlineKeep = keepLevel(online);
     if (onlineKeep === null) return 0;
     keep += onlineKeep;
   }
-  return Math.max(0, Math.floor(Math.min(stock.available, stock.onHand) - keep));
+  return Math.max(0, Math.floor(Math.min(stock.available, stock.onHand) - keep - Math.max(0, pendingOut)));
 }
 
 export type TransferLine = {
@@ -117,6 +157,8 @@ export type TransferPlanInput = {
   metrics: ReadonlyMap<string, ReadonlyMap<string, PlanMetric & { daysLeft?: number | null }>>;
   /** Location.id → variantId → stock now. */
   stock: ReadonlyMap<string, ReadonlyMap<string, StockAt>>;
+  /** Units on pending Keha transfers (pendingTransferUnits); none when absent. */
+  pending?: { inbound: UnitsAt; outbound: UnitsAt };
 };
 
 export function buildTransferPlan(input: TransferPlanInput): TransferGroup[] {
@@ -128,7 +170,7 @@ export function buildTransferPlan(input: TransferPlanInput): TransferGroup[] {
     if (!ms) continue;
     for (const [variantId, m] of ms) {
       if (!input.variants.has(variantId)) continue;
-      const need = storeNeed(m, input.stock.get(store.id)?.get(variantId));
+      const need = storeNeed(m, input.stock.get(store.id)?.get(variantId), input.pending?.inbound.get(store.id)?.get(variantId) ?? 0);
       if (need === null) continue;
       (needs.get(variantId) ?? needs.set(variantId, []).get(variantId)!).push({ store, need });
     }
@@ -139,7 +181,13 @@ export function buildTransferPlan(input: TransferPlanInput): TransferGroup[] {
     const spare = new Map(
       input.warehouses.map((w) => [
         w.id,
-        warehouseSpare(input.metrics.get(w.id)?.get(variantId), online?.get(variantId), w.inPool, input.stock.get(w.id)?.get(variantId)),
+        warehouseSpare(
+          input.metrics.get(w.id)?.get(variantId),
+          online?.get(variantId),
+          w.inPool,
+          input.stock.get(w.id)?.get(variantId),
+          input.pending?.outbound.get(w.id)?.get(variantId) ?? 0,
+        ),
       ]),
     );
     const v = input.variants.get(variantId)!;
@@ -185,6 +233,14 @@ export function buildTransferPlan(input: TransferPlanInput): TransferGroup[] {
   return out.sort(
     (a, b) => b.units - a.units || a.originName.localeCompare(b.originName) || a.destinationName.localeCompare(b.destinationName),
   );
+}
+
+/**
+ * Lines the merchant asked more of than the plan's spare at the origin for that line (the
+ * server refuses them: review fix — the confirm dialog's own check is only a warning).
+ */
+export function linesOverSpare(lines: readonly { variantId: string; qty: number; originSpare: number }[]): string[] {
+  return lines.filter((l) => l.qty > l.originSpare).map((l) => l.variantId);
 }
 
 /**

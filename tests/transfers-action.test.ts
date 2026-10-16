@@ -106,6 +106,38 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
+describe("review fix: pending transfers and the spare cap", () => {
+  it("a transfer Keha created in the last 14 days is pending: its units aren't proposed again; an older one no longer counts", async () => {
+    const { loadTransfers } = await import("../app/models/transfers.server");
+    const now = new Date("2026-10-20T09:00:00Z");
+    const sent = (daysAgo: number) => ({
+      id: `p${daysAgo}`,
+      shop: SHOP,
+      shopifyTransferId: "gid://shopify/InventoryTransfer/1",
+      originLocationId: W,
+      destinationLocationId: S,
+      lines: [{ variantId: V1, inventoryItemId: "gid://shopify/InventoryItem/11", quantity: 20 }],
+      idempotencyKey: `k${daysAgo}`,
+      createdAt: new Date(now.getTime() - daysAgo * 86_400_000),
+    });
+    db.tables.transfer = [sent(2)];
+    const lines = (await loadTransfers(SHOP, now)).groups.flatMap((g) => g.lines);
+    expect(lines.find((l) => l.variantId === V1)).toBeUndefined(); // Barcelona's 20 are on their way
+    expect(lines.find((l) => l.variantId === V2)).toMatchObject({ qty: 8 });
+    db.tables.transfer = [sent(15)];
+    expect((await loadTransfers(SHOP, now)).groups.flatMap((g) => g.lines).find((l) => l.variantId === V1)).toMatchObject({ qty: 20 });
+  });
+
+  it("refuses quantities above the plan's spare at the warehouse; nothing is created in Shopify", async () => {
+    // Main has 50 of V1 and keeps none: 50 spare.
+    const r = await post({ ...plan, quantities: { [V1]: 51, [V2]: 8 } });
+    expect(r).toEqual({ ok: false, error: "over_spare", variantIds: [V1] });
+    expect(createCalls()).toHaveLength(0);
+    expect(db.tables.transfer).toEqual([]);
+    expect(await post({ ...plan, quantities: { [V1]: 50, [V2]: 8 } })).toMatchObject({ ok: true });
+  });
+});
+
 describe("create a transfer in Shopify", () => {
   it("looks up inventory items, sends the idempotent mutation, stores the transfer and links to it", async () => {
     const r = await post(plan);
@@ -153,8 +185,9 @@ describe("create a transfer in Shopify", () => {
   });
 
   it("different quantities are a different transfer (a new key)", async () => {
-    await post(plan);
     await post({ ...plan, quantities: { [V1]: 10, [V2]: 8 } });
+    // 10 of V1's 20 are pending now: the other 10 are still proposed and can be sent.
+    await post({ ...plan, quantities: { [V1]: 10 } });
     const keys = createCalls().map((c) => (c[1] as { variables: { idempotencyKey: string } }).variables.idempotencyKey);
     expect(new Set(keys).size).toBe(2);
     expect(db.tables.transfer).toHaveLength(2);

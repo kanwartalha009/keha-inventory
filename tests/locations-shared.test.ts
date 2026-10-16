@@ -17,7 +17,7 @@ import {
   toSettingsRow,
   validateLocationsForm,
 } from "../app/lib/locations-shared";
-import { carriedAt, keptScopes, locationStockDays } from "../app/lib/compute-locations-shared";
+import { carriedAt, demandSourceFor, keptScopes, locationStockDays, neutralWarehouse } from "../app/lib/compute-locations-shared";
 
 describe("online pool with the merchant's override", () => {
   const L = (id: string, active: boolean, online: boolean, onlinePool?: boolean | null) => ({ id, active, online, onlinePool });
@@ -164,5 +164,21 @@ describe("per-location compute helpers", () => {
   it("carried = stock now or stock history; kept scopes = online + planning ids", () => {
     expect([...carriedAt(["a"], ["b", "a"])].sort()).toEqual(["a", "b"]);
     expect(keptScopes(["L1", "L2"])).toEqual(["online", "L1", "L2"]);
+  });
+});
+
+describe("review fix: where a location's demand comes from", () => {
+  it("warehouses in the online pool use the pool's pace; stores and other warehouses their own", () => {
+    expect(demandSourceFor("warehouse", true)).toBe("online_pool");
+    expect(demandSourceFor("warehouse", false)).toBe("own");
+    expect(demandSourceFor("store", true)).toBe("own");
+  });
+
+  it("a warehouse outside the pool with no own sales is neutral, never Dead", () => {
+    const r = { status: "dead", daysLeft: Infinity, safetyDays: 0, orderQty: null, orderBy: null, rate: 0 } as unknown as Parameters<typeof neutralWarehouse>[0];
+    expect(neutralWarehouse(r, "warehouse", "own", 0)).toMatchObject({ status: "not_enough_data", daysLeft: null, rate: 0 });
+    expect(neutralWarehouse(r, "warehouse", "own", 3).status).toBe("dead"); // it sold there: its own numbers stand
+    expect(neutralWarehouse(r, "store", "own", 0).status).toBe("dead");
+    expect(neutralWarehouse(r, "warehouse", "online_pool", 0).status).toBe("dead");
   });
 });
