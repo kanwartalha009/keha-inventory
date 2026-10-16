@@ -201,8 +201,8 @@ export default function Privacy() {
           deleted with the store’s data.
         </li>
         <li>
-          Copies sent to the Nova Apps platform are emptied once delivered and
-          deleted after {facts.outboxDays} days.
+          Copies sent to the Nova Apps platform are emptied within an hour of
+          delivery and deleted after {facts.outboxDays} days.
         </li>
         <li>
           As proof of the deletion after uninstall we keep the store’s domain
