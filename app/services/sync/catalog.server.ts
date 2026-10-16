@@ -18,6 +18,7 @@
 import prisma from "../../db.server";
 import type { AdminGraphqlClient } from "../../models/shop.server";
 import {
+  ADMIN_MAX_ATTEMPTS,
   BULK_RUN_MUTATION,
   BULK_STATUS_QUERY,
   CATALOG_BULK_QUERY,
@@ -29,12 +30,17 @@ import {
   STOCK_PAGE_QUERY,
   itemVariantId,
   levelRows,
+  adminThrottleWaitMs,
+  hasThrottledError,
+  paceWaitMs,
   parseCatalogJsonl,
+  readAdminCost,
   parseShopInfo,
   stockPageSizes,
   toGid,
   toLocationRow,
   toVariantRow,
+  type AdminCost,
   type GqlInventoryItem,
   type GqlProductNode,
   type GqlVariantNode,
@@ -47,7 +53,13 @@ import {
 export * from "../../lib/sync/catalog-shared";
 
 export type SyncDeps = {
+  /** Sleep for bulk-operation polling (and throttle waits when throttleSleep is not set). */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Sleep used for THROTTLE waits only (Admin API restore, ShopifyQL window reset). The
+   * scheduler passes a per-tick budget that throws ThrottleBudgetError past 30 s.
+   */
+  throttleSleep?: (ms: number) => Promise<void>;
   fetch?: (url: string) => Promise<Response>;
   now?: () => number;
   /** Poll interval for the bulk operation (default 3 s). */
@@ -66,22 +78,91 @@ export class AdminQueryError extends Error {
   }
 }
 
-/** Runs one Admin GraphQL operation and returns `data`; throws on HTTP or GraphQL errors. */
-export async function gql<T>(admin: AdminGraphqlClient, query: string, variables?: Record<string, unknown>): Promise<T> {
-  const res = await admin.graphql(query, variables ? { variables } : undefined);
-  let body: { data?: T; errors?: unknown } | null = null;
-  try {
-    body = (await res.json()) as { data?: T; errors?: unknown };
-  } catch {
-    body = null;
+/** Still THROTTLED after ADMIN_MAX_ATTEMPTS: stop the job, resume on the next tick. */
+export class AdminThrottledError extends Error {
+  constructor(attempts: number) {
+    super(`Admin API still throttled after ${attempts} attempts`);
+    this.name = "AdminThrottledError";
   }
-  if (!res.ok) throw new AdminQueryError(`Admin API HTTP ${res.status}`);
-  const errors = Array.isArray(body?.errors) ? (body!.errors as Array<{ message?: unknown }>) : [];
-  if (errors.length) {
-    throw new AdminQueryError(errors.map((e) => (typeof e?.message === "string" ? e.message : "error")).join("; "));
+}
+
+type GqlBody<T> = { data?: T; errors?: unknown; extensions?: unknown };
+
+/** A throttle the Shopify library THREW (it throws on HTTP 429 and on GraphQL errors). */
+async function thrownThrottle(err: unknown): Promise<{ cost: AdminCost | null; retryAfterMs: number | null } | null> {
+  if (typeof Response !== "undefined" && err instanceof Response) {
+    if (err.status !== 429) return null;
+    let body: unknown = null;
+    try {
+      body = await err.clone().json();
+    } catch {
+      body = null;
+    }
+    return { cost: readAdminCost(body), retryAfterMs: null };
   }
-  if (!body?.data) throw new AdminQueryError("Admin API response has no data");
-  return body.data;
+  if (!err || typeof err !== "object") return null;
+  const e = err as { response?: { code?: unknown; retryAfter?: unknown }; body?: { errors?: unknown; extensions?: unknown } };
+  if (e.response?.code === 429) {
+    const secs = typeof e.response.retryAfter === "number" ? e.response.retryAfter : Number(e.response.retryAfter);
+    return { cost: null, retryAfterMs: Number.isFinite(secs) && secs > 0 ? secs * 1000 : null };
+  }
+  if (e.body && hasThrottledError(e.body.errors)) return { cost: readAdminCost(e.body), retryAfterMs: null };
+  return null;
+}
+
+/**
+ * Runs one Admin GraphQL operation and returns `data` plus the cost extension. A THROTTLED
+ * response (returned or thrown) is retried after the bucket's refill time (or 2^n s),
+ * at most ADMIN_MAX_ATTEMPTS times, then AdminThrottledError. Other errors throw AdminQueryError.
+ */
+export async function gqlWithCost<T>(
+  admin: AdminGraphqlClient,
+  query: string,
+  variables?: Record<string, unknown>,
+  deps: SyncDeps = {},
+): Promise<{ data: T; cost: AdminCost | null }> {
+  const sleep = deps.throttleSleep ?? deps.sleep ?? realSleep;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await admin.graphql(query, variables ? { variables } : undefined);
+    } catch (err) {
+      const t = await thrownThrottle(err);
+      if (!t) throw err;
+      if (attempt >= ADMIN_MAX_ATTEMPTS) throw new AdminThrottledError(attempt);
+      await sleep(t.retryAfterMs ?? adminThrottleWaitMs(t.cost, attempt));
+      continue;
+    }
+    let body: GqlBody<T> | null = null;
+    try {
+      body = (await res.json()) as GqlBody<T>;
+    } catch {
+      body = null;
+    }
+    const cost = readAdminCost(body);
+    if (res.status === 429 || hasThrottledError(body?.errors)) {
+      if (attempt >= ADMIN_MAX_ATTEMPTS) throw new AdminThrottledError(attempt);
+      await sleep(adminThrottleWaitMs(cost, attempt));
+      continue;
+    }
+    if (!res.ok) throw new AdminQueryError(`Admin API HTTP ${res.status}`);
+    const errors = Array.isArray(body?.errors) ? (body!.errors as Array<{ message?: unknown }>) : [];
+    if (errors.length) {
+      throw new AdminQueryError(errors.map((e) => (typeof e?.message === "string" ? e.message : "error")).join("; "));
+    }
+    if (!body?.data) throw new AdminQueryError("Admin API response has no data");
+    return { data: body.data, cost };
+  }
+}
+
+/** Runs one Admin GraphQL operation and returns `data` (throttle-retrying, see gqlWithCost). */
+export async function gql<T>(
+  admin: AdminGraphqlClient,
+  query: string,
+  variables?: Record<string, unknown>,
+  deps: SyncDeps = {},
+): Promise<T> {
+  return (await gqlWithCost<T>(admin, query, variables, deps)).data;
 }
 
 async function inBatches<T>(items: T[], size: number, write: (batch: T[]) => Promise<unknown>): Promise<void> {
@@ -93,8 +174,8 @@ async function inBatches<T>(items: T[], size: number, write: (batch: T[]) => Pro
 // ---------------------------------------------------------------------------
 
 /** Reads shop + shopLocales and upserts the Shop row. A reinstall clears uninstalledAt. */
-export async function ensureShop(admin: AdminGraphqlClient, shop: string): Promise<ShopInfo> {
-  const info = parseShopInfo(await gql(admin, SHOP_QUERY));
+export async function ensureShop(admin: AdminGraphqlClient, shop: string, deps: SyncDeps = {}): Promise<ShopInfo> {
+  const info = parseShopInfo(await gql(admin, SHOP_QUERY, undefined, deps));
   await prisma.shop.upsert({
     where: { domain: shop },
     create: { domain: shop, currency: info.currency, timezone: info.timezone, locale: info.locale },
@@ -136,7 +217,7 @@ export async function runBulkQuery(admin: AdminGraphqlClient, query: string, dep
       bulkOperation: { id: string; status: string } | null;
       userErrors: Array<{ message: string }>;
     };
-  }>(admin, BULK_RUN_MUTATION, { query });
+  }>(admin, BULK_RUN_MUTATION, { query }, deps);
   const run = started.bulkOperationRunQuery;
   if (run.userErrors.length || !run.bulkOperation) {
     throw new BulkOperationError(run.userErrors.map((e) => e.message).join("; ") || "bulk operation not created");
@@ -144,7 +225,7 @@ export async function runBulkQuery(admin: AdminGraphqlClient, query: string, dep
   const id = run.bulkOperation.id;
   const deadline = now() + timeoutMs;
   for (;;) {
-    const { bulkOperation: op } = await gql<{ bulkOperation: BulkStatus | null }>(admin, BULK_STATUS_QUERY, { id });
+    const { bulkOperation: op } = await gql<{ bulkOperation: BulkStatus | null }>(admin, BULK_STATUS_QUERY, { id }, deps);
     if (!op) throw new BulkOperationError(`bulk operation ${id} not found`);
     if (op.status === "COMPLETED") {
       if (!op.url) return "";
@@ -255,11 +336,11 @@ type ProductQueryData = {
  * Re-reads one product's variants (products/update) and upserts them; variants the product
  * no longer has are removed. A product that no longer exists is deleted.
  */
-export async function syncProduct(admin: AdminGraphqlClient, shop: string, productId: string): Promise<number> {
+export async function syncProduct(admin: AdminGraphqlClient, shop: string, productId: string, deps: SyncDeps = {}): Promise<number> {
   const rows: VariantRow[] = [];
   let after: string | null = null;
   for (let page = 0; page < 50; page++) {
-    const data: ProductQueryData = await gql<ProductQueryData>(admin, PRODUCT_QUERY, { id: productId, after });
+    const data: ProductQueryData = await gql<ProductQueryData>(admin, PRODUCT_QUERY, { id: productId, after }, deps);
     const p = data.product;
     if (!p) {
       await deleteProduct(shop, productId);
@@ -308,13 +389,13 @@ export async function upsertLocation(shop: string, l: LocationRow): Promise<void
 }
 
 /** All locations (active and deactivated). Locations no longer returned are left alone. */
-export async function syncLocations(admin: AdminGraphqlClient, shop: string): Promise<LocationRow[]> {
+export async function syncLocations(admin: AdminGraphqlClient, shop: string, deps: SyncDeps = {}): Promise<LocationRow[]> {
   const out: LocationRow[] = [];
   let after: string | null = null;
   for (let page = 0; page < 20; page++) {
     const data: {
       locations: { nodes: unknown[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
-    } = await gql(admin, LOCATIONS_QUERY, { after });
+    } = await gql(admin, LOCATIONS_QUERY, { after }, deps);
     for (const n of data.locations.nodes) {
       const row = toLocationRow(n);
       if (row) out.push(row);
@@ -327,8 +408,8 @@ export async function syncLocations(admin: AdminGraphqlClient, shop: string): Pr
 }
 
 /** locations/create|update: re-read the location through GraphQL. */
-export async function refreshLocation(admin: AdminGraphqlClient, shop: string, locationId: string): Promise<boolean> {
-  const data = await gql<{ location: unknown }>(admin, LOCATION_QUERY, { id: locationId });
+export async function refreshLocation(admin: AdminGraphqlClient, shop: string, locationId: string, deps: SyncDeps = {}): Promise<boolean> {
+  const data = await gql<{ location: unknown }>(admin, LOCATION_QUERY, { id: locationId }, deps);
   const row = toLocationRow(data.location);
   if (!row) return false;
   await upsertLocation(shop, row);
@@ -366,12 +447,13 @@ async function readItemLevels(
   admin: AdminGraphqlClient,
   inventoryItemId: string,
   after: string | null,
+  deps: SyncDeps = {},
 ): Promise<{ variantId?: string; rows: StockLevelRow[]; found: boolean }> {
   const rows: StockLevelRow[] = [];
   let variantId: string | undefined;
   let cursor = after;
   for (let page = 0; page < 20; page++) {
-    const data: StockItemData = await gql<StockItemData>(admin, STOCK_ITEM_QUERY, { id: inventoryItemId, after: cursor });
+    const data: StockItemData = await gql<StockItemData>(admin, STOCK_ITEM_QUERY, { id: inventoryItemId, after: cursor }, deps);
     const item = data.inventoryItem;
     if (!item) return { rows, found: false };
     variantId = variantId ?? itemVariantId(item);
@@ -383,21 +465,45 @@ async function readItemLevels(
   return { variantId, rows, found: true };
 }
 
-/** Stock now for every inventory item. Rows not seen in this complete run are removed. */
-export async function syncStockNow(admin: AdminGraphqlClient, shop: string, deps: SyncDeps = {}): Promise<number> {
+/** Where a stock-now pass is (persisted between runs so a throttle resumes, not restarts). */
+export type StockResume = {
+  /** inventoryItems cursor AFTER the last page written; null = from the start. */
+  cursor: string | null;
+  /** When the pass began (ISO): rows not refreshed since then are removed at the end. */
+  startedAt: string;
+};
+
+/**
+ * Stock now for every inventory item, page by page. Pages are paced: when the Admin API
+ * bucket holds less than the next page's cost, it waits (through throttleSleep) for the
+ * refill. `resume` continues a pass from its cursor; `onPage` is told the cursor after each
+ * written page so the caller can persist it. Rows not seen since the pass began are removed
+ * once the pass completes.
+ */
+export async function syncStockNow(
+  admin: AdminGraphqlClient,
+  shop: string,
+  deps: SyncDeps = {},
+  resume?: StockResume | null,
+  onPage?: (r: StockResume) => Promise<void>,
+): Promise<number> {
   const now = deps.now ?? Date.now;
-  const startedAt = new Date(now() - 1000);
+  const pass: StockResume = resume?.startedAt ? { ...resume } : { cursor: null, startedAt: new Date(now() - 1000).toISOString() };
   const locationCount = await prisma.location.count({ where: { shop } });
   const { first, levels } = stockPageSizes(locationCount);
-  let after: string | null = null;
+  const estimate = first * (4 + 3 * levels);
+  const throttleSleep = deps.throttleSleep ?? deps.sleep ?? realSleep;
   let written = 0;
   for (;;) {
-    const data: {
-      inventoryItems: {
-        nodes: GqlInventoryItem[];
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    const { data, cost }: {
+      data: {
+        inventoryItems: {
+          nodes: GqlInventoryItem[];
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        };
       };
-    } = await gql(admin, STOCK_PAGE_QUERY, { first, levels, after });
+      cost: AdminCost | null;
+    } = await gqlWithCost(admin, STOCK_PAGE_QUERY, { first, levels, after: pass.cursor }, deps);
     const rows: StockLevelRow[] = [];
     for (const item of data.inventoryItems.nodes) {
       const variantId = itemVariantId(item);
@@ -405,15 +511,19 @@ export async function syncStockNow(admin: AdminGraphqlClient, shop: string, deps
       rows.push(...levelRows(variantId, item.inventoryLevels?.nodes));
       const info = item.inventoryLevels?.pageInfo;
       if (info?.hasNextPage && typeof info.endCursor === "string" && typeof item.id === "string") {
-        rows.push(...(await readItemLevels(admin, item.id, info.endCursor)).rows);
+        rows.push(...(await readItemLevels(admin, item.id, info.endCursor, deps)).rows);
       }
     }
     await upsertStock(shop, rows);
     written += rows.length;
-    if (!data.inventoryItems.pageInfo.hasNextPage || !data.inventoryItems.pageInfo.endCursor) break;
-    after = data.inventoryItems.pageInfo.endCursor;
+    const info = data.inventoryItems.pageInfo;
+    if (!info.hasNextPage || !info.endCursor) break;
+    pass.cursor = info.endCursor;
+    if (onPage) await onPage({ ...pass });
+    const wait = paceWaitMs(cost, cost?.requestedQueryCost ?? estimate);
+    if (wait > 0) await throttleSleep(wait);
   }
-  await prisma.stockNow.deleteMany({ where: { shop, updatedAt: { lt: startedAt } } });
+  await prisma.stockNow.deleteMany({ where: { shop, updatedAt: { lt: new Date(pass.startedAt) } } });
   return written;
 }
 
@@ -425,8 +535,9 @@ export async function refreshStockForInventoryItem(
   admin: AdminGraphqlClient,
   shop: string,
   inventoryItemId: string,
+  deps: SyncDeps = {},
 ): Promise<number> {
-  const { variantId, rows, found } = await readItemLevels(admin, inventoryItemId, null);
+  const { variantId, rows, found } = await readItemLevels(admin, inventoryItemId, null, deps);
   if (!found || !variantId) return 0;
   await upsertStock(shop, rows);
   const keep = rows.map((r) => r.locationId);

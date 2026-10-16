@@ -7,6 +7,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  adminThrottleWaitMs,
+  hasThrottledError,
+  paceWaitMs,
+  readAdminCost,
   CATALOG_BULK_QUERY,
   MAX_COLLECTIONS,
   decimalOrNull,
@@ -192,5 +196,37 @@ describe("row helpers", () => {
       }),
     ).toEqual({ name: "Acme", currency: "EUR", timezone: "Europe/Madrid", locale: "es", myshopifyDomain: "acme.myshopify.com" });
     expect(parseShopInfo(null)).toMatchObject({ currency: "USD", timezone: "UTC", locale: "en" });
+  });
+});
+
+describe("Admin API throttle maths (review H5)", () => {
+  const body = {
+    extensions: { cost: { requestedQueryCost: 202, actualQueryCost: null, throttleStatus: { maximumAvailable: 2000, currentlyAvailable: 2, restoreRate: 100 } } },
+  };
+
+  it("reads extensions.cost", () => {
+    expect(readAdminCost(body)).toEqual({ requestedQueryCost: 202, maximumAvailable: 2000, currentlyAvailable: 2, restoreRate: 100 });
+    expect(readAdminCost({})).toBeNull();
+  });
+
+  it("finds THROTTLED in returned errors and in the library's graphQLErrors wrapper", () => {
+    expect(hasThrottledError([{ message: "Throttled", extensions: { code: "THROTTLED" } }])).toBe(true);
+    expect(hasThrottledError({ graphQLErrors: [{ extensions: { code: "THROTTLED" } }] })).toBe(true);
+    expect(hasThrottledError([{ message: "Access denied", extensions: { code: "ACCESS_DENIED" } }])).toBe(false);
+    expect(hasThrottledError(undefined)).toBe(false);
+  });
+
+  it("waits for the refill to the requested cost, else 2^n s, capped at 60 s", () => {
+    expect(adminThrottleWaitMs(readAdminCost(body), 1)).toBe(2000); // (202 − 2) ÷ 100 per s
+    expect(adminThrottleWaitMs(null, 1)).toBe(1000);
+    expect(adminThrottleWaitMs(null, 3)).toBe(4000);
+    expect(adminThrottleWaitMs(null, 10)).toBe(60_000);
+    expect(adminThrottleWaitMs({ requestedQueryCost: 50, currentlyAvailable: 60, restoreRate: 50, maximumAvailable: 1000 }, 1)).toBe(1000);
+  });
+
+  it("paces pages only when the bucket holds less than the next page's cost", () => {
+    expect(paceWaitMs(readAdminCost(body), 202)).toBe(2000);
+    expect(paceWaitMs({ requestedQueryCost: 10, currentlyAvailable: 900, restoreRate: 50, maximumAvailable: 1000 }, 202)).toBe(0);
+    expect(paceWaitMs(null, 202)).toBe(0);
   });
 });

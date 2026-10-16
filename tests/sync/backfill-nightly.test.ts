@@ -226,6 +226,26 @@ describe("runBackfill", () => {
     expect(s.finishedAt).toBeUndefined();
   });
 
+  it("review H5: a throttled stock-now pass resumes at its saved cursor without re-running the catalog", async () => {
+    const { ql } = fakeQl();
+    cat.syncStockNow.mockImplementationOnce(async (...args: unknown[]) => {
+      const onPage = args[4] as (r: { cursor: string; startedAt: string }) => Promise<void>;
+      await onPage({ cursor: "page-7", startedAt: "2026-10-16T07:59:00.000Z" });
+      const e = new Error("Admin API still throttled after 5 attempts");
+      e.name = "AdminThrottledError";
+      throw e;
+    });
+    expect(await runBackfill(S, deps(ql))).toBe("throttled");
+    expect(state().datasets?.products).toMatchObject({ stage: "stock", cursor: "page-7", cursorStartedAt: "2026-10-16T07:59:00.000Z", lastErrorCode: "throttled", attempts: 0 });
+    expect(cat.syncCatalog).toHaveBeenCalledTimes(1);
+
+    expect(await runBackfill(S, deps(ql))).toBe("done");
+    expect(cat.syncCatalog).toHaveBeenCalledTimes(1); // not re-run
+    expect(cat.syncLocations).toHaveBeenCalledTimes(1);
+    expect((cat.syncStockNow.mock.calls[1] as unknown[])[3]).toEqual({ cursor: "page-7", startedAt: "2026-10-16T07:59:00.000Z" });
+    expect(state().datasets?.products).toMatchObject({ done: 1, stage: null, cursor: null });
+  });
+
   it("per-tick step cap: at most maxSteps steps, then 'progress'", async () => {
     const { ql, calls } = fakeQl();
     expect(await runBackfill(S, deps(ql, { maxSteps: 6 }))).toBe("progress");

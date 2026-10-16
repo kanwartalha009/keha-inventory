@@ -472,3 +472,64 @@ export function parseShopInfo(data: unknown): ShopInfo {
     myshopifyDomain: str(d.shop?.myshopifyDomain),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Admin API throttling (review H5). The GraphQL Admin API is a cost-based leaky bucket:
+// `extensions.cost.throttleStatus` reports the bucket; a request over budget fails with a
+// THROTTLED GraphQL error (or HTTP 429).
+// ---------------------------------------------------------------------------
+
+export type AdminCost = {
+  requestedQueryCost: number | null;
+  maximumAvailable: number | null;
+  currentlyAvailable: number | null;
+  restoreRate: number | null;
+};
+
+const finite = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** `extensions.cost` of an Admin GraphQL response body; null when absent. */
+export function readAdminCost(body: unknown): AdminCost | null {
+  const cost = (body as { extensions?: { cost?: unknown } } | null | undefined)?.extensions?.cost;
+  if (!cost || typeof cost !== "object") return null;
+  const c = cost as { requestedQueryCost?: unknown; throttleStatus?: Record<string, unknown> | null };
+  const t = c.throttleStatus ?? {};
+  return {
+    requestedQueryCost: finite(c.requestedQueryCost),
+    maximumAvailable: finite(t.maximumAvailable),
+    currentlyAvailable: finite(t.currentlyAvailable),
+    restoreRate: finite(t.restoreRate),
+  };
+}
+
+/** True when GraphQL errors (array, or the library's `{ graphQLErrors }` wrapper) include THROTTLED. */
+export function hasThrottledError(errors: unknown): boolean {
+  const list = Array.isArray(errors)
+    ? errors
+    : errors && typeof errors === "object" && Array.isArray((errors as { graphQLErrors?: unknown }).graphQLErrors)
+      ? (errors as { graphQLErrors: unknown[] }).graphQLErrors
+      : [];
+  return list.some((e) => (e as { extensions?: { code?: unknown } } | null)?.extensions?.code === "THROTTLED");
+}
+
+export const ADMIN_MAX_ATTEMPTS = 5;
+const MAX_ADMIN_WAIT_MS = 60_000;
+
+/**
+ * How long to wait before retrying a throttled request: the time the bucket needs to refill
+ * to the requested cost ((requested − available) ÷ restoreRate), else 2^(attempt−1) s.
+ */
+export function adminThrottleWaitMs(cost: AdminCost | null, attempt: number): number {
+  if (cost && cost.requestedQueryCost !== null && cost.currentlyAvailable !== null && cost.restoreRate && cost.restoreRate > 0) {
+    const need = Math.max(0, cost.requestedQueryCost - cost.currentlyAvailable);
+    return Math.min(MAX_ADMIN_WAIT_MS, Math.max(1000, Math.ceil((need / cost.restoreRate) * 1000)));
+  }
+  return Math.min(MAX_ADMIN_WAIT_MS, 1000 * 2 ** Math.max(0, attempt - 1));
+}
+
+/** Pacing between stock pages: wait until the bucket holds the next page's cost (0 = go). */
+export function paceWaitMs(cost: AdminCost | null, nextCost: number): number {
+  if (!cost || cost.currentlyAvailable === null || !cost.restoreRate || cost.restoreRate <= 0) return 0;
+  if (cost.currentlyAvailable >= nextCost) return 0;
+  return Math.min(MAX_ADMIN_WAIT_MS, Math.ceil(((nextCost - cost.currentlyAvailable) / cost.restoreRate) * 1000));
+}

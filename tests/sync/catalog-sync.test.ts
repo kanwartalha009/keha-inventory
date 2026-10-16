@@ -17,7 +17,9 @@ vi.mock("../../app/db.server", () => ({
 }));
 
 import {
+  AdminThrottledError,
   BulkOperationError,
+  gql,
   deleteProduct,
   ensureShop,
   refreshStockForInventoryItem,
@@ -319,5 +321,97 @@ describe("ensureShop", () => {
       graphql: async () => new Response(JSON.stringify({ errors: [{ message: "Access denied" }] }), { status: 200 }),
     };
     await expect(ensureShop(client, S)).rejects.toThrow("Access denied");
+  });
+});
+
+describe("Admin API throttling (review H5)", () => {
+  const throttled = (available = 0) =>
+    new Response(
+      JSON.stringify({
+        errors: [{ message: "Throttled", extensions: { code: "THROTTLED" } }],
+        extensions: { cost: { requestedQueryCost: 100, throttleStatus: { maximumAvailable: 1000, currentlyAvailable: available, restoreRate: 50 } } },
+      }),
+    );
+  const ok = () => new Response(JSON.stringify({ data: { shop: { name: "Acme" } } }));
+
+  it("retries a returned THROTTLED error after the bucket's refill time", async () => {
+    const responses = [throttled(0), throttled(60), ok()];
+    const client: AdminGraphqlClient = { graphql: vi.fn(async () => responses.shift()!) };
+    const slept: number[] = [];
+    const data = await gql<{ shop: { name: string } }>(client, "q", undefined, { throttleSleep: async (ms) => void slept.push(ms) });
+    expect(data.shop.name).toBe("Acme");
+    expect(slept).toEqual([2000, 1000]); // (100 − 0) ÷ 50, then (100 − 60) ÷ 50 → min 1 s
+  });
+
+  it("retries throttles the library throws (graphQLErrors wrapper, HTTP 429)", async () => {
+    const thrown = [
+      Object.assign(new Error("GraphQL error"), { body: { errors: { graphQLErrors: [{ extensions: { code: "THROTTLED" } }] } } }),
+      new Response("{}", { status: 429 }),
+      Object.assign(new Error("429"), { response: { code: 429, retryAfter: 2 } }),
+    ];
+    const client: AdminGraphqlClient = {
+      graphql: vi.fn(async () => {
+        const t = thrown.shift();
+        if (t) throw t;
+        return ok();
+      }),
+    };
+    const slept: number[] = [];
+    await gql(client, "q", undefined, { sleep: async (ms) => void slept.push(ms) });
+    expect(slept).toEqual([1000, 2000, 2000]); // 2^0 s, 2^1 s, Retry-After 2 s
+  });
+
+  it("gives up after 5 attempts with AdminThrottledError; other errors are not retried", async () => {
+    const client: AdminGraphqlClient = { graphql: vi.fn(async () => throttled()) };
+    await expect(gql(client, "q", undefined, { sleep: async () => {} })).rejects.toBeInstanceOf(AdminThrottledError);
+    expect(client.graphql).toHaveBeenCalledTimes(5);
+    const denied: AdminGraphqlClient = {
+      graphql: vi.fn(async () => new Response(JSON.stringify({ errors: [{ message: "Access denied" }] }))),
+    };
+    await expect(gql(denied, "q", undefined, { sleep: async () => {} })).rejects.toThrow("Access denied");
+    expect(denied.graphql).toHaveBeenCalledTimes(1);
+  });
+
+  it("paces stock pages on the bucket and resumes a pass from its saved cursor", async () => {
+    db.tables.location = [{ id: "L1", shop: S }];
+    db.tables.stockNow = [{ shop: S, variantId: "gid://shopify/ProductVariant/9", locationId: "gid://shopify/Location/1", updatedAt: new Date(0) }];
+    const afters: unknown[] = [];
+    const client: AdminGraphqlClient = {
+      graphql: vi.fn(async (_q: string, o?: { variables?: Record<string, unknown> }) => {
+        afters.push(o?.variables?.after);
+        const last = o?.variables?.after === "p2";
+        return new Response(
+          JSON.stringify({
+            data: {
+              inventoryItems: {
+                nodes: [
+                  {
+                    id: "gid://shopify/InventoryItem/1",
+                    variants: { nodes: [{ id: `gid://shopify/ProductVariant/${last ? 2 : 1}` }] },
+                    inventoryLevels: { nodes: [level("gid://shopify/Location/1", 5)], pageInfo: { hasNextPage: false } },
+                  },
+                ],
+                pageInfo: { hasNextPage: !last, endCursor: last ? null : "p2" },
+              },
+            },
+            extensions: { cost: { requestedQueryCost: 300, throttleStatus: { maximumAvailable: 1000, currentlyAvailable: 100, restoreRate: 100 } } },
+          }),
+        );
+      }),
+    };
+    const slept: number[] = [];
+    const saved: unknown[] = [];
+    const n = await syncStockNow(
+      client,
+      S,
+      { throttleSleep: async (ms) => void slept.push(ms) },
+      { cursor: "p1", startedAt: new Date(Date.now() - 60_000).toISOString() },
+      async (r) => void saved.push(r.cursor),
+    );
+    expect(afters).toEqual(["p1", "p2"]); // resumed at p1, not page 1
+    expect(saved).toEqual(["p2"]);
+    expect(slept).toEqual([2000]); // 100 available < 300 next page cost → (300 − 100) ÷ 100 s
+    expect(n).toBe(2);
+    expect(db.tables.stockNow.map((r) => r.variantId).sort()).toEqual(["gid://shopify/ProductVariant/1", "gid://shopify/ProductVariant/2"]);
   });
 });

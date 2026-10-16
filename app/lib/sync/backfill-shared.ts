@@ -38,6 +38,12 @@ export type DatasetProgress = {
   skippedMonths?: string[];
   /** Newest day stored for this dataset; the nightly job continues from here. */
   syncedThrough?: string | null;
+  /** products only: where a products pass is (catalog → locations → stock now). */
+  stage?: "catalog" | "locations" | "stock" | null;
+  /** products only: stock-now inventoryItems cursor after the last written page (review H5). */
+  cursor?: string | null;
+  /** products only: when the current stock-now pass began (ISO). */
+  cursorStartedAt?: string | null;
 };
 
 export type BackfillState = {
@@ -178,7 +184,18 @@ function withProgress(state: BackfillState, chunks: DayRange[], nowIso: string):
 export function completeStep(state: BackfillState, step: BackfillStep, chunks: DayRange[], nowIso: string): BackfillState {
   const datasets: Partial<Record<SyncDataset, DatasetProgress>> = { ...(state.datasets ?? {}) };
   if (step.kind === "products") {
-    datasets.products = { ...(datasets.products ?? {}), done: 1, total: 1, lastError: null, lastErrorAt: null, attempts: 0, finishedAt: nowIso };
+    datasets.products = {
+      ...(datasets.products ?? {}),
+      done: 1,
+      total: 1,
+      lastError: null,
+      lastErrorAt: null,
+      attempts: 0,
+      stage: null,
+      cursor: null,
+      cursorStartedAt: null,
+      finishedAt: nowIso,
+    };
   } else if (step.kind === "history") {
     const total = chunks.length;
     const prev = datasets[step.dataset];
@@ -266,4 +283,26 @@ export function clearErrors(state: BackfillState): BackfillState {
   let s = state;
   for (const d of SYNC_DATASETS) s = clearError(s, d);
   return s;
+}
+
+/** The state with the products pass moved on (stage / stock-now cursor). */
+export function withProductsPass(
+  state: BackfillState,
+  pass: { stage: "catalog" | "locations" | "stock" | null; cursor?: string | null; cursorStartedAt?: string | null },
+): BackfillState {
+  const prev = state.datasets?.products;
+  return {
+    ...state,
+    datasets: {
+      ...state.datasets,
+      products: {
+        done: prev?.done ?? 0,
+        total: prev?.total ?? 1,
+        ...prev,
+        stage: pass.stage,
+        cursor: pass.cursor ?? null,
+        cursorStartedAt: pass.cursorStartedAt ?? null,
+      },
+    },
+  };
 }

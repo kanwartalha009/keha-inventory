@@ -5,7 +5,8 @@
  *
  *   locations → for EACH history dataset (stock, sales, visits, totals) independently: the
  *   days after its own syncedThrough up to YESTERDAY (normally one day; a missed night is
- *   caught up, at most CATCH_UP_DAYS) → catalog bulk refresh → stock now → compute →
+ *   caught up, at most CATCH_UP_DAYS) → catalog bulk refresh → stock now (resumable at its
+ *   page cursor) → compute →
  *   retention → lastNightlyAt.
  *
  * A dataset that fails records its error and is retried from its own syncedThrough next
@@ -15,10 +16,10 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../../db.server";
-import { syncCatalog, syncLocations, syncStockNow } from "./catalog.server";
+import { syncLocations } from "./catalog.server";
 import { createShopifyqlClient, monthChunks } from "./shopifyql.server";
 import { applyRetention, loadLocations, storeHistory } from "./facts.server";
-import type { DataJobDeps } from "./backfill.server";
+import { runProductsPass, type DataJobDeps } from "./backfill.server";
 import {
   HISTORY_DATASETS,
   clearError,
@@ -76,7 +77,7 @@ export async function runNightly(shop: string, deps: DataJobDeps): Promise<Night
   let admin;
   try {
     admin = await deps.getAdmin(shop);
-    await syncLocations(admin, shop);
+    await syncLocations(admin, shop, deps);
   } catch (e) {
     fail("products", e);
     await save(state).catch(() => {});
@@ -111,8 +112,18 @@ export async function runNightly(shop: string, deps: DataJobDeps): Promise<Night
   if (allThrough.every((d) => d !== null)) state = { ...state, syncedThrough: allThrough.reduce((a, b) => (a! < b! ? a : b)) };
 
   try {
-    await syncCatalog(admin, shop, deps);
-    await syncStockNow(admin, shop, deps);
+    // Resumable: a throttled night continues at its stock-now page on the next tick.
+    state = await runProductsPass(
+      admin,
+      shop,
+      deps,
+      state,
+      async (s) => {
+        state = s;
+        await save(s);
+      },
+      { locationsFresh: true }, // read at the start of this run
+    );
     state = clearError(state, "products");
   } catch (e) {
     fail("products", e);

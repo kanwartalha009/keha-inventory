@@ -27,6 +27,7 @@ import {
   failStep,
   nextBackfillStep,
   readBackfillState,
+  withProductsPass,
   type BackfillState,
   type BackfillStep,
 } from "../../lib/sync/backfill-shared";
@@ -72,7 +73,7 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
   let tz: string;
   try {
     admin = await deps.getAdmin(shop);
-    const info = await ensureShop(admin, shop);
+    const info = await ensureShop(admin, shop, deps);
     tz = safeTimeZone(info.timezone);
   } catch (e) {
     console.error(`[sync/backfill] ${shop}: shop read failed (${syncErrorCode(e)})`, e);
@@ -120,9 +121,11 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
     const dataset = step.kind === "products" ? "products" : step.dataset;
     try {
       if (step.kind === "products") {
-        await syncCatalog(admin, shop, deps);
-        await syncLocations(admin, shop);
-        await syncStockNow(admin, shop, deps);
+        // The callback keeps `state` current, so a failure below keeps the saved cursor.
+        state = await runProductsPass(admin, shop, deps, state, async (s) => {
+          state = s;
+          await saveState(shop, s);
+        });
       } else {
         const today = localDate(new Date(now()), tz);
         const r = await storeHistory(step.dataset, shop, ql, step.range, today, await loadLocations(shop));
@@ -153,6 +156,43 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
 
   if (state.first90Ready && (outcome === "done" || state.finishedAt) && stepsSinceCompute > 0) await compute();
   return outcome ?? (hadError ? "error" : "progress");
+}
+
+/**
+ * One products pass — catalog → locations → stock now — resumable: the stage and the
+ * stock-now page cursor are saved after each piece (review H5), so a throttle or restart
+ * continues where it stopped instead of re-running the bulk catalog and page 1.
+ * Returns the state with the pass finished (stage null). Shared with the nightly job.
+ */
+export async function runProductsPass(
+  admin: AdminGraphqlClient,
+  shop: string,
+  deps: SyncDeps,
+  state: BackfillState,
+  save: (s: BackfillState) => Promise<void>,
+  opts: { locationsFresh?: boolean } = {},
+): Promise<BackfillState> {
+  let s = state;
+  const p = s.datasets?.products;
+  let stage = p?.stage ?? "catalog";
+  if (stage === "catalog") {
+    await syncCatalog(admin, shop, deps);
+    s = withProductsPass(s, { stage: (stage = "locations") });
+    await save(s);
+  }
+  if (stage === "locations") {
+    if (!opts.locationsFresh) await syncLocations(admin, shop, deps);
+    s = withProductsPass(s, { stage: (stage = "stock"), cursor: null, cursorStartedAt: null });
+    await save(s);
+  }
+  const resume = s.datasets?.products?.cursorStartedAt
+    ? { cursor: s.datasets.products.cursor ?? null, startedAt: s.datasets.products.cursorStartedAt }
+    : null;
+  await syncStockNow(admin, shop, deps, resume, async (r) => {
+    s = withProductsPass(s, { stage: "stock", cursor: r.cursor, cursorStartedAt: r.startedAt });
+    await save(s);
+  });
+  return withProductsPass(s, { stage: null, cursor: null, cursorStartedAt: null });
 }
 
 // ---------------------------------------------------------------------------
