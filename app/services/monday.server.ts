@@ -28,7 +28,6 @@ import {
   isMondaySendTime,
   lastMonthAccuracy,
   mondaySummary,
-  MONDAY_UNSUB_PURPOSE,
   selectMondayActions,
   type MondayAction,
   type MondayActionRow,
@@ -36,21 +35,19 @@ import {
   type MondayValues,
 } from "../lib/monday-shared";
 import { MONEY_CARDS } from "../lib/money-shared";
-import { canRetryOwnerEmail, weekKey } from "../lib/owner-email-shared";
+import { canRetryOwnerEmail, listUnsubscribeHeaders, weekKey } from "../lib/owner-email-shared";
 import { hasFeature, MONEY_REFRESH, type PlanCode } from "../lib/plan-shared";
 import { tabOf, type ActionKind, type ActionState } from "../lib/actions-shared";
 import { buildSlackMonday } from "../lib/slack-shared";
-import { seal } from "../lib/seal.server";
 import { readSettings } from "../lib/settings-shared";
 import type { Locale } from "../lib/i18n";
 import { planFor } from "./entitlements.server";
-import { ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
+import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
 import { deliverSlackOnce } from "./slack.server";
 
 export const MONDAY_KIND = "monday";
 /** OwnerEmailLog kind for the Monday summary in Slack (once per store week). */
 export const MONDAY_SLACK_KIND = "monday_slack";
-const UNSUB_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type MondayResult =
@@ -99,12 +96,9 @@ const num = (v: unknown): number | null => {
 const values = (row: MoneyRow): MondayValues =>
   Object.fromEntries(MONEY_CARDS.map((k) => [k, num(row[k])])) as MondayValues;
 
-/** The unsubscribe link for a store (sealed, 180 days). */
+/** The unsubscribe link for a store (sealed, 180 days; owner-email.server emailUnsubscribeUrl). */
 export function mondayUnsubscribeUrl(shop: string, now = Date.now()): string | null {
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/+$/, "");
-  if (!base) return null;
-  const token = seal(MONDAY_UNSUB_PURPOSE, { shop }, UNSUB_TTL_MS, now);
-  return `${base}/email/unsubscribe?token=${encodeURIComponent(token)}`;
+  return emailUnsubscribeUrl(shop, "monday", now);
 }
 
 /** The latest MoneyAtStake row, and the row closest to 7 days before it (within 4–10 days). */
@@ -252,7 +246,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const content = composeMondayEmail(input);
   return sendOwnerEmailOnce(
     shop,
-    { kind: MONDAY_KIND, periodKey, ...content },
+    { kind: MONDAY_KIND, periodKey, ...content, headers: listUnsubscribeHeaders(unsubscribe) },
     { name: contact?.name || shop, to, locale },
     now,
   );

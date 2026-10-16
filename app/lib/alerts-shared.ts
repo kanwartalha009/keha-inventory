@@ -202,8 +202,18 @@ export function alertMessage(locale: Locale, storeName: string, lines: AlertLine
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** The alert email (plain text + inline-styled HTML, like the Monday email). */
-export function composeAlertEmail(locale: Locale, m: AlertMessage): { subject: string; text: string; html: string } {
+/**
+ * The alert email (plain text + inline-styled HTML, like the Monday email).
+ * `unsubscribeUrl`: the one-click link that turns instant alerts off
+ * (app/routes/email.unsubscribe.tsx, kind "alerts"); left out when the app
+ * URL isn't known.
+ */
+export function composeAlertEmail(
+  locale: Locale,
+  m: AlertMessage,
+  unsubscribeUrl?: string | null,
+): { subject: string; text: string; html: string } {
+  const unsubscribe = translate(locale, "Unsubscribe");
   const text = [
     m.heading,
     "",
@@ -211,6 +221,7 @@ export function composeAlertEmail(locale: Locale, m: AlertMessage): { subject: s
     "—",
     m.footer,
     `${m.settingsLabel}: ${m.settingsLink}`,
+    ...(unsubscribeUrl ? [`${unsubscribe}: ${unsubscribeUrl}`] : []),
   ].join("\n");
   const font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";
   const muted = "color:#616161;font-size:13px;";
@@ -236,7 +247,9 @@ export function composeAlertEmail(locale: Locale, m: AlertMessage): { subject: s
     `</table>`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;${font}"><tr><td style="padding:16px 24px;${muted}">${esc(
       m.footer,
-    )} <a href="${esc(m.settingsLink)}" style="color:#616161;">${esc(m.settingsLabel)}</a></td></tr></table>`,
+    )} <a href="${esc(m.settingsLink)}" style="color:#616161;">${esc(m.settingsLabel)}</a>${
+      unsubscribeUrl ? ` · <a href="${esc(unsubscribeUrl)}" style="color:#616161;">${esc(unsubscribe)}</a>` : ""
+    }</td></tr></table>`,
     `</td></tr></table></body></html>`,
   ].join("");
   return { subject: m.subject, text, html };

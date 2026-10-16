@@ -24,7 +24,33 @@ export type OwnerEmail = {
   text: string;
   /** Optional HTML version, sent alongside `text`. */
   html?: string;
+  /** Extra headers (List-Unsubscribe). */
+  headers?: Record<string, string>;
 };
+
+/**
+ * What an email's unsubscribe link turns off (app/routes/email.unsubscribe.tsx):
+ * "monday" = the Monday email, "alerts" = instant alerts. The kind travels
+ * inside the sealed token, so it can't be changed; a token without one (links
+ * sent before alerts had their own) means the Monday email.
+ */
+export const UNSUB_KINDS = ["monday", "alerts"] as const;
+export type UnsubKind = (typeof UNSUB_KINDS)[number];
+
+export function unsubKindOf(v: unknown): UnsubKind {
+  return v === "alerts" ? "alerts" : "monday";
+}
+
+/**
+ * RFC 2369 / RFC 8058 headers so mail clients show their own "Unsubscribe"
+ * button. One-click POST works: the unsubscribe route's action accepts the
+ * token from the URL (a GET only shows the confirm page, so link scanners
+ * change nothing). No URL → no headers.
+ */
+export function listUnsubscribeHeaders(url: string | null | undefined): Record<string, string> | undefined {
+  if (!url || !/^https:\/\//.test(url)) return undefined;
+  return { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
+}
 
 /**
  * One retry within the period (review fix 2026-10-16): a FAILED log row may be

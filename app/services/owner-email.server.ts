@@ -11,12 +11,29 @@ import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { emailTransportConfigured, sendEmail } from "./email.server";
 import { toSupportedLocale, type Locale } from "../lib/i18n";
+import { seal } from "../lib/seal.server";
+import { MONDAY_UNSUB_PURPOSE } from "../lib/monday-shared";
 import {
   canRetryOwnerEmail,
   emailAttempts,
   failedAttemptError,
   type OwnerEmail,
+  type UnsubKind,
 } from "../lib/owner-email-shared";
+
+const UNSUB_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+
+/**
+ * The one-click unsubscribe link of an owner email (sealed, 180 days; the
+ * kind is inside the seal). Monday email and instant alerts share the route
+ * and the seal purpose. null when SHOPIFY_APP_URL isn't set.
+ */
+export function emailUnsubscribeUrl(shop: string, kind: UnsubKind, now = Date.now()): string | null {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/+$/, "");
+  if (!base) return null;
+  const token = seal(MONDAY_UNSUB_PURPOSE, { shop, kind }, UNSUB_TTL_MS, now);
+  return `${base}/email/unsubscribe?token=${encodeURIComponent(token)}`;
+}
 
 /** `to`: the owner email, or the store's chosen recipients (Monday email settings). */
 export type OwnerContact = { name: string; to: string | string[] | null; locale: Locale };
@@ -79,6 +96,7 @@ export async function sendOwnerEmailOnce(
     subject: email.subject,
     text: email.text,
     ...(email.html ? { html: email.html } : {}),
+    ...(email.headers ? { headers: email.headers } : {}),
     fromName: "Keha Inventory",
   });
   if (!r.ok) {

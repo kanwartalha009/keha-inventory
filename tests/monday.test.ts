@@ -319,6 +319,10 @@ describe("runMondayEmails", () => {
     expect(sent.text).toContain("Dinero inmovilizado: —");
     expect(sent.text).toContain("https://admin.shopify.com/store/acme/apps/");
     expect(sent.text).toMatch(/https:\/\/inventory\.test\/email\/unsubscribe\?token=[\w-]+/);
+    // Mail clients' own unsubscribe button (RFC 2369 / 8058), same link as the footer.
+    const headers = (sendEmail.mock.calls[0][0] as { headers?: Record<string, string> }).headers;
+    const link = /https:\/\/inventory\.test\/email\/unsubscribe\?token=[\w%-]+/.exec(sent.text)![0];
+    expect(headers).toEqual({ "List-Unsubscribe": `<${link}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(sent.html).toContain('<html lang="es">');
     expect(tables.ownerEmailLog).toEqual([expect.objectContaining({ shop: S, kind: "monday", periodKey: "2026-W43" })]);
 
@@ -694,7 +698,7 @@ describe("email unsubscribe route", () => {
   it("GET shows the confirm page in the store's language and changes nothing", async () => {
     const t = token();
     const data = await unsubLoader(args(new Request(url(t))));
-    expect(data).toEqual({ state: "confirm", locale: "es", shop: S, token: t });
+    expect(data).toEqual({ state: "confirm", locale: "es", shop: S, token: t, kind: "monday" });
     expect((tables.shop[0].settings as Row).mondayEmail).toEqual({ enabled: true, recipients: ["ops@acme.test"] });
     const html = renderPage(data);
     expect(html).toContain("¿Dejar de recibir el email del lunes?");
@@ -707,7 +711,7 @@ describe("email unsubscribe route", () => {
     const form = new FormData();
     form.set("token", token());
     const data = await unsubAction(args(new Request("https://inventory.test/email/unsubscribe", { method: "POST", body: form })));
-    expect(data).toEqual({ state: "done", locale: "es", shop: S });
+    expect(data).toEqual({ state: "done", locale: "es", shop: S, kind: "monday" });
     expect(tables.shop[0].settings).toEqual({ leadTimeDays: 30, mondayEmail: { enabled: false, recipients: ["ops@acme.test"] } });
     expect(renderPage({ state: "invalid", locale: "es" }, data)).toContain("Te has dado de baja");
 
@@ -724,6 +728,23 @@ describe("email unsubscribe route", () => {
     });
     expect(await unsubAction(args(req))).toMatchObject({ state: "done" });
     expect((tables.shop[0].settings as Row).mondayEmail).toMatchObject({ enabled: false });
+  });
+
+  it("an alerts link stops instant alerts only (GET confirms, POST and one-click POST turn them off)", async () => {
+    tables.shop = [shopRow({ settings: { mondayEmail: { enabled: true, recipients: [] }, alerts: { instant: true, slackMonday: true } } })];
+    const t = seal(MONDAY_UNSUB_PURPOSE, { shop: S, kind: "alerts" }, ttl);
+    const data = await unsubLoader(args(new Request(url(t))));
+    expect(data).toEqual({ state: "confirm", locale: "es", shop: S, token: t, kind: "alerts" });
+    const html = renderPage(data);
+    expect(html).toContain("¿Dejar de recibir las alertas inmediatas de stock?");
+    expect(html).not.toContain("lunes");
+    expect((tables.shop[0].settings as Row).alerts).toMatchObject({ instant: true });
+
+    const req = new Request(url(t), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" });
+    const done = await unsubAction(args(req));
+    expect(done).toEqual({ state: "done", locale: "es", shop: S, kind: "alerts" });
+    expect(tables.shop[0].settings).toEqual({ mondayEmail: { enabled: true, recipients: [] }, alerts: { instant: false, slackMonday: true } });
+    expect(renderPage({ state: "invalid", locale: "es" }, done)).toContain("ya no recibirá alertas inmediatas de stock");
   });
 
   it("a bad, expired or other-purpose token gets a friendly page and changes nothing", async () => {

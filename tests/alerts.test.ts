@@ -24,6 +24,7 @@ vi.mock("../app/services/entitlements.server", () => ({ planFor: (s: string) => 
 vi.mock("../app/services/owner-email.server", () => ({
   ownerContact: () => ownerContact(),
   sendOwnerEmailOnce: (...a: unknown[]) => sendOwnerEmailOnce(...a),
+  emailUnsubscribeUrl: (shop: string, kind: string) => `https://inventory.test/email/unsubscribe?token=${kind}-${shop}`,
 }));
 vi.mock("../app/services/slack.server", () => ({ deliverSlack: (...a: unknown[]) => deliverSlack(...a) }));
 vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn(async () => { throw new Error("no Admin API in tests"); }) } }));
@@ -118,6 +119,15 @@ describe("instant alerts", () => {
       [P(1), "low_best_seller", "email"],
     ]);
     expect(deliverSlack).not.toHaveBeenCalled(); // Slack not connected
+  });
+
+  it("has a one-click unsubscribe that turns instant alerts off (footer link + List-Unsubscribe headers)", async () => {
+    await runAlertsForShop(shopRow(), NOW);
+    const [, email] = sendOwnerEmailOnce.mock.calls[0] as unknown as [string, { text: string; html: string; headers?: Record<string, string> }];
+    const link = `https://inventory.test/email/unsubscribe?token=alerts-${S}`;
+    expect(email.text).toContain(`Darse de baja: ${link}`);
+    expect(email.html).toContain(`href="${link}"`);
+    expect(email.headers).toEqual({ "List-Unsubscribe": `<${link}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
   });
 
   it("at most once per product per 7 days", async () => {

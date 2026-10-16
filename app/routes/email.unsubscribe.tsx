@@ -1,11 +1,14 @@
 /**
- * /email/unsubscribe?token=… — the Monday email's unsubscribe link (spec §11).
- * Public: no Shopify auth; the sealed token (purpose "monday-unsub", 180 days)
- * names the store.
+ * /email/unsubscribe?token=… — the unsubscribe link of the Monday email and
+ * of the instant-alert emails (spec §11). Public: no Shopify auth; the sealed
+ * token (purpose "monday-unsub", 180 days) names the store and what to stop
+ * (`kind`: "monday", or "alerts"; a token without a kind is the Monday email).
  *
  * GET only shows a confirm page, so a mail scanner that opens the link never
- * unsubscribes anyone. POST turns settings.mondayEmail.enabled off on the Shop
- * row, keeping every other setting. Shown in the store's language.
+ * unsubscribes anyone. POST (the page's button, or a mail client's RFC 8058
+ * one-click POST with the token in the URL) turns settings.mondayEmail.enabled
+ * or settings.alerts.instant off on the Shop row, keeping every other
+ * setting. Shown in the store's language.
  */
 import type { CSSProperties } from "react";
 import { Form, useActionData, useLoaderData } from "react-router";
@@ -14,10 +17,11 @@ import prisma from "../db.server";
 import { fill, toSupportedLocale, translate, type Locale } from "../lib/i18n";
 import { unseal } from "../lib/seal.server";
 import { MONDAY_UNSUB_PURPOSE } from "../lib/monday-shared";
+import { unsubKindOf, type UnsubKind } from "../lib/owner-email-shared";
 
 type PageData =
-  | { state: "confirm"; locale: Locale; shop: string; token: string }
-  | { state: "done"; locale: Locale; shop: string }
+  | { state: "confirm"; locale: Locale; shop: string; token: string; kind: UnsubKind }
+  | { state: "done"; locale: Locale; shop: string; kind: UnsubKind }
   | { state: "invalid"; locale: Locale };
 
 function browserLocale(request: Request): Locale {
@@ -25,39 +29,39 @@ function browserLocale(request: Request): Locale {
 }
 
 async function resolve(request: Request, token: string | null) {
-  const data = token ? unseal<{ shop?: unknown }>(MONDAY_UNSUB_PURPOSE, token) : null;
+  const data = token ? unseal<{ shop?: unknown; kind?: unknown }>(MONDAY_UNSUB_PURPOSE, token) : null;
   const shop = data && typeof data.shop === "string" ? data.shop : null;
-  if (!shop) return { shop: null, row: null, locale: browserLocale(request) };
+  const kind = unsubKindOf(data?.kind);
+  if (!shop) return { shop: null, row: null, kind, locale: browserLocale(request) };
   const row = await prisma.shop.findUnique({ where: { domain: shop } });
-  return { shop, row, locale: row ? toSupportedLocale(row.locale) : browserLocale(request) };
+  return { shop, row, kind, locale: row ? toSupportedLocale(row.locale) : browserLocale(request) };
 }
+
+const asObject = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<PageData> => {
   const token = new URL(request.url).searchParams.get("token");
-  const { shop, locale } = await resolve(request, token);
+  const { shop, kind, locale } = await resolve(request, token);
   if (!shop || !token) return { state: "invalid", locale };
-  return { state: "confirm", locale, shop, token };
+  return { state: "confirm", locale, shop, token, kind };
 };
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<PageData> => {
   const form = await request.formData().catch(() => null);
   const fromForm = form?.get("token");
   const token = typeof fromForm === "string" && fromForm ? fromForm : new URL(request.url).searchParams.get("token");
-  const { shop, row, locale } = await resolve(request, token);
+  const { shop, row, kind, locale } = await resolve(request, token);
   if (!shop) return { state: "invalid", locale };
   if (row) {
-    const raw = row.settings && typeof row.settings === "object" && !Array.isArray(row.settings)
-      ? (row.settings as Record<string, unknown>)
-      : {};
-    const me = raw.mondayEmail && typeof raw.mondayEmail === "object" && !Array.isArray(raw.mondayEmail)
-      ? (raw.mondayEmail as Record<string, unknown>)
-      : {};
-    await prisma.shop.update({
-      where: { domain: shop },
-      data: { settings: { ...raw, mondayEmail: { ...me, enabled: false } } },
-    });
+    const raw = asObject(row.settings);
+    const settings =
+      kind === "alerts"
+        ? { ...raw, alerts: { ...asObject(raw.alerts), instant: false } }
+        : { ...raw, mondayEmail: { ...asObject(raw.mondayEmail), enabled: false } };
+    await prisma.shop.update({ where: { domain: shop }, data: { settings } });
   }
-  return { state: "done", locale, shop };
+  return { state: "done", locale, shop, kind };
 };
 
 const page: CSSProperties = {
@@ -83,10 +87,14 @@ export default function EmailUnsubscribe() {
       <p style={{ margin: 0, color: "#616161", fontSize: 13 }}>Keha Inventory Intelligence</p>
       {data.state === "confirm" ? (
         <>
-          <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>{tr("Stop the Monday email?")}</h1>
+          <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>
+            {data.kind === "alerts" ? tr("Stop the instant stock alerts?") : tr("Stop the Monday email?")}
+          </h1>
           <p>
             {fill(
-              tr("{store} will stop getting the weekly money summary. You can turn it back on any time in the app's Settings."),
+              data.kind === "alerts"
+                ? tr("{store} will stop getting instant stock alerts, by email and in Slack. You can turn them back on any time in the app's Settings.")
+                : tr("{store} will stop getting the weekly money summary. You can turn it back on any time in the app's Settings."),
               { store: data.shop },
             )}
           </p>
@@ -114,7 +122,9 @@ export default function EmailUnsubscribe() {
           <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>{tr("You're unsubscribed")}</h1>
           <p>
             {fill(
-              tr("{store} won't get the Monday email any more. You can turn it back on any time in the app's Settings."),
+              data.kind === "alerts"
+                ? tr("{store} won't get instant stock alerts any more. You can turn them back on any time in the app's Settings.")
+                : tr("{store} won't get the Monday email any more. You can turn it back on any time in the app's Settings."),
               { store: data.shop },
             )}
           </p>

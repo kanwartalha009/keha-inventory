@@ -7,7 +7,8 @@
  * SessionsDaily, AlertLog). Metric-based rules (best seller running out, Flow)
  * are skipped when the metrics are over 36 h old — never alert on stale numbers.
  *
- * Instant alerts: respects Settings → Alerts "Send instant alerts". Email goes to
+ * Instant alerts: respects Settings → Alerts "Send instant alerts" (also turned
+ * off by the alert email's unsubscribe link / List-Unsubscribe). Email goes to
  * the Monday email recipients (else the store owner), in the store's language,
  * once per UTC hour per store (OwnerEmailLog kind "alert") with all new alerts;
  * an AlertLog row per product and channel is written only after a successful
@@ -65,7 +66,8 @@ import { dayDate } from "../lib/sync/facts-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { planFor } from "./entitlements.server";
-import { ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
+import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
+import { listUnsubscribeHeaders } from "../lib/owner-email-shared";
 import { deliverSlack } from "./slack.server";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -271,10 +273,12 @@ export async function runInstantAlerts(
     const to = recipients.length ? recipients : contact?.to ?? null;
     if (!to || (Array.isArray(to) && !to.length)) out.email = "no_recipient";
     else {
-      const content = composeAlertEmail(locale, message(forEmail));
+      // One-click unsubscribe (footer link + List-Unsubscribe): turns instant alerts off.
+      const unsubscribe = emailUnsubscribeUrl(shop, "alerts", now.getTime());
+      const content = composeAlertEmail(locale, message(forEmail), unsubscribe);
       out.email = await sendOwnerEmailOnce(
         shop,
-        { kind: ALERT_EMAIL_KIND, periodKey: now.toISOString().slice(0, 13), ...content },
+        { kind: ALERT_EMAIL_KIND, periodKey: now.toISOString().slice(0, 13), ...content, headers: listUnsubscribeHeaders(unsubscribe) },
         { name: storeName, to, locale },
         now,
       );
