@@ -8,6 +8,11 @@
  *   - pricing:   are plan checks configured, last success / error code (2026-10-13)
  *   - config:    booleans for settings the privacy policy relies on (2026-09-28):
  *                secrets encrypted at rest, shopper email sending, legal contact
+ *   - sync:      max lastNightlyAt and mean backfill % over installed shops, and the
+ *                most recent dataset error (spec §17, task 1.2b)
+ *   - shopifyqlBudget: cost / remaining of the last ShopifyQL response (this process)
+ *   - compute:   last VariantMetric.computedAt and how many shops got money cards
+ *                (a MoneyAtStake row) in the last 36 h
  *
  * No auth by design (uptime monitors need it); exposes only booleans, counts
  * and timestamps — no shop data, no secrets.
@@ -15,8 +20,65 @@
 import prisma from "../db.server";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
+import { shopifyqlBudget } from "../services/sync/shopifyql.server";
+import { backfillPercent, latestError, readBackfillState } from "../lib/sync/backfill-shared";
 
 const outbox = prisma.novaOutbox;
+
+const COMPUTED_WITHIN_MS = 36 * 60 * 60 * 1000;
+
+type SyncHealth = {
+  lastNightlyAt: string | null;
+  backfillPct: number | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+};
+
+/** Data freshness over installed shops. Never throws (null fields on a DB error). */
+async function syncHealth(): Promise<SyncHealth> {
+  try {
+    const shops = await prisma.shop.findMany({
+      where: { uninstalledAt: null },
+      select: { lastNightlyAt: true, backfillState: true },
+    });
+    let lastNightly: Date | null = null;
+    let pctSum = 0;
+    let err: { message: string; at: string | null } | null = null;
+    for (const s of shops) {
+      if (s.lastNightlyAt && (!lastNightly || s.lastNightlyAt > lastNightly)) lastNightly = s.lastNightlyAt;
+      const state = readBackfillState(s.backfillState);
+      pctSum += backfillPercent(state);
+      const e = latestError(state);
+      if (e && (!err || (e.at !== null && (err.at === null || e.at > err.at)))) err = e;
+    }
+    return {
+      lastNightlyAt: lastNightly ? lastNightly.toISOString() : null,
+      backfillPct: shops.length ? Math.round(pctSum / shops.length) : null,
+      lastError: err?.message ?? null,
+      lastErrorAt: err?.at ?? null,
+    };
+  } catch {
+    return { lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null };
+  }
+}
+
+/** Last engine run and the shops with money cards in the last 36 h. Never throws. */
+async function computeHealth(now: Date): Promise<{ lastAt: string | null; shopsComputed: number | null }> {
+  try {
+    const agg = await prisma.variantMetric.aggregate({ _max: { computedAt: true } });
+    // MoneyAtStake.day is the store-local calendar day; compare by date.
+    const since = new Date(now.getTime() - COMPUTED_WITHIN_MS);
+    const sinceDay = new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));
+    const shops = await prisma.moneyAtStake.findMany({
+      where: { day: { gte: sinceDay } },
+      distinct: ["shop"],
+      select: { shop: true },
+    });
+    return { lastAt: agg._max.computedAt ? agg._max.computedAt.toISOString() : null, shopsComputed: shops.length };
+  } catch {
+    return { lastAt: null, shopsComputed: null };
+  }
+}
 
 export const loader = async () => {
   const heartbeat = schedulerHeartbeat();
@@ -40,6 +102,8 @@ export const loader = async () => {
   const schedulerStale =
     heartbeat.started && lastTick !== null && Date.now() - lastTick > 10 * 60 * 1000;
   const ok = db && !schedulerStale;
+  const [sync, compute] = await Promise.all([syncHealth(), computeHealth(new Date())]);
+  const budget = shopifyqlBudget();
 
   return Response.json(
     {
@@ -55,6 +119,9 @@ export const loader = async () => {
       },
       // Shopify App Pricing plan checks (Partner API): configured + last result.
       pricing: pricingStatus(),
+      sync,
+      shopifyqlBudget: { lastCost: budget.lastCost, lastRemaining: budget.lastRemaining, lastAt: budget.lastAt },
+      compute,
       time: new Date().toISOString(),
     },
     { status: ok ? 200 : 503 },

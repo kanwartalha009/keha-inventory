@@ -19,6 +19,8 @@ export type DatasetProgress = {
   /** Oldest day fully stored so far (history datasets), YYYY-MM-DD. */
   doneThrough?: string | null;
   lastError?: string | null;
+  /** ISO time of lastError (for /health "most recent error"). */
+  lastErrorAt?: string | null;
   finishedAt?: string | null;
 };
 
@@ -50,6 +52,18 @@ export function backfillPercent(state: BackfillState): number {
 
 export function isBackfillDone(state: BackfillState): boolean {
   return !!state.finishedAt || DATASETS.every((d) => datasetPercent(state.datasets?.[d]) === 100);
+}
+
+/** The most recent dataset error in a state, or null. */
+export function latestError(state: BackfillState): { message: string; at: string | null } | null {
+  let best: { message: string; at: string | null } | null = null;
+  for (const d of DATASETS) {
+    const p = state.datasets?.[d];
+    if (!p?.lastError) continue;
+    const at = p.lastErrorAt ?? null;
+    if (!best || (at !== null && (best.at === null || at > best.at))) best = { message: p.lastError, at };
+  }
+  return best;
 }
 
 /** Data is late when the last nightly run is older than this (spec §6.6 freshness). */
