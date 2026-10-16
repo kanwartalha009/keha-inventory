@@ -11,6 +11,7 @@ import { useFetcher } from "react-router";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
+import { quantitiesKey } from "../lib/quantities-key-shared";
 import { readQty } from "../lib/reorder-shared";
 import { transferAdminHref, type RecentTransfer, type TransferGroup, type TransferLine } from "../lib/transfers-shared";
 import type { TransfersResult } from "../routes/app.transfers";
@@ -87,7 +88,10 @@ export function TransfersSection({ view }: { view: TransfersView }) {
 function TransferCard({ group, heading }: { group: TransferGroup; heading: string }) {
   const { t, locale } = useLocale();
   const fetcher = useFetcher<TransfersResult>();
-  const initial = useMemo(() => Object.fromEntries(group.lines.map((l) => [l.variantId, String(l.qty)])), [group]);
+  // Reset typed quantities only when the proposal changes, not on every loader revalidation.
+  const resetKey = quantitiesKey(group.key, group.lines.map((l) => [l.variantId, l.qty] as const));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initial = useMemo(() => Object.fromEntries(group.lines.map((l) => [l.variantId, String(l.qty)])), [resetKey]);
   const [qty, setQty] = useState<Record<string, string>>(initial);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => setQty(initial), [initial]);

@@ -37,6 +37,7 @@ import { flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
+import { quantitiesKey } from "../lib/quantities-key-shared";
 import {
   groupTitle,
   groupTotals,
@@ -160,7 +161,10 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
   const { t, locale } = useLocale();
   const navigate = useNavigate();
   const fetcher = useFetcher<ReorderAction>();
-  const initial = useMemo(() => Object.fromEntries(group.lines.map((l) => [l.variantId, String(l.suggested)])), [group]);
+  // Reset typed quantities only when the suggestions change, not on every loader revalidation.
+  const resetKey = quantitiesKey(group.key, group.lines.map((l) => [l.variantId, l.suggested] as const));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initial = useMemo(() => Object.fromEntries(group.lines.map((l) => [l.variantId, String(l.suggested)])), [resetKey]);
   const [qty, setQty] = useState<Record<string, string>>(initial);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => setQty(initial), [initial]);
