@@ -9,6 +9,44 @@ Shopify app: *every Monday, Keha tells you what to do with each product — reor
 
 Built from the Encore (Keha Preorder) app kit (playbook §2): React Router 7, Polaris web components, Prisma + Postgres, Railway, vitest.
 
+## What the app does today (phases 1–2)
+
+| Area | What the merchant gets | Plan |
+|---|---|---|
+| Home (`/app`) | 4 money cards (sales at risk, sales lost to sell-outs, cash stuck, sold-out page visits) with "how we got this"; this week's actions (Reorder · Bridge · Push · Fix · Clear) with snooze / dismiss / done; setup guide; sync progress | Free: monthly refresh, top 10 · Growth+: daily, all |
+| Products (`/app/products`) | One row per variant (status, stock, incoming, sales per day while in stock, days left, order by, suggested qty), filters, CSV export; variant page with 13 months of sales (sold-out days shaded) and how the forecast was built | Forecast columns and CSV: Growth |
+| Reorder (`/app/reorder`) | Lines grouped by supplier with order-by dates, case packs and minimums; orders Draft → Sent → Confirmed → Received; PDF / CSV / email to the supplier; Shopify purchase orders read as "From Shopify"; landed orders close themselves | Growth |
+| Supplier link (`/supplier/confirm/:token`) | Public page, no login: the supplier sees only that order, picks the ship date, downloads the PDF; expires 60 days after sending; rate-limited | Growth |
+| Clear | A Shopify discount (automatic or code) for dead / too-much stock, created only after a confirm; cash freed tracked | Growth |
+| Bridge | "Take preorders for the gap" opens Keha Preorder pre-filled when it is installed; otherwise a back-in-stock how-to | Growth |
+| Settings | Defaults (lead time, cycle, safety level, thresholds), Suppliers (email encrypted), Alerts (Monday email recipients, instant alerts, Slack webhook encrypted) | Suppliers, Slack: Growth |
+| Monday email | 08:00 store time: the 4 numbers with week-on-week change, top 5 actions with buttons, last month's accuracy line, unsubscribe link; in the store's language; same summary to Slack | Free: top 10 · Growth+: full; Slack: Growth |
+| Instant alerts | Hourly: a best seller will run out within its lead time, or a busy product sold out; email on every plan, Slack on Growth; once per product per 7 days | All |
+| Shopify Flow | Triggers "Product needs reorder" and "Product went dead" (`extensions/keha-inventory-flow`) | Growth |
+| Accuracy | Monthly forecast snapshot and grading of last month (top 20 variants + store total); shown in the Monday email | Growth |
+| Privacy | No shopper data stored; GDPR webhooks; 48 h purge after uninstall; access log | All |
+
+Not built yet (do not list or demo them): the Planner (task 2.5: scenarios, cash per week,
+collection goals), an accuracy screen, planning per location / POS store and transfers (phase 3, Pro).
+
+## Backtest (spec §16, Phase 0.3)
+
+```bash
+npm run backtest -- --shop <store>.myshopify.com --month 2026-09 --months 3
+```
+
+Replays the store's own history (this app's database, `DATABASE_URL`) up to the end of each
+month M, forecasts M+1 with the real engine, and prints the top-20 and store-total absolute %
+errors plus the 4 money numbers as of the end of M. Read-only; writes
+`backtest-<shop>-<date>.json` in the current directory (gitignored: it holds store data). The
+store must have installed the app with its consent. Maths: `app/lib/engine/backtest-shared.ts`.
+
+## App Store listing
+
+`docs/listing/`: listing text (`LISTING.md`, limits enforced by `tests/listing.test.ts`),
+screenshots, screencast script, reviewer instructions, draft protected-customer-data answers.
+`/privacy` and `/terms` state only what the code does (`app/lib/legal.server.ts`, `tests/legal.test.tsx`).
+
 ## Gates (run after every change)
 
 ```bash
@@ -45,6 +83,37 @@ app/
   components/              Polaris web-component UI
 tests/                     vitest: unit, SSR per screen, contracts, translation coverage
 ```
+
+## Environment variables
+
+Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
+`tests/readme.test.ts` keep the three lists equal). Secrets live in Railway variables.
+
+| Variable | Purpose |
+|---|---|
+| `SHOPIFY_API_KEY` | App client ID (prod `5bc85cc9…`, dev `697e77fb…`) |
+| `SHOPIFY_API_SECRET` | App secret; also the webhook HMAC key |
+| `SHOPIFY_APP_URL` | `https://inventory.keha.io`; also builds supplier and email links |
+| `SHOPIFY_APP_HANDLE` | `keha-inventory` (equals the toml `handle`) |
+| `SHOPIFY_APP_GID` | Optional `gid://shopify/App/<id>` (skips a lookup in plan checks) |
+| `SCOPES` | Equals `[access_scopes]` in both tomls |
+| `SHOP_CUSTOM_DOMAIN` | Optional, dev stores on a custom domain only |
+| `SHOPIFY_PARTNER_ORG_ID` | Partner org ID for App Pricing plan checks |
+| `SHOPIFY_ORG_ID` | Fallback for `SHOPIFY_PARTNER_ORG_ID` |
+| `SHOPIFY_PARTNER_API_TOKEN` | Partner API token ("Manage apps" + "View financials") |
+| `DATABASE_URL` | Railway Postgres (private network); also read by `npm run backtest` |
+| `APP_ENCRYPTION_KEY` | 64 hex chars, AES-256-GCM for the Slack webhook and supplier emails |
+| `NOVA_API` | Nova platform base URL |
+| `NOVA_INGRESS_HMAC_SECRET` | Signs forwarded webhooks (`X-Nova-Signature`) |
+| `NOVA_INSTALL_CONFIRM_SECRET` | Signs the install-confirm callback |
+| `INVENTORY_CRON_SECRET` | Bearer token for `/cron/*` |
+| `INVENTORY_DISABLE_INTERNAL_CRON` | `1` only when an external scheduler runs the jobs |
+| `INVENTORY_EMAIL_API_URL` | Email API (default `https://api.resend.com/emails`); `/privacy` names the provider from it |
+| `INVENTORY_EMAIL_API_KEY` | Email API key (Monday email, alerts, supplier emails, data-request answers) |
+| `INVENTORY_EMAIL_FROM` | Verified sender, e.g. `Keha <mail@keha.io>` |
+| `INVENTORY_LEGAL_NAME` | Company name on `/privacy` and `/terms` |
+| `INVENTORY_SUPPORT_EMAIL` | Support / privacy contact (falls back to `support@keha.io`) |
+| `INVENTORY_LISTING_URL` | App Store listing URL once live (falls back to `https://keha.io/inventory`) |
 
 ## Config
 

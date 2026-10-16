@@ -32,3 +32,6 @@ _to_delete/
 
 # Local design previews (generated)
 .preview/
+
+# Backtest output (store data; scripts/backtest.ts)
+backtest-*.json
