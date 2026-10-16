@@ -15,8 +15,8 @@ import {
   type ActionListView,
   type ActionRowView,
   type ClearanceView,
-  type FactValue,
 } from "../lib/action-list-shared";
+import { factLines, reasonSentence } from "../lib/action-facts-shared";
 import { CLEAR_PERCENT, defaultClearForm, type ClearForm, type ClearFormError } from "../lib/clearance-shared";
 import { formatAmount, formatCount, formatDay, todayIn } from "../lib/dashboard-shared";
 import { Modal, Tabs, flag, useLinkProps, val, vals } from "./wc";
@@ -57,15 +57,14 @@ export function tabLabel(tab: ActionTab, t: T): string {
 /** The one-sentence reason: the engine's template (translated) filled with its params. */
 export function reasonText(row: Pick<ActionRowView, "reason">, t: T, locale: string): string {
   const key = row.reason.key;
-  const template = t(ACTION_REASONS[key] ?? key);
-  const vars: Record<string, string | number> = {};
-  for (const [k, v] of Object.entries(row.reason.params)) vars[k] = typeof v === "number" ? formatCount(v, locale) : v;
-  return fill(template, vars);
+  return reasonSentence(t(ACTION_REASONS[key] ?? key), row.reason.params, locale);
 }
 
-function factValue(v: FactValue, locale: string): string {
-  if (v === null) return "—";
-  return typeof v === "number" ? formatCount(v, locale) : v;
+/** "Based on: Supplier lead time: 14 days · Order by: 12 Nov · …" in the admin language; null when nothing can be shown. */
+export function whyFactsText(row: Pick<ActionRowView, "reason" | "currency">, t: T, locale: string): string | null {
+  const lines = factLines(row.reason.facts, { t, locale, currency: row.currency });
+  if (!lines.length) return null;
+  return fill(t("Based on: {facts}"), { facts: lines.map((f) => `${f.label}: ${f.value}`).join(" · ") });
 }
 
 type Dialog =
@@ -307,16 +306,14 @@ function LockedButton({ feature }: { feature: "bridge" | "clearance" }) {
 
 function WhyDialog({ dialog: row, onClose }: { dialog: ActionRowView | null; onClose: () => void }) {
   const { t, locale } = useLocale();
-  const facts = row?.reason.facts ?? [];
+  const facts = row ? whyFactsText(row, t, locale) : null;
   return (
     <Modal open={!!row} onClose={onClose} heading={t("Why this action")}>
       {row && (
         <s-stack direction="block" gap="small-200">
           <s-paragraph>{reasonText(row, t, locale)}</s-paragraph>
-          {facts.length > 0 ? (
-            <s-text color="subdued">
-              {fill(t("Based on: {facts}"), { facts: facts.map((f) => `${t(f.label)}: ${factValue(f.value, locale)}`).join(" · ") })}
-            </s-text>
+          {facts ? (
+            <s-text color="subdued">{facts}</s-text>
           ) : (
             <s-text color="subdued">{t("The details appear after the next calculation.")}</s-text>
           )}

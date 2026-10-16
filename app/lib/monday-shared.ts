@@ -13,6 +13,7 @@ import { fill, translate, type Locale } from "./i18n";
 import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
 import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
 import { hasFeature, visibleRows, type PlanCode } from "./plan-shared";
+import { reasonSentence } from "./action-facts-shared";
 
 // ---------------------------------------------------------------- send time
 
@@ -354,14 +355,20 @@ export function selectMondayActions<T extends MondayActionRow>(
 
 /**
  * The action's sentence in the store's language: ACTION_REASONS[key] (an English
- * template, translated) filled with its params; an unknown key is shown as is.
+ * template, translated) filled with its params, formatted for that language like Home
+ * (formatReasonParams: "12 Nov", "1,5"); an unknown key is shown as is. Slack reuses it.
  */
 export function actionReasonText(locale: Locale, reason: unknown): string {
   const r = (reason && typeof reason === "object" ? reason : {}) as { key?: unknown; params?: unknown };
   const key = typeof r.key === "string" ? r.key : "";
   if (!key) return "";
-  const params = (r.params && typeof r.params === "object" ? r.params : {}) as ReasonParams;
-  return fill(translate(locale, ACTION_REASONS[key] ?? key), params);
+  const params: ReasonParams = {};
+  if (r.params && typeof r.params === "object") {
+    for (const [k, v] of Object.entries(r.params as Record<string, unknown>)) {
+      if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v))) params[k] = v;
+    }
+  }
+  return reasonSentence(translate(locale, ACTION_REASONS[key] ?? key), params, locale);
 }
 
 /**
