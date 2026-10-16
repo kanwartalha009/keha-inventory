@@ -143,8 +143,18 @@ function daysText(days: number, locale: string): string {
   }
 }
 
-/** Title and detail for one alert, in the store's language. */
-export function alertLine(locale: Locale, a: InstantAlert, link: string, numberLocale: string = locale): AlertLine {
+/**
+ * Title and detail for one alert, in the store's language. `showDays` = the plan
+ * includes the forecast (Growth): without it the days-left figure is left out
+ * (spec §3: per-variant days left is a Growth number), the alert itself stays.
+ */
+export function alertLine(
+  locale: Locale,
+  a: InstantAlert,
+  link: string,
+  numberLocale: string = locale,
+  showDays = true,
+): AlertLine {
   const tr = (key: string) => translate(locale, key);
   if (a.kind === "sell_out") {
     return {
@@ -153,13 +163,9 @@ export function alertLine(locale: Locale, a: InstantAlert, link: string, numberL
       link,
     };
   }
-  if (a.daysLeft <= 0) {
-    return {
-      title: fill(tr("Best seller sold out: {product}"), { product: a.title }),
-      detail: fill(tr("New stock takes {lead} days."), { lead: a.leadTimeDays }),
-      link,
-    };
-  }
+  const leadOnly = fill(tr("New stock takes {lead} days."), { lead: a.leadTimeDays });
+  if (a.daysLeft <= 0) return { title: fill(tr("Best seller sold out: {product}"), { product: a.title }), detail: leadOnly, link };
+  if (!showDays) return { title: fill(tr("Best seller running out: {product}"), { product: a.title }), detail: leadOnly, link };
   return {
     title: fill(tr("Best seller running out: {product}"), { product: a.title }),
     detail: fill(tr("Days of stock left: {days}. New stock takes {lead} days."), {

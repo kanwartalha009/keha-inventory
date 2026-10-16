@@ -135,6 +135,11 @@ describe("wording", () => {
     expect(alertLine("de", sell, "https://l").title).toBe("Gerade ausverkauft: Cap");
   });
 
+  it("without the forecast (Free) the days-left figure is left out, the alert stays", () => {
+    expect(alertLine("en", low, "https://l", "en", false)).toEqual({ title: "Best seller running out: Tote", detail: "New stock takes 14 days.", link: "https://l" });
+    expect(alertLine("en", out, "https://l", "en", false).title).toBe("Best seller sold out: Tote");
+  });
+
   it("subject: the alert itself, or a count; footer links to the Alerts settings", () => {
     const one = alertMessage("en", "Acme", [alertLine("en", sell, "https://l")], "https://settings");
     expect(one.subject).toBe("Just sold out: Cap");

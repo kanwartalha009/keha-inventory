@@ -177,6 +177,11 @@ describe("instant alerts", () => {
     expect(await runAlertsForShop(shopRow({ alerts: { slackWebhook: "gcm:sealed" } }), NOW)).toMatchObject({ instant: "sent" });
     expect(deliverSlack).not.toHaveBeenCalled();
     expect(sendOwnerEmailOnce).toHaveBeenCalled();
+    // Free has no forecast: the best-seller alert goes out without the days-left figure.
+    const text = (sendOwnerEmailOnce.mock.calls.at(-1) as EmailCall)[1].text;
+    expect(text).toContain("Producto estrella a punto de agotarse: Tote");
+    expect(text).not.toContain("Días de stock restantes");
+    expect(text).toContain("El stock nuevo tarda 14 días.");
   });
 
   it("off in Settings: no alert is sent (Free: nothing is even read)", async () => {

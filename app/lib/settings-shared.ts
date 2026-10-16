@@ -28,7 +28,7 @@ export type ShopSettings = {
   alerts: {
     /** Instant alerts (a best seller will run out within its lead time; a busy product sold out). */
     instant: boolean;
-    /** Slack incoming-webhook URL, sealed with APP_ENCRYPTION_KEY (lib/seal.server). null = not connected. */
+    /** Slack incoming-webhook URL, encrypted with APP_ENCRYPTION_KEY (lib/crypto.server, AES-256-GCM). null = not connected. */
     slackWebhook: string | null;
     /** Send the Monday summary to Slack too (when connected). */
     slackMonday: boolean;

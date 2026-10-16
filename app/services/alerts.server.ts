@@ -259,7 +259,9 @@ export async function runInstantAlerts(
     alertMessage(
       locale,
       storeName,
-      alerts.map((a) => alertLine(locale, a, adminAppUrl(shop, `/app/products/${variantNumericId(a.variantId)}`), row.locale)),
+      alerts.map((a) =>
+        alertLine(locale, a, adminAppUrl(shop, `/app/products/${variantNumericId(a.variantId)}`), row.locale, hasFeature(plan, "forecast")),
+      ),
       settingsLink,
     );
 
