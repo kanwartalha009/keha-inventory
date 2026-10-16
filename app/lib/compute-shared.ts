@@ -149,19 +149,31 @@ export function salesCoverage(state: BackfillState): Coverage {
 // Actions → rows
 // ---------------------------------------------------------------------------
 
-export type ExistingAction = { dedupeKey: string; state: string; doneAt?: Date | null };
+export type ExistingAction = { dedupeKey: string; state: string; doneAt?: Date | null; productId?: string };
+
+/** States whose row is removed once its trigger stops firing (review fix: snoozed too). */
+export const RETIRE_WHEN_GONE_STATES = ["open", "snoozed"] as const;
 
 /**
  * What one compute run writes to Action (spec §7.7):
  *  - every draft is upserted by (shop, dedupeKey); a recompute updates amount / reason /
  *    variantIds / currency in place and never touches state, stateAmount, snoozeUntil or doneAt;
- *  - OPEN rows whose trigger no longer fires are deleted;
- *  - snoozed / dismissed / done rows are left alone (their € figure is refreshed only while
- *    they still trigger, which is how "comes back when the € figure doubles" works).
+ *  - OPEN and SNOOZED rows whose trigger no longer fires are deleted (`deleteKeys`): a snooze
+ *    must not bring a solved problem back when its date passes;
+ *  - DISMISSED rows are kept (they come back only when the € figure doubles) and DONE rows are
+ *    kept (DONE_REOPEN_DAYS rule); their € figure is refreshed only while they still trigger;
+ *  - when `liveProductIds` is given (the products compute considered: active, tracked,
+ *    non-bundle), rows of every state for any OTHER product are purged (`purgeKeys`): an
+ *    archived, untracked or bundle product never comes back from an old dismiss / done row.
  * Duplicate drafts for one key keep the first (generateActions never emits duplicates).
  *  - DONE rows that still trigger DONE_REOPEN_DAYS after doneAt open again (`reopenKeys`).
  */
-export function planActionWrites(existing: readonly ExistingAction[], drafts: readonly ActionDraft[], now?: Date) {
+export function planActionWrites(
+  existing: readonly ExistingAction[],
+  drafts: readonly ActionDraft[],
+  now?: Date,
+  liveProductIds?: ReadonlySet<string>,
+) {
   const upserts: (ActionDraft & { dedupeKey: string })[] = [];
   const keys = new Set<string>();
   for (const d of drafts) {
@@ -170,7 +182,10 @@ export function planActionWrites(existing: readonly ExistingAction[], drafts: re
     keys.add(key);
     upserts.push({ ...d, dedupeKey: key });
   }
-  const deleteKeys = existing.filter((a) => a.state === "open" && !keys.has(a.dedupeKey)).map((a) => a.dedupeKey);
+  const gone = (a: ExistingAction) => liveProductIds != null && a.productId != null && !liveProductIds.has(a.productId);
+  const purgeKeys = existing.filter((a) => gone(a) && !keys.has(a.dedupeKey)).map((a) => a.dedupeKey);
+  const retire = new Set<string>(RETIRE_WHEN_GONE_STATES);
+  const deleteKeys = existing.filter((a) => retire.has(a.state) && !keys.has(a.dedupeKey) && !gone(a)).map((a) => a.dedupeKey);
   const cutoff = now ? now.getTime() - DONE_REOPEN_DAYS * 86_400_000 : null;
   const reopenKeys =
     cutoff == null
@@ -178,7 +193,7 @@ export function planActionWrites(existing: readonly ExistingAction[], drafts: re
       : existing
           .filter((a) => a.state === "done" && keys.has(a.dedupeKey) && (a.doneAt == null || a.doneAt.getTime() <= cutoff))
           .map((a) => a.dedupeKey);
-  return { upserts, deleteKeys, reopenKeys };
+  return { upserts, deleteKeys, purgeKeys, reopenKeys };
 }
 
 /** Units sold over the last `days` days that have data in the series; null when none has. */
@@ -208,6 +223,85 @@ export function kehaOpenUnits(pos: readonly { lines: { variantId: string; qty: n
       const open = Math.max(0, l.qty - (l.received ?? 0));
       if (open > 0) out.set(l.variantId, (out.get(l.variantId) ?? 0) + open);
     }
+  return out;
+}
+
+/** An open purchase order line as the landed estimate reads it. */
+export type OpenPoLine = { variantId: string; qty: number; received?: number; baseOnHand?: number };
+export type OpenPo = { source: string; arrival: string | null; sentDay: string | null; lines: OpenPoLine[] };
+
+/** What the landed estimate needs from the database (online pool, same as auto-receive). */
+export type LandedFacts = {
+  /** Pool on-hand now per variant (absent = unknown: no estimate). */
+  onHand: ReadonlyMap<string, number>;
+  /** Pool ending units the day before `sentDay` (lines sent before baseOnHand was recorded). */
+  baseline: (variantId: string, sentDay: string) => number | undefined;
+  /** Pool units sold from `sentDay` through yesterday. */
+  soldSince: (variantId: string, sentDay: string) => number;
+};
+
+/**
+ * Review fix (Keha units counted twice when stock lands early or in part): `received` is filled
+ * only when an order closes (auto-receive waits for the arrival date and ≥ 90 %), so units that
+ * already landed sit in on-hand AND in "qty − received". This returns copies of the orders with
+ * each sent / confirmed Keha line's `received` raised by the units estimated to have landed,
+ * the way auto-receive measures it (lib/purchase-order-shared autoReceiveDecision):
+ *   landed since send = on-hand now − on-hand at send (baseOnHand, else the pool's ending units
+ *   the day before) + units sold since the send day, capped at 0…open units.
+ * Several open lines of one variant share one rise in stock: the rise measured from the OLDEST
+ * line's send is shared out oldest first, each line also capped by the rise since its own send
+ * (so one delivery is never subtracted twice). Lines without a baseline (or a send day, or a
+ * known on-hand now) are left as they were (counted as still to arrive). Shopify orders are
+ * untouched (their units are Shopify's own `incoming`).
+ */
+export function withLandedEstimate<P extends OpenPo>(pos: readonly P[], facts: LandedFacts): P[] {
+  const out = pos.map((po) => ({ ...po, lines: po.lines.map((l) => ({ ...l })) }));
+  type Slot = { line: OpenPoLine; sentDay: string; order: number; rise: number; open: number };
+  const byVariant = new Map<string, Slot[]>();
+  out.forEach((po, order) => {
+    if (po.source !== "keha" || !po.sentDay) return;
+    for (const line of po.lines) {
+      const open = Math.max(0, line.qty - (line.received ?? 0));
+      const now = facts.onHand.get(line.variantId);
+      const base = line.baseOnHand ?? facts.baseline(line.variantId, po.sentDay);
+      if (open <= 0 || now === undefined || base === undefined) continue;
+      const rise = now - base + Math.max(0, facts.soldSince(line.variantId, po.sentDay));
+      const list = byVariant.get(line.variantId) ?? [];
+      list.push({ line, sentDay: po.sentDay, order, rise, open });
+      byVariant.set(line.variantId, list);
+    }
+  });
+  for (const slots of byVariant.values()) {
+    slots.sort((a, b) => (a.sentDay < b.sentDay ? -1 : a.sentDay > b.sentDay ? 1 : a.order - b.order));
+    let remaining = Math.max(0, slots[0]!.rise);
+    for (const s of slots) {
+      const landed = Math.max(0, Math.min(s.open, Math.floor(Math.max(0, s.rise)), remaining));
+      if (landed > 0) s.line.received = (s.line.received ?? 0) + landed;
+      remaining -= landed;
+    }
+  }
+  return out as P[];
+}
+
+/**
+ * Dated units still to arrive per variant: one entry per order arrival (open units of lines on
+ * orders with a date). Undated orders are left out (their units are assumed to arrive within
+ * any window, as Shopify's undated `incoming`).
+ */
+export function datedIncoming(
+  pos: readonly { lines: { variantId: string; qty: number; received?: number }[]; arrival: string | null }[],
+): Map<string, { arrival: string; units: number }[]> {
+  const out = new Map<string, { arrival: string; units: number }[]>();
+  for (const po of pos) {
+    if (!po.arrival) continue;
+    for (const l of po.lines) {
+      const open = Math.max(0, l.qty - (l.received ?? 0));
+      if (open <= 0) continue;
+      const list = out.get(l.variantId) ?? [];
+      list.push({ arrival: po.arrival, units: open });
+      out.set(l.variantId, list);
+    }
+  }
   return out;
 }
 

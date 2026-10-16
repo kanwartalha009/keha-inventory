@@ -26,8 +26,14 @@ export interface MoneyVariant {
   trend?: number;
   plan?: number;
   onHand: number;
-  /** Units on order. No arrival date yet, so assumed to land within the at-risk horizon. */
+  /** Units on order (Shopify's undated incoming plus Keha's open order units). */
   incoming?: number;
+  /**
+   * The part of `incoming` with a known arrival day (open purchase orders). Units arriving after
+   * the at-risk window are not counted against it (spec §7.6 "incoming arriving within 28 d");
+   * the rest of `incoming` has no date and is assumed to arrive within the window.
+   */
+  incomingArrivals?: readonly { arrival: DayKey; units: number }[];
   /** Unit selling price; null/≤0 = unknown. */
   price: number | null;
   /** Unit cost; null/≤0 = unknown. */
@@ -75,8 +81,28 @@ export interface AtRiskBasis {
   variantsCounted: number;
   skippedNoRate: number;
   skippedNoPrice: number;
-  /** Shopify's `incoming` has no arrival date in this phase. */
+  /** Incoming WITHOUT an arrival date (Shopify's own) is assumed to arrive within the window. */
   incomingAssumedWithin28: true;
+  /** Dated units on order that arrive after the window, left out of the sum (absent on rows stored before). */
+  incomingLateUnits?: number;
+}
+
+/**
+ * Units of `incoming` that count within a window of `days` days from `today` (the last day
+ * counted is today + days − 1): all of it minus the dated units arriving later; never below 0.
+ */
+export function incomingWithin(
+  incoming: number | null | undefined,
+  arrivals: readonly { arrival: DayKey; units: number }[] | undefined,
+  today: DayKey,
+  days: number,
+): { units: number; late: number } {
+  const all = Math.max(0, typeof incoming === "number" && Number.isFinite(incoming) ? incoming : 0);
+  const last = addDays(today, days - 1);
+  let late = 0;
+  for (const a of arrivals ?? []) if (a.arrival > last && a.units > 0) late += a.units;
+  late = Math.min(all, late);
+  return { units: all - late, late };
 }
 
 /** Σ over running_low / out: max(0, demand(28) − (onHand + incoming)) × price. */
@@ -88,6 +114,7 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
   let counted = 0;
   let skippedNoRate = 0;
   let skippedNoPrice = 0;
+  let lateUnits = 0;
   let sum = 0;
   for (const v of variants) {
     if (v.isBundle) continue;
@@ -103,7 +130,9 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
       continue;
     }
     const d = demand(v.rate, { seasonal: mult(v.seasonal), trend: mult(v.trend), plan: mult(v.plan) }, H);
-    const stock = Math.max(0, v.onHand) + Math.max(0, v.incoming ?? 0);
+    const inc = incomingWithin(v.incoming, v.incomingArrivals, ctx.today, H);
+    lateUnits += inc.late;
+    const stock = Math.max(0, v.onHand) + inc.units;
     sum += Math.max(0, d - stock) * v.price;
     counted++;
   }
@@ -115,6 +144,7 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
       skippedNoRate,
       skippedNoPrice,
       incomingAssumedWithin28: true,
+      incomingLateUnits: lateUnits,
       window: forward(ctx.today, H),
       currency: ctx.currency,
       costBasis: "retail",

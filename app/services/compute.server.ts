@@ -38,11 +38,14 @@ import {
   type VariantResult,
 } from "../lib/engine/index-shared";
 import type { StoreConversion } from "../lib/engine/money-shared";
-import { kehaOpenUnits,
+import {
+  kehaOpenUnits,
   SCOPE_ONLINE,
   buildSeries,
+  datedIncoming,
   engineSettingsFrom,
   planActionWrites,
+  RETIRE_WHEN_GONE_STATES,
   poArrivals,
   poolSalesKeys,
   metricRow,
@@ -56,6 +59,9 @@ import { kehaOpenUnits,
   sessionsByHandle,
   soldOver,
   storeConversion,
+  withLandedEstimate,
+  type LandedFacts,
+  type OpenPo,
   type PooledStockDay,
   type SalesDay,
   type TrafficProduct,
@@ -235,15 +241,23 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     onHand.set(s.variantId, cur);
   }
 
-  // Keha's own sent / confirmed orders: not in Shopify's incoming (see kehaOpenUnits).
-  const kehaOpen = kehaOpenUnits(
-    (
-      await prisma.purchaseOrder.findMany({
-        where: { shop, source: "keha", status: { in: [...OPEN_PO_STATUSES] } },
-        select: { lines: true },
-      })
-    ).map((po) => ({ lines: readPoLines(po.lines) })),
-  );
+  // Open purchase orders (sent / confirmed; Keha and Shopify). Keha orders are not in Shopify's
+  // incoming (see kehaOpenUnits): their open units are added, minus the units estimated to have
+  // landed already (withLandedEstimate, review fix). kehaOnOrder (inputs) keeps the raw open
+  // units: the Reorder screen nets drafts against it, and landed units are in on-hand.
+  const openPoRows = await prisma.purchaseOrder.findMany({
+    where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
+    select: { source: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true },
+  });
+  const rawPos: OpenPo[] = openPoRows.map((po) => {
+    const a = poArrival(po);
+    return { source: po.source, arrival: a ? dayKey(a) : null, sentDay: po.sentAt ? localDate(po.sentAt, tz) : null, lines: readPoLines(po.lines) };
+  });
+  const isKeha = (po: OpenPo) => po.source === "keha";
+  const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
+  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, poolKeys, to, onHand));
+  const kehaOpen = kehaOpenUnits(openPos.filter(isKeha));
+  const dated = datedIncoming(openPos);
 
   // ---- seasonality and trend (§7.3) ----
   const coverage = salesCoverage(readBackfillState(shopRow.backfillState));
@@ -314,7 +328,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
           safetyLevel: shopSettings.safetyLevel,
           serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
           supplierId: supplierIdOf.get(r.id) ?? null,
-          kehaOnOrder: kehaOpen.get(r.id) ?? 0,
+          kehaOnOrder: kehaRaw.get(r.id) ?? 0,
+          kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
         });
         const data = {
           rate: m.rate,
@@ -387,7 +402,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }
 
   const ctx = { today, currency: shopRow.currency, settings };
-  const atRisk = salesAtRisk(results, ctx);
+  const atRisk = salesAtRisk(
+    results.map((r) => ({ ...r, incomingArrivals: dated.get(r.id) })),
+    ctx,
+  );
   const lost90 = salesLostToSellOuts(results, ctx);
   const stuck = cashStuck(results, ctx);
   const traffic = soldOutPageTraffic(
@@ -430,6 +448,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     returnsByVariant,
     landing,
     store: storeConversion(totals),
+    openPos,
+    dated,
   });
   return { status: "computed", today, variants: results.length, locationMetrics: perLocation.metrics, money: "computed", actions };
 }
@@ -451,6 +471,10 @@ async function writeActions(
     returnsByVariant: Map<string, { sold: number; returned: number }>;
     landing: { landingPath: string; day: string; sessions: number; checkouts: number }[];
     store: StoreConversion;
+    /** Open purchase orders after the landed estimate (arrivals for the bridge). */
+    openPos: readonly OpenPo[];
+    /** Dated incoming per variant (sales at risk counts only what lands within 28 d). */
+    dated: ReadonlyMap<string, { arrival: string; units: number }[]>;
   },
 ): Promise<number> {
   const { today } = x;
@@ -459,28 +483,17 @@ async function writeActions(
   const lyFrom = addDays(from28, -SEASON.trendShiftDays);
   const lyTo = addDays(today, -1 - SEASON.trendShiftDays);
   const lyCovered = spanStats({ units: new Map(), coverage: x.coverage }, lyFrom, lyTo).coverage >= SEASON.minCoverage;
-  const [lyG, pos] = await Promise.all([
-    lyCovered
-      ? prisma.salesDaily.groupBy({
-          by: ["variantId"],
-          where: { shop, locationKey: ALL, day: { gte: dayDate(lyFrom), lte: dayDate(lyTo) } },
-          _sum: { gross: true },
-        })
-      : Promise.resolve([]),
-    prisma.purchaseOrder.findMany({
-      where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
-      select: { lines: true, confirmedShipDate: true, expectedDate: true },
-    }),
-  ]);
+  const lyG = lyCovered
+    ? await prisma.salesDaily.groupBy({
+        by: ["variantId"],
+        where: { shop, locationKey: ALL, day: { gte: dayDate(lyFrom), lte: dayDate(lyTo) } },
+        _sum: { gross: true },
+      })
+    : [];
   const lyRevenue = new Map(lyG.map((g) => [g.variantId, num(g._sum.gross)]));
   const tyRevenue = new Map<string, number>();
   for (const s of x.channelSales) if (s.day >= from28) tyRevenue.set(s.variantId, (tyRevenue.get(s.variantId) ?? 0) + s.gross);
-  const arrivals = poArrivals(
-    pos.map((po) => {
-      const a = poArrival(po);
-      return { lines: readPoLines(po.lines), arrival: a ? dayKey(a) : null };
-    }),
-  );
+  const arrivals = poArrivals(x.openPos);
   const landingBy = new Map<string, { sessions: number; checkouts: number }>();
   for (const l of x.landing) {
     if (l.day < from28) continue;
@@ -522,6 +535,7 @@ async function writeActions(
       noSaleDays: r.inputs.noSaleDays,
       arrival: arr?.arrival ?? null,
       incomingDated: arr?.units ?? 0,
+      incomingArrivals: x.dated.get(v.id),
       soldNet90: ret ? ret.sold : null,
       returned90: ret ? ret.returned : null,
     };
@@ -542,8 +556,8 @@ async function writeActions(
     returnsMeasured,
   });
 
-  const existing = await prisma.action.findMany({ where: { shop }, select: { dedupeKey: true, state: true, doneAt: true } });
-  const plan = planActionWrites(existing, drafts, new Date());
+  const existing = await prisma.action.findMany({ where: { shop }, select: { dedupeKey: true, state: true, doneAt: true, productId: true } });
+  const plan = planActionWrites(existing, drafts, new Date(), new Set(x.considered.map((v) => v.productId)));
   for (let i = 0; i < plan.upserts.length; i += WRITE_BATCH) {
     await prisma.$transaction(
       plan.upserts.slice(i, i + WRITE_BATCH).map((d) => {
@@ -569,11 +583,71 @@ async function writeActions(
       data: { state: "open", doneAt: null, stateAmount: null, snoozeUntil: null },
     });
   }
-  // Re-checks state "open" in the delete itself: a row snoozed meanwhile is kept.
+  // Re-checks the state in the delete itself: a row dismissed meanwhile is kept (a row
+  // snoozed meanwhile no longer triggers either, so it goes too).
   for (let i = 0; i < plan.deleteKeys.length; i += WRITE_BATCH) {
-    await prisma.action.deleteMany({ where: { shop, state: "open", dedupeKey: { in: plan.deleteKeys.slice(i, i + WRITE_BATCH) } } });
+    await prisma.action.deleteMany({
+      where: { shop, state: { in: [...RETIRE_WHEN_GONE_STATES] }, dedupeKey: { in: plan.deleteKeys.slice(i, i + WRITE_BATCH) } },
+    });
+  }
+  // Products no longer computed (archived / draft / untracked / bundle / deleted): every state.
+  for (let i = 0; i < plan.purgeKeys.length; i += WRITE_BATCH) {
+    await prisma.action.deleteMany({ where: { shop, dedupeKey: { in: plan.purgeKeys.slice(i, i + WRITE_BATCH) } } });
   }
   return plan.upserts.length;
+}
+
+/**
+ * The database facts behind withLandedEstimate for open Keha lines (online pool, as
+ * auto-receive): on-hand now, the pool's ending units the day before each send day (lines
+ * without baseOnHand) and units sold from each send day through yesterday.
+ */
+async function landedFacts(
+  shop: string,
+  pos: readonly OpenPo[],
+  pool: string[],
+  poolKeys: string[],
+  yesterday: string,
+  stockNow: ReadonlyMap<string, { onHand: number }>,
+): Promise<LandedFacts> {
+  const onHand = new Map<string, number>();
+  const sent = pos.filter((p) => p.sentDay);
+  const ids = [...new Set(sent.flatMap((p) => p.lines.map((l) => l.variantId)))];
+  for (const id of ids) {
+    const s = stockNow.get(id);
+    if (s) onHand.set(id, s.onHand);
+  }
+  if (!ids.length || !pool.length) return { onHand, baseline: () => undefined, soldSince: () => 0 };
+  const firstSent = sent.reduce((m, p) => (p.sentDay! < m ? p.sentDay! : m), sent[0]!.sentDay!);
+  const baseDays = [...new Set(sent.filter((p) => p.lines.some((l) => l.baseOnHand === undefined)).map((p) => addDays(p.sentDay!, -1)))];
+  const [baseG, soldG] = await Promise.all([
+    baseDays.length
+      ? prisma.stockDaily.groupBy({
+          by: ["variantId", "day"],
+          where: { shop, variantId: { in: ids }, locationId: { in: pool }, day: { in: baseDays.map(dayDate) } },
+          _sum: { endUnits: true },
+        })
+      : Promise.resolve([]),
+    firstSent <= yesterday
+      ? prisma.salesDaily.groupBy({
+          by: ["variantId", "day"],
+          where: { shop, variantId: { in: ids }, channel: ALL, locationKey: { in: poolKeys }, day: { gte: dayDate(firstSent), lte: dayDate(yesterday) } },
+          _sum: { sold: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const base = new Map(baseG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, num(g._sum.endUnits)]));
+  const soldByVariant = new Map<string, { day: string; sold: number }[]>();
+  for (const g of soldG) {
+    const list = soldByVariant.get(g.variantId) ?? [];
+    list.push({ day: dayKey(g.day), sold: num(g._sum.sold) });
+    soldByVariant.set(g.variantId, list);
+  }
+  return {
+    onHand,
+    baseline: (v, sentDay) => base.get(`${v}|${addDays(sentDay, -1)}`),
+    soldSince: (v, sentDay) => (soldByVariant.get(v) ?? []).reduce((a, r) => (r.day >= sentDay ? a + r.sold : a), 0),
+  };
 }
 
 /** afterSync hook for the backfill / nightly jobs: compute and log. Never throws. */

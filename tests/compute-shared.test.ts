@@ -210,7 +210,29 @@ describe("task 2.1 helpers", () => {
     expect(planActionWrites([{ dedupeKey: "clear:old", state: "done", doneAt: null }], [draft("old")]).reopenKeys).toEqual([]);
   });
 
-  it("planActionWrites upserts every draft once and deletes only open rows that stopped triggering", async () => {
+  it("planActionWrites deletes open AND snoozed rows that stopped triggering; keeps dismissed and done (review fix)", async () => {
+    const { planActionWrites } = await import("../app/lib/compute-shared");
+    const draft = (productId: string) => ({ kind: "clear" as const, productId, variantIds: ["v"], amount: 1, reason: { key: "k", params: {} } });
+    const plan = planActionWrites(
+      [
+        { dedupeKey: "clear:P1", state: "snoozed", productId: "P1" },
+        { dedupeKey: "clear:P2", state: "dismissed", productId: "P2" },
+        { dedupeKey: "clear:P3", state: "done", productId: "P3" },
+        { dedupeKey: "clear:P4", state: "snoozed", productId: "P4" },
+        // Archived / untracked / bundle products (not live): purged whatever the state.
+        { dedupeKey: "clear:GONE1", state: "dismissed", productId: "GONE1" },
+        { dedupeKey: "clear:GONE2", state: "done", productId: "GONE2" },
+        { dedupeKey: "clear:GONE3", state: "snoozed", productId: "GONE3" },
+      ],
+      [draft("P4")],
+      undefined,
+      new Set(["P1", "P2", "P3", "P4"]),
+    );
+    expect(plan.deleteKeys).toEqual(["clear:P1"]);
+    expect(plan.purgeKeys).toEqual(["clear:GONE1", "clear:GONE2", "clear:GONE3"]);
+  });
+
+  it("planActionWrites upserts every draft once and deletes open / snoozed rows that stopped triggering", async () => {
     const { planActionWrites } = await import("../app/lib/compute-shared");
     const draft = (kind: "reorder" | "clear", productId: string) => ({ kind, productId, variantIds: ["v"], amount: 1, reason: { key: "k", params: {} } });
     const plan = planActionWrites(
@@ -223,7 +245,8 @@ describe("task 2.1 helpers", () => {
       [draft("reorder", "P1"), draft("reorder", "P1"), draft("clear", "P9")],
     );
     expect(plan.upserts.map((u) => u.dedupeKey)).toEqual(["reorder:P1", "clear:P9"]);
-    expect(plan.deleteKeys).toEqual(["clear:P2"]);
+    expect(plan.deleteKeys).toEqual(["clear:P2", "clear:P3"]);
+    expect(plan.purgeKeys).toEqual([]);
   });
 
   it("soldOver counts only days with data; null when none", async () => {
@@ -246,6 +269,55 @@ describe("task 2.1 helpers", () => {
       { lines: [{ variantId: "a", qty: 2 }] },
     ]);
     expect([...m]).toEqual([["a", 8]]);
+  });
+
+  it("review fix: withLandedEstimate subtracts units that landed early or in part (auto-receive maths)", async () => {
+    const { withLandedEstimate, kehaOpenUnits } = await import("../app/lib/compute-shared");
+    const facts = (onHand: Record<string, number>, sold: Record<string, number> = {}, base: Record<string, number> = {}) => ({
+      onHand: new Map(Object.entries(onHand)),
+      baseline: (v: string, d: string) => base[`${v}|${d}`],
+      soldSince: (v: string) => sold[v] ?? 0,
+    });
+    // 100 ordered, base 10 at send; now 50 on hand after 20 sold → 60 landed → 40 still to come.
+    const pos: import("../app/lib/compute-shared").OpenPo[] = [{ source: "keha", arrival: "2026-11-30", sentDay: "2026-10-01", lines: [{ variantId: "a", qty: 100, baseOnHand: 10 }] }];
+    const after = withLandedEstimate(pos, facts({ a: 50 }, { a: 20 }));
+    expect(kehaOpenUnits(after).get("a")).toBe(40);
+    expect(pos[0]!.lines[0]!.received).toBeUndefined(); // input untouched
+    // Capped at the open units; a fall in stock is never negative.
+    expect(kehaOpenUnits(withLandedEstimate(pos, facts({ a: 500 }))).get("a") ?? 0).toBe(0);
+    expect(kehaOpenUnits(withLandedEstimate(pos, facts({ a: 0 }))).get("a")).toBe(100);
+    // No baseline (no baseOnHand, no StockDaily the day before) or no on-hand now: unchanged.
+    const noBase = [{ source: "keha", arrival: null, sentDay: "2026-10-01", lines: [{ variantId: "a", qty: 100 }] }];
+    expect(kehaOpenUnits(withLandedEstimate(noBase, facts({ a: 90 }))).get("a")).toBe(100);
+    expect(kehaOpenUnits(withLandedEstimate(pos, facts({}))).get("a")).toBe(100);
+    // StockDaily baseline (the caller looks up the day before the send day).
+    expect(kehaOpenUnits(withLandedEstimate(noBase, facts({ a: 90 }, {}, { "a|2026-10-01": 30 }))).get("a")).toBe(40);
+    // Shopify orders are untouched.
+    const shopify: import("../app/lib/compute-shared").OpenPo[] = [{ source: "shopify", arrival: null, sentDay: "2026-10-01", lines: [{ variantId: "a", qty: 100, baseOnHand: 0 }] }];
+    expect(withLandedEstimate(shopify, facts({ a: 100 }))[0]!.lines[0]!.received).toBeUndefined();
+  });
+
+  it("review fix: two open orders of one variant share one delivery (never subtracted twice)", async () => {
+    const { withLandedEstimate, kehaOpenUnits } = await import("../app/lib/compute-shared");
+    const facts = { onHand: new Map([["a", 60]]), baseline: () => undefined, soldSince: () => 0 };
+    const pos: import("../app/lib/compute-shared").OpenPo[] = [
+      { source: "keha", arrival: "2026-10-20", sentDay: "2026-10-01", lines: [{ variantId: "a", qty: 50, baseOnHand: 10 }] },
+      { source: "keha", arrival: "2026-10-25", sentDay: "2026-10-02", lines: [{ variantId: "a", qty: 50, baseOnHand: 10 }] },
+    ];
+    const after = withLandedEstimate(pos, facts);
+    expect(kehaOpenUnits(after).get("a")).toBe(50);
+    expect(after[0]!.lines[0]!.received).toBe(50); // oldest first
+    expect(after[1]!.lines[0]!.received).toBeUndefined();
+  });
+
+  it("datedIncoming: one entry per dated order; undated orders left out", async () => {
+    const { datedIncoming } = await import("../app/lib/compute-shared");
+    const m = datedIncoming([
+      { arrival: "2026-11-01", lines: [{ variantId: "a", qty: 10, received: 4 }] },
+      { arrival: "2026-12-01", lines: [{ variantId: "a", qty: 5 }] },
+      { arrival: null, lines: [{ variantId: "a", qty: 9 }] },
+    ]);
+    expect(m.get("a")).toEqual([{ arrival: "2026-11-01", units: 6 }, { arrival: "2026-12-01", units: 5 }]);
   });
 
   it("poArrivals: earliest dated arrival and open units per variant; undated orders ignored", async () => {

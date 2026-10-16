@@ -150,6 +150,34 @@ describe("computeShop", () => {
     expect((a.inputs as { onHand: number }).onHand).toBe(100);
   });
 
+  it("review fix: Keha order units that already landed are not counted as incoming again", async () => {
+    // Sent 10 Oct with 30 on hand; now 100 on hand after 12 sold since (2/day × 6 days) → 82 landed ≥ 80.
+    db.tables.purchaseOrder = [
+      { id: "po1", shop: S, source: "keha", status: "sent", sentAt: new Date("2026-10-10T09:00:00Z"), expectedDate: d("2026-10-30"), confirmedShipDate: null, lines: [{ variantId: A, qty: 80, baseOnHand: 30 }] },
+    ];
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).inputs).toMatchObject({ incoming: 0, kehaOnOrder: 80, kehaLanded: 80 });
+    // Partly landed: base 60 → 100 − 60 + 12 = 52 landed → 28 still to come.
+    (db.tables.purchaseOrder[0]!.lines as { baseOnHand: number }[])[0]!.baseOnHand = 60;
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).inputs).toMatchObject({ incoming: 28, kehaOnOrder: 80, kehaLanded: 52 });
+  });
+
+  it("review fix: sales at risk leaves out dated Keha units arriving after today + 27", async () => {
+    // B is out, Shopify incoming 24: the card is (28 − 24) × 20 = 80. A Keha order of 10 more…
+    const po = (expected: string) => [
+      { id: "po2", shop: S, source: "keha", status: "sent", sentAt: new Date("2026-10-14T09:00:00Z"), expectedDate: d(expected), confirmedShipDate: null, lines: [{ variantId: B, qty: 10, baseOnHand: 0 }] },
+    ];
+    db.tables.purchaseOrder = po("2026-11-12"); // …arriving on the last day of the window: counted → 0 short.
+    await computeShop(S, { now: () => NOW });
+    expect(db.tables.moneyAtStake[0]!.atRisk).toBe(0);
+    db.tables.moneyAtStake = [];
+    db.tables.purchaseOrder = po("2026-11-13"); // …arriving the day after: not counted → 80.
+    await computeShop(S, { now: () => NOW });
+    expect(db.tables.moneyAtStake[0]!.atRisk).toBe(80);
+    expect(action("reorder:PB")!.amount).toBe(80);
+  });
+
   it("review H2: sales on days with no pool stock data are missing, not in-stock days", async () => {
     await computeShop(S, { now: () => NOW });
     const sp = metric(SPARSE);
@@ -266,18 +294,33 @@ describe("computeShop — action list", () => {
     db.tables.action = [
       { id: "a1", shop: S, kind: "clear", productId: "PC", dedupeKey: "clear:PC", variantIds: [], amount: 50, currency: "EUR", reason: {}, state: "snoozed", stateAmount: 50, snoozeUntil: until, doneAt: null },
       { id: "a2", shop: S, kind: "fix_page", productId: "PA", dedupeKey: "fix_page:PA", variantIds: [A], amount: 10, currency: "EUR", reason: {}, state: "open" },
-      { id: "a3", shop: S, kind: "fix_sizes", productId: "PZ", dedupeKey: "fix_sizes:PZ", variantIds: [], amount: 10, currency: "EUR", reason: {}, state: "dismissed", stateAmount: 10 },
+      { id: "a3", shop: S, kind: "fix_sizes", productId: "PA", dedupeKey: "fix_sizes:PA", variantIds: [], amount: 10, currency: "EUR", reason: {}, state: "dismissed", stateAmount: 10 },
       { id: "a4", shop: S, kind: "reorder", productId: "PB", dedupeKey: "reorder:PB", variantIds: [], amount: 1, currency: "EUR", reason: {}, state: "done", doneAt: until },
     ];
     await computeShop(S, { now: () => NOW });
     expect(action("clear:PC")).toMatchObject({ id: "a1", amount: 300, state: "snoozed", stateAmount: 50, snoozeUntil: until, variantIds: [C] });
     expect(action("fix_page:PA")).toBeUndefined();
-    expect(action("fix_sizes:PZ")).toMatchObject({ id: "a3", state: "dismissed" });
+    expect(action("fix_sizes:PA")).toMatchObject({ id: "a3", state: "dismissed" });
     expect(action("reorder:PB")).toMatchObject({ id: "a4", state: "done", doneAt: until, amount: 80 });
     // Idempotent: a second run changes nothing.
     const before = JSON.stringify(db.tables.action);
     await computeShop(S, { now: () => NOW });
     expect(JSON.stringify(db.tables.action)).toBe(before);
+  });
+
+  it("review fix: a snoozed row whose problem is gone is deleted (it must not come back after the snooze); a dismissed one is kept; rows of archived / unknown products are purged", async () => {
+    const until = new Date("2026-10-20T00:00:00Z");
+    db.tables.action = [
+      { id: "s1", shop: S, kind: "fix_page", productId: "PA", dedupeKey: "fix_page:PA", variantIds: [A], amount: 10, currency: "EUR", reason: {}, state: "snoozed", stateAmount: 10, snoozeUntil: until },
+      { id: "s2", shop: S, kind: "fix_returns", productId: "PA", dedupeKey: "fix_returns:PA", variantIds: [A], amount: 10, currency: "EUR", reason: {}, state: "dismissed", stateAmount: 10 },
+      { id: "s3", shop: S, kind: "clear", productId: "PF", dedupeKey: "clear:PF", variantIds: [DRAFT], amount: 10, currency: "EUR", reason: {}, state: "dismissed", stateAmount: 10 },
+      { id: "s4", shop: S, kind: "clear", productId: "PZ", dedupeKey: "clear:PZ", variantIds: [], amount: 10, currency: "EUR", reason: {}, state: "done", doneAt: until },
+    ];
+    await computeShop(S, { now: () => NOW });
+    expect(action("fix_page:PA")).toBeUndefined();
+    expect(action("fix_returns:PA")).toMatchObject({ id: "s2", state: "dismissed" });
+    expect(action("clear:PF")).toBeUndefined();
+    expect(action("clear:PZ")).toBeUndefined();
   });
 
   it("Free plan: actions refresh with the money cards (monthly)", async () => {

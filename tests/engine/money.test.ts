@@ -36,6 +36,21 @@ describe("salesAtRisk", () => {
     });
   });
 
+  it("review fix: dated incoming counts only when it arrives by today + 27 (the last day of the window)", () => {
+    // TODAY 2026-10-16 → window 2026-10-16 … 2026-11-12. demand 2 × 28 = 56; onHand 10.
+    const at = (arrival: string) =>
+      salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 30, incomingArrivals: [{ arrival, units: 20 }], price: 1 })], ctx);
+    // 2026-11-12: inside → stock 10 + 30 = 40 → 16 short.
+    expect(at("2026-11-12").amount).toBe(16);
+    // 2026-11-13: outside → the 20 dated units don't count; the 10 undated still do → 36 short.
+    expect(at("2026-11-13").amount).toBe(36);
+    expect(at("2026-11-13").basis.incomingLateUnits).toBe(20);
+    // Undated incoming keeps the Phase 1 assumption.
+    expect(salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 30, price: 1 })], ctx).amount).toBe(16);
+    // Never below 0: more dated units than incoming.
+    expect(salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 5, incomingArrivals: [{ arrival: "2027-01-01", units: 20 }], price: 1 })], ctx).amount).toBe(46);
+  });
+
   it("applies seasonal × trend × plan and clamps oversold stock at 0", () => {
     const card = salesAtRisk(
       [mv({ status: "out", rate: 1, seasonal: 2, trend: 0.5, plan: 1.5, onHand: -4, price: 10 })],

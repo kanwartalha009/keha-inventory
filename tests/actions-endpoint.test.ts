@@ -239,6 +239,22 @@ describe("getActionList (Home)", () => {
     expect(failing.rows.find((r) => r.id === "b1")!.button.kind).toBe("signups");
   });
 
+  it("review fix: dismissed rows don't fill the 500-row read; snoozed-due and doubled rows still show", async () => {
+    const now = new Date("2026-10-19T08:00:00Z");
+    for (let i = 0; i < 600; i++)
+      db.tables.action!.push({ id: `d${i}`, shop: SHOP, kind: "clear", productId: `P${i}`, variantIds: [], amount: 10_000 + i, currency: "EUR", reason: {}, state: "dismissed", snoozeUntil: null, stateAmount: 10_000, doneAt: null });
+    db.tables.action!.push(
+      { id: "dbl", shop: SHOP, kind: "push", productId: "PX", variantIds: [], amount: 40, currency: "EUR", reason: {}, state: "dismissed", snoozeUntil: null, stateAmount: 20, doneAt: null },
+      { id: "sdue", shop: SHOP, kind: "push", productId: "PY", variantIds: [], amount: 30, currency: "EUR", reason: {}, state: "snoozed", snoozeUntil: new Date("2026-10-18T00:00:00Z"), stateAmount: 30, doneAt: null },
+      { id: "snot", shop: SHOP, kind: "push", productId: "PZ", variantIds: [], amount: 30, currency: "EUR", reason: {}, state: "snoozed", snoozeUntil: new Date("2026-10-25T00:00:00Z"), stateAmount: 30, doneAt: null },
+    );
+    const list = (await getActionList(SHOP, "growth", now))!;
+    const all = list.rows.map((r) => r.id);
+    expect(all).toEqual(expect.arrayContaining(["c1", "a1", "dbl", "sdue"]));
+    expect(all).not.toContain("snot");
+    expect(all.some((id) => id.startsWith("d") && id !== "dbl")).toBe(false);
+  });
+
   it("no Shop row yet → null", async () => {
     db.tables.shop = [];
     expect(await getActionList(SHOP, "growth", new Date())).toBeNull();

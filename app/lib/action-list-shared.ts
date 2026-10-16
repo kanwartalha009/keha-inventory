@@ -42,6 +42,55 @@ export const BRIDGE_NAME_MAX = 120;
  * the top 500 by € are not what a merchant acts on this week.
  */
 export const ACTION_FETCH_LIMIT = 500;
+/**
+ * Home's read (review fix: dismissed rows used to fill the 500): (1) rows visible by state
+ * alone — open, or snoozed with the snooze date passed — largest € first, at most
+ * ACTION_FETCH_LIMIT; (2) snoozed / dismissed rows that came back because their € figure
+ * doubled. Prisma can't compare amount with 2 × stateAmount, so (2) reads only id / amount /
+ * stateAmount / state / snoozeUntil of the candidates (`DOUBLED_CANDIDATE_WHERE`), keeps the
+ * doubled ones (`doubledIds`, at most ACTION_FETCH_LIMIT) and loads those rows by id.
+ * `mergeVisibleActionRows` joins (1) and (2).
+ */
+/** Prisma `where` for query (1): visible by state alone at `now`. */
+export function dueActionWhere(now: Date) {
+  return { OR: [{ state: "open" }, { state: "snoozed", snoozeUntil: { lte: now } }] };
+}
+
+/** Prisma `where` for query (2): snoozed / dismissed rows with a recorded figure (may have doubled). */
+export const DOUBLED_CANDIDATE_WHERE = { state: { in: ["snoozed", "dismissed"] }, stateAmount: { gt: 0 } };
+
+/** Ids of candidate rows whose € figure doubled (visible now), largest € first, at most `limit`. */
+export function doubledIds(
+  rows: readonly Pick<ActionRowIn, "id" | "state" | "amount" | "stateAmount" | "snoozeUntil">[],
+  now: Date,
+  limit = ACTION_FETCH_LIMIT,
+): string[] {
+  return rows
+    .filter((r) => r.state !== "open" && Number.isFinite(r.amount) && isVisible(asVisible(r), now))
+    .sort((a, b) => b.amount - a.amount || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, limit)
+    .map((r) => r.id);
+}
+
+/** Joins the two reads: visible rows only, each once, largest € first, at most `limit`. */
+export function mergeVisibleActionRows<T extends Pick<ActionRowIn, "id" | "state" | "amount" | "stateAmount" | "snoozeUntil">>(
+  due: readonly T[],
+  doubled: readonly T[],
+  now: Date,
+  limit = ACTION_FETCH_LIMIT,
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of [...due, ...doubled]) {
+    if (seen.has(r.id) || !isVisible(asVisible(r), now)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out
+    .sort((a, b) => (Number.isFinite(b.amount) ? b.amount : -Infinity) - (Number.isFinite(a.amount) ? a.amount : -Infinity) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, limit);
+}
+
 /** Rows shown per tab before "Show more" (disclosure, nothing is dropped). */
 export const TAB_PAGE_SIZE = 25;
 /** Variant names listed on a row before "+N more". */

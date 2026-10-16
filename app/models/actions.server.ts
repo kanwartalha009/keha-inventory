@@ -14,7 +14,11 @@ import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import {
   ACTION_FETCH_LIMIT,
   CLEARANCE_LIST_LIMIT,
+  DOUBLED_CANDIDATE_WHERE,
   buildActionList,
+  doubledIds,
+  dueActionWhere,
+  mergeVisibleActionRows,
   needsPreorderCheck,
   stateChange,
   type ActionListView,
@@ -101,16 +105,26 @@ export async function getActionList(
 ): Promise<ActionListView | null> {
   const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { currency: true, timezone: true } });
   if (!row) return null;
-  const [actionRows, clearanceRows, pool] = await Promise.all([
+  // Only rows that can show (review fix): dismissed rows never fill the fetch limit.
+  const [dueRows, candidates, clearanceRows, pool] = await Promise.all([
     prisma.action.findMany({
-      where: { shop, state: { in: LIVE_STATES } },
+      where: { shop, ...dueActionWhere(now) },
       orderBy: [{ amount: "desc" }, { id: "asc" }],
       take: ACTION_FETCH_LIMIT,
+    }),
+    prisma.action.findMany({
+      where: { shop, ...DOUBLED_CANDIDATE_WHERE },
+      select: { id: true, state: true, amount: true, stateAmount: true, snoozeUntil: true },
     }),
     prisma.clearance.findMany({ where: { shop }, orderBy: { createdAt: "desc" }, take: CLEARANCE_LIST_LIMIT }),
     poolIds(shop),
   ]);
-  const actions = actionRows.map(toRowIn);
+  const backIds = doubledIds(
+    candidates.map((c) => ({ ...c, amount: decimalToNumber(c.amount) ?? NaN, stateAmount: decimalToNumber(c.stateAmount) })),
+    now,
+  );
+  const doubledRows = backIds.length ? await prisma.action.findMany({ where: { shop, id: { in: backIds } } }) : [];
+  const actions = mergeVisibleActionRows(dueRows.map(toRowIn), doubledRows.map(toRowIn), now);
   const productIds = [...new Set([...actions.map((a) => a.productId), ...clearanceRows.flatMap((c) => c.productIds)])];
   const variants: VariantInfo[] = productIds.length
     ? await prisma.variant.findMany({

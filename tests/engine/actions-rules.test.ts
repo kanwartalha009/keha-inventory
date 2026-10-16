@@ -60,6 +60,14 @@ describe("reorder", () => {
     expect(d.reason.facts).toMatchObject({ rate: 2, leadTimeDays: 14, horizonDays: 28 });
   });
 
+  it("review fix: dated incoming arriving after today + 27 doesn't reduce the € figure (boundary day)", () => {
+    // demand 56; onHand 20; incoming 30 of which 24 dated.
+    const amount = (arrival: string) =>
+      of(generateActions([p({}, [v({ status: "running_low", onHand: 20, incoming: 30, incomingArrivals: [{ arrival, units: 24 }], daysLeft: 10, orderBy: "2026-10-20" })])], CTX), "reorder")!.amount;
+    expect(amount("2026-11-12")).toBe(60); // (56 − 50) × 10
+    expect(amount("2026-11-13")).toBe(300); // (56 − 26) × 10
+  });
+
   it("order-by today or passed → 'Order now'", () => {
     const d = of(generateActions([p({}, [v({ status: "running_low", onHand: 20, daysLeft: 10, orderBy: TODAY })])], CTX), "reorder")!;
     expect(d.reason.key).toBe("reorder_now");

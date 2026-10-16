@@ -31,7 +31,7 @@
  */
 import { addDays, dayIndex, type DayKey } from "./dates-shared";
 import { demand, forecastRate } from "./order-shared";
-import { round2 } from "./money-shared";
+import { incomingWithin, round2 } from "./money-shared";
 import { ENGINE_DEFAULTS, type AbcRole, type EngineSettings, type VariantStatus } from "./types-shared";
 import type { ActionDraft, ActionKind, ReasonParams } from "../actions-shared";
 
@@ -80,6 +80,8 @@ export interface RuleVariant {
   arrival: DayKey | null;
   /** Units on open purchase orders with a date (for the facts). */
   incomingDated?: number;
+  /** The dated part of `incoming`, per arrival (sales at risk counts only what lands within 28 d). */
+  incomingArrivals?: readonly { arrival: DayKey; units: number }[];
   /** Net units sold and units returned over the returns window (channel view); null = no data. */
   soldNet90?: number | null;
   returned90?: number | null;
@@ -122,11 +124,16 @@ function fRate(v: RuleVariant): number | null {
   return finite(v.rate) ? forecastRate(v.rate, { seasonal: v.seasonal, trend: v.trend }) : null;
 }
 
-/** Same maths as the "sales at risk" card: max(0, demand(28) − (onHand + incoming)) × price. */
-export function salesAtRiskOf(v: RuleVariant): number | null {
+/**
+ * Same maths as the "sales at risk" card: max(0, demand(28) − (onHand + incoming arriving within
+ * 28 d)) × price. Dated incoming counts only when it lands by today + 27; undated incoming is
+ * assumed to (money-shared incomingWithin).
+ */
+export function salesAtRiskOf(v: RuleVariant, today: DayKey): number | null {
   if (!finite(v.rate) || !known(v.price)) return null;
   const d = demand(v.rate, { seasonal: v.seasonal, trend: v.trend, plan: 1 }, ACTION_RULES.horizonDays);
-  return Math.max(0, d - (Math.max(0, v.onHand) + Math.max(0, v.incoming))) * v.price;
+  const inc = incomingWithin(v.incoming, v.incomingArrivals, today, ACTION_RULES.horizonDays).units;
+  return Math.max(0, d - (Math.max(0, v.onHand) + inc)) * v.price;
 }
 
 /** Same maths as the "cash stuck" card; retail price when cost is unknown. */
@@ -171,7 +178,7 @@ const DAY = (d: DayKey | null) => d ?? null;
 
 function reorderRule(p: RuleProduct, ctx: RuleContext): ActionDraft | null {
   const hit = p.variants.filter((v) => v.status === "running_low" || (v.status === "out" && finite(v.rate) && v.rate > 0));
-  const valued = hit.map((v) => ({ v, risk: salesAtRiskOf(v) })).filter((x) => x.risk !== null);
+  const valued = hit.map((v) => ({ v, risk: salesAtRiskOf(v, ctx.today) })).filter((x) => x.risk !== null);
   if (!valued.length) return null;
   const amount = valued.reduce((a, x) => a + x.risk!, 0);
   const ids = hit.map((v) => v.id);
