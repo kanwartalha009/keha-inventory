@@ -56,7 +56,13 @@ export function forecastRate(rate: number, m: Pick<ForecastMultipliers, "seasona
   return rate * m.seasonal * m.trend;
 }
 
-/** demand(H) = rate × seasonal × trend × plan × H. */
+/**
+ * demand(H) = rate × seasonal × trend × plan × H (spec §7.4, as written).
+ * Known effect, reviewed 2026-10-17: the seasonal index already compares this year to last,
+ * so trend applies year-on-year growth a second time (a store growing 50%/yr with no
+ * seasonality is forecast ~48% high; clamps limit it to ×0.5–×2). Kanwar's decision
+ * (2026-10-17): keep the spec formula. Change only with his approval.
+ */
 export function demand(rate: number, m: ForecastMultipliers, horizonDays: number): number {
   return rate * m.seasonal * m.trend * m.plan * horizonDays;
 }

@@ -528,20 +528,5 @@ export function generateActions(products: readonly RuleProduct[], ctx: RuleConte
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Reason params ready for `fill()`: ISO day values become "12 Nov" in the admin language
- * (spec §12 "Order by 12 Nov"); numbers are formatted with the locale's separators.
- */
-export function formatReasonParams(params: ReasonParams, locale: string): Record<string, string> {
-  // Plain "en" → day-month order ("12 Nov"), as the copy rules write it.
-  const loc = locale === "en" ? "en-GB" : locale;
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(params)) {
-    if (typeof v === "string" && ISO_DAY.test(v)) {
-      out[k] = new Intl.DateTimeFormat(loc, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${v}T00:00:00Z`));
-    } else if (typeof v === "number") {
-      out[k] = new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }).format(v);
-    } else out[k] = String(v);
-  }
-  return out;
-}
+/** Moved to lib/action-facts-shared (one formatter for Home, the Monday email and Slack). */
+export { formatReasonParams } from "../action-facts-shared";
