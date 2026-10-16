@@ -28,31 +28,45 @@ export function locationIdFromPayload(payload: unknown): string | undefined {
 /** inventory_levels/update fires on every change; refresh one item at most once per window. */
 export const STOCK_DEBOUNCE_MS = 60_000;
 
+type Timer = (fn: () => void, ms: number) => unknown;
+
+const unrefTimer: Timer = (fn, ms) => {
+  const t = setTimeout(fn, ms);
+  (t as { unref?: () => void }).unref?.();
+  return t;
+};
+
 /**
- * In-memory "last refresh" map keyed by (shop, item). `shouldRun` records the run when it
- * returns true. Entries older than the window are pruned when the map grows large.
+ * TRAILING debounce keyed by (shop, item) (review M): the first event in a window schedules
+ * the refresh at the window's END; later events in the window are coalesced into it (the
+ * newest job replaces the older one). The key is released just before the job runs, so an
+ * event that arrives during or after the refresh schedules a new one — the last change is
+ * always applied. Timers are unref'd so they never keep the process alive.
  */
-export class Debouncer {
-  private last = new Map<string, number>();
+export class TrailingDebouncer {
+  private pending = new Map<string, { job: () => Promise<void> }>();
   constructor(
     private readonly windowMs: number = STOCK_DEBOUNCE_MS,
-    private readonly maxEntries = 10_000,
+    private readonly timer: Timer = unrefTimer,
   ) {}
 
-  shouldRun(key: string, nowMs: number): boolean {
-    const prev = this.last.get(key);
-    if (prev !== undefined && nowMs - prev < this.windowMs) return false;
-    this.last.set(key, nowMs);
-    if (this.last.size > this.maxEntries) this.prune(nowMs);
-    return true;
-  }
-
-  prune(nowMs: number): void {
-    for (const [k, t] of this.last) if (nowMs - t >= this.windowMs) this.last.delete(k);
+  schedule(key: string, job: () => Promise<void>): "scheduled" | "coalesced" {
+    const existing = this.pending.get(key);
+    if (existing) {
+      existing.job = job;
+      return "coalesced";
+    }
+    const entry = { job };
+    this.pending.set(key, entry);
+    this.timer(() => {
+      this.pending.delete(key);
+      void entry.job().catch(() => {});
+    }, this.windowMs);
+    return "scheduled";
   }
 
   get size(): number {
-    return this.last.size;
+    return this.pending.size;
   }
 }
 

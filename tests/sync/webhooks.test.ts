@@ -4,8 +4,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  Debouncer,
   STOCK_DEBOUNCE_MS,
+  TrailingDebouncer,
   debounceKey,
   inventoryItemFromPayload,
   locationIdFromPayload,
@@ -58,42 +58,88 @@ describe("payload readers", () => {
   });
 });
 
-describe("Debouncer", () => {
-  it("runs once per key per 60 s window", () => {
-    const d = new Debouncer();
+describe("TrailingDebouncer (review M)", () => {
+  it("first event schedules at the window end; later events coalesce; the LAST job runs", async () => {
+    const timers: { fn: () => void; ms: number }[] = [];
+    const d = new TrailingDebouncer(STOCK_DEBOUNCE_MS, (fn, ms) => timers.push({ fn, ms }));
+    const ran: string[] = [];
     const k = debounceKey(S, "gid://shopify/InventoryItem/1");
-    expect(d.shouldRun(k, 0)).toBe(true);
-    expect(d.shouldRun(k, STOCK_DEBOUNCE_MS - 1)).toBe(false);
-    expect(d.shouldRun(debounceKey(S, "gid://shopify/InventoryItem/2"), 10)).toBe(true);
-    expect(d.shouldRun(debounceKey("b.myshopify.com", "gid://shopify/InventoryItem/1"), 10)).toBe(true);
-    expect(d.shouldRun(k, STOCK_DEBOUNCE_MS)).toBe(true);
+    expect(d.schedule(k, async () => void ran.push("first"))).toBe("scheduled");
+    expect(d.schedule(k, async () => void ran.push("second"))).toBe("coalesced");
+    expect(d.schedule(k, async () => void ran.push("third"))).toBe("coalesced");
+    expect(timers).toHaveLength(1);
+    expect(timers[0].ms).toBe(STOCK_DEBOUNCE_MS);
+    expect(ran).toEqual([]); // nothing runs before the window ends
+    timers[0].fn();
+    await Promise.resolve();
+    expect(ran).toEqual(["third"]);
+    // An event after the refresh opens a new window, so a later change is never lost.
+    expect(d.schedule(k, async () => void ran.push("fourth"))).toBe("scheduled");
+    expect(timers).toHaveLength(2);
   });
 
-  it("prunes stale entries when it grows past its cap", () => {
-    const d = new Debouncer(1000, 3);
-    for (let i = 0; i < 3; i++) d.shouldRun(`k${i}`, 0);
-    d.shouldRun("k3", 5000);
-    expect(d.size).toBe(1);
+  it("keys are independent per shop and item; a failing job never throws out of the timer", async () => {
+    const timers: (() => void)[] = [];
+    const d = new TrailingDebouncer(1000, (fn) => timers.push(fn));
+    d.schedule("a|1", async () => {
+      throw new Error("boom");
+    });
+    d.schedule("a|2", async () => {});
+    d.schedule("b|1", async () => {});
+    expect(d.size).toBe(3);
+    expect(() => timers.forEach((t) => t())).not.toThrow();
+    expect(d.size).toBe(0);
+  });
+
+  it("uses unref'd timers by default (never keeps the process alive)", () => {
+    vi.useFakeTimers();
+    try {
+      const ran = vi.fn(async () => {});
+      const d = new TrailingDebouncer(60_000);
+      d.schedule("k", ran);
+      vi.advanceTimersByTime(59_999);
+      expect(ran).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(ran).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
 describe("webhook routes", () => {
-  it("inventory_levels/update refreshes one item, then debounces repeats", async () => {
-    m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin, payload: { inventory_item_id: 4242, location_id: 1 } });
-    expect((await inventoryAction(req())).status).toBe(200);
-    expect((await inventoryAction(req())).status).toBe(200);
-    expect(m.refreshStock).toHaveBeenCalledTimes(1);
-    expect(m.refreshStock).toHaveBeenCalledWith(admin, S, "gid://shopify/InventoryItem/4242");
-    expect(vi.mocked(console.log).mock.calls.map((c) => String(c[0])).some((l) => /debounced, acked in \d+ms/.test(l))).toBe(true);
+  it("inventory_levels/update acks at once and refreshes once, after the window, with the latest state", async () => {
+    vi.useFakeTimers();
+    try {
+      m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin, payload: { inventory_item_id: 4242, location_id: 1 } });
+      expect((await inventoryAction(req())).status).toBe(200);
+      expect((await inventoryAction(req())).status).toBe(200);
+      expect(m.refreshStock).not.toHaveBeenCalled(); // trailing: nothing yet
+      await vi.advanceTimersByTimeAsync(STOCK_DEBOUNCE_MS);
+      expect(m.refreshStock).toHaveBeenCalledTimes(1);
+      expect(m.refreshStock).toHaveBeenCalledWith(admin, S, "gid://shopify/InventoryItem/4242");
+      const logs = vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
+      expect(logs.some((l) => /scheduled, acked in \d+ms/.test(l))).toBe(true);
+      expect(logs.some((l) => /coalesced, acked in \d+ms/.test(l))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("inventory_levels/update still acks 200 when the refresh fails or there is no session", async () => {
-    m.refreshStock.mockRejectedValueOnce(new Error("boom"));
-    m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin, payload: { inventory_item_id: 99 } });
-    expect((await inventoryAction(req())).status).toBe(200);
-    m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin: undefined, payload: { inventory_item_id: 98 } });
-    expect((await inventoryAction(req())).status).toBe(200);
-    expect(m.refreshStock).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      m.refreshStock.mockRejectedValueOnce(new Error("boom"));
+      m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin, payload: { inventory_item_id: 99 } });
+      expect((await inventoryAction(req())).status).toBe(200);
+      m.webhook.mockResolvedValue({ shop: S, topic: "INVENTORY_LEVELS_UPDATE", admin: undefined, payload: { inventory_item_id: 98 } });
+      expect((await inventoryAction(req())).status).toBe(200);
+      await vi.advanceTimersByTimeAsync(STOCK_DEBOUNCE_MS);
+      expect(m.refreshStock).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("products/update re-reads the product", async () => {

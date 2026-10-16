@@ -6,8 +6,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = Record<string, unknown> & { id?: string; shop?: string };
-const { tables, calls, fakeDb, sendEmail } = vi.hoisted(() => {
+const { tables, calls, fakeDb, sendEmail, failing } = vi.hoisted(() => {
 const tables: Record<string, Row[]> = {};
+const failing = new Set<string>();
 const calls: { table: string; op: string; where: unknown }[] = [];
 
 // Tiny where-matcher: equality, { in }, { not: null }, { lt }, { contains }, OR.
@@ -35,6 +36,7 @@ function model(table: string) {
     count: async ({ where }: { where: Record<string, unknown> }) => rows().filter((r) => matches(r, where)).length,
     deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
       calls.push({ table, op: "deleteMany", where });
+      if (failing.has(table)) throw new Error(`${table} delete failed`);
       const keep = rows().filter((r) => !matches(r, where));
       const count = rows().length - keep.length;
       tables[table] = keep;
@@ -55,7 +57,7 @@ function model(table: string) {
 
   const fakeDb = new Proxy({}, { get: (_t, name: string) => model(name) });
   const sendEmail = vi.fn(async (...args: unknown[]) => ({ ok: args.length > 0 }));
-  return { tables, calls, fakeDb, sendEmail };
+  return { tables, calls, fakeDb, sendEmail, failing };
 });
 
 vi.mock("../app/db.server", () => ({ default: fakeDb }));
@@ -81,7 +83,7 @@ import {
 } from "../app/services/gdpr.server";
 import { emailForms } from "../app/lib/gdpr-shared";
 import { Prisma } from "@prisma/client";
-import { PURGE_KEEP, delegateName, purgePlan } from "../app/services/gdpr.server";
+import { PURGE_KEEP, PurgeIncompleteError, delegateName, purgePlan } from "../app/services/gdpr.server";
 
 const S = "acme.myshopify.com";
 const OLD = new Date(Date.now() - 49 * 60 * 60 * 1000);
@@ -159,6 +161,31 @@ describe("shop purge covers every shop table (invariant I-3)", () => {
     expect(tables.shop.map((r) => r.domain)).toEqual(["other.myshopify.com"]);
     expect(tables.salesDaily.map((r) => r.shop)).toEqual(["other.myshopify.com"]);
     expect(purgePlan().length).toBe(expected.length + 1); // + Shop
+  });
+});
+
+describe("purge failures are retried, never stamped (review M)", () => {
+  it("a failed table delete throws, keeps the sessions, and purgeDueShops does not stamp purgedAt", async () => {
+    tables.uninstalledShop = [{ shop: S, uninstalledAt: OLD, purgedAt: null }];
+    tables.session = []; // uninstalled: no session
+    tables.salesDaily = [{ shop: S }];
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    failing.add("salesDaily");
+    try {
+      await expect(purgeShopData(S)).rejects.toBeInstanceOf(PurgeIncompleteError);
+      expect(calls.some((c) => c.table === "session" && c.op === "deleteMany")).toBe(false);
+      const res = await purgeDueShops();
+      expect(res).toEqual([]);
+      expect(tables.uninstalledShop[0].purgedAt).toBeNull();
+    } finally {
+      failing.delete("salesDaily");
+      spy.mockRestore();
+    }
+    // Next tick, the table works again: purged and stamped.
+    const res = await purgeDueShops();
+    expect(res.map((r) => r.shop)).toEqual([S]);
+    expect(tables.uninstalledShop[0].purgedAt).toBeInstanceOf(Date);
+    expect(tables.salesDaily).toEqual([]);
   });
 });
 

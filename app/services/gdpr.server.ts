@@ -139,8 +139,26 @@ export function purgePlan(): { model: string; key: "shop" | "domain" }[] {
   return plan;
 }
 
+/** A shop purge left rows behind (some table delete failed): retried, never stamped done. */
+export class PurgeIncompleteError extends Error {
+  readonly counts: Record<string, number>;
+  constructor(shop: string, counts: Record<string, number>) {
+    const failed = Object.entries(counts)
+      .filter(([, n]) => n < 0)
+      .map(([t]) => t);
+    super(`purge of ${shop} incomplete: ${failed.join(", ")} failed`);
+    this.name = "PurgeIncompleteError";
+    this.counts = counts;
+  }
+}
+
 type DeleteManyDelegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> };
 
+/**
+ * Hard-deletes every shop-scoped row. Throws PurgeIncompleteError when any table delete
+ * failed, so callers never record the purge as done (purgeDueShops retries next tick,
+ * shop/redact answers 500 and Shopify retries).
+ */
 export async function purgeShopData(shop: string): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const del = async (label: string, fn: () => Promise<{ count: number }>) => {
@@ -170,8 +188,11 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
       },
     }),
   );
-  // Sessions last: if anything above failed, the shop can still be reached for a retry.
+  // Sessions last, and only when everything above succeeded: on a failure the shop can
+  // still be reached, and the purge is retried (review M).
+  if (Object.values(counts).some((n) => n < 0)) throw new PurgeIncompleteError(shop, counts);
   await del(delegateName(session.model), () => client[delegateName(session.model)].deleteMany({ where: { shop } }));
+  if (counts[delegateName(session.model)] < 0) throw new PurgeIncompleteError(shop, counts);
   return counts;
 }
 
@@ -196,7 +217,14 @@ export async function purgeDueShops(now = new Date()): Promise<{ shop: string; c
       console.log(`[gdpr] purge cancelled for ${row.shop} — reinstalled`);
       continue;
     }
-    const counts = await purgeShopData(row.shop);
+    let counts: Record<string, number>;
+    try {
+      counts = await purgeShopData(row.shop);
+    } catch (e) {
+      // Not stamped: the next tick retries this shop.
+      console.error(`[gdpr] purge of ${row.shop} incomplete, retrying next tick`, e);
+      continue;
+    }
     await prisma.uninstalledShop.update({ where: { shop: row.shop }, data: { purgedAt: new Date() } });
     results.push({ shop: row.shop, counts });
   }

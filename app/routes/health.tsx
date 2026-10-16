@@ -9,28 +9,33 @@
  *   - config:    booleans for settings the privacy policy relies on (2026-09-28):
  *                secrets encrypted at rest, shopper email sending, legal contact
  *   - sync:      max lastNightlyAt and mean backfill % over installed shops, and the
- *                most recent dataset error (spec §17, task 1.2b)
+ *                most recent dataset error as a short CODE only — never raw error text,
+ *                which can carry store data (spec §17, task 1.2b, review M)
  *   - shopifyqlBudget: cost / remaining of the last ShopifyQL response (this process)
  *   - compute:   last VariantMetric.computedAt and how many shops got money cards
  *                (a MoneyAtStake row) in the last 36 h
  *
- * No auth by design (uptime monitors need it); exposes only booleans, counts
- * and timestamps — no shop data, no secrets.
+ * No auth by design (uptime monitors need it); exposes only booleans, counts,
+ * short codes and timestamps — no shop data, no secrets. The sync / compute
+ * aggregates scan every shop, so they are cached for 60 s.
  */
 import prisma from "../db.server";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
 import { shopifyqlBudget } from "../services/sync/shopifyql.server";
 import { backfillPercent, isDegraded, latestError, readBackfillState } from "../lib/sync/backfill-shared";
+import { knownCode, type SyncErrorCode } from "../lib/sync/errors-shared";
 
 const outbox = prisma.novaOutbox;
 
 const COMPUTED_WITHIN_MS = 36 * 60 * 60 * 1000;
+export const AGGREGATE_CACHE_MS = 60 * 1000;
 
 type SyncHealth = {
   lastNightlyAt: string | null;
   backfillPct: number | null;
-  lastError: string | null;
+  /** Short code of the most recent dataset error (errors-shared), never the message. */
+  lastErrorCode: SyncErrorCode | null;
   lastErrorAt: string | null;
   /** Installed shops with a dataset that skipped a month after repeated failures. */
   degradedShops: number | null;
@@ -45,7 +50,7 @@ async function syncHealth(): Promise<SyncHealth> {
     });
     let lastNightly: Date | null = null;
     let pctSum = 0;
-    let err: { message: string; at: string | null } | null = null;
+    let err: { message: string; code: string | null; at: string | null } | null = null;
     let degraded = 0;
     for (const s of shops) {
       if (s.lastNightlyAt && (!lastNightly || s.lastNightlyAt > lastNightly)) lastNightly = s.lastNightlyAt;
@@ -58,12 +63,13 @@ async function syncHealth(): Promise<SyncHealth> {
     return {
       lastNightlyAt: lastNightly ? lastNightly.toISOString() : null,
       backfillPct: shops.length ? Math.round(pctSum / shops.length) : null,
-      lastError: err?.message ?? null,
+      // Errors stored before codes existed have no code: "unknown", never the text.
+      lastErrorCode: err ? (knownCode(err.code) ?? "unknown") : null,
       lastErrorAt: err?.at ?? null,
       degradedShops: degraded,
     };
   } catch {
-    return { lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null, degradedShops: null };
+    return { lastNightlyAt: null, backfillPct: null, lastErrorCode: null, lastErrorAt: null, degradedShops: null };
   }
 }
 
@@ -83,6 +89,22 @@ async function computeHealth(now: Date): Promise<{ lastAt: string | null; shopsC
   } catch {
     return { lastAt: null, shopsComputed: null };
   }
+}
+
+type Aggregate = { sync: SyncHealth; compute: { lastAt: string | null; shopsComputed: number | null } };
+let cache: { at: number; value: Aggregate } | null = null;
+
+/** Sync + compute aggregates, cached for AGGREGATE_CACHE_MS. */
+async function aggregate(nowMs: number): Promise<Aggregate> {
+  if (cache && nowMs - cache.at < AGGREGATE_CACHE_MS) return cache.value;
+  const [sync, compute] = await Promise.all([syncHealth(), computeHealth(new Date(nowMs))]);
+  cache = { at: nowMs, value: { sync, compute } };
+  return cache.value;
+}
+
+/** Test helper: drops the cached aggregate. */
+export function resetHealthCache(): void {
+  cache = null;
 }
 
 export const loader = async () => {
@@ -107,7 +129,7 @@ export const loader = async () => {
   const schedulerStale =
     heartbeat.started && lastTick !== null && Date.now() - lastTick > 10 * 60 * 1000;
   const ok = db && !schedulerStale;
-  const [sync, compute] = await Promise.all([syncHealth(), computeHealth(new Date())]);
+  const { sync, compute } = await aggregate(Date.now());
   const budget = shopifyqlBudget();
 
   return Response.json(

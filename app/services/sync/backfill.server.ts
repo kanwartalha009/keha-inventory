@@ -77,7 +77,20 @@ export async function runBackfill(shop: string, deps: DataJobDeps): Promise<Back
     tz = safeTimeZone(info.timezone);
   } catch (e) {
     console.error(`[sync/backfill] ${shop}: shop read failed (${syncErrorCode(e)})`, e);
-    return "error";
+    // Visible in /health as a code (e.g. session_missing), when the shop has a row already.
+    try {
+      const existing = await prisma.shop.findUnique({ where: { domain: shop }, select: { backfillState: true } });
+      if (existing) {
+        const failed = failStep(readBackfillState(existing.backfillState), "products", errorMessage(e), nowIso(), {
+          countAttempt: false,
+          code: syncErrorCode(e),
+        });
+        await saveState(shop, failed.state);
+      }
+    } catch {
+      // the DB itself is down: nothing more to record
+    }
+    return isThrottle(e) ? "throttled" : "error";
   }
 
   const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { backfillState: true, uninstalledAt: true } });

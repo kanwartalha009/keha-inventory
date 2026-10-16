@@ -17,7 +17,7 @@ vi.mock("../app/services/scheduler.server", () => ({
 }));
 vi.mock("../app/services/app-pricing.server", () => ({ pricingStatus: () => ({ configured: false }) }));
 
-import { loader } from "../app/routes/health";
+import { loader, resetHealthCache } from "../app/routes/health";
 import { createShopifyqlClient, resetShopifyqlBudget } from "../app/services/sync/shopifyql.server";
 import * as dbModule from "../app/db.server";
 
@@ -31,6 +31,7 @@ async function health() {
 beforeEach(() => {
   db.reset();
   resetShopifyqlBudget();
+  resetHealthCache();
 });
 
 describe("/health", () => {
@@ -40,7 +41,7 @@ describe("/health", () => {
     expect(body).toMatchObject({ status: "ok", db: "ok", outbox: { pending: 0, dead: 0 } });
     expect(body.pricing).toEqual({ configured: false });
     expect(body.config).toBeDefined();
-    expect(body.sync).toEqual({ lastNightlyAt: null, backfillPct: null, lastError: null, lastErrorAt: null, degradedShops: 0 });
+    expect(body.sync).toEqual({ lastNightlyAt: null, backfillPct: null, lastErrorCode: null, lastErrorAt: null, degradedShops: 0 });
     expect(body.shopifyqlBudget).toEqual({ lastCost: null, lastRemaining: null, lastAt: null });
     expect(body.compute).toEqual({ lastAt: null, shopsComputed: 0 });
   });
@@ -67,7 +68,15 @@ describe("/health", () => {
         backfillState: {
           datasets: {
             products: { done: 1, total: 1 },
-            stock: { done: 0, total: 13, lastError: "ShopifyQL still throttled after 5 attempts", lastErrorAt: "2026-10-16T09:00:00Z", degraded: true, skippedMonths: ["2026-10-01"] },
+            stock: {
+              done: 0,
+              total: 13,
+              lastError: "AdminQueryError: Access denied for acme-secret-store field x",
+              lastErrorCode: "admin_error",
+              lastErrorAt: "2026-10-16T09:00:00Z",
+              degraded: true,
+              skippedMonths: ["2026-10-01"],
+            },
           },
         },
       },
@@ -82,10 +91,37 @@ describe("/health", () => {
     expect(body.sync).toEqual({
       lastNightlyAt: "2026-10-15T03:10:00.000Z",
       backfillPct: 63, // a: 100, b: (100 + 0 + 0 + 0) / 4 = 25 → (100 + 25) / 2 = 62.5 → 63
-      lastError: "ShopifyQL still throttled after 5 attempts",
+      lastErrorCode: "admin_error",
       lastErrorAt: "2026-10-16T09:00:00Z",
       degradedShops: 1,
     });
+  });
+
+  it("review M: never returns raw error text; a code-less old error is 'unknown'", async () => {
+    db.tables.shop = [
+      {
+        domain: "a.myshopify.com",
+        uninstalledAt: null,
+        lastNightlyAt: null,
+        backfillState: { datasets: { sales: { done: 1, total: 13, lastError: "secret text from acme.myshopify.com", lastErrorAt: "2026-10-16T09:00:00Z" } } },
+      },
+    ];
+    const res = await loader();
+    const text = await res.text();
+    expect(text).not.toContain("secret text");
+    expect(text).not.toContain("acme");
+    expect(JSON.parse(text).sync).toMatchObject({ lastErrorCode: "unknown", lastErrorAt: "2026-10-16T09:00:00Z" });
+  });
+
+  it("caches the sync / compute aggregate for 60 s", async () => {
+    await health();
+    const scans = () => db.calls.filter((c) => c.table === "shop" && c.op === "findMany").length;
+    expect(scans()).toBe(1);
+    await health();
+    expect(scans()).toBe(1);
+    resetHealthCache();
+    await health();
+    expect(scans()).toBe(2);
   });
 
   it("reports the last ShopifyQL budget seen", async () => {
