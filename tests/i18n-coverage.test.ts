@@ -23,6 +23,7 @@ const SAME_WORD: Record<string, string[]> = {
   Pro: ["es", "fr", "de", "it", "pt", "nl", "pl"],
   Slack: ["es", "fr", "de", "it", "pt", "nl", "pl"],
   "Shopify Flow": ["es", "fr", "de", "it", "pt", "nl", "pl"],
+  "Black Friday": ["es", "fr", "de", "it", "pt", "nl", "pl"],
   Home: ["it", "nl"],
   "Top 10": ["fr", "de", "nl"],
   Planner: ["nl"],
