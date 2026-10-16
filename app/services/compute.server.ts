@@ -3,7 +3,8 @@
  * VariantMetric (scope "online") and MoneyAtStake (today, store-local).
  *
  * Reads only the database (no Shopify calls). Phase 1 pooling rule: see compute-shared.
- * Bundles and untracked variants are skipped. VariantMetric is refreshed on every run;
+ * Only ACTIVE products' tracked, non-bundle variants are computed; DRAFT / ARCHIVED products
+ * get no VariantMetric (stale rows are removed) and never reach the money cards. VariantMetric is refreshed on every run;
  * money on the Free plan only when the last MoneyAtStake row is from an earlier calendar
  * month (MONEY_REFRESH), daily otherwise. Seasonal / trend / plan multipliers are 1 this
  * phase (§7.3 lands in task 2.1).
@@ -24,6 +25,7 @@ import {
   SCOPE_ONLINE,
   buildSeries,
   engineSettingsFrom,
+  poolSalesKeys,
   metricRow,
   moneyDue,
   poolLocationIds,
@@ -93,20 +95,29 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         productCreatedAt: true,
         caseQty: true,
         supplierId: true,
+        status: true,
       },
     }),
     prisma.supplier.findMany({ where: { shop }, select: { id: true, leadTimeDays: true, minOrder: true } }),
   ]);
   const pool = poolLocationIds(locations);
-  const considered = variants.filter((v) => v.tracked && !v.isBundle);
+  const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
+  const poolKeys = poolSalesKeys(pool);
   const supplierById = new Map(suppliers.map((s) => [s.id, s]));
 
   // ---- facts (grouped in SQL) ----
-  const [salesG, stockG, outG, lastSaleG, stockNow] = await Promise.all([
+  const [channelG, poolSalesG, stockG, outG, lastSaleG, dataSinceG, stockNow] = await Promise.all([
+    // Channel view: revenue (ABC) and unit price only.
     prisma.salesDaily.groupBy({
       by: ["variantId", "day"],
       where: { shop, locationKey: ALL, day: range },
       _sum: { sold: true, gross: true },
+    }),
+    // Location view, online + pool locations: units sold for the online pool.
+    prisma.salesDaily.groupBy({
+      by: ["variantId", "day"],
+      where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: range },
+      _sum: { sold: true },
     }),
     pool.length
       ? prisma.stockDaily.groupBy({
@@ -125,9 +136,17 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       : Promise.resolve([]),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, locationKey: ALL, sold: { gt: 0 }, day: { lt: dayDate(from) } },
+      where: { shop, channel: ALL, locationKey: { in: poolKeys }, sold: { gt: 0 }, day: { lt: dayDate(from) } },
       _max: { day: true },
     }),
+    // Oldest pool stock day per variant: start of the no-sale period for never-sold variants.
+    pool.length
+      ? prisma.stockDaily.groupBy({
+          by: ["variantId"],
+          where: { shop, locationId: { in: pool } },
+          _min: { day: true },
+        })
+      : Promise.resolve([]),
     pool.length
       ? prisma.stockNow.findMany({
           where: { shop, locationId: { in: pool } },
@@ -136,11 +155,17 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       : Promise.resolve([]),
   ]);
 
-  const sales: SalesDay[] = salesG.map((g) => ({
+  const channelSales: SalesDay[] = channelG.map((g) => ({
     variantId: g.variantId,
     day: dayKey(g.day),
     sold: num(g._sum.sold),
     gross: num(g._sum.gross),
+  }));
+  const poolSales: SalesDay[] = poolSalesG.map((g) => ({
+    variantId: g.variantId,
+    day: dayKey(g.day),
+    sold: num(g._sum.sold),
+    gross: 0,
   }));
   const outCount = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
   const stock: PooledStockDay[] = stockG.map((g) => ({
@@ -150,8 +175,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     reported: g._count._all,
     outReported: outCount.get(`${g.variantId}|${dayKey(g.day)}`) ?? 0,
   }));
-  const series = buildSeries(sales, stock);
-  const revenue = revenueOf(sales);
+  const series = buildSeries(poolSales, stock, channelSales);
+  const revenue = revenueOf(channelSales);
+  const dataSince = new Map(dataSinceG.map((g) => [g.variantId, g._min.day ? dayKey(g._min.day) : null]));
   const lastSale = new Map(lastSaleG.map((g) => [g.variantId, g._max.day ? dayKey(g._max.day) : null]));
   const onHand = new Map<string, { onHand: number; incoming: number }>();
   for (const s of stockNow) {
@@ -180,6 +206,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       role: roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
       lastSaleDay: lastSale.get(v.id) ?? null,
+      dataSinceDay: dataSince.get(v.id) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
       caseQty: v.caseQty,
       minOrder: supplier?.minOrder ?? null,

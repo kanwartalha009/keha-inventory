@@ -57,6 +57,12 @@ export interface VariantInput {
   productCreatedAt?: string | null;
   /** Last sale from a longer history than `series`, if the caller has it. */
   lastSaleDay?: DayKey | null;
+  /**
+   * Oldest day the caller has data for this variant (may be older than `series`). Used as
+   * the start of the no-sale period when the variant never sold, so "no sale for ≥
+   * deadDays" works when deadDays exceeds the series window.
+   */
+  dataSinceDay?: DayKey | null;
   supplierLeadTimeDays?: number | null;
   cycleDays?: number | null;
   caseQty?: number | null;
@@ -120,6 +126,8 @@ export interface VariantInputs {
   caseQty: number | null;
   minOrder: number | null;
   lastSaleDay: DayKey | null;
+  /** Start of the no-sale period when the variant never sold (oldest day with data). */
+  dataSinceDay: DayKey | null;
   noSaleDays: number | null;
   productAgeDays: number | null;
   price: number | null;
@@ -163,6 +171,12 @@ function seriesCost(index: SeriesIndex): number | null {
     if (c !== null && (!latest || i > latest.i)) latest = { i, c };
   }
   return latest ? latest.c : null;
+}
+
+function earlierDay(a: DayKey | null, b: DayKey | null): DayKey | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a < b ? a : b;
 }
 
 function laterDay(a: DayKey | null, b: DayKey | null): DayKey | null {
@@ -215,7 +229,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   if (lastSale !== null) {
     noSaleDays = Math.max(0, daysBetween(lastSale, today) - 1);
   } else {
-    const first = earliestDataDay(index);
+    const first = earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null);
     noSaleDays = first === null ? null : daysBetween(first, today);
   }
   const productAgeDays = input.productCreatedAt
@@ -299,6 +313,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       caseQty: input.caseQty ?? null,
       minOrder: input.minOrder ?? null,
       lastSaleDay: lastSale,
+      dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,
       noSaleDays,
       productAgeDays,
       price,

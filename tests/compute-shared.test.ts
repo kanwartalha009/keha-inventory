@@ -11,6 +11,7 @@ import {
   metricRow,
   moneyDue,
   poolLocationIds,
+  poolSalesKeys,
   pooledOutOfStock,
   productHandleFromPath,
   productTraffic,
@@ -41,9 +42,14 @@ describe("pool", () => {
 });
 
 describe("buildSeries", () => {
-  const sales = [
+  const poolSales = [
+    { variantId: "a", day: "2026-10-02", sold: 2, gross: 0 }, // online
+    { variantId: "a", day: "2026-10-02", sold: 1, gross: 0 }, // a pool location's POS
+    { variantId: "a", day: "2026-10-04", sold: 1, gross: 0 }, // no pool stock row that day
+  ];
+  const channelSales = [
     { variantId: "a", day: "2026-10-02", sold: 2, gross: 50 },
-    { variantId: "a", day: "2026-10-02", sold: 1, gross: 25 }, // second channel, same day
+    { variantId: "a", day: "2026-10-02", sold: 1, gross: 25 },
     { variantId: "a", day: "2026-10-04", sold: 1, gross: 30 },
   ];
   const stock = [
@@ -51,25 +57,29 @@ describe("buildSeries", () => {
     { variantId: "a", day: "2026-10-02", endUnits: 7, reported: 1, outReported: 0 },
     { variantId: "a", day: "2026-10-05", endUnits: 0, reported: 1, outReported: 1 },
   ];
-  const s = buildSeries(sales, stock).get("a")!;
+  const s = buildSeries(poolSales, stock, channelSales).get("a")!;
 
-  it("joins sales and stock by day, sorted, missing days absent", () => {
-    expect(s.map((r) => r.day)).toEqual(["2026-10-01", "2026-10-02", "2026-10-04", "2026-10-05"]);
-    expect(s.find((r) => r.day === "2026-10-03")).toBeUndefined();
+  it("a day exists only with a pool stock row; sales on other days are missing", () => {
+    expect(s.map((r) => r.day)).toEqual(["2026-10-01", "2026-10-02", "2026-10-05"]);
+    expect(s.find((r) => r.day === "2026-10-04")).toBeUndefined();
   });
 
-  it("sums channels, prices as gross ÷ units, stock-only days sell 0", () => {
+  it("sums pool sales, prices from the channel view, stock-only days sell 0", () => {
     expect(s[1]).toEqual({ day: "2026-10-02", sold: 3, endStock: 7, outOfStock: false, price: 25 });
     expect(s[0]).toEqual({ day: "2026-10-01", sold: 0, endStock: 10, outOfStock: false, price: null });
-    expect(s[3].outOfStock).toBe(true);
+    expect(s[2].outOfStock).toBe(true);
   });
 
-  it("a sales day with no stock row counts as in stock", () => {
-    expect(s[2]).toMatchObject({ day: "2026-10-04", sold: 1, outOfStock: false, price: 30 });
+  it("a variant with sales but no pool stock rows has no series at all", () => {
+    expect(buildSeries([{ variantId: "z", day: "2026-10-02", sold: 1, gross: 0 }], []).get("z")).toBeUndefined();
   });
 
-  it("revenue per variant", () => {
-    expect(revenueOf(sales).get("a")).toBe(105);
+  it("pool sales keys are online + the pool location ids", () => {
+    expect(poolSalesKeys(["L1", "L3"])).toEqual(["online", "L1", "L3"]);
+  });
+
+  it("revenue per variant (channel view)", () => {
+    expect(revenueOf(channelSales).get("a")).toBe(105);
   });
 });
 

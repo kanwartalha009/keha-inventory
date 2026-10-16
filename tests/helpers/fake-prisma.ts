@@ -214,6 +214,7 @@ export function createFakePrisma(keys: Record<string, string[]> = {}, updatedAtT
         where?: Row;
         _sum?: Record<string, boolean>;
         _max?: Record<string, boolean>;
+        _min?: Record<string, boolean>;
         _count?: Record<string, boolean> | boolean;
       }) => {
         log("groupBy", args);
@@ -238,6 +239,15 @@ export function createFakePrisma(keys: Record<string, string[]> = {}, updatedAtT
               m[f] = best;
             }
             out._max = m;
+          }
+          if (args._min) {
+            const m: Row = {};
+            for (const f of Object.keys(args._min)) {
+              let best: unknown = null;
+              for (const r of list) if (r[f] != null && (best == null || (norm(r[f]) as number) < (norm(best) as number))) best = r[f];
+              m[f] = best;
+            }
+            out._min = m;
           }
           if (args._count) {
             if (args._count === true) out._count = list.length;

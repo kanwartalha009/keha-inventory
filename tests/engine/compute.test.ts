@@ -125,6 +125,26 @@ describe("computeVariant", () => {
     expect(known.inputs.lastSaleDay).toBe(ago(200));
   });
 
+  it("never sold: dataSinceDay starts the no-sale period beyond the series (deadDays > 90)", () => {
+    const noSales = buildSeries({ days: 90, sold: 0 });
+    const settings = { deadDays: 180 };
+    // Only the 90-day series: 90 no-sale days < 180 → not dead.
+    const short = computeVariant(variantInput({ series: noSales, onHand: 30, settings }))!;
+    expect(short.inputs.noSaleDays).toBe(90);
+    expect(short.status).not.toBe("dead");
+    // Stock data since 200 days ago and no sale ever → 200 no-sale days → dead.
+    const long = computeVariant(variantInput({ series: noSales, onHand: 30, settings, dataSinceDay: ago(200) }))!;
+    expect(long.inputs.noSaleDays).toBe(200);
+    expect(long.inputs.dataSinceDay).toBe(ago(200));
+    expect(long.status).toBe("dead");
+    // A later dataSinceDay than the series never shortens it.
+    expect(computeVariant(variantInput({ series: noSales, onHand: 30, settings, dataSinceDay: ago(10) }))!.inputs.noSaleDays).toBe(90);
+    // A known sale wins over dataSinceDay.
+    const sold = computeVariant(variantInput({ series: noSales, onHand: 30, settings, dataSinceDay: ago(400), lastSaleDay: ago(100) }))!;
+    expect(sold.inputs.noSaleDays).toBe(99);
+    expect(sold.inputs.dataSinceDay).toBeNull();
+  });
+
   it("too_much only when trend is not rising", () => {
     const flat = computeVariant(variantInput({ onHand: 1000 }))!;
     const rising = computeVariant(variantInput({ onHand: 1000, trend: 1.2 }))!;

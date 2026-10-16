@@ -31,6 +31,8 @@ const B = "gid://shopify/ProductVariant/2";
 const C = "gid://shopify/ProductVariant/3";
 const BUNDLE = "gid://shopify/ProductVariant/4";
 const UNTRACKED = "gid://shopify/ProductVariant/5";
+const DRAFT = "gid://shopify/ProductVariant/6";
+const SPARSE = "gid://shopify/ProductVariant/7";
 
 function daysBetween(from: string, to: string): string[] {
   const out: string[] = [];
@@ -57,6 +59,7 @@ function seed() {
     productCreatedAt: new Date("2025-01-01T00:00:00Z"),
     caseQty: null,
     supplierId: null,
+    status: "ACTIVE",
     ...extra,
   });
   db.tables.variant = [
@@ -65,22 +68,32 @@ function seed() {
     v(C, "PC", "old"),
     v(BUNDLE, "PD", "box", { isBundle: true }),
     v(UNTRACKED, "PE", "card", { tracked: false }),
+    v(DRAFT, "PF", "draft-tee", { status: "DRAFT" }),
+    v(SPARSE, "PG", "sparse"),
   ];
   db.tables.salesDaily = [];
   db.tables.stockDaily = [];
   const all = daysBetween("2026-07-18", "2026-10-15"); // the 90 days before today
   for (const day of all) {
-    // A: 2 a day online, in stock; location-view rows must be ignored.
+    // A: 2 a day online + 7 a day in the store L2 (outside the pool: must not count).
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: "online", channel: "all", sold: 2, returned: 0, gross: 0 });
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: L2, channel: "all", sold: 7, returned: 0, gross: 0 });
     db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: "all", channel: "Online Store", sold: 2, returned: 0, gross: 50 });
-    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: "online", channel: "all", sold: 999, returned: 0, gross: 0 });
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: A, locationKey: "all", channel: "Point of Sale", sold: 7, returned: 0, gross: 175 });
     db.tables.stockDaily.push({ shop: S, day: d(day), variantId: A, locationId: L1, endUnits: 100, outOfStock: false });
     db.tables.stockDaily.push({ shop: S, day: d(day), variantId: A, locationId: L2, endUnits: 5, outOfStock: false });
     // B: sells 1 a day until it sells out on 6 Oct.
     const out = day >= "2026-10-06";
-    if (!out) db.tables.salesDaily.push({ shop: S, day: d(day), variantId: B, locationKey: "all", channel: "Online Store", sold: 1, returned: 0, gross: 20 });
+    if (!out) {
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: B, locationKey: "online", channel: "all", sold: 1, returned: 0, gross: 0 });
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: B, locationKey: "all", channel: "Online Store", sold: 1, returned: 0, gross: 20 });
+    }
     db.tables.stockDaily.push({ shop: S, day: d(day), variantId: B, locationId: L1, endUnits: out ? 0 : 20, outOfStock: out });
     // C: stock, never sells.
     db.tables.stockDaily.push({ shop: S, day: d(day), variantId: C, locationId: L1, endUnits: 30, outOfStock: false });
+    // DRAFT: sells and has stock, but its product is not active.
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: DRAFT, locationKey: "online", channel: "all", sold: 3, returned: 0, gross: 0 });
+    db.tables.stockDaily.push({ shop: S, day: d(day), variantId: DRAFT, locationId: L1, endUnits: 40, outOfStock: false });
     // BUNDLE: sells, must be skipped.
     db.tables.salesDaily.push({ shop: S, day: d(day), variantId: BUNDLE, locationKey: "all", channel: "Online Store", sold: 5, returned: 0, gross: 300 });
   }
@@ -89,7 +102,14 @@ function seed() {
     { shop: S, variantId: A, locationId: L2, onHand: 50, incoming: 0 }, // not in the online pool
     { shop: S, variantId: B, locationId: L1, onHand: 0, incoming: 24 },
     { shop: S, variantId: C, locationId: L1, onHand: 30, incoming: 0 },
+    { shop: S, variantId: DRAFT, locationId: L1, onHand: 40, incoming: 0 },
+    { shop: S, variantId: SPARSE, locationId: L1, onHand: 20, incoming: 0 },
   ];
+  // Review H2 case: SPARSE sold 1 unit on 15 of the 90 days and has NO pool stock rows.
+  for (const day of all.filter((_x, i) => i % 6 === 0)) {
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: SPARSE, locationKey: "online", channel: "all", sold: 1, returned: 0, gross: 0 });
+    db.tables.salesDaily.push({ shop: S, day: d(day), variantId: SPARSE, locationKey: "all", channel: "Online Store", sold: 1, returned: 0, gross: 25 });
+  }
   db.tables.sessionsDaily = [];
   db.tables.shopDaily = [];
   for (const day of daysBetween("2026-09-16", "2026-10-15")) {
@@ -100,7 +120,10 @@ function seed() {
       db.tables.sessionsDaily.push({ shop: S, day: d(day), landingPath: "/es/products/mug", trafficType: "direct", sessions: 5, checkouts: 0 });
     }
   }
-  db.tables.variantMetric = [{ shop: S, variantId: "gid://shopify/ProductVariant/999", scope: "online", computedAt: new Date("2026-10-01T00:00:00Z") }];
+  db.tables.variantMetric = [
+    { shop: S, variantId: "gid://shopify/ProductVariant/999", scope: "online", computedAt: new Date("2026-10-01T00:00:00Z") },
+    { shop: S, variantId: DRAFT, scope: "online", computedAt: new Date("2026-10-01T00:00:00Z") },
+  ];
   db.tables.moneyAtStake = [];
 }
 
@@ -109,21 +132,41 @@ const metric = (id: string) => db.tables.variantMetric.find((m) => m.variantId =
 beforeEach(seed);
 
 describe("computeShop", () => {
-  it("writes one online metric per tracked, non-bundle variant and drops stale ones", async () => {
+  it("writes one online metric per ACTIVE tracked, non-bundle variant and drops stale / draft ones", async () => {
     const r = await computeShop(S, { now: () => NOW });
-    expect(r).toEqual({ status: "computed", today: "2026-10-16", variants: 3, money: "computed" });
-    expect(db.tables.variantMetric.map((m) => m.variantId).sort()).toEqual([A, B, C]);
+    expect(r).toEqual({ status: "computed", today: "2026-10-16", variants: 4, money: "computed" });
+    expect(db.tables.variantMetric.map((m) => m.variantId).sort()).toEqual([A, B, C, SPARSE]);
     expect(db.tables.variantMetric.every((m) => m.scope === "online" && (m.computedAt as Date).getTime() === NOW)).toBe(true);
   });
 
-  it("uses the channel view and the online pool only", async () => {
+  it("pools sales from the location view (online + pool locations), never the store outside the pool", async () => {
     await computeShop(S, { now: () => NOW });
     const a = metric(A);
-    expect(a.rate).toBeCloseTo(2, 10); // not 999 + 2, not affected by the store location
+    expect(a.rate).toBeCloseTo(2, 10); // not 9 (channel view incl. the L2 store's POS sales)
+    expect((a.inputs as { price: number }).price).toBe(25); // channel view still prices it
     expect(a.daysLeft).toBeCloseTo(50, 10); // 100 pooled units ÷ 2/day (L2's 50 not counted)
     expect(a.status).toBe("healthy");
     expect(a.role).toBe("A");
     expect((a.inputs as { onHand: number }).onHand).toBe(100);
+  });
+
+  it("review H2: sales on days with no pool stock data are missing, not in-stock days", async () => {
+    await computeShop(S, { now: () => NOW });
+    const sp = metric(SPARSE);
+    expect(sp.rate).not.toBe(1);
+    expect(sp.rate).toBeNull();
+    expect(sp.status).toBe("not_enough_data");
+    expect((sp.inputs as { dataDays: number }).dataDays).toBe(0);
+  });
+
+  it("dead works when deadDays > 90 for a never-sold variant (oldest pool stock day starts the no-sale period)", async () => {
+    db.tables.shop[0].settings = { deadDays: 180 };
+    await computeShop(S, { now: () => NOW });
+    expect(metric(C).status).not.toBe("dead"); // only 90 days of stock data
+    db.tables.stockDaily.push({ shop: S, day: d("2026-03-30"), variantId: C, locationId: L1, endUnits: 30, outOfStock: false });
+    await computeShop(S, { now: () => NOW });
+    expect(metric(C).status).toBe("dead");
+    expect((metric(C).inputs as { noSaleDays: number }).noSaleDays).toBe(200);
   });
 
   it("marks the sold-out variant out and the never-selling one dead with neverRunsOut", async () => {

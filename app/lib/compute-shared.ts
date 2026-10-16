@@ -3,12 +3,18 @@
  * results → stored rows. No I/O.
  *
  * Phase 1 rule (spec §3: one stock pool on Free / Growth; per-location planning is Pro,
- * phase 3): scope "online" =
- *   sales: every sales channel summed (SalesDaily channel view, locationKey = "all");
- *   stock: Σ StockDaily over ACTIVE locations that FULFIL ONLINE ORDERS; a day is out of
- *          stock when the pooled ending units are ≤ 0 OR every pooled location that reported
- *          that day reported out of stock;
- *   onHand / incoming: Σ StockNow over the same pooled locations.
+ * phase 3; spec §7.1 "Online pool" = the sum over active, fulfillsOnlineOrders locations):
+ * scope "online" =
+ *   pool:  the ACTIVE locations that FULFIL ONLINE ORDERS;
+ *   sales: the SalesDaily LOCATION view (channel "all") for locationKey "online" (sales with
+ *          no POS location) plus the pool location ids — never the channel view, which
+ *          includes POS stores outside the pool;
+ *   stock: Σ StockDaily over the pool; a day is out of stock when the pooled ending units
+ *          are ≤ 0 OR every pooled location that reported that day reported out of stock;
+ *   data:  a day counts only when the variant has a pool StockDaily row that day; sales on a
+ *          day without one are MISSING data, never "in stock";
+ *   onHand / incoming: Σ StockNow over the pool.
+ * The channel view (locationKey "all") is used only for revenue (ABC) and the unit price.
  */
 import type { DailyRow, EngineSettings, VariantResult } from "./engine/index-shared";
 import type { ProductTraffic, StoreConversion } from "./engine/money-shared";
@@ -37,38 +43,42 @@ export function pooledOutOfStock(s: Pick<PooledStockDay, "endUnits" | "reported"
   return s.endUnits <= 0 || (s.reported > 0 && s.outReported === s.reported);
 }
 
+/** SalesDaily location-view keys that belong to the online pool. */
+export function poolSalesKeys(pool: string[]): string[] {
+  return ["online", ...pool];
+}
+
 /**
- * Per-variant daily series. A day is present when the variant has a pooled stock row OR a
- * sales row that day; no row at all = missing data (never a zero-sale day). A day with sales
- * but no stock row counts as in stock (it sold). price = gross ÷ sold when sold > 0.
+ * Per-variant daily series. A day exists only when the variant has a pool stock row that
+ * day (no row = missing data, never a zero-sale or in-stock day). `poolSales` (location view,
+ * pool keys) gives units sold; `priceSales` (channel view) gives the day's unit price as
+ * gross ÷ units.
  */
-export function buildSeries(sales: SalesDay[], stock: PooledStockDay[]): Map<string, DailyRow[]> {
+export function buildSeries(poolSales: SalesDay[], stock: PooledStockDay[], priceSales: SalesDay[] = []): Map<string, DailyRow[]> {
   const byVariant = new Map<string, Map<string, DailyRow>>();
-  const row = (variantId: string, day: string): DailyRow => {
-    let days = byVariant.get(variantId);
-    if (!days) byVariant.set(variantId, (days = new Map()));
-    let r = days.get(day);
-    if (!r) days.set(day, (r = { day, sold: 0, endStock: 0, outOfStock: false, price: null }));
-    return r;
-  };
-  const gross = new Map<string, number>();
-  for (const s of sales) {
-    const r = row(s.variantId, s.day);
-    r.sold += s.sold;
-    const k = `${s.variantId}|${s.day}`;
-    gross.set(k, (gross.get(k) ?? 0) + s.gross);
-  }
   for (const s of stock) {
-    const r = row(s.variantId, s.day);
-    r.endStock = s.endUnits;
-    r.outOfStock = pooledOutOfStock(s);
+    let days = byVariant.get(s.variantId);
+    if (!days) byVariant.set(s.variantId, (days = new Map()));
+    days.set(s.day, { day: s.day, sold: 0, endStock: s.endUnits, outOfStock: pooledOutOfStock(s), price: null });
+  }
+  for (const s of poolSales) {
+    const r = byVariant.get(s.variantId)?.get(s.day);
+    if (r) r.sold += s.sold; // a sale on a day without pool stock data stays missing
+  }
+  const price = new Map<string, { sold: number; gross: number }>();
+  for (const s of priceSales) {
+    const k = `${s.variantId}|${s.day}`;
+    const p = price.get(k) ?? { sold: 0, gross: 0 };
+    p.sold += s.sold;
+    p.gross += s.gross;
+    price.set(k, p);
   }
   const out = new Map<string, DailyRow[]>();
   for (const [variantId, days] of byVariant) {
     const list = [...days.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
     for (const r of list) {
-      const g = gross.get(`${variantId}|${r.day}`) ?? 0;
-      r.price = r.sold > 0 && g > 0 ? g / r.sold : null;
+      const p = price.get(`${variantId}|${r.day}`);
+      r.price = p && p.sold > 0 && p.gross > 0 ? p.gross / p.sold : null;
     }
     out.set(variantId, list);
   }
