@@ -7,6 +7,8 @@
 import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { useLinkProps } from "./wc";
 import { UpgradeFromQuery } from "./plan";
+import { useLocale } from "../lib/i18n";
+import { formatPercent } from "../lib/dashboard-shared";
 import { ProductIcon } from "@shopify/polaris-icons";
 
 export type TileTone = "violet" | "teal" | "amber" | "rose" | "sky" | "emerald" | "slate";
@@ -205,11 +207,13 @@ export function SectionHead({
 
 /** Conic progress ring with a percentage label. */
 export function ProgressRing({ percent, tone = "violet" }: { percent: number; tone?: TileTone }) {
+  const { locale } = useLocale();
   const p = Math.max(0, Math.min(100, Math.round(percent)));
   const ring = `var(--tile-${tone}-fg)`;
+  const text = formatPercent(p / 100, locale);
   return (
-    <div className="keha-ring" style={{ ["--p" as string]: p, ["--ring" as string]: ring, position: "relative" }} aria-label={`${p}%`}>
-      <span>{p}%</span>
+    <div className="keha-ring" style={{ ["--p" as string]: p, ["--ring" as string]: ring, position: "relative" }} aria-label={text}>
+      <span>{text}</span>
     </div>
   );
 }

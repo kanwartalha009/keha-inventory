@@ -18,7 +18,7 @@ import {
 } from "../lib/action-list-shared";
 import { factLines, reasonSentence } from "../lib/action-facts-shared";
 import { CLEAR_PERCENT, defaultClearForm, type ClearForm, type ClearFormError } from "../lib/clearance-shared";
-import { formatAmount, formatCount, formatDay, todayIn } from "../lib/dashboard-shared";
+import { formatAmount, formatCount, formatDay, formatPercent, todayIn } from "../lib/dashboard-shared";
 import { Modal, Tabs, flag, useLinkProps, val, vals } from "./wc";
 import { ProductThumb } from "./ui";
 import { planTag } from "./plan";
@@ -536,7 +536,7 @@ function ClearancesRunning({ items }: { items: ClearanceView[] }) {
           <s-stack direction="block" gap="small-100">
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text type="strong">{c.productTitle ?? "—"}</s-text>
-              <s-badge>{`-${c.percent}%`}</s-badge>
+              <s-badge>{formatPercent(-c.percent / 100, locale)}</s-badge>
             </s-stack>
             <s-text color="subdued">
               {c.kind === "code" && c.code ? fill(t("Discount code {code}"), { code: c.code }) : t("Automatic discount")}

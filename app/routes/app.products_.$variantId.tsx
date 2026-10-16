@@ -14,7 +14,7 @@ import { getVariantDetail } from "../models/products.server";
 import { AppPage, KvRow, ProductThumb } from "../components/ui";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
-import { formatCount, formatDay } from "../lib/dashboard-shared";
+import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
 import {
   dailySeries,
   daysLeftView,
@@ -230,7 +230,7 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
                   <s-table-cell>{formatCount(w.inStockDays, locale)}</s-table-cell>
                   <s-table-cell>{formatRate(w.rate, locale)}</s-table-cell>
                   <s-table-cell>
-                    {w.used ? `${Math.round(w.weight * 100)}%` : t("Not used: too few days in stock")}
+                    {w.used ? formatPercent(Math.round(w.weight * 100) / 100, locale) : t("Not used: too few days in stock")}
                   </s-table-cell>
                 </s-table-row>
               ))}

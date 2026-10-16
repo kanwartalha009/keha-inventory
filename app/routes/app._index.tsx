@@ -175,7 +175,7 @@ function MoneyCard({ cardKey, data, fmt }: { cardKey: MoneyCardKey; data: HomeDa
 }
 
 function SyncProgress({ data }: { data: HomeData }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const partial = data.state === "ready" || data.sync.first90Ready;
   return (
     <s-section heading={t("Reading your store…")}>
@@ -191,7 +191,7 @@ function SyncProgress({ data }: { data: HomeData }) {
             <s-stack key={d.key} direction="block" gap="small-200">
               <div className="keha-row-between">
                 <s-text>{label}</s-text>
-                <s-text color="subdued">{d.percent}%</s-text>
+                <s-text color="subdued">{formatPercent(d.percent / 100, locale)}</s-text>
               </div>
               <s-progress value={d.percent} max={100} accessibilityLabel={label} tone={d.failed ? "critical" : "auto"} />
               {d.failed && <s-text color="subdued">{t("We hit a problem reading this. We're retrying automatically.")}</s-text>}

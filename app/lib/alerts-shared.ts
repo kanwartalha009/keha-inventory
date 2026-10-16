@@ -143,6 +143,14 @@ function daysText(days: number, locale: string): string {
   }
 }
 
+function countText(n: number, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
 /**
  * Title and detail for one alert, in the store's language. `showDays` = the plan
  * includes the forecast (Growth): without it the days-left figure is left out
@@ -159,7 +167,7 @@ export function alertLine(
   if (a.kind === "sell_out") {
     return {
       title: fill(tr("Just sold out: {product}"), { product: a.title }),
-      detail: fill(tr("Visits to this product last week: {sessions}."), { sessions: a.sessions }),
+      detail: fill(tr("Visits to this product last week: {sessions}."), { sessions: countText(a.sessions, numberLocale) }),
       link,
     };
   }
