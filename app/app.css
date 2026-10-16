@@ -647,3 +647,14 @@
 .keha-setup-step { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 @media (max-width: 640px) { .keha-setup-step { grid-template-columns: 20px minmax(0, 1fr); } .keha-setup-step > :last-child { grid-column: 2; } }
 
+/* Products: filter bar, detail chart and legend (task 1.7) */
+.keha-filters { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 8px; align-items: end; }
+@media (max-width: 760px) { .keha-filters { grid-template-columns: 1fr; } }
+.keha-grow { flex: 1; min-width: 0; }
+.keha-chart { display: block; width: 100%; height: 140px; }
+.keha-chart__bar { fill: var(--keha-accent); }
+.keha-chart__out { fill: var(--tile-rose-bg); }
+.keha-legend { display: inline-flex; align-items: center; gap: 6px; }
+.keha-legend__swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.keha-legend__swatch--bar { background: var(--keha-accent); }
+.keha-legend__swatch--out { background: var(--tile-rose-bg); border: 1px solid var(--tile-rose-fg); }

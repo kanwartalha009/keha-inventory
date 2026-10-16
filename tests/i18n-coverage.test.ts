@@ -24,6 +24,10 @@ const SAME_WORD: Record<string, string[]> = {
   Planner: ["nl"],
   Planning: ["nl"],
   "1 scenario": ["it", "nl"],
+  Status: ["de", "nl"],
+  Product: ["nl"],
+  Variant: ["nl"],
+  Collection: ["fr"],
 };
 
 function files(dir: string): string[] {

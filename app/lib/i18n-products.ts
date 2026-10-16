@@ -1,0 +1,77 @@
+/**
+ * Products screen translations (spec §5.2, task 1.7): the table, filters,
+ * CSV headers and the variant detail page. English text is the key (see
+ * app/lib/i18n.tsx). Tone: German "du", French "vous", Spanish "tú",
+ * European Portuguese, Dutch "je", Polish informal.
+ */
+import type { Tr } from "./i18n";
+
+export const PRODUCTS_TR: Record<string, Tr> = {
+  // ---- Status ----
+  "Out": { es: "Agotado", fr: "En rupture", de: "Ausverkauft", it: "Esaurito", pt: "Esgotado", nl: "Uitverkocht", pl: "Brak" },
+  "Running low": { es: "Queda poco", fr: "Stock bas", de: "Wird knapp", it: "In esaurimento", pt: "A acabar", nl: "Bijna op", pl: "Kończy się" },
+  "Healthy": { es: "Correcto", fr: "Sain", de: "Gesund", it: "In salute", pt: "Saudável", nl: "Gezond", pl: "W normie" },
+  "Too much": { es: "Demasiado", fr: "Trop de stock", de: "Zu viel", it: "Troppo", pt: "Em excesso", nl: "Te veel", pl: "Za dużo" },
+  "Dead": { es: "Sin ventas", fr: "Dormant", de: "Ladenhüter", it: "Fermo", pt: "Parado", nl: "Onverkoopbaar", pl: "Zalega" },
+  "Not enough data": { es: "Datos insuficientes", fr: "Données insuffisantes", de: "Zu wenig Daten", it: "Dati insufficienti", pt: "Dados insuficientes", nl: "Te weinig gegevens", pl: "Za mało danych" },
+
+  // ---- Table and CSV columns ----
+  "Product": { es: "Producto", fr: "Produit", de: "Produkt", it: "Prodotto", pt: "Produto", nl: "Product", pl: "Produkt" },
+  "Variant": { es: "Variante", fr: "Variante", de: "Variante", it: "Variante", pt: "Variante", nl: "Variant", pl: "Wariant" },
+  "SKU": { es: "Referencia (SKU)", fr: "Référence (SKU)", de: "Artikelnummer (SKU)", it: "Codice (SKU)", pt: "Referência (SKU)", nl: "Artikelnummer (SKU)", pl: "Kod SKU" },
+  "Vendor": { es: "Proveedor", fr: "Fournisseur", de: "Anbieter", it: "Fornitore", pt: "Fornecedor", nl: "Leverancier", pl: "Dostawca" },
+  "Status": { es: "Estado", fr: "Statut", de: "Status", it: "Stato", pt: "Estado", nl: "Status", pl: "Stan" },
+  "Stock now": { es: "Stock actual", fr: "Stock actuel", de: "Aktueller Bestand", it: "Stock attuale", pt: "Stock atual", nl: "Huidige voorraad", pl: "Stan obecny" },
+  "Incoming": { es: "En camino", fr: "En arrivage", de: "Unterwegs", it: "In arrivo", pt: "A caminho", nl: "Onderweg", pl: "W drodze" },
+  "Sales per day while in stock": { es: "Ventas al día con stock", fr: "Ventes par jour en stock", de: "Verkäufe pro Tag mit Bestand", it: "Vendite al giorno con stock disponibile", pt: "Vendas por dia com stock", nl: "Verkopen per dag met voorraad", pl: "Sprzedaż dziennie przy dostępnym stanie" },
+  "Order by": { es: "Pedir antes del", fr: "Commander avant le", de: "Bestellen bis", it: "Ordina entro", pt: "Encomendar até", nl: "Bestellen vóór", pl: "Zamów do" },
+  "Suggested qty": { es: "Cantidad sugerida", fr: "Qté suggérée", de: "Empfohlene Menge", it: "Q.tà consigliata", pt: "Qtd. sugerida", nl: "Voorgestelde hoeveelheid", pl: "Sugerowana ilość" },
+  "Never runs out at current sales": { es: "Con las ventas actuales nunca se agota", fr: "Ne sera jamais en rupture au rythme actuel des ventes", de: "Geht beim aktuellen Absatz nie aus", it: "Con le vendite attuali non si esaurisce mai", pt: "Com as vendas atuais nunca esgota", nl: "Raakt bij de huidige verkoop nooit op", pl: "Przy obecnej sprzedaży nigdy się nie skończy" },
+
+  // ---- Page, filters, paging ----
+  "One row per variant. Sales per day count only the days the variant was in stock.": { es: "Una fila por variante. Las ventas al día solo cuentan los días en que la variante tenía stock.", fr: "Une ligne par variante. Les ventes par jour ne comptent que les jours où la variante était en stock.", de: "Eine Zeile pro Variante. Verkäufe pro Tag zählen nur die Tage, an denen die Variante vorrätig war.", it: "Una riga per variante. Le vendite al giorno contano solo i giorni in cui la variante era disponibile.", pt: "Uma linha por variante. As vendas por dia só contam os dias em que a variante tinha stock.", nl: "Eén rij per variant. Verkopen per dag tellen alleen de dagen dat de variant op voorraad was.", pl: "Jeden wiersz na wariant. Sprzedaż dzienna liczy tylko dni, gdy wariant był dostępny." },
+  "Search": { es: "Buscar", fr: "Rechercher", de: "Suchen", it: "Cerca", pt: "Pesquisar", nl: "Zoeken", pl: "Szukaj" },
+  "Search by product, variant or SKU": { es: "Busca por producto, variante o SKU", fr: "Rechercher par produit, variante ou SKU", de: "Nach Produkt, Variante oder SKU suchen", it: "Cerca per prodotto, variante o SKU", pt: "Pesquisar por produto, variante ou SKU", nl: "Zoek op product, variant of SKU", pl: "Szukaj po produkcie, wariancie lub SKU" },
+  "All statuses": { es: "Todos los estados", fr: "Tous les statuts", de: "Alle Status", it: "Tutti gli stati", pt: "Todos os estados", nl: "Alle statussen", pl: "Wszystkie stany" },
+  "Collection": { es: "Colección", fr: "Collection", de: "Kollektion", it: "Collezione", pt: "Coleção", nl: "Collectie", pl: "Kolekcja" },
+  "All collections": { es: "Todas las colecciones", fr: "Toutes les collections", de: "Alle Kollektionen", it: "Tutte le collezioni", pt: "Todas as coleções", nl: "Alle collecties", pl: "Wszystkie kolekcje" },
+  "All vendors": { es: "Todos los proveedores", fr: "Tous les fournisseurs", de: "Alle Anbieter", it: "Tutti i fornitori", pt: "Todos os fornecedores", nl: "Alle leveranciers", pl: "Wszyscy dostawcy" },
+  "No variants match these filters.": { es: "Ninguna variante coincide con estos filtros.", fr: "Aucune variante ne correspond à ces filtres.", de: "Keine Variante passt zu diesen Filtern.", it: "Nessuna variante corrisponde a questi filtri.", pt: "Nenhuma variante corresponde a estes filtros.", nl: "Geen varianten komen overeen met deze filters.", pl: "Żaden wariant nie pasuje do tych filtrów." },
+  "Your products appear here once your catalog is read.": { es: "Tus productos aparecerán aquí en cuanto leamos tu catálogo.", fr: "Vos produits s'afficheront ici dès que votre catalogue aura été lu.", de: "Deine Produkte erscheinen hier, sobald dein Katalog gelesen ist.", it: "I tuoi prodotti appariranno qui appena avremo letto il catalogo.", pt: "Os seus produtos aparecem aqui assim que lermos o seu catálogo.", nl: "Je producten verschijnen hier zodra je catalogus is gelezen.", pl: "Twoje produkty pojawią się tutaj, gdy odczytamy katalog." },
+  "Clear filters": { es: "Borrar filtros", fr: "Effacer les filtres", de: "Filter zurücksetzen", it: "Cancella filtri", pt: "Limpar filtros", nl: "Filters wissen", pl: "Wyczyść filtry" },
+  "Page {page} of {pages} · Variants: {total}": { es: "Página {page} de {pages} · Variantes: {total}", fr: "Page {page} sur {pages} · Variantes : {total}", de: "Seite {page} von {pages} · Varianten: {total}", it: "Pagina {page} di {pages} · Varianti: {total}", pt: "Página {page} de {pages} · Variantes: {total}", nl: "Pagina {page} van {pages} · Varianten: {total}", pl: "Strona {page} z {pages} · Warianty: {total}" },
+  "Export CSV": { es: "Exportar CSV", fr: "Exporter en CSV", de: "Als CSV exportieren", it: "Esporta CSV", pt: "Exportar CSV", nl: "CSV exporteren", pl: "Eksportuj CSV" },
+  "The export didn't work. Try again.": { es: "La exportación no ha funcionado. Inténtalo de nuevo.", fr: "L'export n'a pas fonctionné. Réessayez.", de: "Der Export hat nicht geklappt. Versuche es noch einmal.", it: "L'esportazione non è riuscita. Riprova.", pt: "A exportação não funcionou. Tente novamente.", nl: "De export is niet gelukt. Probeer het opnieuw.", pl: "Eksport się nie udał. Spróbuj ponownie." },
+
+  // ---- Variant detail ----
+  "Sales, last 13 months": { es: "Ventas, últimos 13 meses", fr: "Ventes, 13 derniers mois", de: "Verkäufe, letzte 13 Monate", it: "Vendite, ultimi 13 mesi", pt: "Vendas, últimos 13 meses", nl: "Verkopen, afgelopen 13 maanden", pl: "Sprzedaż, ostatnie 13 miesięcy" },
+  "Units sold per day over the last 13 months. Sold-out days are shaded: {n}.": { es: "Unidades vendidas al día en los últimos 13 meses. Días agotado sombreados: {n}.", fr: "Unités vendues par jour sur les 13 derniers mois. Jours en rupture grisés : {n}.", de: "Verkaufte Einheiten pro Tag in den letzten 13 Monaten. Schattierte ausverkaufte Tage: {n}.", it: "Unità vendute al giorno negli ultimi 13 mesi. Giorni esaurito ombreggiati: {n}.", pt: "Unidades vendidas por dia nos últimos 13 meses. Dias esgotado sombreados: {n}.", nl: "Verkochte stuks per dag in de afgelopen 13 maanden. Gearceerde uitverkochte dagen: {n}.", pl: "Sprzedane sztuki dziennie z ostatnich 13 miesięcy. Zacieniowane dni bez towaru: {n}." },
+  "Units sold": { es: "Unidades vendidas", fr: "Unités vendues", de: "Verkaufte Einheiten", it: "Unità vendute", pt: "Unidades vendidas", nl: "Verkochte stuks", pl: "Sprzedane sztuki" },
+  "Sold out": { es: "Agotado", fr: "En rupture", de: "Ausverkauft", it: "Esaurito", pt: "Esgotado", nl: "Uitverkocht", pl: "Wyprzedane" },
+  "In stock": { es: "Con stock", fr: "En stock", de: "Vorrätig", it: "Disponibile", pt: "Em stock", nl: "Op voorraad", pl: "Dostępne" },
+  "No sales or stock history read for this variant yet.": { es: "Aún no hemos leído historial de ventas ni de stock para esta variante.", fr: "Aucun historique de ventes ou de stock n'a encore été lu pour cette variante.", de: "Für diese Variante wurde noch kein Verkaufs- oder Bestandsverlauf gelesen.", it: "Non abbiamo ancora letto lo storico di vendite o stock per questa variante.", pt: "Ainda não lemos histórico de vendas nem de stock desta variante.", nl: "Voor deze variant is nog geen verkoop- of voorraadgeschiedenis gelezen.", pl: "Nie odczytaliśmy jeszcze historii sprzedaży ani stanów tego wariantu." },
+  "Month": { es: "Mes", fr: "Mois", de: "Monat", it: "Mese", pt: "Mês", nl: "Maand", pl: "Miesiąc" },
+  "Sold-out days": { es: "Días agotado", fr: "Jours en rupture", de: "Ausverkaufte Tage", it: "Giorni esaurito", pt: "Dias esgotado", nl: "Uitverkochte dagen", pl: "Dni bez towaru" },
+  "How the forecast was built": { es: "Cómo se construyó la previsión", fr: "Comment la prévision a été établie", de: "So entsteht die Prognose", it: "Come è stata costruita la previsione", pt: "Como foi feita a previsão", nl: "Zo is de prognose opgebouwd", pl: "Jak powstała prognoza" },
+  "Window": { es: "Periodo", fr: "Période", de: "Zeitraum", it: "Periodo", pt: "Período", nl: "Periode", pl: "Okres" },
+  "Days in stock": { es: "Días con stock", fr: "Jours en stock", de: "Tage mit Bestand", it: "Giorni disponibile", pt: "Dias com stock", nl: "Dagen op voorraad", pl: "Dni dostępności" },
+  "Weight": { es: "Peso", fr: "Poids", de: "Gewichtung", it: "Peso", pt: "Peso", nl: "Gewicht", pl: "Waga" },
+  "Last {n} days": { es: "Últimos {n} días", fr: "{n} derniers jours", de: "Letzte {n} Tage", it: "Ultimi {n} giorni", pt: "Últimos {n} dias", nl: "Afgelopen {n} dagen", pl: "Ostatnie {n} dni" },
+  "Not used: too few days in stock": { es: "No se usa: muy pocos días con stock", fr: "Non utilisé : trop peu de jours en stock", de: "Nicht verwendet: zu wenige Tage mit Bestand", it: "Non usato: troppo pochi giorni disponibile", pt: "Não usado: poucos dias com stock", nl: "Niet gebruikt: te weinig dagen op voorraad", pl: "Nieużyte: za mało dni dostępności" },
+  "{n} of the last {days} days": { es: "{n} de los últimos {days} días", fr: "{n} sur les {days} derniers jours", de: "{n} der letzten {days} Tage", it: "{n} degli ultimi {days} giorni", pt: "{n} dos últimos {days} dias", nl: "{n} van de afgelopen {days} dagen", pl: "{n} z ostatnich {days} dni" },
+  "Seasonal change": { es: "Efecto de temporada", fr: "Effet saisonnier", de: "Saisoneffekt", it: "Effetto stagionale", pt: "Efeito sazonal", nl: "Seizoenseffect", pl: "Wpływ sezonu" },
+  "No seasonal data yet": { es: "Aún sin datos de temporada", fr: "Pas encore de données saisonnières", de: "Noch keine Saisondaten", it: "Ancora nessun dato stagionale", pt: "Ainda sem dados sazonais", nl: "Nog geen seizoensgegevens", pl: "Brak jeszcze danych sezonowych" },
+  "Trend": { es: "Tendencia", fr: "Tendance", de: "Entwicklung", it: "Tendenza", pt: "Tendência", nl: "Ontwikkeling", pl: "Tendencja" },
+  "Supplier lead time": { es: "Plazo del proveedor", fr: "Délai du fournisseur", de: "Lieferzeit des Lieferanten", it: "Tempi del fornitore", pt: "Prazo do fornecedor", nl: "Levertijd leverancier", pl: "Czas dostawy" },
+  "{n} days (supplier)": { es: "{n} días (proveedor)", fr: "{n} jours (fournisseur)", de: "{n} Tage (Lieferant)", it: "{n} giorni (fornitore)", pt: "{n} dias (fornecedor)", nl: "{n} dagen (leverancier)", pl: "{n} dni (dostawca)" },
+  "{n} days (store default)": { es: "{n} días (valor de la tienda)", fr: "{n} jours (valeur par défaut de la boutique)", de: "{n} Tage (Shop-Standard)", it: "{n} giorni (predefinito del negozio)", pt: "{n} dias (predefinição da loja)", nl: "{n} dagen (winkelstandaard)", pl: "{n} dni (domyślnie dla sklepu)" },
+  "Order cycle": { es: "Ciclo de pedidos", fr: "Cycle de commande", de: "Bestellzyklus", it: "Ciclo degli ordini", pt: "Ciclo de encomendas", nl: "Bestelcyclus", pl: "Cykl zamówień" },
+  "{n} days": { es: "{n} días", fr: "{n} jours", de: "{n} Tage", it: "{n} giorni", pt: "{n} dias", nl: "{n} dagen", pl: "{n} dni" },
+  "Service level factor (z)": { es: "Factor de nivel de servicio (z)", fr: "Facteur de niveau de service (z)", de: "Servicegrad-Faktor (z)", it: "Fattore di livello di servizio (z)", pt: "Fator de nível de serviço (z)", nl: "Servicegraadfactor (z)", pl: "Współczynnik poziomu obsługi (z)" },
+  "Safety stock": { es: "Stock de seguridad", fr: "Stock de sécurité", de: "Sicherheitsbestand", it: "Scorta di sicurezza", pt: "Stock de segurança", nl: "Veiligheidsvoorraad", pl: "Zapas bezpieczeństwa" },
+  "{n} units": { es: "{n} unidades", fr: "{n} unités", de: "{n} Einheiten", it: "{n} unità", pt: "{n} unidades", nl: "{n} stuks", pl: "{n} szt." },
+  "Based on: sales per day while in stock in the windows above, weighted as shown. Days without data never count as days without sales.": { es: "Basado en: ventas al día con stock en los periodos de arriba, con el peso indicado. Los días sin datos nunca cuentan como días sin ventas.", fr: "Basé sur : ventes par jour en stock sur les périodes ci-dessus, pondérées comme indiqué. Un jour sans données ne compte jamais comme un jour sans ventes.", de: "Grundlage: Verkäufe pro Tag mit Bestand in den Zeiträumen oben, gewichtet wie angegeben. Tage ohne Daten zählen nie als Tage ohne Verkäufe.", it: "Basato su: vendite al giorno con stock disponibile nei periodi sopra, pesate come indicato. I giorni senza dati non contano mai come giorni senza vendite.", pt: "Com base em: vendas por dia com stock nos períodos acima, ponderadas como indicado. Dias sem dados nunca contam como dias sem vendas.", nl: "Gebaseerd op: verkopen per dag met voorraad in de periodes hierboven, gewogen zoals getoond. Dagen zonder gegevens tellen nooit als dagen zonder verkoop.", pl: "Na podstawie: sprzedaż dziennie przy dostępnym stanie w powyższych okresach, z pokazanymi wagami. Dni bez danych nigdy nie liczą się jako dni bez sprzedaży." },
+  "Recent sales": { es: "Ventas recientes", fr: "Ventes récentes", de: "Letzte Verkäufe", it: "Vendite recenti", pt: "Vendas recentes", nl: "Recente verkopen", pl: "Ostatnia sprzedaż" },
+  "Day": { es: "Día", fr: "Jour", de: "Tag", it: "Giorno", pt: "Dia", nl: "Dag", pl: "Dzień" },
+  "Stock": { es: "Existencias", fr: "Stock disponible", de: "Bestand", it: "Giacenza", pt: "Existências", nl: "Voorraad", pl: "Stan" },
+};
