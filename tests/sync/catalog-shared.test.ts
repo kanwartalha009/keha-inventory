@@ -12,7 +12,6 @@ import {
   decimalOrNull,
   itemVariantId,
   levelRows,
-  locationFromPayload,
   parseCatalogJsonl,
   parseShopInfo,
   stockPageSizes,
@@ -146,12 +145,6 @@ describe("row helpers", () => {
     });
     expect(toLocationRow({ id: "gid://shopify/Location/2", name: "Shop", isActive: false })).toMatchObject({ active: false, online: false });
     expect(toLocationRow({ id: "nope" })).toBeNull();
-    expect(locationFromPayload({ id: 7, name: "Pop-up", active: true })).toEqual({
-      id: "gid://shopify/Location/7",
-      name: "Pop-up",
-      active: true,
-    });
-    expect(locationFromPayload({})).toBeNull();
   });
 
   it("maps inventory levels by quantity name", () => {

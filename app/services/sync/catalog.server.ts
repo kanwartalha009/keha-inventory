@@ -326,7 +326,7 @@ export async function syncLocations(admin: AdminGraphqlClient, shop: string): Pr
   return out;
 }
 
-/** locations/create|update: re-read the location (the payload has no fulfillsOnlineOrders). */
+/** locations/create|update: re-read the location through GraphQL. */
 export async function refreshLocation(admin: AdminGraphqlClient, shop: string, locationId: string): Promise<boolean> {
   const data = await gql<{ location: unknown }>(admin, LOCATION_QUERY, { id: locationId });
   const row = toLocationRow(data.location);

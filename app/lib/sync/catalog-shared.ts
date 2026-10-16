@@ -375,15 +375,6 @@ export function toLocationRow(node: unknown): LocationRow | null {
   };
 }
 
-/** locations/create|update webhook payload (REST shape: id, name, active). Online flag is unknown there. */
-export function locationFromPayload(payload: unknown): { id: string; name: string | null; active: boolean | null } | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as { id?: unknown; admin_graphql_api_id?: unknown; name?: unknown; active?: unknown };
-  const id = toGid("Location", p.admin_graphql_api_id) ?? toGid("Location", p.id);
-  if (!id) return null;
-  return { id, name: str(p.name), active: typeof p.active === "boolean" ? p.active : null };
-}
-
 // ---------------------------------------------------------------------------
 // Stock now
 // ---------------------------------------------------------------------------

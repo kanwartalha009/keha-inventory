@@ -80,6 +80,8 @@ import {
   cancelPendingPurge,
 } from "../app/services/gdpr.server";
 import { emailForms } from "../app/lib/gdpr-shared";
+import { Prisma } from "@prisma/client";
+import { PURGE_KEEP, delegateName, purgePlan } from "../app/services/gdpr.server";
 
 const S = "acme.myshopify.com";
 const OLD = new Date(Date.now() - 49 * 60 * 60 * 1000);
@@ -129,6 +131,34 @@ describe("48h purge", () => {
     expect(counts.billingState).toBe(1);
     expect(counts.novaReferral).toBe(1);
     expect(tables.novaOutbox.map((o) => o.id)).toEqual(["o3", "o4"]);
+  });
+});
+
+describe("shop purge covers every shop table (invariant I-3)", () => {
+  // Expected list derived from the generated schema, never written by hand.
+  const shopModels = Prisma.dmmf.datamodel.models.filter((m) => m.fields.some((f) => f.name === "shop")).map((m) => m.name);
+
+  it("only the purge bookkeeping is kept", () => {
+    expect([...PURGE_KEEP]).toEqual(["UninstalledShop"]);
+    expect(shopModels).toContain("UninstalledShop");
+  });
+
+  it("deletes from every model with a shop column, plus Shop by domain, Session last", async () => {
+    tables.shop = [{ id: "x", domain: S }, { id: "y", domain: "other.myshopify.com" }];
+    tables.salesDaily = [{ shop: S }, { shop: "other.myshopify.com" }];
+    await purgeShopData(S);
+    const deleted = calls.filter((c) => c.op === "deleteMany").map((c) => c.table);
+    const expected = shopModels.filter((m) => !(PURGE_KEEP as readonly string[]).includes(m)).map(delegateName);
+    for (const t of expected) expect(deleted, t).toContain(t);
+    expect(deleted).toContain("shop");
+    expect(deleted).toContain("novaOutbox");
+    expect(deleted).not.toContain("uninstalledShop");
+    expect(deleted[deleted.length - 1]).toBe("session");
+    const shopCall = calls.find((c) => c.table === "shop" && c.op === "deleteMany");
+    expect(shopCall?.where).toEqual({ domain: S });
+    expect(tables.shop.map((r) => r.domain)).toEqual(["other.myshopify.com"]);
+    expect(tables.salesDaily.map((r) => r.shop)).toEqual(["other.myshopify.com"]);
+    expect(purgePlan().length).toBe(expected.length + 1); // + Shop
   });
 });
 

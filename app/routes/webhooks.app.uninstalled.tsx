@@ -33,5 +33,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     })
     .catch((e) => console.error("[uninstall] purge stamp failed", e));
 
+  // Data jobs skip uninstalled shops (backfill, nightly, compute). Idempotent; a reinstall
+  // clears it in ensureShop.
+  await db.shop
+    .updateMany({ where: { domain: shop }, data: { uninstalledAt: new Date() } })
+    .catch((e) => console.error("[uninstall] shop stamp failed", e));
+
   return new Response();
 };

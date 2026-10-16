@@ -11,16 +11,18 @@
  *   - customers/redact       → redactCustomer: removes delivered Nova outbox
  *                              copies that still carry the customer's email
  *                              (the compliance forward itself)
- *   - shop/redact + purge-uninstalled → purgeShopData (hard-delete everything
- *                              for the shop); a reinstall cancels the pending
- *                              48h purge
+ *   - shop/redact + purge-uninstalled → purgeShopData (hard-delete every table
+ *                              with a `shop` column, derived from the Prisma
+ *                              schema, plus Shop by domain); a reinstall cancels
+ *                              the pending 48h purge
  */
+import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { emailForms, type GdprCustomer } from "../lib/gdpr-shared";
 import { sendEmail, emailTransportConfigured } from "./email.server";
 import { getShopContact } from "./shop-contact.server";
 import { cancelPendingPurge } from "./purge-stamp.server";
-import { logPersonalDataAccess, deleteShopPersonalDataLogs } from "./pii-log.server";
+import { logPersonalDataAccess } from "./pii-log.server";
 
 export { cancelPendingPurge } from "./purge-stamp.server";
 
@@ -106,6 +108,39 @@ export async function redactCustomer(shop: string, req: GdprRequest): Promise<{ 
 }
 
 // ---- shop/redact + purge-uninstalled: hard-delete all shop-scoped data ----
+
+/**
+ * Models that carry a `shop` column but are NOT purged here:
+ *  - UninstalledShop is the purge bookkeeping itself (purgeDueShops stamps purgedAt on it
+ *    after the purge; shop/redact removes it explicitly). Keeping it is the audit trail.
+ */
+export const PURGE_KEEP = ["UninstalledShop"] as const;
+
+/** Prisma delegate name for a model (`SalesDaily` → `salesDaily`). */
+export function delegateName(model: string): string {
+  return model.charAt(0).toLowerCase() + model.slice(1);
+}
+
+/**
+ * Every model to purge, from the generated schema (invariant I-3): each model with a `shop`
+ * field keyed by `shop`, plus `Shop` keyed by `domain`. Session comes last; NovaOutbox (no
+ * shop column) is handled separately. A new table is covered the moment it has `shop`.
+ */
+export function purgePlan(): { model: string; key: "shop" | "domain" }[] {
+  const models = Prisma.dmmf.datamodel.models;
+  const keep = new Set<string>(PURGE_KEEP);
+  const plan: { model: string; key: "shop" | "domain" }[] = [];
+  for (const m of models) {
+    if (keep.has(m.name) || m.name === "Session") continue;
+    if (m.fields.some((f) => f.name === "shop")) plan.push({ model: m.name, key: "shop" });
+    else if (m.name === "Shop") plan.push({ model: m.name, key: "domain" });
+  }
+  if (models.some((m) => m.name === "Session")) plan.push({ model: "Session", key: "shop" });
+  return plan;
+}
+
+type DeleteManyDelegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> };
+
 export async function purgeShopData(shop: string): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const del = async (label: string, fn: () => Promise<{ count: number }>) => {
@@ -117,13 +152,14 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
     }
   };
   const quoted = JSON.stringify(shop); // exact JSON string match, e.g. "a.myshopify.com"
+  const client = prisma as unknown as Record<string, DeleteManyDelegate>;
 
-  // Leaf → root. Relation cascades would cover most of this, but an explicit
-  // delete per shop-scoped table is deterministic and self-documenting.
-  await del("ownerEmailLog", () => prisma.ownerEmailLog.deleteMany({ where: { shop } }));
-  await del("personalDataAccessLog", async () => ({ count: await deleteShopPersonalDataLogs(shop) }));
-  await del("billingState", () => prisma.billingState.deleteMany({ where: { shop } }));
-  await del("novaReferral", () => prisma.novaReferral.deleteMany({ where: { shop } }));
+  const plan = purgePlan();
+  const session = plan.pop()!; // Session is last in the plan
+  for (const { model, key } of plan) {
+    const name = delegateName(model);
+    await del(name, () => client[name].deleteMany({ where: { [key]: shop } }));
+  }
   // Nova outbox has no shop column: match the shop header / body field. PENDING
   // rows stay so the uninstall / shop-redact forwards still reach the platform.
   await del("novaOutbox", () =>
@@ -134,7 +170,8 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
       },
     }),
   );
-  await del("session", () => prisma.session.deleteMany({ where: { shop } }));
+  // Sessions last: if anything above failed, the shop can still be reached for a retry.
+  await del(delegateName(session.model), () => client[delegateName(session.model)].deleteMany({ where: { shop } }));
   return counts;
 }
 

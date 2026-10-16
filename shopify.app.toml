@@ -37,6 +37,32 @@ uri = "/webhooks/app/uninstalled"
 topics = [ "app/scopes_update" ]
 uri = "/webhooks/app/scopes_update"
 
+# Data sync (spec §6.5): stock now, catalog and locations. Scopes: read_inventory,
+# read_products, read_locations. No orders/* webhooks (sales come from ShopifyQL).
+[[webhooks.subscriptions]]
+topics = [ "inventory_levels/update" ]
+uri = "/webhooks/inventory_levels/update"
+
+[[webhooks.subscriptions]]
+topics = [ "products/update" ]
+uri = "/webhooks/products/update"
+
+[[webhooks.subscriptions]]
+topics = [ "products/delete" ]
+uri = "/webhooks/products/delete"
+
+[[webhooks.subscriptions]]
+topics = [ "locations/create" ]
+uri = "/webhooks/locations/create"
+
+[[webhooks.subscriptions]]
+topics = [ "locations/update" ]
+uri = "/webhooks/locations/update"
+
+[[webhooks.subscriptions]]
+topics = [ "locations/delete" ]
+uri = "/webhooks/locations/delete"
+
 # Mandatory privacy-compliance webhooks. `authenticate.webhook` verifies the HMAC
 # and returns 401 on a bad signature (app/services/gdpr.server.ts).
 [[webhooks.subscriptions]]

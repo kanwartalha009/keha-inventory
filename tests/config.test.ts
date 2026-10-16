@@ -48,6 +48,22 @@ describe("config contracts", () => {
     expect(read("app/lib/admin-url.server.ts")).toContain('"keha-inventory"');
   });
 
+  it("subscribes the same webhook topics in both tomls, each to an existing route", () => {
+    const subs = (src: string) =>
+      [...src.matchAll(/\[\[webhooks\.subscriptions\]\]\s*\n(?:compliance_)?topics = \[ "([^"]+)" \]\s*\nuri = "([^"]+)"/g)].map(
+        (m) => [m[1], m[2]] as const,
+      );
+    expect(subs(dev)).toEqual(subs(prod));
+    const topics = subs(prod).map(([t]) => t);
+    for (const t of ["inventory_levels/update", "products/update", "products/delete", "locations/create", "locations/update", "locations/delete"])
+      expect(topics).toContain(t);
+    for (const [topic, uri] of subs(prod)) {
+      expect(uri).toBe(`/webhooks/${topic}`);
+      const route = `app/routes/${uri.slice(1).replace(/\//g, ".")}.tsx`;
+      expect(() => statSync(join(root, route)), route).not.toThrow();
+    }
+  });
+
   it("documents exactly the env vars the code reads", () => {
     const used = new Set<string>();
     for (const f of files(join(root, "app")))
