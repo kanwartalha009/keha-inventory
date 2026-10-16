@@ -47,9 +47,27 @@ describe("Plans page", () => {
     expect(html).toContain("Choose plan");
   });
 
-  it("doesn't present an unchecked plan as the merchant's plan", () => {
+  it("doesn't present an unchecked plan as the merchant's plan: says, in merchant words, that everything is on (fail open)", () => {
     const html = render({ plans, plan: "pro", billing: null, comped: false, checked: false, manageUrl: "x" });
-    expect(html).toContain("Plan not checked yet");
+    expect(html).toContain("All features on");
+    expect(html).toContain("Shopify hasn&#x27;t confirmed a plan for your store yet, so every feature is on.");
+    expect(html).not.toContain("Plan not checked yet");
     expect(html).not.toContain("Current plan");
+  });
+
+  it("a checked plan names it, with no 'not confirmed' note", () => {
+    const html = render({ plans, plan: "growth", billing: { status: "ACTIVE", planCode: "growth" }, comped: false, checked: true, manageUrl: "x" });
+    expect(html).toContain("Current plan");
+    expect(html).toContain("Change plan");
+    expect(html).not.toContain("All features on");
+  });
+
+  it("layout: one row per plan (points beside the price, room for one line each), cards with the shared head", () => {
+    const html = render({ plans, plan: "free", billing: { status: "NONE", planCode: null }, comped: false, checked: true, manageUrl: "x" });
+    expect(html.split('<div class="keha-plan">').length - 1).toBe(3);
+    expect(html.split('<div class="keha-point">').length - 1).toBeGreaterThanOrEqual(8);
+    expect(html).not.toContain("keha-grid--3");
+    expect(html).toMatch(/keha-form-card__head[^"]*"><s-stack gap="small-500"><s-heading>Your plan<\/s-heading>/);
+    expect(html).toMatch(/keha-form-card__head keha-form-card__head--pad"><s-stack gap="small-500"><s-heading>Compare plans<\/s-heading>/);
   });
 });

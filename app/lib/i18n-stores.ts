@@ -8,7 +8,7 @@
 import type { Tr } from "./i18n";
 
 export const STORES_TR: Record<string, Tr> = {
-  "Choose each location's role and whether it counts for online sales.": { es: "Elige la función de cada ubicación y si cuenta para las ventas online.", fr: "Choisissez le rôle de chaque emplacement et s'il compte pour les ventes en ligne.", de: "Lege für jeden Standort die Rolle fest und ob er für Online-Verkäufe zählt.", it: "Scegli il ruolo di ogni sede e se conta per le vendite online.", pt: "Escolhe a função de cada localização e se conta para as vendas online.", nl: "Kies de rol van elke locatie en of die meetelt voor online verkoop.", pl: "Wybierz rolę każdej lokalizacji i czy liczy się do sprzedaży online." },
+  "Choose each location's role and whether it counts for online sales.": { es: "Elige la función de cada ubicación y si cuenta para las ventas online.", fr: "Choisissez le rôle de chaque emplacement et s'il compte pour les ventes en ligne.", de: "Lege für jeden Standort die Rolle fest und ob er für Online-Verkäufe zählt.", it: "Scegli il ruolo di ogni sede e se conta per le vendite online.", pt: "Escolha a função de cada localização e se conta para as vendas online.", nl: "Kies de rol van elke locatie en of die meetelt voor online verkoop.", pl: "Wybierz rolę każdej lokalizacji i czy liczy się do sprzedaży online." },
   // ---- Location switcher (compact teaching link below Pro) ----
   "Plan per location": { es: "Planificar por ubicación", fr: "Planifier par emplacement", de: "Pro Standort planen", it: "Pianifica per sede", pt: "Planear por localização", nl: "Per locatie plannen", pl: "Planuj według lokalizacji" },
   // ---- Roles and the online pool choice ----
