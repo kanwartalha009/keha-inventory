@@ -57,6 +57,40 @@ model NovaOutbox {
   @@index([status, nextAttemptAt])
 }
 
+/// Background work (DB scale #2, lib/jobs-shared): one row per (shop, kind) wanted — backfill,
+/// nightly, compute, alerts. Claimed with FOR UPDATE SKIP LOCKED together with the shop's lease
+/// (JobLease), so a job runs on one worker at a time and a shop's jobs one at a time; deleted
+/// when done, unless asked for again while it ran (version moved).
+model Job {
+  id          String    @id
+  shop        String
+  kind        String
+  runAt       DateTime
+  /// Set while a worker holds it (extended every few minutes); past = free again (worker died).
+  lockedUntil DateTime?
+  lockedBy    String?
+  /// Claims since it last finished; at MAX_ATTEMPTS it is set aside for an hour.
+  attempts    Int       @default(0)
+  lastError   String?
+  /// Bumped by every enqueue: asked for again while running → re-queued when it finishes.
+  version     Int       @default(0)
+  createdAt   DateTime
+  updatedAt   DateTime
+
+  @@unique([shop, kind])
+  @@index([runAt])
+}
+
+/// A lease with expiry (DB scale #2): "shop:<domain>" is the per-shop job lock, "tick:<name>"
+/// lets one instance run a shop-wide timer. Free when lockedUntil has passed.
+model JobLease {
+  key         String   @id
+  /// The shop of a "shop:" lease (purged with it, I-3); null for timers.
+  shop        String?
+  owner       String
+  lockedUntil DateTime
+}
+
 model UninstalledShop {
   shop          String    @id
   uninstalledAt DateTime  @default(now())

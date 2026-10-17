@@ -10,8 +10,7 @@ import { confirmInstall } from "./lib/nova.server";
 import { consumeReferral } from "./lib/referral.server";
 import { cancelPendingPurge } from "./services/purge-stamp.server";
 import { POLARIS_URL } from "./lib/polaris-shared";
-import { kickoffBackfill } from "./services/sync/backfill.server";
-import { computeAfterSync } from "./services/compute.server";
+import { enqueueJob } from "./services/jobs/queue.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -41,9 +40,11 @@ const shopify = shopifyApp({
         installedAt: new Date().toISOString(),
         ref: ref ?? undefined,
       });
-      // Start reading the store (spec §4 J1). Non-blocking and never throws; the scheduler
-      // resumes it if this process stops. A finished backfill returns at once.
-      kickoffBackfill(session.shop, { getAdmin: dataAdmin, afterSync: computeAfterSync });
+      // Start reading the store (spec §4 J1): queued for the job workers (DB scale #2), so the
+      // install never waits and installs share the workers (INVENTORY_WORKERS at a time). Never
+      // throws; the hourly data tick queues it again if this enqueue is lost. A finished backfill
+      // returns at once.
+      await enqueueJob(session.shop, "backfill");
     },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN

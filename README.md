@@ -110,19 +110,41 @@ Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
 | `SHOPIFY_PARTNER_ORG_ID` | Partner org ID for App Pricing plan checks |
 | `SHOPIFY_ORG_ID` | Fallback for `SHOPIFY_PARTNER_ORG_ID` |
 | `SHOPIFY_PARTNER_API_TOKEN` | Partner API token ("Manage apps" + "View financials") |
-| `DATABASE_URL` | Railway Postgres (private network); also read by `npm run backtest` |
+| `DATABASE_URL` | Railway Postgres (private network); also read by `npm run backtest`. The app adds `connection_limit=10&pool_timeout=20` unless the URL sets them; behind PgBouncer add `pgbouncer=true` |
 | `APP_ENCRYPTION_KEY` | 64 hex chars, AES-256-GCM for the Slack webhook and supplier emails. Required in production (without a valid key those secrets are not saved); rotating it is not supported (stored values must be entered again) |
 | `NOVA_API` | Nova platform base URL |
 | `NOVA_INGRESS_HMAC_SECRET` | Signs forwarded webhooks (`X-Nova-Signature`) |
 | `NOVA_INSTALL_CONFIRM_SECRET` | Signs the install-confirm callback |
 | `INVENTORY_CRON_SECRET` | Bearer token for `/cron/*` |
 | `INVENTORY_DISABLE_INTERNAL_CRON` | `1` only when an external scheduler runs the jobs |
+| `WORKER_MODE` | `all` (default: pages, timers and job workers in one service) · `web` (pages only) · `worker` (timers and jobs only) — see Scaling |
+| `INVENTORY_WORKERS` | Background jobs run at once per instance (default 2) |
 | `INVENTORY_EMAIL_API_URL` | Email API (default `https://api.resend.com/emails`); `/privacy` names the provider from it |
 | `INVENTORY_EMAIL_API_KEY` | Email API key (Monday email, alerts, supplier emails, data-request answers) |
 | `INVENTORY_EMAIL_FROM` | Verified sender, e.g. `Keha <mail@keha.io>` |
 | `INVENTORY_LEGAL_NAME` | Company name on `/privacy` and `/terms` |
 | `INVENTORY_SUPPORT_EMAIL` | Support / privacy contact (falls back to `support@keha.io`) |
 | `INVENTORY_LISTING_URL` | App Store listing URL once live (falls back to `https://keha.io/inventory`) |
+
+## Scaling (DB audit 2026-10-17)
+
+- **Background work is a Postgres job queue** (`Job`, `JobLease`; `app/lib/jobs-shared.ts`): the hourly
+  ticks only queue per-shop jobs (backfill, nightly, compute, alerts) and `INVENTORY_WORKERS` workers
+  per instance run them, claimed with `FOR UPDATE SKIP LOCKED` together with a lease on the shop, so a
+  job runs once and a shop's jobs one at a time across any number of instances. Installs queue their
+  backfill. `/health` → `jobs` shows due / running / failing jobs and the oldest wait.
+- **To scale: run a second Railway service with `WORKER_MODE=worker`** (same repo and start command,
+  same variables) and set the web service to `WORKER_MODE=web`, so syncs and compute never share an
+  event loop with merchants' page loads. Add worker services (or raise `INVENTORY_WORKERS`) as stores
+  grow. Today's single service needs no change (`WORKER_MODE` unset = `all`).
+- **Connections:** each process uses at most 10 (`connection_limit`, overridable in `DATABASE_URL`);
+  compute keeps at most 3 of its reads in flight. With PgBouncer (transaction mode) add
+  `pgbouncer=true` to `DATABASE_URL` and run `prisma migrate deploy` against the direct URL — every
+  statement is single-statement or a batch transaction, no session locks.
+- **Large stores:** stock history is streamed and written a few days at a time (250,000 rows); the
+  1,000,000-row read cap splits the date range instead of failing; compute works in chunks of 2,000
+  variants and reads stored first / last days (`Variant.firstStockDay` …, `VariantLocationDays`)
+  instead of every variant's whole history. Invariants: `tests/scale.test.ts`.
 
 ## Config
 

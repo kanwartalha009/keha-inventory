@@ -14,7 +14,8 @@
  * compute runs right then, so first numbers appear early — and finishedAt when everything
  * is. A throttle (or the tick's throttle-wait budget) stops the run until the next tick.
  *
- * Never throws: kickoffBackfill (afterAuth) and the scheduler only log the outcome.
+ * Never throws: the backfill job (services/jobs, queued on install by afterAuth and hourly by
+ * the scheduler) only records the outcome.
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../../db.server";
@@ -209,11 +210,12 @@ export async function runProductsPass(
 }
 
 // ---------------------------------------------------------------------------
-// Install kickoff (afterAuth): non-blocking, one run per shop at a time.
+// In-process guard: one data job per shop at a time in this process. Across instances the job
+// queue's shop lease does it (services/jobs, DB scale #2); the workers run every job inside both.
 // ---------------------------------------------------------------------------
 
 const g = globalThis as unknown as { __kehaInvDataRunning?: Set<string> };
-/** Shops with a data job in flight in this process (shared with the scheduler's dataTick). */
+/** Shops with a data job in flight in this process. */
 export const runningShops: Set<string> = (g.__kehaInvDataRunning ??= new Set<string>());
 
 /** Runs `job` unless one is already running for the shop. Never throws. */
@@ -227,9 +229,3 @@ export async function withShopLock<T>(shop: string, job: () => Promise<T>): Prom
   }
 }
 
-/** Starts the backfill in the background (install must not wait for it). Never throws. */
-export function kickoffBackfill(shop: string, deps: DataJobDeps): void {
-  void withShopLock(shop, () => runBackfill(shop, deps))
-    .then((r) => console.log(`[sync/backfill] ${shop}: ${r}`))
-    .catch((e) => console.error(`[sync/backfill] ${shop}: kickoff failed`, e));
-}

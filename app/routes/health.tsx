@@ -3,7 +3,11 @@
  * §2/§8 but missing until 2026-09-01). Reports:
  *   - db:        can we run a trivial query
  *   - scheduler: has the in-process scheduler started, and when did the outbox
- *                timer last fire (should be < ~4 min ago once booted)
+ *                timer last fire (should be < ~4 min ago once booted); this instance's
+ *                WORKER_MODE (web | worker | all), job workers, jobs running and the last one
+ *                finished here ("kind:outcome"); `web` instances start no timers or workers
+ *   - jobs:      the shared job queue (DB scale #2): due / running / later / failing counts and
+ *                how long the oldest due job has waited (s) — over every instance
  *   - outbox:    PENDING / DEAD row counts (delivery backlog to the Nova backend)
  *   - pricing:   are plan checks configured, last success / error code (2026-10-13)
  *   - config:    booleans for settings the privacy policy relies on (2026-09-28):
@@ -25,6 +29,8 @@ import { pricingStatus } from "../services/app-pricing.server";
 import { shopifyqlBudget } from "../services/sync/shopifyql.server";
 import { backfillPercent, isDegraded, latestError, readBackfillState } from "../lib/sync/backfill-shared";
 import { knownCode, type SyncErrorCode } from "../lib/sync/errors-shared";
+import { jobStore } from "../services/jobs/queue.server";
+import type { QueueStats } from "../lib/jobs-shared";
 
 const outbox = prisma.novaOutbox;
 
@@ -91,14 +97,23 @@ async function computeHealth(now: Date): Promise<{ lastAt: string | null; shopsC
   }
 }
 
-type Aggregate = { sync: SyncHealth; compute: { lastAt: string | null; shopsComputed: number | null } };
+/** The job queue over every instance. Never throws (null on a DB error). */
+async function jobsHealth(): Promise<QueueStats | null> {
+  try {
+    return await jobStore().stats();
+  } catch {
+    return null;
+  }
+}
+
+type Aggregate = { sync: SyncHealth; compute: { lastAt: string | null; shopsComputed: number | null }; jobs: QueueStats | null };
 let cache: { at: number; value: Aggregate } | null = null;
 
 /** Sync + compute aggregates, cached for AGGREGATE_CACHE_MS. */
 async function aggregate(nowMs: number): Promise<Aggregate> {
   if (cache && nowMs - cache.at < AGGREGATE_CACHE_MS) return cache.value;
-  const [sync, compute] = await Promise.all([syncHealth(), computeHealth(new Date(nowMs))]);
-  cache = { at: nowMs, value: { sync, compute } };
+  const [sync, compute, jobs] = await Promise.all([syncHealth(), computeHealth(new Date(nowMs)), jobsHealth()]);
+  cache = { at: nowMs, value: { sync, compute, jobs } };
   return cache.value;
 }
 
@@ -129,7 +144,7 @@ export const loader = async () => {
   const schedulerStale =
     heartbeat.started && lastTick !== null && Date.now() - lastTick > 10 * 60 * 1000;
   const ok = db && !schedulerStale;
-  const { sync, compute } = await aggregate(Date.now());
+  const { sync, compute, jobs } = await aggregate(Date.now());
   const budget = shopifyqlBudget();
 
   return Response.json(
@@ -149,6 +164,7 @@ export const loader = async () => {
       sync,
       shopifyqlBudget: { lastCost: budget.lastCost, lastRemaining: budget.lastRemaining, lastAt: budget.lastAt },
       compute,
+      jobs: jobs ?? { due: null, running: null, later: null, failing: null, oldestDueSec: null },
       time: new Date().toISOString(),
     },
     { status: ok ? 200 : 503 },

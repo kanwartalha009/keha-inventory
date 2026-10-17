@@ -158,4 +158,23 @@ describe("/health", () => {
     const { body } = await health();
     expect(body.compute).toEqual({ lastAt: "2026-10-16T03:21:00.000Z", shopsComputed: 2 });
   });
+
+  it("DB scale #2: reports the shared job queue (counts, oldest wait); unknown (null) when the queue cannot be read", async () => {
+    let { body } = await health();
+    expect(body.jobs).toEqual({ due: null, running: null, later: null, failing: null, oldestDueSec: null });
+    const { createMemoryJobStore } = await import("./helpers/memory-job-store");
+    const { setJobStore } = await import("../app/services/jobs/queue.server");
+    const store = createMemoryJobStore();
+    setJobStore(store);
+    try {
+      await store.enqueue("a.myshopify.com", "backfill");
+      await store.enqueue("b.myshopify.com", "nightly", 60_000);
+      store.clock.now += 5_000;
+      resetHealthCache();
+      ({ body } = await health());
+      expect(body.jobs).toEqual({ due: 1, running: 0, later: 1, failing: 0, oldestDueSec: 5 });
+    } finally {
+      setJobStore(null);
+    }
+  });
 });

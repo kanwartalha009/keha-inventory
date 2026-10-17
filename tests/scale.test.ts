@@ -3,6 +3,10 @@
  * guards; the heavy fixtures live in their own files:
  *  - #1 large months: tests/sync/large-month.test.ts (a 3.72 M-row stock month) — here: the
  *    row cap splits a SALES step into parts that are each read, reconciled and written alone.
+ *  - #2 scheduler: work is a Postgres job queue (FOR UPDATE SKIP LOCKED + a lease per shop): two
+ *    instances never run one job twice nor two jobs of one shop at once; WORKER_MODE web | worker
+ *    | all. The SQL against real Postgres (parallel sessions): tests/jobs-store.test.ts; the ticks
+ *    and handlers: tests/scheduler-data.test.ts.
  *  - #3 no full-history scans: once a shop's stored first / last days are built, compute and
  *    per-location compute read StockDaily / SalesDaily only with a lower day bound (the windows
  *    they need) or as single-variant index lookups (findFirst) — never a variant's whole history.
@@ -34,6 +38,9 @@ import type { ShopifyqlClient } from "../app/services/sync/shopifyql.server";
 import { ShopifyqlRowCapError } from "../app/lib/sync/shopifyql-shared";
 import { COMPUTE_QUERY_CONCURRENCY, computeShop, productChunks } from "../app/services/compute.server";
 import { matches, type Row } from "./helpers/fake-prisma";
+import { createMemoryJobStore } from "./helpers/memory-job-store";
+import { setJobStore } from "../app/services/jobs/queue.server";
+import { startWorkers } from "../app/services/jobs/worker.server";
 import { FX_NOW, FX_SHOP, seedScaleFixture } from "./fixtures/scale-compute-fixture";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
@@ -80,6 +87,40 @@ describe("#1 the row cap splits a sales step; each part is reconciled and writte
       ["2026-09-11", "2026-09-20"],
       ["2026-09-21", "2026-09-30"],
     ]);
+  });
+});
+
+describe("#2 two instances share the queue", () => {
+  it("every job runs once; a shop's jobs one at a time; both instances work", async () => {
+    const store = createMemoryJobStore();
+    setJobStore(store);
+    try {
+      const shops = Array.from({ length: 8 }, (_, i) => `s${i}.myshopify.com`);
+      for (const s of shops) for (const k of ["backfill", "compute", "alerts"] as const) await store.enqueue(s, k);
+      const ran: string[] = [];
+      const busy = new Set<string>();
+      const by = { a: 0, b: 0 };
+      const handler = (who: "a" | "b") => async (j: { shop: string; kind: string }) => {
+        expect(busy.has(j.shop)).toBe(false);
+        busy.add(j.shop);
+        await new Promise((r) => setTimeout(r, 2));
+        busy.delete(j.shop);
+        ran.push(`${j.kind}:${j.shop}`);
+        by[who]++;
+        return "done";
+      };
+      const h = (who: "a" | "b") => ({ backfill: handler(who), nightly: handler(who), compute: handler(who), alerts: handler(who) });
+      // Two "instances": two worker pools on one queue (their owners differ).
+      const a = startWorkers(h("a"), { count: 2, pollMs: 2 });
+      const b = startWorkers(h("b"), { count: 2, pollMs: 2 });
+      await vi.waitFor(() => expect(ran).toHaveLength(24), { timeout: 5000 });
+      await Promise.all([a.stop(), b.stop()]);
+      expect(new Set(ran).size).toBe(24);
+      expect(by.a).toBeGreaterThan(0);
+      expect(by.b).toBeGreaterThan(0);
+    } finally {
+      setJobStore(null);
+    }
   });
 });
 

@@ -22,6 +22,7 @@
  * as "flow_rejected" and retried after 24 h, at most 7 times in 30 days.
  */
 import prisma from "../db.server";
+import { enqueueJob } from "./jobs/queue.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
 import {
@@ -459,15 +460,20 @@ export async function runAlertsAllShops(now: Date = new Date()): Promise<Record<
   return counts;
 }
 
-/** Scheduler entry (hourly). Overlap-guarded; logs only when something happened. */
+/**
+ * Scheduler entry (hourly): one `alerts` job per installed store (DB scale #2) — the work runs on
+ * the job workers (services/jobs, runAlertsForShop), a store at a time across instances.
+ * Overlap-guarded; never throws.
+ */
 let alertsRunning = false;
 export async function alertsTick(): Promise<void> {
   if (alertsRunning) return;
   alertsRunning = true;
   try {
-    const counts = await runAlertsAllShops(new Date());
-    const active = Object.entries(counts).filter(([k]) => !/:(nothing|off|skipped|stale)$/.test(k));
-    if (active.length) console.log(`[scheduler/alerts] ${JSON.stringify(counts)}`);
+    const rows = await prisma.shop.findMany({ where: { uninstalledAt: null }, select: { domain: true } });
+    let queued = 0;
+    for (const row of rows) if (await enqueueJob(row.domain, "alerts")) queued++;
+    if (queued) console.log(`[scheduler/alerts] queued ${queued} store(s)`);
   } catch (e) {
     console.error("[scheduler/alerts]", e);
   } finally {
