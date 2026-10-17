@@ -152,23 +152,31 @@ export type PgFactsOptions = { now?: () => number };
 /** How long a stock fetch is shared, and how many are kept (each up to a few MB). */
 const SHARE_MS = 3000;
 const SHARE_MAX = 4;
+/** How long a read trusts a cached Shop.num (writes and purges always read it). */
+const SHOP_NUM_TTL_MS = 60_000;
 
 const utcToday = (now: () => number) => new Date(now()).toISOString().slice(0, 10);
 
 /** The Postgres store over any SqlRunner (Prisma in the app, psql in the tests). */
 export function pgFactsStore(runner: SqlRunner, opts: PgFactsOptions = {}): FactsStore & { forget(): void } {
   const now = opts.now ?? Date.now;
-  const shopNums = new Map<string, number>();
+  // Shop.num per domain. A number changes when its Shop row is deleted and created again (a purge
+  // then a reinstall, or sample data removed and loaded again — `<shop>#sample`), possibly by
+  // another process: reads trust a cached number for SHOP_NUM_TTL_MS, writes always read it fresh.
+  const shopNums = new Map<string, { n: number; at: number }>();
   const keyToNum = new Map<string, number>(FIXED_KEYS);
   const numToKey = new Map<number, string>([...FIXED_KEYS].map(([k, n]) => [n, k]));
 
-  async function shopNum(shop: string): Promise<number | null> {
+  async function shopNum(shop: string, fresh = false): Promise<number | null> {
     const hit = shopNums.get(shop);
-    if (hit !== undefined) return hit;
+    if (!fresh && hit !== undefined && Date.now() - hit.at < SHOP_NUM_TTL_MS) return hit.n;
     const rows = await runner.query(`SELECT "num" FROM "Shop" WHERE "domain" = $1::text`, [shop]);
-    if (!rows.length || rows[0]!.num === null || rows[0]!.num === undefined) return null;
+    if (!rows.length || rows[0]!.num === null || rows[0]!.num === undefined) {
+      shopNums.delete(shop);
+      return null;
+    }
     const n = Number(toNumber(rows[0]!.num));
-    shopNums.set(shop, n);
+    shopNums.set(shop, { n, at: Date.now() });
     return n;
   }
 
@@ -378,7 +386,7 @@ export function pgFactsStore(runner: SqlRunner, opts: PgFactsOptions = {}): Fact
   }
 
   async function requireShop(shop: string): Promise<number> {
-    const n = await shopNum(shop);
+    const n = await shopNum(shop, true);
     if (n === null) throw new UnknownShopError(shop);
     return n;
   }
@@ -469,7 +477,7 @@ export function pgFactsStore(runner: SqlRunner, opts: PgFactsOptions = {}): Fact
 
     async purgeShop(shop) {
       recent.clear();
-      const num = await shopNum(shop);
+      const num = await shopNum(shop, true);
       if (num === null) return 0;
       let total = 0;
       for (const table of FACT_TABLES) {
@@ -485,6 +493,7 @@ export function pgFactsStore(runner: SqlRunner, opts: PgFactsOptions = {}): Fact
           }
         }
       }
+      shopNums.delete(shop);
       return total;
     },
 

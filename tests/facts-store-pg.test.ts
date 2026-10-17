@@ -265,6 +265,24 @@ run("facts store on Postgres = the in-memory store", () => {
     expect(await pg.purgeShop("nobody.myshopify.com")).toBe(0);
   });
 
+  it("a shop whose Shop row is deleted and created again (a new number) is written and read under its new number", { timeout: 60_000 }, async () => {
+    // Sample data removed and loaded again (`<shop>#sample`), or a purge then a reinstall.
+    const C = "gamma.myshopify.com#sample";
+    psql(DB, `INSERT INTO "Shop" ("id","domain","currency","timezone","locale") VALUES ('c1','${C}','EUR','UTC','en')`);
+    const f = facts(5, 10, 3);
+    await pg.replaceSales(C, f.range, f.sales);
+    const before = await pg.salesDaily.aggregate({ where: { shop: C }, _sum: { sold: true } } as never);
+    await pg.purgeShop(C);
+    psql(DB, `DELETE FROM "Shop" WHERE domain = '${C}'`);
+    psql(DB, `INSERT INTO "Shop" ("id","domain","currency","timezone","locale") VALUES ('c2','${C}','EUR','UTC','en')`);
+    await pg.replaceSales(C, f.range, f.sales);
+    const num = psql(DB, `SELECT num FROM "Shop" WHERE domain = '${C}'`)[0]!.num;
+    expect(Number(psql(DB, `SELECT count(*) AS n FROM "SalesFact" WHERE "shopNum" = ${num}`)[0]!.n)).toBe(f.sales.length);
+    expect(psql(DB, `SELECT count(*) AS n FROM "SalesFact" WHERE "shopNum" NOT IN (SELECT num FROM "Shop")`)[0]!.n).toBe("0");
+    expect(norm(await pg.salesDaily.aggregate({ where: { shop: C }, _sum: { sold: true } } as never))).toEqual(norm(before));
+    await pg.purgeShop(C);
+  });
+
   it("retention drops whole months past the cutoff and creates the months ahead", async () => {
     // A month far past every cutoff, with a row in it.
     const old = addMonths(monthOf(TODAY), -30);

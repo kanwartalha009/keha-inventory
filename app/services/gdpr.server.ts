@@ -214,6 +214,13 @@ export async function purgeSampleData(shop: string, plan = purgePlan()): Promise
   const key = sampleKey(shop);
   const client = prisma as unknown as Record<string, DeleteManyDelegate>;
   const counts: Record<string, number> = {};
+  // The sample's compact facts are keyed by its Shop row's number: purged before that row goes.
+  try {
+    counts.facts = await factsStore().purgeShop(key);
+  } catch (e) {
+    console.error(`[gdpr] sample purge facts failed for ${shop}`, e);
+    counts.facts = -1;
+  }
   for (const { model, key: column } of plan) {
     if (model === "Session") continue;
     const name = delegateName(model);
