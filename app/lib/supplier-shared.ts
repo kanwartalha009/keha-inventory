@@ -73,6 +73,11 @@ export interface PoLine {
   autoReceived?: number;
   /** Keha orders: `received` before the step that closed the order — what re-opening restores. */
   reopenReceived?: number;
+  /**
+   * Keha orders: when the merchant re-opened this order after it was received (ISO time). From
+   * then on the order is the merchant's: auto-receive never closes it again (H1).
+   */
+  reopenedAt?: string;
 }
 
 export const OPEN_PO_STATUSES = ["sent", "confirmed"] as const;
@@ -188,6 +193,7 @@ export function readPoLines(raw: unknown): PoLine[] {
       ...(typeof x.reopenReceived === "number" && Number.isFinite(x.reopenReceived) && x.reopenReceived >= 0
         ? { reopenReceived: Math.floor(x.reopenReceived) }
         : {}),
+      ...(typeof x.reopenedAt === "string" && x.reopenedAt ? { reopenedAt: x.reopenedAt } : {}),
     });
   }
   return out;

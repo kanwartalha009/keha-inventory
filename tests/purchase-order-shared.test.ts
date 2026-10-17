@@ -7,6 +7,8 @@ import {
   autoReceiveDecision,
   autoReceivedLines,
   canTransition,
+  reopenTarget,
+  reopenedLines,
   confirmLinkOpen,
   formatPoNumber,
   nextPoNumber,
@@ -183,6 +185,34 @@ describe("auto-receive (tightened, merchant audit 2026-10-17)", () => {
     expect(autoReceiveDecision(manual)).toMatchObject({ receive: false, reason: "manual" });
     const done = { ...base, lines: [{ variantId: "a", qty: 100, received: 100 }, { variantId: "b", qty: 50 }], onHand: new Map([["a", 0], ["b", 45]]) };
     expect(autoReceiveDecision(done)).toMatchObject({ receive: true, received: { b: 45 } });
+  });
+
+  it("a re-opened auto-received order is not auto-received again from the same stock rise (H1)", () => {
+    const lines: PoLine[] = [{ ...line(1, 100, 2), baseOnHand: 10 }];
+    const night = (ls: PoLine[]): AutoReceiveInput => ({
+      status: "sent",
+      source: "keha",
+      windowStart: "2026-10-10",
+      sentDay: "2026-09-01",
+      today: "2026-10-16",
+      lines: ls,
+      baseline: new Map([["v1", 10]]),
+      onHand: new Map([["v1", 105]]),
+      soldSince: new Map([["v1", 0]]),
+    });
+    const d1 = autoReceiveDecision(night(lines));
+    expect(d1.receive).toBe(true);
+    const closed = autoReceivedLines(lines, d1.receive ? d1.received : {});
+    const to = reopenTarget(
+      { status: "received", source: "keha", sentAt: new Date("2026-09-01"), confirmedShipDate: null, receivedAt: new Date("2026-10-16T02:00:00Z"), cancelledAt: null },
+      new Date("2026-10-16T09:00:00Z"),
+    );
+    expect(to).toBe("sent");
+    const reopened = reopenedLines(closed, "received", new Date("2026-10-16T09:00:00Z"));
+    expect(autoReceiveDecision(night(reopened))).toMatchObject({ receive: false, reason: "manual" });
+    // Still the merchant's after a later delivery lands, and after a JSON round-trip.
+    const later = { ...night(JSON.parse(JSON.stringify(reopened))), today: "2026-10-30", onHand: new Map([["v1", 300]]) };
+    expect(autoReceiveDecision(later)).toMatchObject({ receive: false, reason: "manual" });
   });
 
   it("one delivery is never credited to two orders", () => {

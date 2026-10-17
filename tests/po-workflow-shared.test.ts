@@ -115,13 +115,18 @@ describe("re-opening", () => {
     const closed = [line(1, 100, 2, { received: 95, autoReceived: 95, reopenReceived: 0 }), line(2, 50, 1, { received: 50, reopenReceived: 20 })];
     expect(wasAutoReceived({ status: "received", lines: closed })).toBe(true);
     expect(shortUnits({ status: "received", lines: closed })).toBe(0); // auto: not "closed short"
-    const open = reopenedLines(closed, "received");
-    expect(open[0]).toEqual(line(1, 100, 2));
-    expect(open[1]).toEqual(line(2, 50, 1, { received: 20 }));
+    const at = new Date("2026-10-17T09:00:00Z");
+    const open = reopenedLines(closed, "received", at);
+    // Re-opened after receiving: marked so auto-receive leaves it to the merchant (H1).
+    expect(open[0]).toEqual(line(1, 100, 2, { reopenedAt: at.toISOString() }));
+    expect(open[1]).toEqual(line(2, 50, 1, { received: 20, reopenedAt: at.toISOString() }));
+    expect(readPoLines(JSON.parse(JSON.stringify(open)))[0]).toMatchObject({ reopenedAt: at.toISOString() });
     // The JSON round-trip keeps the marks (lines live in PurchaseOrder.lines).
     expect(readPoLines(JSON.parse(JSON.stringify(closed)))[0]).toMatchObject({ autoReceived: 95, reopenReceived: 0 });
     // A cancelled order keeps its received units.
     expect(reopenedLines([line(1, 10, 1, { received: 4 })], "cancelled")[0]!.received).toBe(4);
+    // A cancelled order isn't marked: nothing was received, auto-receive still watches it.
+    expect(reopenedLines([line(1, 10, 1)], "cancelled")[0]!.reopenedAt).toBeUndefined();
   });
 });
 

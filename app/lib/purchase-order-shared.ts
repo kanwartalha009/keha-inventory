@@ -200,7 +200,7 @@ export type AutoReceiveInput = {
   /** The day the order was sent (store time). */
   sentDay: string | null;
   today: string;
-  lines: readonly Pick<PoLine, "variantId" | "qty" | "received" | "baseOnHand">[];
+  lines: readonly Pick<PoLine, "variantId" | "qty" | "received" | "baseOnHand" | "reopenedAt">[];
   /** On-hand (online pool) per variant at the end of the day before the window opened (StockDaily). */
   baseline: ReadonlyMap<string, number>;
   /** On-hand (online pool) now. */
@@ -225,6 +225,9 @@ export type AutoReceiveResult =
  *  - per line: EVERY open line must have ≥ 90 % of its units landed (capped at 0…ordered,
  *    minus rise already credited to another order this run);
  *  - an order the merchant has partly received by hand is left to the merchant ("manual");
+ *  - so is an order the merchant re-opened after it was received (a line's `reopenedAt`, H1):
+ *    the stock rise that closed it is still there, so measuring again would close it again
+ *    the next night; re-opening means "I'll receive this one myself";
  *  - drafts, cancelled and received orders and Shopify orders are never touched.
  * A line without a baseline means we can't tell: the order stays open.
  */
@@ -233,6 +236,7 @@ export function autoReceiveDecision(input: AutoReceiveInput): AutoReceiveResult 
     return { receive: false, reason: "status", share: null };
   }
   if (!input.windowStart || input.today < input.windowStart) return { receive: false, reason: "not_due", share: null };
+  if (input.lines.some((l) => !!l.reopenedAt)) return { receive: false, reason: "manual", share: null };
   const open = input.lines.filter((l) => l.qty > 0 && (l.received ?? 0) < l.qty);
   if (open.some((l) => (l.received ?? 0) > 0)) return { receive: false, reason: "manual", share: null };
   const fromSend = !!input.sentDay && input.windowStart <= input.sentDay;
@@ -373,13 +377,18 @@ export function reopenTarget(po: ReopenInput, now: Date): PoStatus | null {
   return po.confirmedShipDate ? "confirmed" : "sent";
 }
 
-/** Lines of a re-opened order: received units back to before the order closed. */
-export function reopenedLines(lines: readonly PoLine[], fromStatus: string): PoLine[] {
+/**
+ * Lines of a re-opened order: received units back to before the order closed. A received order
+ * is marked `reopenedAt` (H1) so auto-receive leaves it to the merchant from now on — the stock
+ * rise that closed it is still on the shelf and would close it again the next night. A cancelled
+ * order isn't marked: nothing was received, so auto-receive still watches for its delivery.
+ */
+export function reopenedLines(lines: readonly PoLine[], fromStatus: string, now: Date = new Date()): PoLine[] {
   return lines.map((l) => {
     const { autoReceived: _a, reopenReceived, ...rest } = l;
     if (fromStatus !== "received") return rest;
     const before = reopenReceived ?? 0;
-    const out: PoLine = { ...rest, received: before };
+    const out: PoLine = { ...rest, received: before, reopenedAt: rest.reopenedAt ?? now.toISOString() };
     if (!before) delete out.received;
     return out;
   });

@@ -634,7 +634,7 @@ export async function reopenOrder(shop: string, id: string, now: Date = new Date
       status: to,
       receivedAt: null,
       cancelledAt: null,
-      lines: reopenedLines(readPoLines(o.lines), o.status) as unknown as Prisma.InputJsonValue,
+      lines: reopenedLines(readPoLines(o.lines), o.status, now) as unknown as Prisma.InputJsonValue,
     },
   });
   return u.count === 1 ? { ok: true, to } : { ok: false, error: "changed" };
