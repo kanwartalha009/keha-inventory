@@ -105,7 +105,10 @@ describe("planVariant — order-by date", () => {
     // ⌊(5 − 28 − 10) ÷ 2⌋ = −17, as the nightly formula.
     expect(p.deadline).toBe(addDays(TODAY, -17));
     expect(p.deadline).toBe(orderByDate(TODAY, 2.5, 14, 5));
-    expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, qty: 61, deadline: addDays(TODAY, -17) });
+    // 56 + 10 − 5 = 61, minus the 23 sales missed before it lands (lost: it doesn't sell when out).
+    expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, qty: 38, deadline: addDays(TODAY, -17) });
+    // Sells when out of stock: the 23 are owed, so they are ordered back.
+    expect(planVariant(steady({ onHand: 5, sellsWhenOut: true })).orders[0]).toMatchObject({ qty: 61, deadline: addDays(TODAY, -17) });
   });
 
   it("M3: already out or oversold — never a date made up by running demand backwards", () => {
@@ -200,7 +203,7 @@ describe("events, weeks and suppliers", () => {
   const noCost = eventsOf(planVariant(steady({ onHand: 60 })), { variantId: "v2", productId: "p2", supplierKey: "vendor:acme", unitCost: null });
 
   it("costs: unknown is null and counted, never 0", () => {
-    expect(ev[0]!.cost).toBe(61 * 2.5);
+    expect(ev[0]!.cost).toBe(38 * 2.5);
     expect(noCost.every((e) => e.cost === null)).toBe(true);
     const t = cashTotals([...ev, ...noCost]);
     expect(t.missingCost).toBe(noCost.length);
@@ -276,12 +279,12 @@ describe("orders are placed on their order-by date, never earlier", () => {
   it("each order keeps the terms of its quantity (Why this quantity), adding up to the need", () => {
     const p = planVariant(steady({ onHand: 5, pack: 12 }));
     const w = p.orders[0]!.why!;
-    expect(w).toMatchObject({ day: 0, days: 28, rate: 2, season: 1, growth: 1, safety: 10, onHand: 5, onOrder: 0, pack: 12, rounded: 72, topUp: 0 });
+    expect(w).toMatchObject({ day: 0, days: 28, rate: 2, season: 1, growth: 1, safety: 10, onHand: 5, onOrder: 0, missed: 23, sellsWhenOut: false, pack: 12, rounded: 48, topUp: 0 });
     expect(w.demand).toBeCloseTo(56, 9);
-    expect(w.need).toBeCloseTo(w.demand + w.safety - w.onHand - w.onOrder, 9);
+    expect(w.need).toBeCloseTo(w.demand + w.safety - w.onHand - w.onOrder - w.missed!, 9);
     const later = p.orders[1]!.why!;
     expect(later.day).toBe(p.orders[1]!.day);
-    expect(later.need).toBeCloseTo(later.demand + later.safety - later.onHand - later.onOrder, 9);
+    expect(later.need).toBeCloseTo(later.demand + later.safety - later.onHand - later.onOrder - later.missed!, 9);
   });
 });
 
@@ -350,8 +353,9 @@ describe("planStore: the supplier's minimums, batch by batch", () => {
     const now = dueWithin(r.events, TODAY, 7);
     expect(now.reduce((a, e) => a + e.qty, 0)).toBe(120);
     const q = Object.fromEntries(now.map((e) => [e.variantId, e.qty]));
-    // S needs 61; the other 59 split 2 : 6 : 2 → 11.8, 35.4, 11.8 → 12, 35, 12 (largest remainder).
-    expect(q).toEqual({ v1: 61 + 12, v2: 35, v3: 12 });
+    // S needs 38 (23 sales missed before it lands are lost); the other 82 split 2 : 6 : 2 →
+    // 16.4, 49.2, 16.4 → 17, 49, 16 (largest remainder, ties: the earlier size).
+    expect(q).toEqual({ v1: 38 + 17, v2: 49, v3: 16 });
     expect(r.batches[0]!.styleToppedUp).toEqual(["shirt"]);
   });
 
@@ -451,5 +455,66 @@ describe("invariant: Order now lists exactly the plan's orders due in the next 7
         // …at the plan's own need for today (stored need), rounded to the case pack.
         if (day0) expect(day0.qty).toBe(lineQuantity(res.inputs.orderNeed!, 6, null));
       }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lost sales vs backorders (data audit 2026-10-17 #1)
+// ---------------------------------------------------------------------------
+
+describe("lost sales are not owed: a store that doesn't sell when out of stock never over-orders", () => {
+  /** Audit repro: 10/day, 60-day lead, 14-day cycle, safety 50, already out, nothing on order. */
+  const longOut = (over: Partial<ForwardVariantInput> = {}) =>
+    steady({ rate: 10, leadTimeDays: 60, cycleDays: 14, safety: 50, onHand: 0, status: "out", days: planDays(TODAY), ...over });
+
+  it("doesn't sell when out of stock (Shopify's default): orders only what it sells after the order arrives", () => {
+    const p = planVariant(longOut());
+    // Stock stays at 0 until day 60 (600 sales missed, not owed): order-up-to 140 + 50 − 0 at arrival.
+    expect(p.orders[0]).toMatchObject({ day: 0, overdue: true, qty: 190 });
+    expect(p.orders[0]!.why).toMatchObject({ demand: 740, safety: 50, onHand: 0, onOrder: 0, missed: 600, need: 190, sellsWhenOut: false });
+    // Then one cycle's sales every cycle — never 600 extra units for good.
+    expect(p.orders.slice(1).map((o) => o.qty)).toEqual(p.orders.slice(1).map(() => 140));
+    expect(p.orders.slice(1).map((o) => o.day)).toEqual([14, 28, 42, 56, 70, 84].filter((d) => d < planDays(TODAY)));
+  });
+
+  it("the projection never goes below zero: an out-of-stock spell before a purchase order lands doesn't eat into it", () => {
+    // Out today, 300 arriving on day 30: 300 sales are missed first; the 300 units are still there on day 30.
+    const p = planVariant(longOut({ incoming: 300, arrivals: [{ day: addDays(TODAY, 30), units: 300 }] }));
+    const why = p.orders[0]!.why!;
+    // Stock at arrival (day 60) = 300 − 10 × 30 = 0; order-up-to 190.
+    expect(why.missed).toBe(300);
+    expect(p.orders[0]!.qty).toBe(190);
+  });
+
+  it("sells when out of stock (CONTINUE): the backlog is owed and ordered back", () => {
+    const p = planVariant(longOut({ sellsWhenOut: true }));
+    expect(p.orders[0]).toMatchObject({ day: 0, overdue: true, qty: 790 });
+    expect(p.orders[0]!.why).toMatchObject({ missed: 0, sellsWhenOut: true });
+    expect(p.orders.slice(1).every((o) => o.qty === 140)).toBe(true);
+  });
+
+  it("a negative available is evidence of backorders, whatever the setting says", () => {
+    const p = planVariant(longOut({ onHand: -30 }));
+    expect(p.orders[0]!.qty).toBe(820);
+    expect(p.orders[0]!.why).toMatchObject({ missed: 0, sellsWhenOut: true });
+  });
+
+  it("the nightly need equals the plan's own need today (Order now ⇔ forward plan), both ways", () => {
+    for (const sellsWhenOut of [false, true])
+      for (const onHand of [0, 5, 30, 200])
+        for (const incoming of [0, 40]) {
+          const res = computeVariant(
+            variantInput({ series: buildSeries({ days: 90, sold: (k) => (k % 2 ? 1 : 3) }), onHand, incoming, supplierLeadTimeDays: 45, caseQty: 6, sellsWhenOut }),
+          )!;
+          expect(res.inputs.sellsWhenOut).toBe(sellsWhenOut);
+          const metric = { status: res.status, rate: res.rate, sigma: res.sigma, orderQty: res.orderQty, inputs: { ...res.inputs, safety: res.safety } };
+          const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: 6, moq: null, notCounted: 0, days: 91 }));
+          const day0 = fwd.orders.find((o) => o.day === 0);
+          if (day0) {
+            expect(day0.need, `${sellsWhenOut}/${onHand}/${incoming}`).toBeCloseTo(res.inputs.orderNeed!, 6);
+            expect(day0.qty).toBe(lineQuantity(res.inputs.orderNeed!, 6, null));
+            expect(res.orderQty).toBe(day0.qty);
+          }
+        }
   });
 });

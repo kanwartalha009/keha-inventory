@@ -153,6 +153,8 @@ model Variant {
   caseQty          Int?
   /// Merchant: "Don't reorder" (sell through, discontinued, one-off). Stays in stock numbers, never in orders.
   noReorder        Boolean   @default(false)
+  /// Shopify ProductVariant.inventoryPolicy: CONTINUE = keeps selling when out of stock (backorders owed); DENY / null = missed sales are lost.
+  inventoryPolicy  String?
   updatedAt        DateTime  @updatedAt
 
   @@index([shop])

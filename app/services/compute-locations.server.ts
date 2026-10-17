@@ -49,6 +49,7 @@ export type LocationVariantPlan = {
     price: unknown;
     cost: unknown;
     noReorder?: boolean | null;
+    inventoryPolicy?: string | null;
   };
   supplier: (SupplierLite & { minOrder: number | null }) | null;
 };
@@ -201,6 +202,7 @@ async function computeLocation(
       plan: 1,
       seasonCurve: x.curveOf?.get(v.id) ?? null,
       noReorder: v.noReorder === true,
+      sellsWhenOut: v.inventoryPolicy === "CONTINUE",
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),
       settings: x.overrides,

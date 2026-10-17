@@ -26,7 +26,7 @@ import {
   type SeriesIndex,
 } from "./rate-shared";
 import { variantStatus } from "./status-shared";
-import { arrivalsFrom, coverDays, demandProjection, type Projection } from "./projection-shared";
+import { arrivalsFrom, coverDays, demandProjection, lostUnits, type Projection } from "./projection-shared";
 import {
   resolveSettings,
   type AbcRole,
@@ -75,6 +75,12 @@ export interface VariantInput {
   soldLastYearAhead?: number | null;
   /** "Don't reorder" (Variant.noReorder): stock and status as usual, no order advice. */
   noReorder?: boolean | null;
+  /**
+   * Keeps selling when out of stock (Shopify ProductVariant.inventoryPolicy CONTINUE). Absent /
+   * false (DENY, Shopify's default): sales missed while sold out are lost, not owed. A negative
+   * on hand counts as selling when out (evidence of backorders).
+   */
+  sellsWhenOut?: boolean | null;
   caseQty?: number | null;
   minOrder?: number | null;
   /** §7.3 multipliers; default 1.0. `trend` is the APPLIED trend (1 with the growth assumption off). */
@@ -143,11 +149,15 @@ export interface VariantInputs {
   caseQty: number | null;
   minOrder: number | null;
   /**
-   * The unrounded need behind orderQty: demand(leadTime + cycle) + safety − (onHand + incoming),
-   * before the case pack and the minimum order; null when there is no order advice. The Reorder
-   * screen nets open drafts from it before rounding (review fix).
+   * The unrounded need behind orderQty: demand(leadTime + cycle) + safety − (onHand + incoming)
+   * − sales missed while sold out before an order placed today arrives (lost, not owed; 0 when it
+   * sells when out), before the case pack and the minimum order; null when there is no order
+   * advice. The Reorder screen nets open drafts from it before rounding (review fix). Equals the
+   * forward plan's need for today (forward-plan-shared needAt(0)).
    */
   orderNeed: number | null;
+  /** Sells when out of stock (inventoryPolicy CONTINUE, or a negative on hand): backlog is owed. */
+  sellsWhenOut: boolean;
   /**
    * M3: the first day of the out-of-stock spell the variant is in now (sales history: every day
    * from it through yesterday ended at ≤ 0 units; a day without data ends the search); null when
@@ -343,12 +353,17 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   let orderQty: number | null = null;
   let orderBy: DayKey | null = null;
   let orderNeed: number | null = null;
+  const sellsWhenOut = input.sellsWhenOut === true || onHand < 0;
   if (advice && !input.noReorder) {
     const need = demand(r.rate!, m, lead.days + cycle);
-    // A negative on hand is a backlog: the order covers it (need grows by the units owed).
-    orderNeed = need + safety! - (onHand + incoming);
+    // Sells when out (or a negative on hand, a backlog): the order covers what is owed. Otherwise
+    // the sales missed before today's order lands are lost — not ordered back (data audit #1).
+    const missed = sellsWhenOut
+      ? 0
+      : lostUnits(onHand, plan === 1 ? projection! : { daily: projection!.daily.map((x) => x * plan), tail: projection!.tail * plan }, Math.round(lead.days), arrivals);
+    orderNeed = need + safety! - (onHand + incoming) - missed;
     orderQty = orderQuantity({
-      demand: need,
+      demand: need - missed,
       safety: safety!,
       onHand,
       incoming,
@@ -408,6 +423,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       caseQty: input.caseQty ?? null,
       minOrder: input.minOrder ?? null,
       orderNeed,
+      sellsWhenOut,
       outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,

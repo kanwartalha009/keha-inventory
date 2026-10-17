@@ -24,7 +24,14 @@
  *
  * Rules:
  *  - Stock at arrival for an order placed on day s = projected stock at the start of day
- *    s + lead (other arrivals of that day included, the new order not). Projection is unclamped.
+ *    s + lead (other arrivals of that day included, the new order not).
+ *  - Lost sales vs backorders (data audit 2026-10-17 #1). A variant that doesn't sell when out of
+ *    stock (Shopify inventoryPolicy DENY, the default) LOSES the sales it misses: the projection
+ *    is floored at 0 and the orders are sized as order-up-to minus the projected stock at arrival
+ *    — the missed sales are not ordered back (`why.missed`). Before, the backlog was owed: 10/day,
+ *    60-day lead, already out ordered 790 now + 140 every cycle, ~600 units too many for good.
+ *    A variant that sells when out (CONTINUE), or whose available is already negative (evidence
+ *    of backorders), keeps the unclamped projection: what it sells while out is owed.
  *  - Order-by date (deadline) = the last day s with stock at arrival ≥ safety stock: waiting one
  *    more day would let it fall below. Already below today → the date it was (overdue), found by
  *    running today's demand backwards while there is stock (at most lead time + the stock's
@@ -37,6 +44,7 @@
  *    order-by date already passed is ordered today and flagged overdue. Never earlier — before
  *    the audit a variant was ordered "today" up to 14 days before its deadline, every day.
  *        need(t) = demand[t, t + H) + safety − (stock on hand at t + everything still on order)
+ *                  − sales missed while sold out before it arrives (0 when it sells when out)
  *    quantity lineQuantity(need(t)); it arrives on t + lead and the projection continues, so a
  *    fast seller can need several orders in 13 weeks. `why` keeps the terms of that sum.
  *  - Supplier minimums (planStore): orders are batched per supplier — batch 0 = the next 7 days
@@ -97,6 +105,11 @@ export interface ForwardVariantInput {
   days: number;
   /** M3: the day the current out-of-stock spell began (sales history; inputs.outSince); null unknown. */
   outSince?: DayKey | null;
+  /**
+   * Keeps selling when out of stock (Shopify inventoryPolicy CONTINUE): what it sells while out is
+   * owed (a backlog). False / absent: missed sales are lost. A negative on hand counts as true.
+   */
+  sellsWhenOut?: boolean | null;
 }
 
 /**
@@ -121,7 +134,11 @@ export interface OrderWhy {
   onHand: number;
   /** Still on order then (arrives later). */
   onOrder: number;
-  /** demand + safety − onHand − onOrder. */
+  /** Sales missed while sold out before the order arrives (lost, not owed; 0 when it sells when out). */
+  missed?: number;
+  /** It keeps selling when out of stock: the backlog is owed and ordered back. */
+  sellsWhenOut?: boolean;
+  /** demand + safety − onHand − onOrder − missed. */
   need: number;
   /** After the case pack and the per-variant minimum. */
   rounded: number;
@@ -225,6 +242,8 @@ export class VariantProjection {
   readonly deadline: DayKey | null;
   /** Today's order is late: its stock at arrival is below safety stock. */
   readonly overdue: boolean;
+  /** Sells when out of stock (input flag, or a negative on hand): the projection is not floored. */
+  readonly sellsWhenOut: boolean;
   private readonly input: ForwardVariantInput;
   private readonly base: number;
   private readonly safety: number;
@@ -234,6 +253,8 @@ export class VariantProjection {
   private readonly P: Float64Array = new Float64Array(1);
   private readonly arr: Float64Array = new Float64Array(1);
   private readonly O: Float64Array = new Float64Array(1);
+  /** Stock at the start of day d before the floor (negative: it ran out the day before). */
+  private readonly U: Float64Array = new Float64Array(1);
   private onOrderTotal = 0;
   /** Legacy path: today's order was taken. */
   private legacyDone = false;
@@ -256,6 +277,7 @@ export class VariantProjection {
     const notCounted = Math.max(0, finite(input.notCounted) ? input.notCounted : 0);
     this.needNow = this.skip ? null : netNeed(input.need, input.orderQty, notCounted);
     this.projected = this.base > 0 && safety !== null;
+    this.sellsWhenOut = input.sellsWhenOut === true || (finite(input.onHand) && input.onHand < 0);
     this.T = 0;
     if (!this.projected) {
       this.deadline = null;
@@ -282,10 +304,11 @@ export class VariantProjection {
       left -= u;
     }
     this.arr[Math.min(L, T)] += left + notCounted;
-    // O[d] = projected stock at the start of day d (arrivals of day d included), unclamped.
+    // O[d] = projected stock at the start of day d (arrivals of day d included): floored at 0 when
+    // missed sales are lost, unclamped when it sells when out. U[d] the same before the floor.
     this.O = new Float64Array(T + 1);
-    this.O[0] = input.onHand + this.arr[0]!;
-    for (let d = 0; d < T; d++) this.O[d + 1] = this.O[d]! - this.c[d]! + this.arr[d + 1]!;
+    this.U = new Float64Array(T + 1);
+    this.project(0);
     this.onOrderTotal = this.arr.reduce((a, b) => a + b, 0);
 
     this.overdue = !this.safeAt(0);
@@ -298,8 +321,11 @@ export class VariantProjection {
         this.deadline = out;
       } else {
         // Still in stock, below safety at arrival: the date it was, running today's demand back
-        // over at most lead time + the days of stock left above safety (bounded: stock > 0).
-        this.deadline = addDays(today, Math.min(-1, Math.floor((this.O[Math.min(T, L)]! - this.safety) / this.c[0]! + EPS)));
+        // over at most lead time + the days of stock left above safety (bounded: stock > 0). The
+        // position at arrival is unclamped here: back then the stock was higher, nothing was missed.
+        let atArrival = input.onHand - this.P[Math.min(T, L)]!;
+        for (let i = 0; i <= Math.min(T, L); i++) atArrival += this.arr[i]!;
+        this.deadline = addDays(today, Math.min(-1, Math.floor((atArrival - this.safety) / this.c[0]! + EPS)));
       }
     } else {
       let found: number | null = null;
@@ -324,8 +350,24 @@ export class VariantProjection {
     return this.skip === null && this.needNow !== null;
   }
 
+  /** Recompute the projection from day `from` on (arrivals changed on that day). */
+  private project(from: number): void {
+    const { O, U, c, arr, T } = this;
+    if (from <= 0) {
+      O[0] = this.input.onHand + arr[0]!;
+      U[0] = O[0]!;
+      from = 0;
+    }
+    for (let d = from; d < T; d++) {
+      const carry = O[d]! - c[d]!;
+      U[d + 1] = carry + arr[d + 1]!;
+      O[d + 1] = (this.sellsWhenOut ? carry : Math.max(0, carry)) + arr[d + 1]!;
+    }
+  }
+
+  /** An order placed on day s arrives with at least safety stock and nothing ran out just before. */
   private safeAt(s: number): boolean {
-    return this.O[Math.min(this.T, s + this.L)]! >= this.safety - EPS;
+    return this.U[Math.min(this.T, s + this.L)]! >= this.safety - EPS;
   }
 
   /** The next day d in [from, days) on which an order is due (an order-by date); null when none. */
@@ -347,10 +389,20 @@ export class VariantProjection {
     const demand = this.P[end]! - this.P[t]!;
     let arrived = 0;
     for (let i = 0; i <= Math.min(t, T); i++) arrived += this.arr[i]!;
-    // Today: stock now and everything on order (arrivals due today or overdue included).
-    const onHand = t === 0 ? this.input.onHand : this.input.onHand + arrived - this.P[t]!;
+    // Today: stock now and everything on order (arrivals due today or overdue included); later:
+    // the projected stock then (floored when missed sales are lost).
+    const onHand = t === 0 ? this.input.onHand : this.O[Math.min(t, T)]!;
     const onOrder = t === 0 ? this.onOrderTotal : this.onOrderTotal - arrived;
-    const need = demand + this.safety - onHand - onOrder;
+    // Sales missed before the order lands: the floored stock at arrival minus the unclamped one.
+    let missed = 0;
+    if (!this.sellsWhenOut) {
+      const a = Math.min(T, t + this.L);
+      let unclamped = this.O[Math.min(t, T)]! - (this.P[a]! - this.P[Math.min(t, T)]!);
+      for (let i = Math.min(t, T) + 1; i <= a; i++) unclamped += this.arr[i]!;
+      missed = Math.max(0, this.O[a]! - unclamped);
+      if (missed < 1e-7) missed = 0;
+    }
+    const need = demand + this.safety - onHand - onOrder - missed;
     let sSum = 0;
     for (let i = t; i < end; i++) sSum += this.S[i]!;
     const days = end - t;
@@ -367,6 +419,8 @@ export class VariantProjection {
         safety: this.safety,
         onHand,
         onOrder,
+        missed,
+        sellsWhenOut: this.sellsWhenOut,
         need,
         rounded: 0,
         pack: this.pack,
@@ -385,7 +439,8 @@ export class VariantProjection {
     }
     const at = Math.min(this.T, t + this.L);
     this.arr[at] += qty;
-    for (let i = at; i <= this.T; i++) this.O[i] += qty;
+    if (at === 0) this.project(0);
+    else this.project(at - 1);
     this.onOrderTotal += qty;
   }
 
@@ -528,6 +583,7 @@ export function forwardInputFromMetric(
     moq: x.moq,
     days: x.days,
     outSince: typeof inputs.outSince === "string" ? inputs.outSince : null,
+    sellsWhenOut: inputs.sellsWhenOut === true,
   };
 }
 

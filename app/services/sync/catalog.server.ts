@@ -276,6 +276,7 @@ function variantData(shop: string, r: VariantRow) {
     cost: r.cost,
     costCurrency: r.costCurrency,
     price: r.price,
+    inventoryPolicy: r.inventoryPolicy,
   };
 }
 

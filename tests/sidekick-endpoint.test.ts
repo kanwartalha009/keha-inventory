@@ -262,7 +262,9 @@ describe("tools on Growth", () => {
     const today = await body("get_order_plan", "within_days=1");
     const nowLines = orderNow.groups.flatMap((g) => g.lines.map((l) => [g.name, l.variantId, l.suggested] as const)).sort();
     expect(today.results!.flatMap((g) => (g._meta.lines as Line[]).map((l) => [g.name, l.variant_gid, l.order_qty] as const)).sort()).toEqual(nowLines);
-    expect(nowLines.length).toBe(2);
+    // V2 only: V1's 20 units on the sent Keha order land when an order placed today would, with more
+    // than safety stock — its sales missed until then are lost, not owed (data audit #1).
+    expect(nowLines.length).toBe(1);
     // Order-by dates are the forward plan's (overdue: the date that passed).
     for (const l of today.results![0]!._meta.lines as Line[]) expect(l.order_by).toBe(calendar.plan.variants[l.variant_gid]!.deadline);
     // M3: V2 is already out and the day it ran out isn't known: overdue with no date, never one made up.
@@ -285,9 +287,11 @@ describe("tools on Growth", () => {
       sales_per_day: 2,
       days_left: 5,
       // The forward plan's (the same as Order now and Products): the 20 units on the sent Keha
-      // order are netted (the stored nightly quantity, 65, predates that order).
-      order_by: "2026-10-08",
-      suggested_order_qty: 45,
+      // order are netted (the stored nightly quantity, 65, predates that order). They land on day 21
+      // with more than safety stock, so the next order is due on day 7; the sales missed while it is
+      // sold out are lost, not ordered back (doesn't sell when out of stock, data audit #1).
+      order_by: "2026-10-24",
+      suggested_order_qty: 28,
       url: "app://app/products/1",
     });
     expect((await body("get_product_stock", "query=sku-3")).results!.map((x) => x.name)).toEqual(["Cap"]);

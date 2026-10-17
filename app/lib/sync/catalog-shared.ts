@@ -14,6 +14,8 @@
  *  - bundles (variant.requiresComponents, or product.hasVariantsThatRequiresComponents when
  *    the variant flag is absent) are flagged isBundle and never summed by the engine;
  *  - untracked variants are kept with tracked = false;
+ *  - inventoryPolicy (DENY / CONTINUE) says whether a variant keeps selling when out of stock:
+ *    the order plan owes a backlog only for CONTINUE (data audit 2026-10-17 #1);
  *  - a missing unit cost is null, never 0 (invariant I-5).
  */
 
@@ -50,6 +52,7 @@ export const CATALOG_BULK_QUERY = `{
               sku
               price
               requiresComponents
+              inventoryPolicy
               inventoryItem { id tracked unitCost { amount currencyCode } }
             }
           }
@@ -143,6 +146,7 @@ export const PRODUCT_QUERY = `#graphql
           sku
           price
           requiresComponents
+          inventoryPolicy
           inventoryItem { id tracked unitCost { amount currencyCode } }
         }
         pageInfo { hasNextPage endCursor }
@@ -202,6 +206,8 @@ export type GqlVariantNode = {
   sku?: unknown;
   price?: unknown;
   requiresComponents?: unknown;
+  /** ProductVariantInventoryPolicy: DENY (default) or CONTINUE (keeps selling when out of stock). */
+  inventoryPolicy?: unknown;
   inventoryItem?: { id?: unknown; tracked?: unknown; unitCost?: GqlMoney } | null;
 };
 
@@ -236,6 +242,8 @@ export type VariantRow = {
   cost: string | null;
   costCurrency: string | null;
   price: string | null;
+  /** "CONTINUE" (sells when out of stock: backorders are owed) | "DENY" | null (not read). */
+  inventoryPolicy: string | null;
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null);
@@ -290,6 +298,7 @@ export function toVariantRow(
     cost,
     costCurrency: cost === null ? null : str(item?.unitCost?.currencyCode),
     price: decimalOrNull(variant.price),
+    inventoryPolicy: variant.inventoryPolicy === "CONTINUE" || variant.inventoryPolicy === "DENY" ? variant.inventoryPolicy : null,
   };
 }
 

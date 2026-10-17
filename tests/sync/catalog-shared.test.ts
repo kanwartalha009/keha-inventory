@@ -12,6 +12,7 @@ import {
   paceWaitMs,
   readAdminCost,
   CATALOG_BULK_QUERY,
+  PRODUCT_QUERY,
   MAX_COLLECTIONS,
   decimalOrNull,
   itemVariantId,
@@ -166,6 +167,16 @@ describe("row helpers", () => {
 
   it("toVariantRow rejects unusable ids", () => {
     expect(toVariantRow({ id: "x" }, { id: "gid://shopify/ProductVariant/1" }, [])).toBeNull();
+  });
+
+  it("reads whether a variant keeps selling when out of stock (inventoryPolicy), in the bulk query and the product query", () => {
+    for (const doc of [CATALOG_BULK_QUERY, PRODUCT_QUERY]) expect(doc).toMatch(/requiresComponents\s+inventoryPolicy\s+inventoryItem/);
+    const p = { id: "gid://shopify/Product/1" };
+    const row = (inventoryPolicy: unknown) => toVariantRow(p, { id: "gid://shopify/ProductVariant/1", inventoryPolicy }, [])!.inventoryPolicy;
+    expect(row("CONTINUE")).toBe("CONTINUE");
+    expect(row("DENY")).toBe("DENY");
+    expect(row(undefined)).toBeNull();
+    expect(row("SOMETHING")).toBeNull();
   });
 
   it("maps locations", () => {

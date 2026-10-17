@@ -68,6 +68,9 @@ function metric(over: { kehaOrders?: unknown; incoming?: number; kehaLanded?: nu
       onHand,
       incoming,
       orderNeed: need,
+      // Sells when out of stock (backorders owed): units that no longer arrive are ordered back in
+      // full. (A store that doesn't sell when out loses those sales before a new order could land.)
+      sellsWhenOut: true,
       kehaOnOrder: 40,
       ...(over.kehaLanded !== undefined ? { kehaLanded: over.kehaLanded } : {}),
       arrivals: over.arrivals ?? [{ day: "2026-10-19", units: incoming }],

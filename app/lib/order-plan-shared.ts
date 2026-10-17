@@ -354,16 +354,24 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
     safety: nf(why.safety, locale),
     onHand: nf(why.onHand, locale),
     onOrder: nf(why.onOrder, locale),
+    missed: nf(why.missed ?? 0, locale),
     need: nf(Math.max(0, why.need), locale),
   };
+  // Data audit #1: sales missed while sold out before the order lands are lost, not ordered back.
+  const missed = (why.missed ?? 0) > 1e-6;
   const out = [
     fill(
-      first
-        ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}")
-        : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} = {need}"),
+      missed
+        ? first
+          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − missed while sold out {missed} = {need}")
+          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − missed while sold out {missed} = {need}")
+        : first
+          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}")
+          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} = {need}"),
       vars,
     ),
   ];
+  if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while sold out is owed, so it is ordered back."));
   if (Math.abs(why.growth - 1) > 1e-9) out.push(fill(t("Growth assumption ×{growth} included in the forecast."), { growth: nf(why.growth, locale, 2) }));
   const r = { qty: nf(why.rounded, locale, 0), pack: nf(why.pack ?? 0, locale, 0), moq: nf(why.moq ?? 0, locale, 0) };
   out.push(

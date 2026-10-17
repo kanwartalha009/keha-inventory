@@ -46,7 +46,7 @@ describe("Next 90 days", () => {
     // Each line: its real deadline and "Why this quantity" from the plan's own terms.
     expect(html).toContain("Overdue since Sep 29");
     expect(html).toContain("Due Oct 17");
-    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 = 61");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − missed while sold out 23 = 38");
     // Unknown costs are counted, never 0.
     expect(html).toMatch(/\d+ lines without a cost price are not in the cash totals\./);
     expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
@@ -149,6 +149,22 @@ describe("order-plan-shared", () => {
     expect(whyLines(why, (x) => translate("de", x), "de")[0]).toContain("Prognose für die nächsten 28 Tage");
   });
 
+  it("Why this quantity: sales missed while sold out are shown as lost; Sells when out of stock when it applies", () => {
+    const t = (x: string) => x;
+    const lost = { day: 0, days: 74, demand: 740, rate: 10, season: 1, growth: 1, safety: 50, onHand: 0, onOrder: 0, missed: 600, sellsWhenOut: false, need: 190, rounded: 190, pack: null, moq: null, topUp: 0 };
+    expect(whyLines(lost, t, "en")).toEqual([
+      "Forecast for the next 74 days: 740 (sales per day 10, season ×1) + safety 50 − on hand 0 − on order 0 − missed while sold out 600 = 190",
+      "→ rounded to 190",
+    ]);
+    const owed = { ...lost, missed: 0, sellsWhenOut: true, need: 790, rounded: 790 };
+    expect(whyLines(owed, t, "en")).toEqual([
+      "Forecast for the next 74 days: 740 (sales per day 10, season ×1) + safety 50 − on hand 0 − on order 0 = 790",
+      "Sells when out of stock: what it sells while sold out is owed, so it is ordered back.",
+      "→ rounded to 790",
+    ]);
+    expect(whyLines(lost, (x) => translate("fr", x), "fr")[0]).toContain("ventes manquées en rupture 600");
+  });
+
   it("last year's same weeks: the number, or — without history; a warning above 1.5×", () => {
     const t = (x: string) => x;
     expect(lastYearLine(40, t, "en")).toBe("Sold in the same weeks last year: 40");
@@ -171,7 +187,7 @@ describe("order-plan-shared", () => {
 
   it("the Free preview: next order per variant, most urgent first, at most 10", () => {
     const rows = previewRows(plan);
-    expect(rows[0]).toMatchObject({ productTitle: "Linen shirt", overdue: true, qty: 61 });
+    expect(rows[0]).toMatchObject({ productTitle: "Linen shirt", overdue: true, qty: 38 });
     expect(rows[0]!.orderBy! < PLAN_TODAY).toBe(true); // overdue shows its order-by date
     for (let i = 1; i < rows.length; i++) expect((rows[i - 1]!.orderBy ?? "") <= (rows[i]!.orderBy ?? "")).toBe(true);
     expect(previewRows(plan, 2)).toHaveLength(2);

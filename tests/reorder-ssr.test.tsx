@@ -110,8 +110,8 @@ describe("Reorder page (Order plan · Order now)", () => {
   it("Why this quantity: the plan's own terms, and last year's same weeks", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData({ minOrderTotal: null }));
     expect(html).toContain("Why this quantity");
-    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 = 61");
-    expect(html).toContain("→ rounded to 66 (case pack 6)");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − missed while sold out 23 = 38");
+    expect(html).toContain("→ rounded to 42 (case pack 6)");
     expect(html).toContain("Forecast for the 28 days from this order:");
     expect(html).toContain("Sold in the same weeks last year: — (no history yet)");
   });

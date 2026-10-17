@@ -159,6 +159,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         supplierId: true,
         status: true,
         noReorder: true,
+        inventoryPolicy: true,
       },
     }),
     prisma.supplier.findMany({
@@ -374,6 +375,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       arrivals,
       soldLastYearAhead: aheadCovered ? (soldAhead.get(v.id) ?? 0) : null,
       noReorder: v.noReorder,
+      // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
+      sellsWhenOut: v.inventoryPolicy === "CONTINUE",
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),
       settings: overrides,
@@ -403,6 +406,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         moq: r.inputs.minOrder,
         days: 0,
         outSince: r.inputs.outSince,
+        sellsWhenOut: r.inputs.sellsWhenOut,
       });
       // "Don't reorder" variants get no order-by date (no order advice at all).
       r.orderBy = r.inputs.noReorder ? null : fwd.deadline;

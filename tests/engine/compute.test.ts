@@ -107,8 +107,10 @@ describe("computeVariant", () => {
     expect(r.status).toBe("out");
     expect(r.daysLeft).toBe(0);
     expect(r.coverDays).toBe(0);
-    const flat = computeVariant(variantInput({ series: alternating, onHand: 0, incoming: 0, supplierLeadTimeDays: 14 }))!;
-    // 12 more than with 0 on hand.
+    // A negative available is evidence of backorders (data audit #1): the 12 are owed.
+    expect(r.inputs.sellsWhenOut).toBe(true);
+    const flat = computeVariant(variantInput({ series: alternating, onHand: 0, incoming: 0, supplierLeadTimeDays: 14, sellsWhenOut: true }))!;
+    // 12 more than with 0 on hand (both owing what they sell while out).
     expect(r.inputs.orderNeed! - flat.inputs.orderNeed!).toBeCloseTo(12, 12);
     expect(r.orderQty! - flat.orderQty!).toBe(12);
     for (const x of [r.daysLeft, r.coverDays, r.safety, r.safetyDays, r.orderQty, r.inputs.orderNeed]) expect(Number.isNaN(x)).toBe(false);
@@ -249,14 +251,19 @@ describe("computeVariant", () => {
   it("seasonal and trend scale days left; plan scales only the order", () => {
     const base = computeVariant(variantInput({ onHand: 100 }))!;
     const seasonal = computeVariant(variantInput({ onHand: 100, seasonal: 2 }))!;
-    const plan = computeVariant(variantInput({ onHand: 10, plan: 2 }))!;
-    const planBase = computeVariant(variantInput({ onHand: 10 }))!;
+    // Sells when out of stock: the order covers everything sold over lead time + cycle.
+    const plan = computeVariant(variantInput({ onHand: 10, plan: 2, sellsWhenOut: true }))!;
+    const planBase = computeVariant(variantInput({ onHand: 10, sellsWhenOut: true }))!;
     expect(base.daysLeft).toBe(50);
     expect(seasonal.daysLeft).toBe(25);
     expect(plan.daysLeft).toBe(planBase.daysLeft);
     // σ 0 → safety 0. demand(28) = 56 vs 112.
     expect(planBase.orderQty).toBe(46);
     expect(plan.orderQty).toBe(102);
+    // Doesn't sell when out (default): the sales missed before the order lands (14 days: 28 − 10,
+    // ×2 with the plan) are lost, not ordered back.
+    expect(computeVariant(variantInput({ onHand: 10 }))!.orderQty).toBe(46 - 18);
+    expect(computeVariant(variantInput({ onHand: 10, plan: 2 }))!.orderQty).toBe(102 - 46);
   });
 
   it("price: input wins, else sold-weighted series price; cost: input wins, else latest row", () => {
