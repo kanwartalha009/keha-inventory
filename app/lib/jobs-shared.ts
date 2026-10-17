@@ -20,7 +20,8 @@
  * there are no session-level locks: safe behind PgBouncer in transaction mode.
  */
 
-export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts", "maintenance"] as const;
+// "recheck": the weekly sales re-check (services/sync/weekly-recheck.server).
+export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts", "maintenance", "recheck"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 /**

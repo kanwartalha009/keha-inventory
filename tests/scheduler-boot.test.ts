@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe("scheduler boot", () => {
   it("the hourly list includes alerts and accuracy", () => {
-    expect(HOURLY_JOBS.map((j) => j.name)).toEqual(["purge", "plan sync", "data sync", "monday email", "accuracy", "alerts", "partitions"]);
+    expect(HOURLY_JOBS.map((j) => j.name)).toEqual(["purge", "plan sync", "data sync", "monday email", "accuracy", "alerts", "partitions", "weekly recheck"]);
   });
 
   it("boot runs alerts and accuracy once, then hourly", async () => {

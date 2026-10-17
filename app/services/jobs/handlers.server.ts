@@ -22,6 +22,7 @@ import { maybeSendPlanReadyEmail } from "../plan-ready.server";
 import { enqueueJob } from "./queue.server";
 import { maintainPartitions } from "../partitions.server";
 import type { JobHandlers } from "./worker.server";
+import { recheckJob } from "../sync/weekly-recheck.server";
 
 export type HandlerDeps = Omit<DataJobDeps, "afterSync" | "maxSteps" | "throttleSleep"> & {
   /** Real sleep for throttle waits (tests inject a fake). */
@@ -67,5 +68,7 @@ export function jobHandlers(base: HandlerDeps): JobHandlers {
       if (r.created || r.dropped.length) console.log(`[jobs/maintenance] partitions: ${r.created} created, dropped ${r.dropped.join(", ") || "none"} (${r.ms} ms)`);
       return `${r.created}+${r.dropped.length}-`;
     },
+    // Weekly sales re-check (owner 2026-10-18): its own module, see services/sync/weekly-recheck.server.
+    recheck: recheckJob({ getAdmin: base.getAdmin, shopifyql: base.shopifyql, now: base.now, sleep: base.sleep }),
   };
 }

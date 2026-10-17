@@ -85,4 +85,24 @@ export const COPY_TR: Record<string, Tr> = {
     nl: "Komende 13 weken: elke bestelling met het geld per week",
     pl: "Najbliższe 13 tygodni: każde zamówienie z gotówką na każdy tydzień",
   },
+
+  // ---- Weekly sales re-check (owner 2026-10-18): shown only when corrections moved units by > 2% ----
+  "Shopify updated 1 day of past sales (refunds or order edits). Your numbers include it.": {
+    es: "Shopify actualizó 1 día de ventas pasadas (reembolsos o pedidos editados). Tus números ya lo incluyen.",
+    fr: "Shopify a mis à jour 1 jour de ventes passées (remboursements ou commandes modifiées). Vos chiffres en tiennent compte.",
+    de: "Shopify hat 1 Tag vergangener Verkäufe aktualisiert (Erstattungen oder geänderte Bestellungen). Deine Zahlen berücksichtigen das.",
+    it: "Shopify ha aggiornato 1 giorno di vendite passate (rimborsi o ordini modificati). I tuoi numeri lo includono.",
+    pt: "A Shopify atualizou 1 dia de vendas passadas (reembolsos ou encomendas editadas). Os seus números já o incluem.",
+    nl: "Shopify heeft 1 dag eerdere verkopen bijgewerkt (terugbetalingen of gewijzigde bestellingen). Je cijfers houden er rekening mee.",
+    pl: "Shopify zaktualizował 1 dzień wcześniejszej sprzedaży (zwroty lub edytowane zamówienia). Twoje liczby już to uwzględniają.",
+  },
+  "Shopify updated {n} days of past sales (refunds or order edits). Your numbers include them.": {
+    es: "Shopify actualizó {n} días de ventas pasadas (reembolsos o pedidos editados). Tus números ya los incluyen.",
+    fr: "Shopify a mis à jour {n} jours de ventes passées (remboursements ou commandes modifiées). Vos chiffres en tiennent compte.",
+    de: "Shopify hat {n} Tage vergangener Verkäufe aktualisiert (Erstattungen oder geänderte Bestellungen). Deine Zahlen berücksichtigen das.",
+    it: "Shopify ha aggiornato {n} giorni di vendite passate (rimborsi o ordini modificati). I tuoi numeri li includono.",
+    pt: "A Shopify atualizou {n} dias de vendas passadas (reembolsos ou encomendas editadas). Os seus números já os incluem.",
+    nl: "Shopify heeft {n} dagen eerdere verkopen bijgewerkt (terugbetalingen of gewijzigde bestellingen). Je cijfers houden er rekening mee.",
+    pl: "Shopify zaktualizował sprzedaż z {n} dni wstecz (zwroty lub edytowane zamówienia). Twoje liczby już to uwzględniają.",
+  },
 };

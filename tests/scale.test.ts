@@ -112,7 +112,7 @@ describe("#2 two instances share the queue", () => {
         by[who]++;
         return "done";
       };
-      const h = (who: "a" | "b") => ({ backfill: handler(who), nightly: handler(who), compute: handler(who), alerts: handler(who), maintenance: handler(who) });
+      const h = (who: "a" | "b") => ({ backfill: handler(who), nightly: handler(who), compute: handler(who), alerts: handler(who), maintenance: handler(who), recheck: handler(who) });
       // Two "instances": two worker pools on one queue (their owners differ).
       const a = startWorkers(h("a"), { count: 2, pollMs: 2 });
       const b = startWorkers(h("b"), { count: 2, pollMs: 2 });

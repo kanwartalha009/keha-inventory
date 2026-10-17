@@ -55,6 +55,7 @@ import { enqueueJob, jobStore } from "./jobs/queue.server";
 import { INSTANCE_ID, startWorkers, workerStatus, type Workers } from "./jobs/worker.server";
 import { jobHandlers } from "./jobs/handlers.server";
 import { slices } from "../lib/concurrency-shared";
+import { recheckTick } from "./sync/weekly-recheck.server";
 
 const OUTBOX_EVERY_MS = 2 * 60 * 1000;
 const HOURLY_EVERY_MS = 60 * 60 * 1000; // daily jobs run hourly — idempotent, so
@@ -271,6 +272,8 @@ export const HOURLY_JOBS: ReadonlyArray<{ name: string; run: () => Promise<unkno
   { name: "alerts", run: () => onceAcross("alerts", HOURLY_LEASE_MS, () => alertsTick()) },
   // the fact tables' month partitions (DB scale): one store-wide job on the queue
   { name: "partitions", run: () => onceAcross("partitions", HOURLY_LEASE_MS, () => enqueueJob(GLOBAL_JOB_SHOP, "maintenance")) },
+  // Weekly sales re-check (owner 2026-10-18): queues each shop on its own hour of the week (services/sync/weekly-recheck.server).
+  { name: "weekly recheck", run: () => onceAcross("recheck", HOURLY_LEASE_MS, () => recheckTick()) },
 ];
 
 export function startScheduler(): void {

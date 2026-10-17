@@ -456,3 +456,33 @@ describe("Dashboard: review request after a success moment", () => {
     expect(settings.recordReviewAsk).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("weekly sales re-check line (owner 2026-10-18)", () => {
+  const withRecheck = (over: Record<string, unknown>) => {
+    const raw = homeRaw();
+    raw.shop!.backfillState = {
+      ...(raw.shop!.backfillState as object),
+      weeklyRecheck: { at: "2026-10-15T04:00:00.000Z", outcome: "done", since: "2026-09-10", until: "2026-10-14", differing: 3, corrected: 3, unitsBefore: 1000, unitsAfter: 970, changed: 30, share: 0.03, ...over },
+    };
+    return raw;
+  };
+
+  it("corrections above 2% of the window's units: one quiet line under the money cards", () => {
+    const html = home(withRecheck({}));
+    expect(html).toContain("Shopify updated 3 days of past sales (refunds or order edits). Your numbers include them.");
+    expect(html.indexOf("Numbers from")).toBeLessThan(html.indexOf("Shopify updated 3 days"));
+  });
+
+  it("2% or less, nothing corrected, or older than 8 days: nothing shown", () => {
+    expect(home(withRecheck({ share: 0.02, changed: 20 }))).not.toContain("Shopify updated");
+    expect(home(withRecheck({ corrected: 0, share: 0 }))).not.toContain("Shopify updated");
+    expect(home(withRecheck({ at: "2026-10-07T00:00:00.000Z" }))).not.toContain("Shopify updated");
+    expect(home(homeRaw())).not.toContain("Shopify updated");
+  });
+
+  it("one corrected day: singular", () => {
+    const data = buildHome(withRecheck({ corrected: 1, differing: 1 }), "growth", NOW);
+    expect(home(withRecheck({ corrected: 1 }))).toContain("Shopify updated 1 day of past sales (refunds or order edits). Your numbers include it.");
+    expect(data.recheckNotice).toEqual({ corrected: 1 });
+  });
+});

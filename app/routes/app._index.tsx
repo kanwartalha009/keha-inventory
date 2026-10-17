@@ -58,6 +58,7 @@ import { useLinkProps } from "../components/wc";
 import { planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
 import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
+import { recheckNoticeText } from "../lib/sync/weekly-recheck-shared";
 import {
   basisLines,
   formatAmount,
@@ -419,6 +420,7 @@ function MoneyAtStake({ data }: { data: HomeData }) {
                 </>
               )}
             </s-stack>
+            {data.recheckNotice && <s-text color="subdued">{recheckNoticeText(data.recheckNotice.corrected, t, fmt.count)}</s-text>}
           </>
         ) : (
           <s-paragraph color="subdued">{t("Your first numbers are being calculated.")}</s-paragraph>

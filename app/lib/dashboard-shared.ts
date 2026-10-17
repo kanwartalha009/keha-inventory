@@ -17,6 +17,13 @@ import {
 } from "./sync/backfill-shared";
 import { fill } from "./i18n";
 import { buildSyncView, salesSpan, showReadyNotice, type SalesSpan, type SyncView } from "./sync-progress-shared";
+import { readWeeklyRecheck, showRecheckNotice } from "./sync/weekly-recheck-shared";
+
+/** The weekly re-check's Dashboard line (lib/sync/weekly-recheck-shared): only above 2%, for 8 days. */
+function recheckNoticeFor(backfill: unknown, now: Date): { corrected: number } | null {
+  const r = readWeeklyRecheck(backfill);
+  return r && showRecheckNotice(r, now) ? { corrected: r.corrected } : null;
+}
 
 type T = (s: string) => string;
 
@@ -94,6 +101,11 @@ export type HomeData = {
   readyNotice: boolean;
   /** Sales history really read: from the first sale to the last day read, capped at the window. */
   salesSpan: SalesSpan;
+  /**
+   * The weekly sales re-check corrected past days by more than 2% of the window's units (refunds,
+   * cancellations, order edits): a quiet line under the money cards for 8 days. Null = nothing to say.
+   */
+  recheckNotice: { corrected: number } | null;
   setup: {
     leadTimeDone: boolean;
     leadTimeDays: number;
@@ -252,6 +264,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
     }),
     readyNotice: raw.shop ? showReadyNotice(backfill, state === "ready", now) : false,
     // What was really read (not the fixed window): the ready notice says so.
+    recheckNotice: recheckNoticeFor(raw.shop ? backfill : null, now),
     salesSpan: salesSpan(raw.firstSaleDay ?? null, backfill.syncedThrough ?? backfill.range?.until ?? todayIn(raw.shop?.timezone, now)),
     setup: {
       leadTimeDone,
