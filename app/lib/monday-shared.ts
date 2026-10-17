@@ -176,7 +176,7 @@ export type MondayEmailInput = {
   now: MondayValues;
   /** The row closest to 7 days earlier; null when there is none. */
   before: MondayValues | null;
-  /** "weekly" on Free (adds the "Refreshed weekly on Free" line; "monthly" on rows stored before). */
+  /** The plan's refresh (MONEY_REFRESH): "weekly" on Free adds the "Refreshed weekly on Free" line; paid plans are daily. */
   refresh: MoneyRefresh;
   links: { app: string; unsubscribe: string };
   /** The ranked action list (top 5 shown). */
@@ -384,7 +384,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     heading: fill(tr("Your Monday summary for {store}"), { store: storeName }),
     atStake,
     rows,
-    refreshNote: input.refresh === "weekly" ? tr("Refreshed weekly on Free") : input.refresh === "monthly" ? tr("Refreshed monthly on Free") : null,
+    refreshNote: input.refresh === "weekly" ? tr("Refreshed weekly on Free") : null,
     topHeading: tr("Top things to do this week"),
     actions,
     lockedFixes: locked

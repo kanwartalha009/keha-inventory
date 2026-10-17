@@ -221,7 +221,7 @@ describe("composeMondayEmail", () => {
   });
 
   it("Spanish: translated labels, store-locale money, Free line", () => {
-    const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", refresh: "monthly" });
+    const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", refresh: "weekly" });
     const eur = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
     expect(e.subject).toBe(`${eur(4601)} en juego esta semana`);
     expect(e.text).toContain("Tu resumen del lunes para Acme Shoes");
@@ -754,7 +754,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
       link: "https://x/app",
       plansLink: "https://x/app/plans",
     };
-    const e = composeMondayEmail({ ...base, refresh: "monthly", orders });
+    const e = composeMondayEmail({ ...base, refresh: "weekly", orders });
     expect(e.subject).toBe("2 products to order by Nov 2");
     expect(e.text).toContain("Your most urgent orders");
     expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · order now");

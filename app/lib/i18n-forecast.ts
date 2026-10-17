@@ -26,15 +26,6 @@ export const FORECAST_TR: Record<string, Tr> = {
     nl: "Buiten het seizoen: het verkocht vorig jaar in deze weken",
     pl: "Poza sezonem: sprzedawał się w tych tygodniach w zeszłym roku",
   },
-  "Refreshed weekly on Free": {
-    es: "Se actualizan cada semana en el plan Free",
-    fr: "Actualisés chaque semaine avec le forfait Free",
-    de: "Im Free-Tarif wöchentlich aktualisiert",
-    it: "Aggiornati ogni settimana con il piano Free",
-    pt: "Atualizados semanalmente no plano Free",
-    nl: "Wekelijks bijgewerkt met Free",
-    pl: "W planie Free odświeżane co tydzień",
-  },
 };
 
 /**
