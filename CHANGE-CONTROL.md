@@ -18,7 +18,7 @@ Classify every change before coding:
 | I-5 | Missing data shows "—", never 0; no hard-coded numbers in the UI. | engine + SSR tests |
 | I-6 | Plan checks fail open: unknown plan locks nothing. Plan locks teach, they don't hide. | `plans.test.ts` |
 | I-7 | Admin API 2026-10 pinned in every place; queries validated against that schema. | `config.test.ts` |
-| I-8 | Scopes in both tomls equal `SCOPES` in `.env.example`; only scopes the code uses. | `config.test.ts` |
+| I-8 | Scopes in both tomls equal `SCOPES` in `.env.example`; only scopes the code uses. | `config.test.ts`, `admin-scopes.test.ts` |
 | I-9 | `.env.example` lists exactly the env vars the code reads. | `config.test.ts` |
 | I-10 | Every visible admin string is translated into all 8 languages. | `i18n-coverage.test.ts` |
 | I-11 | Webhook handlers are idempotent; Nova topics are forwarded in slash form. | `nova-outbox.test.ts` |
