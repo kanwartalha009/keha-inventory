@@ -7,7 +7,8 @@
  *     PurchaseOrder rows with source "shopify", keyed by (shop, shopifyPoId).
  *     After a complete read, Shopify orders that no longer exist are removed.
  *  2. autoReceiveOrders — closes sent / confirmed Keha orders whose stock
- *     landed (lib/purchase-order-shared autoReceiveDecision).
+ *     landed inside the arrival window, every line (lib/purchase-order-shared
+ *     autoReceiveDecision); the merchant can re-open one for 30 days.
  *
  * Throttling (gql retries, then AdminThrottledError), ACCESS_DENIED (a store
  * that hasn't granted read_inventory_purchase_orders yet) and any other error
@@ -30,7 +31,7 @@ import {
   type GqlPurchaseOrder,
   type ParsedShopifyPo,
 } from "../../lib/sync/po-shared";
-import { autoReceiveDecision } from "../../lib/purchase-order-shared";
+import { arrivalWindowStart, autoReceiveDecision, autoReceivedLines } from "../../lib/purchase-order-shared";
 import { poArrival, readPoLines, type PoLine } from "../../lib/supplier-shared";
 import { localDate, safeTimeZone } from "../../lib/sync/store-time-shared";
 import { addDays } from "../../lib/engine/dates-shared";
@@ -162,41 +163,67 @@ export async function syncShopifyPurchaseOrders(
   return { status: complete ? "done" : "capped", upserted, removed, ...(partial.length ? { partial: partial.length } : {}) };
 }
 
-/** Closes sent / confirmed Keha orders whose stock has landed. Returns how many closed. */
+/**
+ * Closes sent / confirmed Keha orders whose stock has landed (lib/purchase-order-shared
+ * autoReceiveDecision): measured from the day the arrival window opened (confirmed ship date,
+ * else expected arrival − 7 days; arrival = ship date + the supplier's transit days), every open
+ * line ≥ 90 %, one delivery never credited to two orders (oldest window first). The order is
+ * marked as received automatically (lines' `autoReceived`) so the merchant can re-open it.
+ * Returns how many closed.
+ */
 export async function autoReceiveOrders(shop: string, now: Date = new Date()): Promise<number> {
   const [shopRow, orders] = await Promise.all([
     prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
     prisma.purchaseOrder.findMany({
       where: { shop, source: "keha", status: { in: ["sent", "confirmed"] } },
-      select: { id: true, status: true, source: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true },
+      select: { id: true, status: true, source: true, supplierId: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true },
     }),
   ]);
   if (!orders.length) return 0;
   const tz = safeTimeZone(shopRow?.timezone);
   const today = localDate(now, tz);
+  const supplierIds = [...new Set(orders.map((o) => o.supplierId).filter((x): x is string => !!x))];
+  const transit = new Map(
+    (supplierIds.length
+      ? await prisma.supplier.findMany({ where: { shop, id: { in: supplierIds } }, select: { id: true, transitDays: true } })
+      : []
+    ).map((s) => [s.id, s.transitDays ?? null]),
+  );
+  const due = orders
+    .map((o) => {
+      const sentDay = o.sentAt ? localDate(o.sentAt, tz) : null;
+      const arrival = poArrival(o, o.supplierId ? transit.get(o.supplierId) : null)?.toISOString().slice(0, 10) ?? null;
+      const windowStart = arrivalWindowStart({ confirmedShipDate: o.confirmedShipDate?.toISOString().slice(0, 10) ?? null, arrival, sentDay });
+      return { o, sentDay, windowStart };
+    })
+    .filter((x): x is { o: (typeof orders)[number]; sentDay: string; windowStart: string } => !!x.sentDay && !!x.windowStart && x.windowStart <= today)
+    .sort((a, b) => (a.windowStart < b.windowStart ? -1 : a.windowStart > b.windowStart ? 1 : 0));
+  if (!due.length) return 0;
   const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const pool = poolLocationIds(locations);
+  if (!pool.length) return 0;
+  // Stock rise already credited to an earlier order in this run, per variant.
+  const used = new Map<string, number>();
   let closed = 0;
-  for (const o of orders) {
-    const arrival = poArrival(o)?.toISOString().slice(0, 10) ?? null;
-    if (!arrival || arrival > today || !o.sentAt) continue;
+  for (const { o, sentDay, windowStart } of due) {
     const lines = readPoLines(o.lines);
     const ids = [...new Set(lines.map((l) => l.variantId))];
-    if (!ids.length || !pool.length) continue;
-    const sentDay = localDate(o.sentAt, tz);
-    const needBaseline = lines.filter((l) => l.baseOnHand === undefined).map((l) => l.variantId);
+    if (!ids.length) continue;
+    const fromSend = windowStart <= sentDay;
+    const from = fromSend ? sentDay : windowStart;
+    const needBaseline = fromSend ? lines.filter((l) => l.baseOnHand === undefined).map((l) => l.variantId) : ids;
     const [stock, baseRows, sold] = await Promise.all([
       poolStock(shop, ids),
       needBaseline.length
         ? prisma.stockDaily.groupBy({
             by: ["variantId"],
-            where: { shop, variantId: { in: needBaseline }, locationId: { in: pool }, day: dayDate(addDays(sentDay, -1)) },
+            where: { shop, variantId: { in: needBaseline }, locationId: { in: pool }, day: dayDate(addDays(from, -1)) },
             _sum: { endUnits: true },
           })
         : Promise.resolve([]),
       prisma.salesDaily.groupBy({
         by: ["variantId"],
-        where: { shop, variantId: { in: ids }, channel: ALL, locationKey: { in: poolSalesKeys(pool) }, day: { gte: dayDate(sentDay) } },
+        where: { shop, variantId: { in: ids }, channel: ALL, locationKey: { in: poolSalesKeys(pool) }, day: { gte: dayDate(from) } },
         _sum: { sold: true },
       }),
     ]);
@@ -205,12 +232,14 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
     const decision = autoReceiveDecision({
       status: o.status,
       source: o.source,
-      arrival,
+      windowStart,
+      sentDay,
       today,
       lines,
       baseline: new Map(baseRows.map((r) => [r.variantId, r._sum.endUnits ?? 0])),
       onHand,
       soldSince: new Map(sold.map((r) => [r.variantId, r._sum.sold ?? 0])),
+      used,
     });
     if (!decision.receive) continue;
     const r = await prisma.purchaseOrder.updateMany({
@@ -218,9 +247,10 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
       data: {
         status: "received",
         receivedAt: now,
-        lines: lines.map((l) => ({ ...l, received: decision.received[l.variantId] ?? 0 })) as unknown as Prisma.InputJsonValue,
+        lines: autoReceivedLines(lines, decision.received) as unknown as Prisma.InputJsonValue,
       },
     });
+    if (r.count === 1) for (const [v, n] of Object.entries(decision.received)) used.set(v, (used.get(v) ?? 0) + n);
     closed += r.count;
   }
   return closed;

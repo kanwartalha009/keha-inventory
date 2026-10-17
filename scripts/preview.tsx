@@ -34,7 +34,7 @@ import type { LocationsData } from "../app/routes/app.settings_.locations";
 import type { AlertsLoaderData } from "../app/routes/app.settings_.alerts";
 import type { ConfirmPageData } from "../app/routes/supplier.confirm.$token";
 import type { PlannerData, ScenarioView } from "../app/models/planner.server";
-import type { OrderDetail } from "../app/models/reorder.server";
+import type { OpenOrderRow, OrderDetail } from "../app/models/reorder.server";
 import type { PlanningLocation } from "../app/lib/locations-shared";
 import type { PoLine } from "../app/lib/supplier-shared";
 import type { ReorderVariantIn } from "../app/lib/reorder-shared";
@@ -146,7 +146,7 @@ const rv = (n: number, title: string, over: Partial<ReorderVariantIn> = {}): Reo
   ...over,
 });
 
-const OPEN_ORDERS: OpenOrdersPageData["orders"] = [
+const OPEN_ORDERS: OpenOrderRow[] = [
   { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, cost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
   { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", supplierName: "Lisbon Linen", units: 120, cost: 1440, currency: "EUR", arrival: "2026-11-20", createdAt: "2026-10-08T00:00:00Z" },
   { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, cost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
@@ -418,9 +418,24 @@ const order = (over: Partial<OrderDetail> = {}): OrderDetail => ({
   status: "draft",
   supplierId: "s1",
   supplierName: "Acme Textiles",
-  supplier: { name: "Acme Textiles", hasEmail: true, hidePrices: false, leadTimeDays: 30 },
+  supplier: {
+    name: "Acme Textiles",
+    hasEmail: true,
+    hidePrices: false,
+    leadTimeDays: 30,
+    transitDays: null,
+    currency: null,
+    exchangeRate: null,
+    minOrder: null,
+    minOrderTotal: null,
+    minOrderValue: null,
+    minOrderScope: "variant",
+  },
   lines: [poLine(1, "Linen shirt", 12, 2.5), poLine(2, "Linen trousers", 6, 6), poLine(5, "Ceramic mug", 24, 1.8)],
   currency: "EUR",
+  storeCurrency: "EUR",
+  arrival: null,
+  updatedAt: "2026-10-16T10:00:00.000Z",
   confirmToken: "",
   confirmExpiresAt: null,
   confirmedShipDate: null,
@@ -514,7 +529,7 @@ const screens: Screen[] = [
   S({ slug: "plans--growth", screen: "Plans", state: "Growth (active)", nav: "plans", url: "/app/plans", plan: "growth", Component: Plans, data: () => ({ plans: PLANS, plan: "growth", billing: { status: "ACTIVE", planCode: "growth" }, comped: false, checked: true, manageUrl: "https://admin.shopify.com/x" }), expect: ["Current plan", "Change plan", "Compare plans"] }),
 
   S({ slug: "purchase-order--draft", screen: "Purchase order", state: "Draft", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order()), expect: ["PO-0001", "Email supplier", "Download PDF"] }),
-  S({ slug: "purchase-order--sent", screen: "Purchase order", state: "Sent, supplier link", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), { link: "https://inventory.keha.io/supplier/confirm/abc", hidePrices: true }), expect: ["PO-0001", "Supplier link", "Mark as received"] }),
+  S({ slug: "purchase-order--sent", screen: "Purchase order", state: "Sent, supplier link", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), { link: "https://inventory.keha.io/supplier/confirm/abc", hidePrices: true }), expect: ["PO-0001", "Supplier link", "Mark as received"] }),
 
   S({ slug: "supplier-confirm", screen: "Supplier confirm (public)", state: "Open, prices shown", nav: "public", url: `/supplier/confirm/${TOKEN}`, pattern: "/supplier/confirm/:token", plan: "growth", Component: SupplierConfirm, data: (l) => confirm(l), expect: ["PO-0001", "Linen shirt", "Acme Textiles"] }),
 ];

@@ -1,8 +1,11 @@
 /** Keha purchase orders (spec §5.3, J3, §14): numbers, transitions, dates, CSV, confirm link, auto-receive. */
 import { describe, expect, it } from "vitest";
 import {
+  ARRIVAL_WINDOW_DAYS,
   AUTO_RECEIVE_SHARE,
+  arrivalWindowStart,
   autoReceiveDecision,
+  autoReceivedLines,
   canTransition,
   confirmLinkOpen,
   formatPoNumber,
@@ -104,17 +107,22 @@ describe("totals and CSV", () => {
   });
 });
 
-describe("auto-receive", () => {
+describe("auto-receive (tightened, merchant audit 2026-10-17)", () => {
+  // Window opened 25 Oct (ship date / expected − 7); baseline = on-hand the day before it opened.
   const base: AutoReceiveInput = {
     status: "sent",
     source: "keha",
-    arrival: "2026-11-01",
+    windowStart: "2026-10-25",
+    sentDay: "2026-10-01",
     today: "2026-11-02",
     lines: [
       { variantId: "a", qty: 100, baseOnHand: 5 },
       { variantId: "b", qty: 50 },
     ],
-    baseline: new Map([["b", 0]]),
+    baseline: new Map([
+      ["a", 5],
+      ["b", 0],
+    ]),
     onHand: new Map([
       ["a", 90],
       ["b", 45],
@@ -122,7 +130,7 @@ describe("auto-receive", () => {
     soldSince: new Map([["a", 10]]),
   };
 
-  it("closes the order when ≥ 90% of the units landed after the arrival date (sales counted back in)", () => {
+  it("closes when every line landed ≥ 90% inside the arrival window (sales counted back in)", () => {
     const r = autoReceiveDecision(base);
     expect(r.receive).toBe(true);
     if (r.receive) {
@@ -132,26 +140,64 @@ describe("auto-receive", () => {
     expect(AUTO_RECEIVE_SHARE).toBe(0.9);
   });
 
-  it("waits for the arrival date", () => {
-    expect(autoReceiveDecision({ ...base, today: "2026-10-31" })).toMatchObject({ receive: false, reason: "not_due" });
-    expect(autoReceiveDecision({ ...base, arrival: null })).toMatchObject({ receive: false, reason: "not_due" });
+  it("waits for the arrival window to open", () => {
+    expect(autoReceiveDecision({ ...base, today: "2026-10-24" })).toMatchObject({ receive: false, reason: "not_due" });
+    expect(autoReceiveDecision({ ...base, windowStart: null })).toMatchObject({ receive: false, reason: "not_due" });
   });
 
-  it("stays open below 90%, and when a baseline is unknown", () => {
-    expect(autoReceiveDecision({ ...base, onHand: new Map([["a", 60], ["b", 45]]) })).toMatchObject({ receive: false, reason: "not_landed" });
-    expect(autoReceiveDecision({ ...base, baseline: new Map() })).toMatchObject({ receive: false, reason: "no_baseline" });
-  });
-
-  it("caps a line at its ordered units (extra stock from elsewhere doesn't count twice)", () => {
-    const r = autoReceiveDecision({ ...base, onHand: new Map([["a", 500], ["b", 30]]) });
+  it("per line: one line short keeps the order open even when the order total is ≥ 90%", () => {
+    // a 100/100, b 40/50 (80%) → 93% overall: the old whole-order rule closed this.
+    const r = autoReceiveDecision({ ...base, onHand: new Map([["a", 500], ["b", 40]]) });
     expect(r).toMatchObject({ receive: false, reason: "not_landed" });
-    expect(r.share).toBeCloseTo(130 / 150);
+    expect(r.share).toBeCloseTo(140 / 150);
   });
 
-  it("only applies to sent / confirmed Keha orders", () => {
+  it("a stock correction before the window opened doesn't count", () => {
+    // On-hand jumped to 95 before 25 Oct (correction): the window baseline is 95, so only +15 landed.
+    expect(autoReceiveDecision({ ...base, baseline: new Map([["a", 95], ["b", 0]]), onHand: new Map([["a", 100], ["b", 45]]) })).toMatchObject({
+      receive: false,
+      reason: "not_landed",
+    });
+  });
+
+  it("uses the on-hand at send only when the window opened on the send day; unknown baseline stays open", () => {
+    const fromSend = { ...base, windowStart: "2026-10-01", baseline: new Map([["b", 0]]) };
+    expect(autoReceiveDecision(fromSend).receive).toBe(true);
+    // Later window: baseOnHand (at send) isn't the baseline; without StockDaily for that day we can't tell.
+    expect(autoReceiveDecision({ ...base, baseline: new Map([["b", 0]]) })).toMatchObject({ receive: false, reason: "no_baseline" });
+  });
+
+  it("leaves partly hand-received orders to the merchant; fully received lines are skipped", () => {
+    const manual = { ...base, lines: [{ variantId: "a", qty: 100, received: 30 }, { variantId: "b", qty: 50 }] };
+    expect(autoReceiveDecision(manual)).toMatchObject({ receive: false, reason: "manual" });
+    const done = { ...base, lines: [{ variantId: "a", qty: 100, received: 100 }, { variantId: "b", qty: 50 }], onHand: new Map([["a", 0], ["b", 45]]) };
+    expect(autoReceiveDecision(done)).toMatchObject({ receive: true, received: { b: 45 } });
+  });
+
+  it("one delivery is never credited to two orders", () => {
+    expect(autoReceiveDecision({ ...base, used: new Map([["a", 95]]) })).toMatchObject({ receive: false, reason: "not_landed" });
+  });
+
+  it("only applies to sent / confirmed Keha orders (never a draft)", () => {
     expect(autoReceiveDecision({ ...base, status: "draft" })).toMatchObject({ receive: false, reason: "status" });
     expect(autoReceiveDecision({ ...base, source: "shopify" })).toMatchObject({ receive: false, reason: "status" });
     expect(autoReceiveDecision({ ...base, status: "confirmed" }).receive).toBe(true);
+  });
+
+  it("the window opens on the ship date, else 7 days before the expected arrival, never before sending", () => {
+    expect(arrivalWindowStart({ confirmedShipDate: "2026-11-01", arrival: "2026-12-06", sentDay: "2026-10-01" })).toBe("2026-11-01");
+    expect(arrivalWindowStart({ confirmedShipDate: null, arrival: "2026-11-15", sentDay: "2026-10-01" })).toBe("2026-11-08");
+    expect(arrivalWindowStart({ confirmedShipDate: null, arrival: "2026-10-05", sentDay: "2026-10-01" })).toBe("2026-10-01");
+    expect(arrivalWindowStart({ confirmedShipDate: null, arrival: null, sentDay: "2026-10-01" })).toBeNull();
+    expect(ARRIVAL_WINDOW_DAYS).toBe(7);
+  });
+
+  it("marks automatically received lines so re-opening restores them", () => {
+    const lines: PoLine[] = [line(1, 100, 2), { ...line(2, 50, 1), received: 50 }];
+    const out = autoReceivedLines(lines, { v1: 95 });
+    expect(out[0]).toMatchObject({ received: 95, autoReceived: 95, reopenReceived: 0 });
+    expect(out[1]).toMatchObject({ received: 50, reopenReceived: 50 });
+    expect(out[1]!.autoReceived).toBeUndefined();
   });
 });
 

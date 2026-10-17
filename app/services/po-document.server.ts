@@ -2,7 +2,9 @@
  * Everything the PDF / CSV of a Keha order needs (spec §5.3): the order, the
  * store's name and language, whether the supplier sees prices, and the
  * supplier-page link while it works. Shared by the merchant downloads and the
- * public supplier page.
+ * public supplier page. Prices are in the supplier's currency when it has an
+ * exchange rate (else the store currency, labelled); the arrival is the ship
+ * date + transit days.
  */
 import prisma from "../db.server";
 import { toSupportedLocale } from "../lib/i18n";
@@ -10,7 +12,7 @@ import { storeLabel } from "../lib/dashboard-shared";
 import { confirmLinkOpen, supplierLines } from "../lib/purchase-order-shared";
 import { confirmUrl } from "../lib/po-email-shared";
 import { getShopContact } from "./shop-contact.server";
-import { getOrder, hidePricesFor, type OrderDetail } from "../models/reorder.server";
+import { getOrder, hidePricesFor, pricingFor, type OrderDetail } from "../models/reorder.server";
 import type { PoPdfInput } from "./po-pdf.server";
 
 export async function documentFor(shop: string, order: OrderDetail, now: Date = new Date()): Promise<PoPdfInput> {
@@ -20,6 +22,8 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
   ]);
   const appUrl = process.env.SHOPIFY_APP_URL || "";
   const hidePrices = hidePricesFor(order);
+  // Prices in the supplier's currency when it has an exchange rate (audit 2026-10-17), else as stored.
+  const pricing = pricingFor(order);
   const linkOpen = confirmLinkOpen({ source: order.source, status: order.status, confirmExpiresAt: order.confirmExpiresAt }, now);
   return {
     locale: toSupportedLocale(shopRow?.locale),
@@ -27,12 +31,13 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
     number: order.number,
     supplierName: order.supplier?.name ?? order.supplierName,
     orderDate: (order.sentAt ?? order.createdAt).slice(0, 10),
-    expectedDate: order.expectedDate,
+    // Arrival = confirmed ship date + the supplier's transit days, else the lead-time estimate.
+    expectedDate: order.arrival,
     confirmedShipDate: order.confirmedShipDate,
-    currency: order.currency,
+    currency: pricing.currency,
     hidePrices,
     // Supplier-safe lines: no variant ids / stock, and no unit cost when prices are hidden.
-    lines: supplierLines(order.lines, hidePrices),
+    lines: supplierLines(order.lines, hidePrices, pricing.factor),
     confirmUrl: linkOpen && appUrl ? confirmUrl(appUrl, order.confirmToken) : null,
   };
 }

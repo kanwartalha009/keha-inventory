@@ -312,7 +312,9 @@ export function withLandedEstimate<P extends OpenPo>(pos: readonly P[], facts: L
       const now = facts.onHand.get(line.variantId);
       const base = line.baseOnHand ?? facts.baseline(line.variantId, po.sentDay);
       if (open <= 0 || now === undefined || base === undefined) continue;
-      const rise = now - base + Math.max(0, facts.soldSince(line.variantId, po.sentDay));
+      // Units the merchant already recorded as received (partial receiving, audit 2026-10-17) are
+      // part of the rise since send: only the rest can be "landed but not recorded".
+      const rise = now - base + Math.max(0, facts.soldSince(line.variantId, po.sentDay)) - (line.received ?? 0);
       const list = byVariant.get(line.variantId) ?? [];
       list.push({ line, sentDay: po.sentDay, order, rise, open });
       byVariant.set(line.variantId, list);
@@ -320,7 +322,9 @@ export function withLandedEstimate<P extends OpenPo>(pos: readonly P[], facts: L
   });
   for (const slots of byVariant.values()) {
     slots.sort((a, b) => (a.sentDay < b.sentDay ? -1 : a.sentDay > b.sentDay ? 1 : a.order - b.order));
-    let remaining = Math.max(0, slots[0]!.rise);
+    // The oldest line's rise already has its own received units taken out; take out the others' too.
+    const recordedLater = slots.slice(1).reduce((a, x) => a + (x.line.received ?? 0), 0);
+    let remaining = Math.max(0, slots[0]!.rise - recordedLater);
     for (const s of slots) {
       const landed = Math.max(0, Math.min(s.open, Math.floor(Math.max(0, s.rise)), remaining));
       if (landed > 0) s.line.received = (s.line.received ?? 0) + landed;

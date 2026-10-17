@@ -69,6 +69,10 @@ export interface PoLine {
   received?: number;
   /** Keha orders: the line's on-hand (online pool) when the order was sent — the baseline for auto-receive. */
   baseOnHand?: number;
+  /** Keha orders: units auto-receive recorded on this line (the order was closed automatically). */
+  autoReceived?: number;
+  /** Keha orders: `received` before the step that closed the order — what re-opening restores. */
+  reopenReceived?: number;
 }
 
 export const OPEN_PO_STATUSES = ["sent", "confirmed"] as const;
@@ -133,6 +137,12 @@ export function readPoLines(raw: unknown): PoLine[] {
       sku: typeof x.sku === "string" ? x.sku : null,
       received: typeof x.received === "number" && Number.isFinite(x.received) ? Math.max(0, Math.floor(x.received)) : undefined,
       baseOnHand: typeof x.baseOnHand === "number" && Number.isFinite(x.baseOnHand) ? Math.floor(x.baseOnHand) : undefined,
+      ...(typeof x.autoReceived === "number" && Number.isFinite(x.autoReceived) && x.autoReceived > 0
+        ? { autoReceived: Math.floor(x.autoReceived) }
+        : {}),
+      ...(typeof x.reopenReceived === "number" && Number.isFinite(x.reopenReceived) && x.reopenReceived >= 0
+        ? { reopenReceived: Math.floor(x.reopenReceived) }
+        : {}),
     });
   }
   return out;

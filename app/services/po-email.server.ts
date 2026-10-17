@@ -28,7 +28,7 @@ import {
   supplierEmailOrderKey,
 } from "../lib/po-email-shared";
 import { supplierLines } from "../lib/purchase-order-shared";
-import { getOrder, hidePricesFor, transitionOrder } from "../models/reorder.server";
+import { getOrder, hidePricesFor, pricingFor, transitionOrder } from "../models/reorder.server";
 
 export type EmailSupplierResult =
   | { ok: true; markedSent: boolean }
@@ -97,14 +97,17 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
   const locale = toSupportedLocale(shopRow?.locale);
   const storeName = contact?.name || storeLabel(shop);
   const hidePrices = hidePricesFor(order);
+  const pricing = pricingFor(order);
   const mail = supplierEmail(
     {
       storeName,
       supplierName: supplier?.name ?? order.supplierName,
       number: order.number,
-      lines: supplierLines(order.lines, hidePrices),
-      currency: order.currency,
+      lines: supplierLines(order.lines, hidePrices, pricing.factor),
+      currency: pricing.currency,
       hidePrices,
+      shipDate: order.confirmedShipDate,
+      arrival: order.arrival,
       confirmUrl: confirmUrl(appUrl, order.confirmToken),
       locale,
     },

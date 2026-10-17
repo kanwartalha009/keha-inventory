@@ -11,7 +11,7 @@ import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import { clientIp, createRateLimiter } from "../lib/rate-limit-shared";
 import { confirmLinkOpen, supplierLines, supplierTotals, validShipDate, type SupplierLine } from "../lib/purchase-order-shared";
 import { getShopContact } from "./shop-contact.server";
-import { getOrder, hidePricesFor, type OrderDetail } from "../models/reorder.server";
+import { getOrder, hidePricesFor, pricingFor, type OrderDetail } from "../models/reorder.server";
 
 /** 20 requests per 10 minutes, per client address and per token (spec §14). */
 export const CONFIRM_RATE = { limit: 20, windowMs: 10 * 60 * 1000 };
@@ -70,7 +70,9 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
   if (!order || !shopRow || shopRow.uninstalledAt) return { ok: false };
   const today = todayIn(shopRow.timezone, now);
   const hidePrices = hidePricesFor(order);
-  const lines = supplierLines(order.lines, hidePrices);
+  // The supplier's currency when it has an exchange rate (audit 2026-10-17), else as stored.
+  const pricing = pricingFor(order);
+  const lines = supplierLines(order.lines, hidePrices, pricing.factor);
   const totals = supplierTotals(lines, hidePrices);
   const max = new Date(new Date(`${today}T00:00:00Z`).getTime() + 366 * 86_400_000).toISOString().slice(0, 10);
   return {
@@ -84,10 +86,11 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
       supplierName: order.supplier?.name ?? order.supplierName,
       lines,
       totalUnits: totals.units,
-      ...(hidePrices ? {} : { totalCost: totals.cost ?? null, currency: order.currency }),
+      ...(hidePrices ? {} : { totalCost: totals.cost ?? null, currency: pricing.currency }),
       hidePrices,
       confirmedShipDate: order.confirmedShipDate,
-      expectedDate: order.expectedDate,
+      // When the store expects the stock: ship date + transit days, else the lead-time estimate.
+      expectedDate: order.arrival,
       minDate: today,
       maxDate: max,
     },
