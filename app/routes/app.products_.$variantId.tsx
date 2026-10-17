@@ -41,6 +41,7 @@ import {
   type ForecastInputsView,
   type MonthTotal,
   type ProductRow,
+  type SeasonSourceView,
 } from "../lib/products-shared";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -66,6 +67,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     recent: recentDays(series, 14),
     // Lead time, safety stock and the order cycle are part of the Growth forecast.
     inputs: inputs && !features.forecast ? { ...inputs, leadTimeDays: null, leadTimeSource: null, cycleDays: null, z: null, safety: null } : inputs,
+    seasonCollection: detail.seasonCollection,
     forecast: features.forecast,
   };
 };
@@ -117,6 +119,8 @@ export type VariantDetailData = {
   months: MonthTotal[];
   recent: ChartDay[];
   inputs: ForecastInputsView | null;
+  /** Title of the collection the seasonal pattern came from (null: not a collection, or gone). */
+  seasonCollection?: string | null;
   forecast: boolean;
 };
 
@@ -180,7 +184,7 @@ export default function VariantDetailPage() {
       <OrderingCard data={data} />
 
       <SalesChart series={data.series} months={data.months} />
-      <ForecastInputs inputs={data.inputs} forecast={forecast} trendMode={data.trendMode ?? "off"} />
+      <ForecastInputs inputs={data.inputs} forecast={forecast} trendMode={data.trendMode ?? "off"} seasonCollection={data.seasonCollection ?? null} />
       <RecentSales recent={data.recent} />
     </AppPage>
   );
@@ -261,7 +265,24 @@ function monthName(month: string, locale: string): string {
   }
 }
 
-function ForecastInputs({ inputs, forecast, trendMode }: { inputs: ForecastInputsView | null; forecast: boolean; trendMode: TrendMode }) {
+/** "Season from": the collection, product type or whole store the seasonal pattern came from. */
+function seasonSourceLabel(source: SeasonSourceView, collection: string | null, t: (s: string) => string): string {
+  if (source.level === "collection") return collection ? fill(t("Collection “{name}”"), { name: collection }) : t("One of its collections");
+  if (source.level === "productType") return fill(t("Product type “{name}”"), { name: source.productType });
+  return t("Your whole store");
+}
+
+function ForecastInputs({
+  inputs,
+  forecast,
+  trendMode,
+  seasonCollection,
+}: {
+  inputs: ForecastInputsView | null;
+  forecast: boolean;
+  trendMode: TrendMode;
+  seasonCollection: string | null;
+}) {
   const { t, locale } = useLocale();
   const num = (v: number | null, digits = 1) =>
     v === null ? "—" : new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v);
@@ -306,6 +327,7 @@ function ForecastInputs({ inputs, forecast, trendMode }: { inputs: ForecastInput
               label={t("Seasonal change")}
               value={isNeutralMultiplier(inputs.seasonal) ? t("No seasonal data yet") : `× ${num(inputs.seasonal, 2)}`}
             />
+            {inputs.seasonSource && <KvRow label={t("Season from")} value={seasonSourceLabel(inputs.seasonSource, seasonCollection, t)} />}
             <KvRow
               label={t("Trend")}
               value={

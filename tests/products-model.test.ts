@@ -50,6 +50,7 @@ vi.mock("../app/db.server", () => ({
       aggregate: async () => ({ _max: { updatedAt: null } }),
     },
     shop: { findUnique: async () => ({ timezone: "UTC" }) },
+    collection: { findFirst: async ({ where }: { where: Row }) => db.collection?.find((r) => matches(r, where)) ?? null },
     location: { findMany: async ({ where }: { where: Row }) => db.location!.filter((r) => matches(r, where)) },
     variantMetric: {
       findUnique: async () => db.variantMetric![0] ?? null,
@@ -158,5 +159,25 @@ describe("products model (review fixes)", () => {
     expect(page.rows[0]!.onOrderArrival).toBe("2026-10-28");
     const d = await getVariantDetail(SHOP, VID, true, NOW);
     expect(d!.row.onOrder).toBe(15);
+  });
+
+  it("product type filter: server-side, only that type's variants", async () => {
+    db.variant = [
+      { ...db.variant![0]!, productType: "Jackets" },
+      { id: "gid://shopify/ProductVariant/2", shop: SHOP, productTitle: "Tee", variantTitle: "S", sku: "T-S", vendor: "Acme", image: null, tracked: true, isBundle: false, productType: "Shirts" },
+    ];
+    const page = await listProducts(SHOP, { status: null, collection: null, vendor: null, productType: "Jackets", q: null, sort: "title" }, 1, false);
+    expect(page.rows.map((r) => r.id)).toEqual([VID]);
+    expect(page.total).toBe(1);
+    const all = await listProducts(SHOP, { status: null, collection: null, vendor: null, q: null, sort: "title" }, 1, false);
+    expect(all.total).toBe(2);
+  });
+
+  it("detail: the season's collection title (inputs.season); none for a product type or the store", async () => {
+    db.collection = [{ id: "gid://shopify/Collection/7", shop: SHOP, title: "Coats" }, { id: "gid://shopify/Collection/7", shop: "other.myshopify.com", title: "Theirs" }];
+    db.variantMetric![0]!.inputs = { season: { level: "collection", collectionId: "gid://shopify/Collection/7" } };
+    expect((await getVariantDetail(SHOP, VID, true, NOW))!.seasonCollection).toBe("Coats");
+    db.variantMetric![0]!.inputs = { season: { level: "productType", productType: "Jackets", collectionId: null } };
+    expect((await getVariantDetail(SHOP, VID, true, NOW))!.seasonCollection).toBeNull();
   });
 });

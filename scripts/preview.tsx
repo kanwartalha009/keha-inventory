@@ -334,7 +334,7 @@ function products(kind: "free" | "growth" | "pro"): ProductsData {
     total: 120,
     info: pageInfo(120, 1),
     filters: { status: null, collection: null, vendor: null, q: null },
-    options: { vendors: ["Acme", "Beta"], collections: ["Summer", "Basics"] },
+    options: { vendors: ["Acme", "Beta"], collections: ["Summer", "Basics"], productTypes: ["Shirts", "Trousers"] },
     forecast,
     csv: forecast,
     locationsEnabled: false,
@@ -371,10 +371,11 @@ function variantDetail(): VariantDetailData {
       leadTimeSource: "supplier",
       cycleDays: 14,
       z: 1.65,
+      season: { level: "productType", productType: "Shirts", collectionId: null },
     },
     2,
   );
-  return { row: productRows(true)[1]!, vendor: "Acme", series, months: monthlyTotals(series), recent: recentDays(series, 14), inputs, forecast: true };
+  return { row: productRows(true)[1]!, vendor: "Acme", series, months: monthlyTotals(series), recent: recentDays(series, 14), inputs, forecast: true, seasonCollection: null };
 }
 
 const suppliers: SuppliersData = {
@@ -516,10 +517,10 @@ const screens: Screen[] = [
   S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),
   S({ slug: "open-orders--growth", screen: "Order plan → Open orders", state: "Growth", nav: "orderplan", url: "/app/reorder/orders", plan: "growth", Component: OpenOrders, data: (): OpenOrdersPageData => ({ enabled: true, orders: OPEN_ORDER_ROWS, today: "2026-10-17" }), expect: ["Open orders", "PO-0001", "From Shopify"] }),
 
-  S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV"] }),
+  S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV", "All product types"] }),
   S({ slug: "products--pro-2-locations", screen: "Products", state: "Pro, 2 locations", nav: "products", url: "/app/products", plan: "pro", Component: Products, data: () => products("pro"), expect: ["Products", "Linen shirt", "keha-switcher"] }),
   S({ slug: "products--free", screen: "Products", state: "Free", nav: "products", url: "/app/products", plan: "free", Component: Products, data: () => products("free"), expect: ["Products", "Linen shirt", "upgrade=csvExport"] }),
-  S({ slug: "product-detail--growth", screen: "Product detail", state: "Growth", nav: "products", url: "/app/products/2", pattern: "/app/products/:variantId", plan: "growth", Component: VariantDetail, data: () => variantDetail(), expect: ["How the forecast was built", "Recent sales", "Linen shirt"] }),
+  S({ slug: "product-detail--growth", screen: "Product detail", state: "Growth", nav: "products", url: "/app/products/2", pattern: "/app/products/:variantId", plan: "growth", Component: VariantDetail, data: () => variantDetail(), expect: ["How the forecast was built", "Recent sales", "Linen shirt", "Season from", "Shirts"] }),
 
   S({ slug: "settings-defaults", screen: "Settings → Defaults", state: "Growth", nav: "settings", url: "/app/settings", plan: "growth", Component: Settings, data: () => ({ form: settingsToForm(DEFAULT_SETTINGS) }), expect: ["How long do your suppliers take?", "App language"] }),
   S({ slug: "settings-suppliers", screen: "Settings → Suppliers", state: "Growth", nav: "settings", url: "/app/settings/suppliers", plan: "growth", Component: Suppliers, data: () => suppliers, expect: ["Add supplier", "Acme Textiles", "Lisbon Linen"] }),

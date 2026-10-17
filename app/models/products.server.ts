@@ -30,6 +30,7 @@ import {
   CHART_DAYS,
   METRIC_SCOPE,
   pageInfo,
+  readSeasonSource,
   toProductRow,
   type MetricRowIn,
   type OnOrderIn,
@@ -77,6 +78,7 @@ type VariantQuery = { where: Prisma.VariantWhereInput; only: Set<string> | null 
 async function variantWhere(shop: string, f: ProductFilters, scope: string): Promise<VariantQuery> {
   const where: Prisma.VariantWhereInput = { shop, tracked: true, isBundle: false };
   if (f.vendor) where.vendor = f.vendor;
+  if (f.productType) where.productType = f.productType;
   if (f.collection) where.collections = { has: f.collection };
   if (f.q) {
     where.OR = [
@@ -340,13 +342,19 @@ export async function setProductCaseSize(shop: string, productId: string, caseQt
   return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 
-/** Vendor and collection choices for the filters. */
-export async function productFilterOptions(shop: string): Promise<{ vendors: string[]; collections: string[] }> {
-  const [vendors, collections] = await Promise.all([
+/** Vendor, product type and collection choices for the filters. */
+export async function productFilterOptions(shop: string): Promise<{ vendors: string[]; collections: string[]; productTypes: string[] }> {
+  const [vendors, types, collections] = await Promise.all([
     prisma.variant.groupBy({
       by: ["vendor"],
       where: { shop, tracked: true, isBundle: false, vendor: { not: null } },
       orderBy: { vendor: "asc" },
+      take: 500,
+    }),
+    prisma.variant.groupBy({
+      by: ["productType"],
+      where: { shop, tracked: true, isBundle: false, productType: { not: null } },
+      orderBy: { productType: "asc" },
       take: 500,
     }),
     prisma.$queryRaw<{ c: string }[]>`
@@ -356,6 +364,7 @@ export async function productFilterOptions(shop: string): Promise<{ vendors: str
   ]);
   return {
     vendors: vendors.map((v) => v.vendor).filter((v): v is string => !!v),
+    productTypes: types.map((v) => v.productType).filter((v): v is string => !!v && v.trim() !== ""),
     collections: collections.map((r) => r.c).filter(Boolean),
   };
 }
@@ -382,6 +391,8 @@ export type VariantDetail = {
   today: string;
   sigma: number | null;
   inputs: unknown;
+  /** Title of the collection the seasonal pattern came from (inputs.season); null otherwise or when it is gone. */
+  seasonCollection: string | null;
   sales: { day: Date; sold: number }[];
   stock: { day: Date; outOfStock: boolean }[];
 };
@@ -426,6 +437,11 @@ export async function getVariantDetail(
     kehaOnOrder(shop, ON_ORDER_STATUSES, [variantId]),
   ]);
   const caseQtys = [...new Set(siblings.map((v) => v.caseQty ?? null))];
+  const source = readSeasonSource((metric?.inputs as Record<string, unknown> | null | undefined)?.season);
+  const seasonCollection =
+    source?.level === "collection"
+      ? ((await prisma.collection.findFirst({ where: { shop, id: source.collectionId }, select: { title: true } }))?.title ?? null)
+      : null;
   return {
     variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
     caseQty: caseQtys.length === 1 ? caseQtys[0]! : (variant.caseQty ?? null),
@@ -442,6 +458,7 @@ export async function getVariantDetail(
     today,
     sigma: metric?.sigma ?? null,
     inputs: metric?.inputs ?? null,
+    seasonCollection,
     sales: sales.map((s) => ({ day: s.day, sold: s._sum.sold ?? 0 })),
     stock,
   };

@@ -68,6 +68,8 @@ export type ProductFilters = {
   status: VariantStatus | null;
   collection: string | null;
   vendor: string | null;
+  /** Shopify product type (URL `type`). */
+  productType?: string | null;
   q: string | null;
   /** A Settings → Suppliers id, or "none" (no supplier: grouped by vendor). */
   supplier?: string | null;
@@ -88,6 +90,7 @@ export function parseFilters(params: URLSearchParams): ProductFilters {
     status: isVariantStatus(status) ? status : null,
     collection: clean(params.get("collection")),
     vendor: clean(params.get("vendor")),
+    productType: clean(params.get("type")),
     q: clean(params.get("q")),
     supplier: clean(params.get("supplier")),
     sort: params.get("sort") === "title" ? "title" : params.get("sort") === "orderBy" ? "orderBy" : null,
@@ -105,6 +108,7 @@ export function filtersToParams(f: ProductFilters): URLSearchParams {
   if (f.status) p.set("status", f.status);
   if (f.collection) p.set("collection", f.collection);
   if (f.vendor) p.set("vendor", f.vendor);
+  if (f.productType) p.set("type", f.productType);
   if (f.q) p.set("q", f.q);
   if (f.supplier) p.set("supplier", f.supplier);
   if (f.sort) p.set("sort", f.sort);
@@ -378,6 +382,21 @@ export function recentDays(series: readonly ChartDay[], n = 14): ChartDay[] {
 
 export type RateWindowView = { days: number; weight: number; inStockDays: number; rate: number | null; used: boolean };
 
+/** Where the seasonal pattern came from (inputs.season: engine seasonFacts). */
+export type SeasonSourceView =
+  | { level: "store" }
+  | { level: "collection"; collectionId: string }
+  | { level: "productType"; productType: string };
+
+/** inputs.season → its source; null when the metric has no season facts. */
+export function readSeasonSource(raw: unknown): SeasonSourceView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  if (s.level === "collection" && typeof s.collectionId === "string" && s.collectionId) return { level: "collection", collectionId: s.collectionId };
+  if (s.level === "productType" && typeof s.productType === "string" && s.productType) return { level: "productType", productType: s.productType };
+  return s.level === "store" ? { level: "store" } : null;
+}
+
 export type ForecastInputsView = {
   windows: RateWindowView[];
   inStockDays: number | null;
@@ -390,6 +409,8 @@ export type ForecastInputsView = {
   z: number | null;
   /** The engine's safety stock, z × σ × √(lead time + order cycle): stored inputs.safety (rows stored before: the same formula); null when unknown. */
   safety: number | null;
+  /** Where the seasonal pattern came from; null for rows stored without it. */
+  seasonSource?: SeasonSourceView | null;
 };
 
 const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -426,6 +447,7 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     cycleDays: cycle,
     z,
     safety,
+    seasonSource: readSeasonSource(r.season),
   };
 }
 

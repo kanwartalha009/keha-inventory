@@ -329,3 +329,53 @@ describe("Products: the plan's To order, Don't reorder, sort and supplier filter
     expect(setNoReorder).toHaveBeenLastCalledWith("acme.myshopify.com", { variantId: "gid://shopify/ProductVariant/1" }, true);
   });
 });
+
+describe("Product type: the Products filter and the season source on the detail page", () => {
+  it("toolbar: a Product type select in its own toolbar box, the chosen type selected; none known → no select", () => {
+    const html = render(
+      data(true, {
+        filters: { status: null, collection: null, vendor: null, productType: "Jackets", q: null },
+        options: { vendors: [], collections: [], productTypes: ["Jackets", "Shirts"] },
+      }),
+    );
+    const filters = /<div class="keha-toolbar__filters">(.*?)<s-table-header-row>/s.exec(html)?.[1] ?? "";
+    expect(filters).toMatch(/<div class="keha-toolbar__item"><s-select[^>]*label="Product type"[^>]*>.*?All product types.*?<\/s-select><\/div>/s);
+    expect(filters).toContain("Shirts");
+    expect(filters).toMatch(/<s-option value="Jackets" selected="">|<s-select[^>]*value="Jackets"/);
+    expect(render(data(true))).not.toContain("All product types");
+  });
+
+  it("the type filter counts as a filter: an empty result offers Clear filters", () => {
+    const html = render(data(true, { rows: [], total: 0, info: pageInfo(0, 1), filters: { status: null, collection: null, vendor: null, productType: "Hats", q: null } }));
+    expect(html).toContain("No variants match these filters.");
+    expect(html).toContain("Clear filters");
+  });
+
+  it("CSV export reads the same type filter", async () => {
+    const { loader: csvLoader } = await import("../app/routes/app.products.csv");
+    const { allProducts } = await import("../app/models/products.server");
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    vi.mocked(allProducts).mockResolvedValue([]);
+    const res = (await csvLoader({ request: new Request("https://x/app/products/csv?type=Jackets&vendor=Acme"), params: {}, context: {} } as never)) as Response;
+    expect(res.status).toBe(200);
+    expect(vi.mocked(allProducts).mock.calls.at(-1)![1]).toMatchObject({ productType: "Jackets", vendor: "Acme" });
+  });
+
+  const withSource = (season: unknown, seasonCollection: string | null = null): VariantDetailData => {
+    const d = detail(true);
+    return { ...d, inputs: readForecastInputs({ ...d.inputs, windows: [], season }, 2), seasonCollection };
+  };
+
+  it("How the forecast was built names where the season came from", () => {
+    expect(renderDetail(withSource({ level: "collection", collectionId: "gid://shopify/Collection/7" }, "Coats"))).toContain("Collection “Coats”");
+    expect(renderDetail(withSource({ level: "productType", productType: "Jackets" }))).toContain("Product type “Jackets”");
+    expect(renderDetail(withSource({ level: "store" }))).toContain("Your whole store");
+    // A collection deleted since: still says it was a collection.
+    expect(renderDetail(withSource({ level: "collection", collectionId: "gid://shopify/Collection/7" }))).toContain("One of its collections");
+    const html = renderDetail(withSource({ level: "productType", productType: "Jackets" }));
+    expect(html).toMatch(/Season from.*Product type “Jackets”/s);
+    // Rows stored before the source was recorded: no row.
+    expect(renderDetail(detail(true))).not.toContain("Season from");
+  });
+});

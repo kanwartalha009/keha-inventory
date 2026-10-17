@@ -1,7 +1,7 @@
 /**
  * Products (/app/products) — spec §5.2. One row per variant, 50 per page
  * (server-side, URL params), filters for status / collection / vendor /
- * supplier and a search. Forecast columns (days left, order by, to order) are
+ * product type / supplier and a search. Forecast columns (days left, order by, to order) are
  * the Growth `forecast` feature: on Free they stay visible but locked and empty
  * (plan locks teach, they don't hide). CSV export is Growth (`csvExport`).
  *
@@ -105,7 +105,7 @@ export type ProductsData = {
   total: number;
   info: PageInfo;
   filters: ProductFilters;
-  options: { vendors: string[]; collections: string[]; suppliers?: { id: string; name: string }[] };
+  options: { vendors: string[]; collections: string[]; productTypes?: string[]; suppliers?: { id: string; name: string }[] };
   forecast: boolean;
   csv: boolean;
   /** Pro `locations`: the switcher works (otherwise shown locked). */
@@ -118,7 +118,7 @@ export type ProductsData = {
   locationCount: number;
 };
 
-type FilterKey = "status" | "collection" | "vendor" | "q" | "supplier" | "sort";
+type FilterKey = "status" | "collection" | "vendor" | "type" | "q" | "supplier" | "sort";
 
 export default function Products() {
   const { t, locale } = useLocale();
@@ -146,8 +146,9 @@ export default function Products() {
     else next.set("page", String(page));
     setParams(next);
   };
-  const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.q || filters.supplier);
+  const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.productType || filters.q || filters.supplier);
   const suppliers = options.suppliers ?? [];
+  const productTypes = options.productTypes ?? [];
   const locked = !forecast;
 
   // Forecast columns on Free: the short label plus a compact lock badge with the plan name.
@@ -225,6 +226,15 @@ export default function Products() {
                     onChange={(v) => apply({ vendor: v })}
                   />
                 )}
+                {productTypes.length > 0 && (
+                  <SelectField
+                    label={t("Product type")}
+                    labelHidden
+                    value={filters.productType ?? ""}
+                    options={[{ value: "", label: t("All product types") }, ...productTypes.map((v) => ({ value: v, label: v }))]}
+                    onChange={(v) => apply({ type: v })}
+                  />
+                )}
                 {suppliers.length > 0 && (
                   <SelectField
                     label={t("Supplier")}
@@ -295,7 +305,7 @@ export default function Products() {
             }
             action={
               anyFilter ? (
-                <s-button variant="secondary" onClick={() => apply({ status: "", collection: "", vendor: "", q: "" })}>
+                <s-button variant="secondary" onClick={() => apply({ status: "", collection: "", vendor: "", type: "", supplier: "", q: "" })}>
                   {t("Clear filters")}
                 </s-button>
               ) : undefined

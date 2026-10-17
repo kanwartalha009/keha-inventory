@@ -539,6 +539,7 @@ function Summary({ result }: { result: ScenarioResult }) {
         ]
       : []),
     ...(season.collectionVariants ? [fill(t("Variants using their collection's own index: {n}"), { n: formatCount(season.collectionVariants, locale) })] : []),
+    ...(season.productTypeVariants ? [fill(t("Variants using their product type's own index: {n}"), { n: formatCount(season.productTypeVariants, locale) })] : []),
     // The trend is named only when the scenario used it (growth assumption on — 2026-10-17).
     ...(season.trendApplied ? [fill(t("Trend (last 28 days vs the same weeks last year): × {x}"), { x: num2(season.trend, locale) })] : []),
     planLine,
