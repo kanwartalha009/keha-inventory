@@ -74,4 +74,15 @@ export const COPY_TR: Record<string, Tr> = {
     nl: "We hebben je verkopen, voorraad en winkelbezoeken gelezen.",
     pl: "Skończyliśmy odczytywać Twoją sprzedaż, stany i odwiedziny.",
   },
+
+  // ---- Growth plan card: named like the screen (Order plan → Next 13 weeks) ----
+  "Next 13 weeks: every order with cash per week": {
+    es: "Próximas 13 semanas: cada pedido con el dinero de cada semana",
+    fr: "13 prochaines semaines : chaque commande avec la trésorerie par semaine",
+    de: "Nächste 13 Wochen: jede Bestellung mit Geldbedarf pro Woche",
+    it: "Prossime 13 settimane: ogni ordine con la liquidità per settimana",
+    pt: "Próximas 13 semanas: cada encomenda com o dinheiro por semana",
+    nl: "Komende 13 weken: elke bestelling met het geld per week",
+    pl: "Najbliższe 13 tygodni: każde zamówienie z gotówką na każdy tydzień",
+  },
 };

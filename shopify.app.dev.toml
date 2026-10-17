@@ -70,4 +70,4 @@ automatically_update_urls_on_dev = true
 
 [sidekick]
 # Same as shopify.app.toml (tests/sidekick-extension.test.ts).
-extensions_summary = "Look up stock planning data from Keha Inventory Planner: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."
+extensions_summary = "Look up stock planning data from Keha Inventory Planner: the 13-week order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."

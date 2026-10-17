@@ -107,7 +107,7 @@ export const PLAN_POINTS: Record<PlanCode, string[]> = {
   ],
   growth: [
     "Full order plan by supplier, with purchase orders",
-    "13-week order calendar with cash per week",
+    "Next 13 weeks: every order with cash per week",
     "Numbers refreshed daily, and every action",
     "What to do while a best seller is sold out, and dead-stock discounts",
     "Season plan (1 scenario) and forecast accuracy",

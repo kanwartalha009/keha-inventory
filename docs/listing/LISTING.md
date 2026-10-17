@@ -135,7 +135,7 @@ keep).
 ### Growth
 
 - Shipped — Full order plan by supplier, with purchase orders
-- Shipped — 13-week order calendar with cash per week
+- Shipped — Next 13 weeks: every order with cash per week
 - Shipped — Numbers refreshed daily, and every action
 - Shipped — What to do while a best seller is sold out, and dead-stock discounts
 - Shipped — Season plan (1 scenario) and forecast accuracy
