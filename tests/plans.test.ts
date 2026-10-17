@@ -59,6 +59,8 @@ describe("spec §3 feature table", () => {
     slack: "growth",
     flowTriggers: "growth",
     csvExport: "growth",
+    // Owner 2026-10-17: CSV import / export for setup at scale (Settings → Import & export).
+    csvImport: "growth",
     locations: "pro",
     transfers: "pro",
   };

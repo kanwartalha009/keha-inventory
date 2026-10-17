@@ -37,6 +37,7 @@ import { ORDERING_TR } from "./i18n-ordering";
 import { UX_TR } from "./i18n-ux";
 import { READINESS_TR } from "./i18n-readiness";
 import { BUILDER_TR } from "./i18n-builder";
+import { SETUP_TR } from "./i18n-setup";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -95,6 +96,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   ux: UX_TR,
   readiness: READINESS_TR,
   builder: BUILDER_TR,
+  setup: SETUP_TR,
 };
 
 for (const area of Object.values(AREAS)) {

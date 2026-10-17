@@ -41,6 +41,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
       { label: "Purchase orders as PDF, CSV or email", feature: "poExport" },
       { label: "Supplier confirms the ship date through a link", feature: "supplierConfirm" },
       { label: "Export the products table to CSV", feature: "csvExport" },
+      { label: "Set up suppliers and products from a CSV", hint: "Lead times, minimums, case packs, suppliers per product and Don't reorder, for thousands of products at once.", feature: "csvImport" },
     ],
   },
   {

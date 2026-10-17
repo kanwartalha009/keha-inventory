@@ -39,13 +39,14 @@ const home = (raw: HomeRaw, plan: PlanCode = "growth") => render(buildHome(raw, 
 const count = (html: string, s: string) => html.split(s).length - 1;
 
 describe("Home", () => {
-  it("syncing: no Shop row yet shows one progress bar per dataset and no numbers", () => {
+  it("syncing: no Shop row yet shows the sync screen with every stage waiting and no numbers", () => {
     const html = home({ shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 });
-    expect(html).toContain("Reading your store…");
-    for (const label of ["Products", "Stock history", "Sales history", "Store visits"]) expect(html).toContain(label);
-    // Nothing read yet: each dataset says "Waiting to start" instead of an empty bar.
-    expect(count(html, "<s-progress")).toBe(0);
+    expect(html).toContain("Setting up your order plan");
+    for (const label of ["Products", "Stock history", "Sales history", "Store visits", "Building your plan"]) expect(html).toContain(label);
+    // Nothing read yet: each dataset says "Waiting to start" instead of an empty bar; only the overall bar.
+    expect(count(html, "<s-progress")).toBe(1);
     expect(count(html, "Waiting to start")).toBe(4);
+    expect(html).toContain("Starts when the history is read");
     expect(html).not.toContain("Money at stake");
     // Header: a quiet subtitle, never a lone dash.
     expect(html).toContain('heading="Dashboard"');
@@ -59,9 +60,10 @@ describe("Home", () => {
     expect(html).not.toContain("Nothing to order");
     expect(html).not.toContain("No orders needed");
     expect(html).toContain("Setup guide");
-    // First 10 minutes: the setup guide first, then the sync progress, then the order block.
-    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Reading your store…"));
-    expect(html.indexOf("Reading your store…")).toBeLessThan(html.indexOf("Order this week"));
+    // Owner 2026-10-17: the sync screen leads (with what to do meanwhile), then the setup guide, then the order block.
+    expect(html).toContain("While you wait");
+    expect(html.indexOf("Setting up your order plan")).toBeLessThan(html.indexOf("Setup guide"));
+    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Order this week"));
     // Suppliers step (Growth): what suppliers are for.
     expect(html).toContain("Add your suppliers&#x27; lead times and case packs — they set every order-by date.");
   });
@@ -115,9 +117,11 @@ describe("Home", () => {
     // Free plan: weekly refresh with an upgrade link.
     expect(html).toContain("Refreshed weekly on Free");
     expect(html).toContain('href="/app/plans"');
-    // Older months still loading: bars stay, with the partial note.
-    expect(html).toContain("Older months are still loading.");
-    expect(count(html, "<s-progress")).toBe(4);
+    // Older months still loading: a compact sync card, and every number says what it is based on.
+    expect(html).toContain("Still reading older months");
+    expect(html).toContain("Based on the last 4 months so far"); // stock 4, sales 6 months in
+    expect(count(html, "<s-progress")).toBe(4); // overall + stock, sales, visits
+    expect(html.indexOf("Money at stake")).toBeLessThan(html.indexOf("Still reading older months"));
     // Header: store name + update time in the store's time zone (Madrid = UTC+2).
     expect(html).toContain('heading="Dashboard"');
     expect(html).toContain("Updated Oct 16, 06:10");
@@ -148,6 +152,7 @@ describe("Home", () => {
     const card = html.indexOf("Not enough sales yet to advise");
     const setup = html.indexOf("Setup guide");
     const progress = html.indexOf("Reading your store…");
+    expect(html).not.toContain("Based on the last"); // no numbers shown, so no "Based on …" label
     expect(card).toBeGreaterThanOrEqual(0);
     expect(card).toBeLessThan(setup);
     expect(setup).toBeLessThan(progress);

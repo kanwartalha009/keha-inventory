@@ -20,8 +20,10 @@ const m = vi.hoisted(() => ({
   runNightly: vi.fn(async (_shop: string, _deps: unknown) => "done"),
   computeAfterSync: vi.fn(async (_shop: string) => {}),
   maintainPartitions: vi.fn(async (_today: string) => ({ created: 2, dropped: ["StockMonth_p202506"], ms: 5 })),
+  maybeSendPlanReadyEmail: vi.fn(async (_shop: string) => "skipped:not_finished"),
 }));
 vi.mock("../app/services/partitions.server", () => ({ maintainPartitions: m.maintainPartitions }));
+vi.mock("../app/services/plan-ready.server", () => ({ maybeSendPlanReadyEmail: m.maybeSendPlanReadyEmail }));
 vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn() } }));
 vi.mock("../app/lib/nova.server", () => ({ flushOutbox: vi.fn(), scrubDeliveredOutbox: vi.fn() }));
 vi.mock("../app/services/gdpr.server", () => ({ purgeDueShops: vi.fn() }));
@@ -159,6 +161,9 @@ describe("job handlers", () => {
     await store.enqueue("done.myshopify.com", "compute");
     await h.compute((await store.claim("w"))!);
     expect(m.computeAfterSync).toHaveBeenCalledWith("done.myshopify.com");
+    // …then the one "your order plan is ready" email check (owner 2026-10-17), after compute.
+    expect(m.maybeSendPlanReadyEmail).toHaveBeenCalledWith("done.myshopify.com");
+    expect(m.maybeSendPlanReadyEmail.mock.invocationCallOrder[0]).toBeGreaterThan(m.computeAfterSync.mock.invocationCallOrder[0]);
     expect(await h.alerts({ id: "x", shop: "nope.myshopify.com", kind: "alerts", attempts: 1, version: 1, owner: "w" })).toBe("skipped");
   });
 

@@ -48,6 +48,8 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
       return { title: t("Shopify Flow"), body: t("Start your own Flow automations when a product needs reordering or goes dead.") };
     case "csvExport":
       return { title: t("CSV export"), body: t("Download the products table to work with it in a spreadsheet.") };
+    case "csvImport":
+      return { title: t("Import & export"), body: t("Set up suppliers, case packs and Don't reorder for thousands of products at once from a spreadsheet.") };
     case "locations":
       return { title: t("Locations and stores"), body: t("Plan stock per warehouse and per POS store, each with its own sales.") };
     case "transfers":

@@ -8,9 +8,13 @@
  *     lock instead (suppliers, purchase orders and the calendar are Growth).
  *  2. Money at stake (4 cards, each with "How we got this").
  *  3. The setup guide while incomplete (Lead times, Suppliers, Product costs, Monday email),
- *     sync progress per dataset and the empty states. First 10 minutes (audit 2026-10-17):
- *     whenever the store isn't ready (syncing, not enough sales, nothing tracked) the setup guide
- *     comes BEFORE the sync progress, so the merchant has something to do while we read the store.
+ *     the first-sync screen and the empty states. While the store is read for the first time
+ *     (owner 2026-10-17) the sync screen leads: stages with their own progress, an ETA measured
+ *     from this store's read, plain error copy, what to do meanwhile (lead time, suppliers, CSV
+ *     import) and "we'll email you when your order plan is ready" (components/sync-progress);
+ *     the setup guide follows. Once numbers show from the newest months, they say "Based on the
+ *     last 90 days so far" and a compact sync card sits at the bottom; when the read finishes,
+ *     "Your order plan is ready" for a few days.
  *  4. "This week's actions" (task 2.3) once the store is ready.
  * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
  * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
@@ -45,13 +49,14 @@ import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
 import type { ActionListView } from "../lib/action-list-shared";
 import { AppPage, FormCard, HeaderLabel } from "../components/ui";
+import { ReadyNotice, SyncProgress } from "../components/sync-progress";
+import { partialText } from "../lib/sync-progress-shared";
 import { useLinkProps } from "../components/wc";
 import { planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
 import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
 import {
   basisLines,
-  datasetLabel,
   formatAmount,
   formatCount,
   formatDay,
@@ -130,9 +135,21 @@ export default function Home() {
       {data.reviewAsk && <ReviewAsk />}
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 
-      {/* Not ready yet: something to do first (setup), then how far the reading is. */}
+      {data.readyNotice && <ReadyNotice months={data.syncView.months} />}
+
+      {/* First read: the sync screen (with what to do meanwhile) leads, then the setup guide. */}
+      {data.state === "syncing" && (
+        <SyncProgress
+          view={data.syncView}
+          mode="full"
+          setup={{
+            leadTimeDone: data.setup.leadTimeDone,
+            suppliersDone: data.setup.suppliersDone,
+            importEnabled: data.setup.importEnabled,
+          }}
+        />
+      )}
       {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
-      {data.state === "syncing" && !data.sync.done && <SyncProgress data={data} />}
 
       <OrderThisWeek data={data} />
 
@@ -169,7 +186,10 @@ export default function Home() {
           syncing (2026-10-17 click-through: it sat at the bottom, under the progress). */}
       {(data.state === "noSales" || data.state === "noTracked") && !data.setup.allDone && <SetupGuide data={data} />}
 
-      {data.state !== "syncing" && !data.sync.done && <SyncProgress data={data} />}
+      {/* Numbers show while older months load ("Based on …" only when there are numbers to qualify). */}
+      {data.state !== "syncing" && !data.sync.done && (
+        <SyncProgress view={{ ...data.syncView, partial: ready && data.syncView.partial }} mode="compact" />
+      )}
 
       {ready && !data.setup.allDone && <SetupGuide data={data} />}
     </AppPage>
@@ -210,28 +230,40 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const { t, locale } = useLocale();
   const heading = t("Order this week");
   if (data.state === "syncing") {
-    // Not ready: how far the reading is, never "nothing to order" (2026-10-17 click-through).
-    return (
-      <FormCard title={heading} sub={t("Your order plan appears here once your products, stock and sales are read.")}>
-        <s-text>{fill(t("Still reading your store: {pct}."), { pct: formatPercent((data.sync.percent ?? 0) / 100, locale) })}</s-text>
-      </FormCard>
-    );
+    // Not ready: what will appear here, never "nothing to order" (2026-10-17 click-through); how
+    // far the reading is lives in the sync screen above.
+    return <FormCard title={heading} sub={t("Your order plan appears here once your products, stock and sales are read.")} />;
   }
   const op = data.orderPlan;
   if (data.state !== "ready" || !op) return null;
+  // Numbers from the newest months while older ones load: say so (owner 2026-10-17).
+  const partial = data.syncView.partial ? <PartialBadge monthsRead={data.syncView.monthsRead} /> : null;
   if (op.kind === "preview") {
     return (
       <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
+        {partial}
         <PreviewTable rows={op.rows} />
         {op.cantPlan && <CantPlan plan={{ cantPlan: op.cantPlan }} />}
         <PreviewLock teaser={op.teaser} currency={op.currency} />
       </FormCard>
     );
   }
-  return <OrderPlanBlock plan={op.plan} heading={heading} />;
+  return <OrderPlanBlock plan={op.plan} heading={heading} partial={partial} />;
 }
 
-function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: string }) {
+/** "Based on the last 90 days so far" — on every number shown before the whole history is read. */
+function PartialBadge({ monthsRead }: { monthsRead: number }) {
+  const { t, locale } = useLocale();
+  return (
+    <s-stack direction="inline">
+      <s-badge tone="info" icon="clock">
+        {partialText(monthsRead, t, (n) => formatCount(n, locale))}
+      </s-badge>
+    </s-stack>
+  );
+}
+
+function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; heading: string; partial?: ReactNode }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const week = thisWeek(plan);
@@ -249,6 +281,7 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
       }
     >
       <s-stack direction="block" gap="base">
+        {partial}
         {week.suppliers.length === 0 ? (
           <s-paragraph>
             {week.next
@@ -362,6 +395,7 @@ function MoneyAtStake({ data }: { data: HomeData }) {
             </s-grid>
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text color="subdued">{fill(t("Numbers from {day}"), { day: fmt.day(money.day) })}</s-text>
+              {data.syncView.partial && <s-text color="subdued">· {partialText(data.syncView.monthsRead, t, fmt.count)}</s-text>}
               {data.refresh !== "daily" && (
                 <>
                   <s-text color="subdued">· {t("Refreshed weekly on Free")}</s-text>
@@ -413,37 +447,6 @@ function MoneyCard({ cardKey, data, fmt }: { cardKey: MoneyCardKey; data: HomeDa
         </s-popover>
       </s-stack>
     </s-box>
-  );
-}
-
-function SyncProgress({ data }: { data: HomeData }) {
-  const { t, locale } = useLocale();
-  const partial = data.state === "ready" || data.sync.first90Ready;
-  return (
-    <s-section heading={t("Reading your store…")}>
-      <s-stack direction="block" gap="base">
-        <s-paragraph color="subdued">
-          {partial
-            ? t("Your numbers use the last 90 days. Older months are still loading.")
-            : t("Your money-at-stake numbers and this week's actions will appear here once your products, stock and sales are read.")}
-        </s-paragraph>
-        {data.sync.datasets.map((d) => {
-          const label = datasetLabel(d.key, t);
-          // Nothing read yet: say so instead of drawing an empty bar.
-          const waiting = d.percent <= 0 && !d.failed;
-          return (
-            <s-stack key={d.key} direction="block" gap="small-200">
-              <div className="keha-row-between">
-                <s-text>{label}</s-text>
-                <s-text color="subdued">{waiting ? t("Waiting to start") : formatPercent(d.percent / 100, locale)}</s-text>
-              </div>
-              {!waiting && <s-progress value={d.percent} max={100} accessibilityLabel={label} tone={d.failed ? "critical" : "auto"} />}
-              {d.failed && <s-text color="subdued">{t("We hit a problem reading this. We're retrying automatically.")}</s-text>}
-            </s-stack>
-          );
-        })}
-      </s-stack>
-    </s-section>
   );
 }
 

@@ -59,6 +59,8 @@ export const FEATURE_PLAN = {
   flowTriggers: "growth",
   /** CSV export of the Products table (spec §5.2). */
   csvExport: "growth",
+  /** Set up suppliers and product settings from a CSV (Settings → Import & export, owner 2026-10-17). */
+  csvImport: "growth",
   /** Planning per location and per POS store (Free / Growth: one stock pool). */
   locations: "pro",
   /** Create stock transfers in Shopify. */

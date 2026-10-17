@@ -18,7 +18,6 @@ export const COMMON_TR: Record<string, Tr> = {
 
   // ---- Home ----
   "Reading your store…": { es: "Leyendo tu tienda…", fr: "Lecture de votre boutique…", de: "Dein Shop wird gelesen …", it: "Lettura del tuo negozio…", pt: "A ler a sua loja…", nl: "Je winkel wordt gelezen…", pl: "Odczytujemy Twój sklep…" },
-  "Your money-at-stake numbers and this week's actions will appear here once your products, stock and sales are read.": { es: "Tu dinero en juego y las acciones de esta semana aparecerán aquí en cuanto leamos tus productos, tu stock y tus ventas.", fr: "Votre argent en jeu et les actions de la semaine s'afficheront ici dès que vos produits, votre stock et vos ventes auront été lus.", de: "Dein Geld im Spiel und die Aufgaben dieser Woche erscheinen hier, sobald deine Produkte, dein Bestand und deine Verkäufe gelesen sind.", it: "I tuoi soldi in gioco e le azioni di questa settimana appariranno qui appena avremo letto prodotti, stock e vendite.", pt: "O seu dinheiro em jogo e as ações desta semana aparecem aqui assim que lermos os seus produtos, stock e vendas.", nl: "Je geld op het spel en de acties van deze week verschijnen hier zodra je producten, voorraad en verkopen zijn gelezen.", pl: "Twoje pieniądze na szali i działania na ten tydzień pojawią się tutaj, gdy odczytamy Twoje produkty, stany i sprzedaż." },
 
   // ---- Settings ----
   "Language": { es: "Idioma", fr: "Langue", de: "Sprache", it: "Lingua", pt: "Idioma", nl: "Taal", pl: "Język" },

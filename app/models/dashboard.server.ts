@@ -8,6 +8,8 @@ import { facts } from "../services/facts-store.server";
 import { buildHome, MIN_SALES_DAYS, planReadiness, type HomeData, type HomeRaw, type PlanReadiness } from "../lib/dashboard-shared";
 import type { PlanCode } from "../lib/plan-shared";
 import { readReviewAsk, reviewMoment, shouldAskForReview, type ReviewMoment } from "../lib/review-ask-shared";
+import { PLAN_READY_KIND, PLAN_READY_PERIOD } from "../lib/plan-ready-email-shared";
+import { emailTransportConfigured } from "../services/email.server";
 
 type DecimalLike = { toNumber(): number } | number | string | null;
 
@@ -25,7 +27,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
   if (!row) return { shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 };
 
   const tracked = { shop, tracked: true, isBundle: false } as const;
-  const [money, trackedVariants, variantsWithCost, days, supplierCount, vendors] = await Promise.all([
+  const [money, trackedVariants, variantsWithCost, days, supplierCount, vendors, planReadyLog] = await Promise.all([
     prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" } }),
     prisma.variant.count({ where: tracked }),
     prisma.variant.count({ where: { ...tracked, cost: { not: null } } }),
@@ -34,6 +36,12 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     // Setup guide "Suppliers": suppliers kept (Growth+) / vendors found (Free).
     prisma.supplier.count({ where: { shop } }),
     prisma.variant.groupBy({ by: ["vendor"], where: { shop, vendor: { not: null } }, orderBy: { vendor: "asc" }, take: 1000 }),
+    // The sync screen promises "we'll email you" only while that email can still go out.
+    emailTransportConfigured()
+      ? prisma.ownerEmailLog
+          .findUnique({ where: { shop_kind_periodKey: { shop, kind: PLAN_READY_KIND, periodKey: PLAN_READY_PERIOD } }, select: { status: true } })
+          .catch(() => null)
+      : Promise.resolve(undefined),
   ]);
 
   return {
@@ -53,6 +61,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     salesDays: days.length,
     supplierCount,
     vendorCount: vendors.filter((v) => !!v.vendor?.trim()).length,
+    planReadyEmail: planReadyLog !== undefined && planReadyLog?.status !== "SENT",
   };
 }
 

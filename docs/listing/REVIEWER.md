@@ -54,11 +54,13 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 
 1. Install the app and pick **Growth** on Shopify's plan page. You land on the **Dashboard**.
    The app menu is **Dashboard · Order plan · Products · Settings · Plans**.
-2. The Dashboard says "First sync in progress" and shows the **Setup guide** first (Lead times,
-   Suppliers, Product costs, Monday email), then "Reading your store…" with progress per dataset
-   (products, stock history, sales history, store visits). The newest 90 days are read first; the
-   numbers appear when they are in (minutes on a small store), and the header then shows the
-   real update time.
+2. The Dashboard says "First sync in progress" and shows **Setting up your order plan**: one row
+   per stage (products, stock history, sales history, store visits, building your plan) with the
+   months read, the time left (worked out from how fast the store is being read), what to do
+   meanwhile (the **Setup guide** below it, or **Import from a CSV**), and "We'll email you when
+   your order plan is ready" when email sending is on. The newest 90 days are read first; the
+   numbers appear when they are in, labelled "Based on the last 90 days so far" until the older
+   months are read, and the header then shows the real update time.
 3. **Dashboard → Order this week** (first on the page): each supplier with orders due in the
    next 7 days (overdue ones included) — products, units, cash and order-by date — with
    **Review order**, which opens Order now for that supplier at the planned quantities. Below it,

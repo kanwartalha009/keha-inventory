@@ -16,6 +16,7 @@ import {
   type Dataset,
 } from "./sync/backfill-shared";
 import { fill } from "./i18n";
+import { buildSyncView, showReadyNotice, type SyncView } from "./sync-progress-shared";
 
 type T = (s: string) => string;
 
@@ -59,6 +60,11 @@ export type HomeRaw = {
   supplierCount?: number;
   /** Distinct, non-blank vendors in the catalog (Free's "Vendors found"); undefined = not read. */
   vendorCount?: number;
+  /**
+   * The "your order plan is ready" email can go out: email sending is configured and it wasn't
+   * sent yet (dashboard.server). The Monday email setting is applied in buildHome. Undefined = no.
+   */
+  planReadyEmail?: boolean;
 };
 
 export type DatasetBar = { key: Dataset; percent: number; failed: boolean };
@@ -80,6 +86,10 @@ export type HomeData = {
   money: MoneySnapshot | null;
   /** `percent`: the whole read, 0–100 (mean of the datasets, as /health). */
   sync: { done: boolean; first90Ready: boolean; datasets: DatasetBar[]; percent: number };
+  /** The first-sync screen: stages, ETA, store size, partial and error copy (lib/sync-progress-shared). */
+  syncView: SyncView;
+  /** Show "Your order plan is ready" (the read finished in the last few days and the store is ready). */
+  readyNotice: boolean;
   setup: {
     leadTimeDone: boolean;
     leadTimeDays: number;
@@ -95,6 +105,8 @@ export type HomeData = {
     vendorCount: number | null;
     /** Growth+: at least one supplier. Free: vendors stand in for suppliers, so nothing to do. */
     suppliersDone: boolean;
+    /** Settings → Import & export (Growth, `csvImport`). Optional for older callers: undefined = locked. */
+    importEnabled?: boolean;
     allDone: boolean;
   };
 };
@@ -225,6 +237,16 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
         failed: !!backfill.datasets?.[key]?.lastError,
       })),
     },
+    syncView: buildSyncView({
+      state: raw.shop ? backfill : {},
+      now,
+      trackedVariants: raw.trackedVariants,
+      catalogDone,
+      planBuiltAt: computedAt,
+      // One email when the plan is ready, only if the owner gets Keha's emails at all (Monday email on).
+      emailOnReady: !!raw.planReadyEmail && mondayEnabled,
+    }),
+    readyNotice: raw.shop ? showReadyNotice(backfill, state === "ready", now) : false,
     setup: {
       leadTimeDone,
       leadTimeDays: settings.leadTimeDays,
@@ -236,6 +258,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
       supplierCount,
       vendorCount: raw.vendorCount ?? (catalogDone ? 0 : null),
       suppliersDone,
+      importEnabled: hasFeature(plan, "csvImport"),
       allDone: leadTimeDone && suppliersDone && costsDone && mondayEnabled,
     },
   };

@@ -135,6 +135,50 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
   };
 }
 
+/**
+ * The first-sync screen (owner 2026-10-17): a large store 2 h into its read with sales for July 2026
+ * failing (measured ETA), a small store just after its catalog (first estimate), and the day after
+ * the read finished ("Your order plan is ready").
+ */
+function firstSync(kind: "large" | "small" | "finished", plan: PlanCode): HomeLoaderData {
+  if (kind === "finished") {
+    const raw = homeRaw();
+    const st = raw.shop!.backfillState as Record<string, unknown> & { datasets: Record<string, unknown> };
+    st.finishedAt = "2026-10-15T20:00:00Z";
+    for (const d of ["stock", "sales", "visits", "totals"]) st.datasets[d] = { done: 14, total: 14 };
+    return { ...dashboard(plan), ...buildHome(raw, plan, NOW), orderPlan: dashboard(plan).orderPlan };
+  }
+  const months = kind === "large" ? 3 : 0;
+  const ds = (n: number) => ({ done: n, total: 14 });
+  const backfillState = {
+    startedAt: "2026-10-16T07:55:00Z",
+    range: { from: "2025-09-01", until: "2026-10-15" },
+    datasets: {
+      products: { done: 1, total: 1, finishedAt: "2026-10-16T08:00:00Z" },
+      stock: ds(months),
+      sales: kind === "large" ? { done: 3, total: 14, lastError: "ShopifyqlError", lastErrorCode: "unknown", attempts: 2 } : ds(0),
+      visits: ds(months),
+      totals: ds(months),
+    },
+  };
+  return {
+    ...buildHome(
+      {
+        shop: { domain: "acme.myshopify.com", currency: "EUR", timezone: "Europe/Madrid", settings: {}, backfillState, lastNightlyAt: null },
+        money: null,
+        trackedVariants: kind === "large" ? 48_000 : 350,
+        variantsWithCost: 0,
+        salesDays: 0,
+        supplierCount: 0,
+        planReadyEmail: true,
+      },
+      plan,
+      NOW,
+    ),
+    renderedAt: NOW.toISOString(),
+  };
+}
+
 /** The supplier order builder: Acme Textiles, ordered every 30 days, minimum 200 units (Order now's fixture). */
 function builder(kind: "growth" | "growth-below" | "free"): BuilderPageData {
   const fx = orderNowFixture({ minOrderTotal: 200 });
@@ -501,8 +545,11 @@ type Screen = {
 const S = (s: Screen) => s;
 const screens: Screen[] = [
   S({ slug: "dashboard--free-ready", screen: "Dashboard", state: "Free, ready", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => dashboard("free"), expect: ["Dashboard", "Money at stake", "Linen shirt"] }),
-  S({ slug: "dashboard--growth-ready", screen: "Dashboard", state: "Growth, ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), expect: ["Order this week", "Money at stake", "Lisbon Linen", "Reorder Tee"] }),
-  S({ slug: "dashboard--growth-syncing", screen: "Dashboard", state: "Growth, syncing (empty)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth", { syncing: true }), expect: ["Reading your store…", "Setup guide"] }),
+  S({ slug: "dashboard--growth-ready", screen: "Dashboard", state: "Growth, ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), expect: ["Order this week", "Money at stake", "Lisbon Linen", "Reorder Tee", "Still reading older months"] }),
+  S({ slug: "dashboard--growth-syncing", screen: "Dashboard", state: "Growth, syncing (empty)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth", { syncing: true }), expect: ["Setting up your order plan", "Waiting to start", "Setup guide"] }),
+  S({ slug: "dashboard--growth-first-sync-large", screen: "Dashboard", state: "Growth, first sync, large store, a month failing", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("large", "growth"), expect: ["Setting up your order plan", "Large stores take a few hours — you can close this page.", "We'll email you when your order plan is ready.", "While you wait", "Import from a CSV", "Worked out from how fast your store has been read so far."] }),
+  S({ slug: "dashboard--free-first-sync-small", screen: "Dashboard", state: "Free, first sync, small store (first estimate)", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => firstSync("small", "free"), expect: ["Setting up your order plan", "You can close this page — we keep reading in the background.", "Growth plan"] }),
+  S({ slug: "dashboard--growth-plan-ready", screen: "Dashboard", state: "Growth, the read just finished", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("finished", "growth"), expect: ["Your order plan is ready", "Order this week"] }),
   S({ slug: "dashboard--pro-ready", screen: "Dashboard", state: "Pro, ready", nav: "dashboard", url: "/app", plan: "pro", Component: Home, data: () => dashboard("pro"), expect: ["Order this week", "Money at stake", "Take preorders for the gap"] }),
 
   S({ slug: "order-now--free-preview", screen: "Order plan → Order now", state: "Free preview", nav: "orderplan", url: "/app/reorder", plan: "free", Component: Reorder, data: () => orderNow("free"), expect: ["Order plan", "What to order, and by when", "Linen shirt"] }),

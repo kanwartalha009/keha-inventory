@@ -4,7 +4,8 @@
  *    shop's share of the old hourly tick, review H4); still in progress → queued again at once
  *    (behind every other due job, so large stores share the workers), throttled → in a minute;
  *  - nightly: the nightly sync (runNightly checks it is due), throttled → in five minutes;
- *  - compute: the engine (the sync jobs queue it instead of running it inline);
+ *  - compute: the engine (the sync jobs queue it instead of running it inline), then the one
+ *    "your order plan is ready" email when the first read just finished (services/plan-ready);
  *  - alerts: instant alerts + Flow triggers for the shop;
  *  - maintenance (shop "*", queued hourly): the fact tables' month partitions — the months ahead
  *    created, the months past retention dropped (services/partitions.server).
@@ -17,6 +18,7 @@ import { computeAfterSync } from "../compute.server";
 import { runAlertsForShop, type AlertsShopRow } from "../alerts.server";
 import { STEPS_PER_TICK, THROTTLE_BUDGET_MS, createSleepBudget } from "../../lib/sync/budget-shared";
 import { NIGHTLY_THROTTLED_RETRY_MS, THROTTLED_RETRY_MS } from "../../lib/jobs-shared";
+import { maybeSendPlanReadyEmail } from "../plan-ready.server";
 import { enqueueJob } from "./queue.server";
 import { maintainPartitions } from "../partitions.server";
 import type { JobHandlers } from "./worker.server";
@@ -50,7 +52,9 @@ export function jobHandlers(base: HandlerDeps): JobHandlers {
     },
     compute: async (job) => {
       await computeAfterSync(job.shop);
-      return "done";
+      // Once per store, never throws: sent only when this compute made the first full plan.
+      const email = await maybeSendPlanReadyEmail(job.shop);
+      return email === "sent" ? "done:plan_ready_email" : "done";
     },
     alerts: async (job) => {
       const row = (await prisma.shop.findUnique({ where: { domain: job.shop } })) as AlertsShopRow | null;
