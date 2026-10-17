@@ -265,7 +265,9 @@ export async function loadReorder(
         m.variantId,
         {
           orderQty: m.orderQty,
-          orderBy: scope === METRIC_SCOPE ? fwd.deadline : dayOf(m.orderBy),
+          // Rows without the plan's inputs (written before it) keep their stored date; compute
+          // writes the same function's date, so both agree whenever it can be projected.
+          orderBy: scope === METRIC_SCOPE && fwd.deadline !== null ? fwd.deadline : dayOf(m.orderBy),
           daysLeft: m.daysLeft,
           neverRunsOut: m.neverRunsOut,
           rate: m.rate,
