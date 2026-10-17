@@ -678,7 +678,7 @@ function LineRow({
       <s-table-cell>{money(l.unitCostStore === null || n === 0 ? null : l.unitCostStore * n, unitSupplier === null || n === 0 ? null : unitSupplier * n, group, locale)}</s-table-cell>
       <s-table-cell>
         <span className="keha-inline">
-          <WhyPopover id={`keha-why-${l.variantId.replace(/\D/g, "")}`} title={name} whys={l.why} lastYear={l.lastYear} qty={l.suggested} />
+          <WhyPopover id={`keha-why-${l.variantId.replace(/\D/g, "")}`} title={name} whys={l.why} lastYear={l.lastYear} qty={l.suggested} today={today} />
           <s-button variant="tertiary" icon="menu-horizontal" commandFor={menuId} accessibilityLabel={`${t("More actions")}: ${name}`} />
           <s-menu id={menuId} accessibilityLabel={t("More actions")}>
             <s-button onClick={onStop}>{t("Don't reorder this product")}</s-button>

@@ -241,6 +241,8 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
     if (!v && !x) return null;
     const stock = input.stock.get(id);
     // A line that joins this order leaves its own later order: that order's top-up doesn't apply.
+    // The orders due in the 7 days added together (variantLine's sum, the same as Products' To
+    // order); a line that joins this order leaves its own later order: no top-up then.
     const qty = events.reduce((a, e) => a + (join && e.why ? e.why.rounded : e.qty), 0);
     const first = events[0] ?? null;
     // One date per line, the same rule as the Dashboard, Sidekick and the email (M2): with several

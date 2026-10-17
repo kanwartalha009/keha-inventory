@@ -94,4 +94,18 @@ describe("order-by dates across screens", () => {
     const json = JSON.stringify([plan, reorder]);
     expect(json).not.toContain("2025-08");
   });
+  it("M4: Products' To order is Order now's line — the sum of the variant's orders in the 7 days, at the earliest date", async () => {
+    const plan = await loadOrderPlan(S, NOW);
+    const v1 = plan.events.filter((e) => e.variantId === V(1) && e.orderBy <= "2026-10-22");
+    expect(v1.length).toBeGreaterThan(1); // the fast seller has several orders this week
+    const reorder = await loadReorder(S, [], "online", new Map(), NOW);
+    const line = reorder.groups.flatMap((g) => g.lines).find((l) => l.variantId === V(1))!;
+    expect(line.suggested).toBe(v1.reduce((a, e) => a + e.qty, 0));
+    expect(line.why).toHaveLength(v1.length);
+    const products = await listProducts(S, NF, 1, true, "online", NOW);
+    for (const l of reorder.groups.flatMap((g) => g.lines)) {
+      const r = products.rows.find((x) => x.id === l.variantId)!;
+      expect([r.id, r.orderQty, r.orderBy, r.overdue]).toEqual([l.variantId, l.suggested, l.orderBy, l.overdue]);
+    }
+  });
 });

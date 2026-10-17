@@ -15,6 +15,16 @@ export const ORDERING_TR: Record<string, Tr> = {
   "Due {date}": { es: "Antes del {date}", fr: "Avant le {date}", de: "Bis {date}", it: "Entro il {date}", pt: "Até {date}", nl: "Vóór {date}", pl: "Do {date}" },
 
   // ---- Why this quantity ----
+  "Orders due in the next 7 days ({n}), added together: {parts} = {total}": {
+    es: "Pedidos que vencen en los próximos 7 días ({n}), sumados: {parts} = {total}",
+    fr: "Commandes à passer dans les 7 prochains jours ({n}), additionnées : {parts} = {total}",
+    de: "In den nächsten 7 Tagen fällige Bestellungen ({n}), zusammengezählt: {parts} = {total}",
+    it: "Ordini in scadenza nei prossimi 7 giorni ({n}), sommati: {parts} = {total}",
+    pt: "Encomendas a fazer nos próximos 7 dias ({n}), somadas: {parts} = {total}",
+    nl: "Bestellingen die de komende 7 dagen moeten ({n}), opgeteld: {parts} = {total}",
+    pl: "Zamówienia na najbliższe 7 dni ({n}), zsumowane: {parts} = {total}",
+  },
+  "Order due {date}:": { es: "Pedido para el {date}:", fr: "Commande à passer le {date} :", de: "Bestellung fällig am {date}:", it: "Ordine entro il {date}:", pt: "Encomenda até {date}:", nl: "Bestelling uiterlijk {date}:", pl: "Zamówienie do {date}:" },
   "Why this quantity": { es: "Por qué esta cantidad", fr: "Pourquoi cette quantité", de: "Warum diese Menge", it: "Perché questa quantità", pt: "Porquê esta quantidade", nl: "Waarom deze hoeveelheid", pl: "Skąd ta ilość" },
   "Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}": {
     es: "Previsión de los próximos {n} días: {demand} (ventas al día {rate}, temporada ×{season}) + seguridad {safety} − en stock {onHand} − pedido {onOrder} = {need}",

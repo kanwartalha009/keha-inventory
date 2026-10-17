@@ -22,7 +22,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import { dueDay, type PlanEvent } from "../lib/engine/forward-plan-shared";
+import { variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
@@ -94,29 +94,35 @@ const VARIANT_SELECT = {
   noReorder: true,
 } as const;
 
-/** The forward plan, per variant: its next planned order and its plan state. */
-export type PlanView = { first: Map<string, PlanEvent>; state: Map<string, PlanVariantState> };
+type PlanLine = NonNullable<ReturnType<typeof variantLine>>;
+
+/** The forward plan, per variant: its order line (Order now's, M4) and its plan state. */
+export type PlanView = { line: Map<string, PlanLine>; state: Map<string, PlanVariantState> };
 
 export async function planView(shop: string, scope: string = METRIC_SCOPE, now: Date = new Date()): Promise<PlanView> {
   // The whole plan sorts the table; reused while nothing it reads changed (order-plan.server).
   const { data, state } = await cachedOrderPlan(shop, now, { scope });
-  const first = new Map<string, PlanEvent>();
-  for (const e of data.events) if (!first.has(e.variantId)) first.set(e.variantId, e);
-  return { first, state };
+  const byVariant = new Map<string, PlanEvent[]>();
+  for (const e of data.events) (byVariant.get(e.variantId) ?? byVariant.set(e.variantId, []).get(e.variantId)!).push(e);
+  const line = new Map<string, PlanLine>();
+  for (const [id, events] of byVariant) {
+    const l = variantLine(events, data.today);
+    if (l) line.set(id, l);
+  }
+  return { line, state };
 }
 
 /**
- * "To order" and "Order by" from the forward plan (one rule with Order now): the next planned
- * order's quantity and its real order-by date (overdue: in the past). Without a planned order in
- * the 13 weeks: nothing to order ("—") and the plan's (or the stored) order-by date.
+ * "To order" and "Order by" from the forward plan, one rule with Order now (M4, variantLine):
+ * the variant's orders due in the next 7 days added together at the earliest date (overdue: the
+ * date that passed; null when already out with no known run-out day, M3), else its next planned
+ * order. Without a planned order in the 13 weeks: nothing to order ("—") and the plan's date.
  */
 export function withPlan(row: ProductRow, view: PlanView | null, noReorder: boolean): ProductRow {
   if (noReorder) return { ...row, noReorder: true, orderQty: null, orderBy: null, overdue: false };
   if (!view) return { ...row, noReorder: false };
-  const e = view.first.get(row.id);
-  // dueDay: an overdue order's passed date; null when it is already out and the day it ran out is
-  // unknown (M3) — never the stored date of a row computed before that rule.
-  if (e) return { ...row, noReorder: false, orderQty: e.qty, orderBy: dueDay(e), overdue: e.overdue };
+  const l = view.line.get(row.id);
+  if (l) return { ...row, noReorder: false, orderQty: l.qty, orderBy: l.orderBy, overdue: l.overdue };
   const st = view.state.get(row.id);
   return { ...row, noReorder: false, orderQty: null, orderBy: st ? st.deadline : row.orderBy, overdue: false };
 }
@@ -150,11 +156,11 @@ async function orderedIds(
   );
   const key = (r: { id: string; noReorder: boolean }): [number, string] => {
     if (r.noReorder) return [2, ""];
-    const e = view.first.get(r.id);
+    const l = view.line.get(r.id);
     // Overdue with no date (already out, run-out day unknown): first.
-    if (e?.overdue && !dueDay(e)) return [0, ""];
+    if (l?.overdue && !l.orderBy) return [0, ""];
     const st = view.state.get(r.id);
-    const d = e ? dueDay(e) : st ? st.deadline : (stored.get(r.id) ?? null);
+    const d = l ? l.orderBy : st ? st.deadline : (stored.get(r.id) ?? null);
     return d ? [0, d] : [1, ""];
   };
   const keyed = list.map((r, i) => ({ id: r.id, i, k: key(r) }));

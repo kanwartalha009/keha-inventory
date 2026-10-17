@@ -985,6 +985,19 @@ export function ordersDue(events: readonly Pick<PlanEvent, "orderBy" | "overdue"
   return { orderBy: days[0] ?? null, overdue };
 }
 
+/**
+ * M4: one variant's orders as ONE line — Order now's line and Products' "To order": its orders
+ * due in the next 7 days added together, at ordersDue's date (the earliest; overdue: the one that
+ * passed); without one in the 7 days, its next planned order. `events`: that variant's, any order.
+ */
+export function variantLine(events: readonly PlanEvent[], today: DayKey): { qty: number; orderBy: DayKey | null; overdue: boolean; events: PlanEvent[] } | null {
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => a.orderBy.localeCompare(b.orderBy));
+  const week = dueWithin(sorted, today, ORDER_NOW_DAYS);
+  const used = week.length ? week : [sorted[0]!];
+  return { qty: used.reduce((a, e) => a + e.qty, 0), ...ordersDue(used), events: used };
+}
+
 /** Events placed within the next `days` days (today included; overdue day-0 orders too). */
 export function dueWithin(events: readonly PlanEvent[], today: DayKey, days: number): PlanEvent[] {
   const last = addDays(today, days - 1);

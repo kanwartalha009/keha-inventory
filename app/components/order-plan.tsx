@@ -9,7 +9,7 @@ import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
 import type { OrderWhy, PlanWeek } from "../lib/engine/forward-plan-shared";
-import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
+import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
 import { useLinkProps } from "./wc";
@@ -210,15 +210,19 @@ export function WhyPopover({
   whys,
   lastYear,
   qty,
+  today,
 }: {
   id: string;
   title: string;
   whys: readonly OrderWhy[];
   lastYear: number | null | undefined;
   qty: number;
+  /** Store-local today: a line adding up several orders dates each one (whySum). */
+  today?: string;
 }) {
   const { t, locale } = useLocale();
   const high = aboveLastYear(qty, lastYear);
+  const sum = today ? whySum(whys, today, t, locale) : { summary: null, headings: [] as (string | null)[] };
   return (
     <>
       <s-button variant="tertiary" icon="info" commandFor={id} accessibilityLabel={`${t("Why this quantity")}: ${title}`} />
@@ -226,9 +230,11 @@ export function WhyPopover({
         <s-box padding="base" maxInlineSize="400px">
           <s-stack direction="block" gap="small-200">
             <s-heading>{t("Why this quantity")}</s-heading>
+            {sum.summary && <s-text fontWeight="medium">{sum.summary}</s-text>}
             {whys.length ? (
               whys.map((w, i) => (
                 <s-stack key={i} direction="block" gap="none">
+                  {sum.headings[i] && <s-text fontWeight="medium">{sum.headings[i]}</s-text>}
                   {whyLines(w, t, locale).map((l, k) => (
                     <s-text key={k}>{l}</s-text>
                   ))}

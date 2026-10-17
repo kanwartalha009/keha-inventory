@@ -379,6 +379,24 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   return out;
 }
 
+/**
+ * M4: a line that adds up several orders (Order now: every order of the variant due in the next 7
+ * days) says so — "Orders due in the next 7 days (2), added together: 30 + 43 = 73" — and each
+ * order's terms get its date ("Order due 16 Oct:"). One order: nothing extra.
+ */
+export function whySum(whys: readonly OrderWhy[], today: DayKey, t: T, locale: string): { summary: string | null; headings: (string | null)[] } {
+  if (whys.length < 2) return { summary: null, headings: whys.map(() => null) };
+  const parts = whys.map((w) => w.rounded + w.topUp);
+  return {
+    summary: fill(t("Orders due in the next 7 days ({n}), added together: {parts} = {total}"), {
+      n: nf(whys.length, locale, 0),
+      parts: parts.map((p) => nf(p, locale, 0)).join(" + "),
+      total: nf(parts.reduce((a, b) => a + b, 0), locale, 0),
+    }),
+    headings: whys.map((w) => fill(t("Order due {date}:"), { date: shortDay(addDays(today, w.day), locale) })),
+  };
+}
+
 /** The same weeks last year, for the popover. */
 export function lastYearLine(lastYear: number | null | undefined, t: T, locale: string): string {
   return typeof lastYear === "number" && Number.isFinite(lastYear)

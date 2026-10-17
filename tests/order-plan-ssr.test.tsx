@@ -21,7 +21,7 @@ import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
 import { loadOrderPlan } from "../app/models/order-plan.server";
 import { featureMap } from "../app/lib/plan-shared";
-import { EMPTY_ORDER_PLAN, aboveLastYear, dueText, formatWeekRange, lastYearLine, lockTeaser, orderLink, planCsv, planWeeks, previewRows, supplierName, thisWeek, whyLines } from "../app/lib/order-plan-shared";
+import { EMPTY_ORDER_PLAN, aboveLastYear, dueText, formatWeekRange, lastYearLine, lockTeaser, orderLink, planCsv, planWeeks, previewRows, supplierName, thisWeek, whyLines, whySum } from "../app/lib/order-plan-shared";
 import { translate } from "../app/lib/i18n";
 import { PLAN_TODAY, orderPlanFixture } from "./order-plan-fixtures";
 
@@ -91,6 +91,16 @@ describe("order-plan-shared", () => {
     expect(later.suppliers).toEqual([]);
     expect(later.next).not.toBeNull();
     expect(thisWeek({ ...plan, events: [] }).next).toBeNull();
+  });
+
+  it("M4: a line adding up several orders says so, with each order's date", () => {
+    const t = (x: string) => x;
+    const w = (day: number, rounded: number, topUp = 0) => ({ day, days: 28, demand: 1, rate: 1, season: 1, growth: 1, safety: 1, onHand: 0, onOrder: 0, need: 1, rounded, pack: null, moq: null, topUp });
+    expect(whySum([w(0, 30)], "2026-10-16", t, "en")).toEqual({ summary: null, headings: [null] });
+    const two = whySum([w(0, 30), w(3, 40, 3)], "2026-10-16", t, "en");
+    expect(two.summary).toBe("Orders due in the next 7 days (2), added together: 30 + 43 = 73");
+    expect(two.headings).toEqual(["Order due Oct 16:", "Order due Oct 19:"]);
+    expect(whySum([w(0, 30), w(3, 40)], "2026-10-16", (x) => translate("de", x), "de").summary).toBe("In den nächsten 7 Tagen fällige Bestellungen (2), zusammengezählt: 30 + 40 = 70");
   });
 
   it("due dates: Due today only when it is, Due 27 Oct, Overdue since 12 Oct", () => {
