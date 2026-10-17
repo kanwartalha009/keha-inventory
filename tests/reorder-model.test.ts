@@ -33,9 +33,11 @@ import {
   insertWithNumber,
   kehaOnOrder,
   openOrderList,
+  openOrders,
   pricingFor,
   receiveOrder,
   reopenOrder,
+  staleDraftCount,
   transitionOrder,
   updateDraft,
 } from "../app/models/reorder.server";
@@ -100,6 +102,28 @@ describe("status changes", () => {
     expect(await transitionOrder(S, id, "received", NOW)).toEqual({ ok: true });
     expect((fake.tables.purchaseOrder!.find((r) => r.id === id)!.lines as { received?: number }[])[0]!.received).toBe(12);
     expect(await transitionOrder("other.myshopify.com", id, "cancelled", NOW)).toEqual({ ok: false, error: "notFound" });
+  });
+});
+
+describe("open Keha units (ordering audit 2026-10-17)", () => {
+  const po = (id: string, over: Record<string, unknown>) => ({ id, shop: S, number: id, source: "keha", status: "sent", supplierId: "s1", lines: [line(V1, 10)], confirmedShipDate: null, expectedDate: null, createdAt: NOW, ...over });
+
+  it("transit: a confirmed ship date arrives the supplier's transit days later (Open orders too)", async () => {
+    fake.tables.supplier = [{ id: "s1", shop: S, name: "Far", email: null, leadTimeDays: 45, transitDays: 21, hidePrices: false }];
+    fake.tables.purchaseOrder = [po("a", { status: "confirmed", confirmedShipDate: new Date("2026-10-20T00:00:00Z"), expectedDate: new Date("2026-10-25T00:00:00Z") })];
+    expect((await kehaOnOrder(S, ["sent", "confirmed"])).get(V1)).toEqual({ qty: 10, arrival: "2026-11-10" });
+    expect((await openOrders(S))[0]!.arrival).toBe("2026-11-10");
+    // Without a confirmed ship date: the lead-time estimate.
+    fake.tables.purchaseOrder = [po("b", { expectedDate: new Date("2026-11-30T00:00:00Z") })];
+    expect((await kehaOnOrder(S, ["sent"])).get(V1)!.arrival).toBe("2026-11-30");
+  });
+
+  it("drafts older than 14 days stop counting as ordered (and are counted for the banner)", async () => {
+    const days = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+    fake.tables.purchaseOrder = [po("old", { status: "draft", createdAt: days(20) }), po("new", { status: "draft", createdAt: days(3) }), po("sent", { createdAt: days(40) })];
+    expect((await kehaOnOrder(S, ["draft", "sent", "confirmed"], undefined, { now: NOW })).get(V1)!.qty).toBe(20);
+    expect((await kehaOnOrder(S, ["draft", "sent", "confirmed"])).get(V1)!.qty).toBe(30); // without `now`: as before
+    expect(await staleDraftCount(S, NOW)).toBe(1);
   });
 });
 

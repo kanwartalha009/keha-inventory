@@ -68,6 +68,8 @@ vi.mock("../app/db.server", () => ({
     purchaseOrder: {
       findMany: async ({ where }: { where: Row }) => db.purchaseOrder!.filter((r) => matches(r, where)),
     },
+    // Keha arrivals add the supplier's transit days; the forward plan reads the suppliers too.
+    supplier: { findMany: async () => [] },
   },
 }));
 

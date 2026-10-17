@@ -120,25 +120,38 @@ function needOf(inputs: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+/** Transit days per supplier id (arrival = confirmed ship date + transit; supplier-shared poArrival). */
+export async function supplierTransit(shop: string): Promise<Map<string, number | null>> {
+  const rows = await prisma.supplier.findMany({ where: { shop }, select: { id: true, transitDays: true } });
+  return new Map(rows.map((r) => [r.id, r.transitDays ?? null]));
+}
+
 /**
  * Units on open Keha orders per variant (ordered − received) and the earliest
- * arrival. `statuses`: draft/sent/confirmed for the Reorder suggestions;
- * sent/confirmed for Products ("On order with Keha").
+ * arrival (confirmed ship date + the supplier's transit days, else the lead-time
+ * estimate). `statuses`: draft/sent/confirmed for the order plan; sent/confirmed
+ * for Products ("On order with Keha"). With `opts.now`, drafts older than
+ * DRAFT_EXPIRY_DAYS no longer count (poCountsAsOrdered).
  */
 export async function kehaOnOrder(
   shop: string,
   statuses: readonly string[],
   variantIds?: string[],
+  opts: { now?: Date } = {},
 ): Promise<Map<string, { qty: number; arrival: string | null }>> {
   const out = new Map<string, { qty: number; arrival: string | null }>();
   if (variantIds && !variantIds.length) return out;
-  const orders = await prisma.purchaseOrder.findMany({
-    where: { shop, source: "keha", status: { in: [...statuses] } },
-    select: { lines: true, confirmedShipDate: true, expectedDate: true },
-  });
+  const [orders, transit] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where: { shop, source: "keha", status: { in: [...statuses] } },
+      select: { lines: true, confirmedShipDate: true, expectedDate: true, supplierId: true, status: true, createdAt: true },
+    }),
+    supplierTransit(shop),
+  ]);
   const wanted = variantIds ? new Set(variantIds) : null;
   for (const o of orders) {
-    const arrival = dayOf(poArrival(o));
+    if (opts.now && o.createdAt && !poCountsAsOrdered({ status: o.status, createdAt: o.createdAt }, opts.now)) continue;
+    const arrival = dayOf(poArrival(o, o.supplierId ? transit.get(o.supplierId) : null));
     for (const l of readPoLines(o.lines)) {
       if (wanted && !wanted.has(l.variantId)) continue;
       const left = Math.max(0, l.qty - (l.received ?? 0));
@@ -150,6 +163,12 @@ export async function kehaOnOrder(
     }
   }
   return out;
+}
+
+/** Keha drafts nobody sent for DRAFT_EXPIRY_DAYS: they no longer net off the order plan. */
+export async function staleDraftCount(shop: string, now: Date): Promise<number> {
+  const drafts = await prisma.purchaseOrder.findMany({ where: { shop, source: "keha", status: "draft" }, select: { status: true, createdAt: true, lines: true } });
+  return drafts.filter((d) => d.createdAt && !poCountsAsOrdered({ status: d.status, createdAt: d.createdAt }, now) && readPoLines(d.lines).some((l) => l.qty - (l.received ?? 0) > 0)).length;
 }
 
 export type OpenOrderRow = {
@@ -176,7 +195,7 @@ function toOpenRow(o: {
   confirmedShipDate: Date | null;
   expectedDate: Date | null;
   createdAt: Date;
-}): OpenOrderRow {
+}, transitDays?: number | null): OpenOrderRow {
   const totals = poTotals(readPoLines(o.lines));
   return {
     id: o.id,
@@ -187,25 +206,28 @@ function toOpenRow(o: {
     units: totals.units,
     cost: totals.cost,
     currency: o.currency,
-    arrival: dayOf(poArrival(o)),
+    arrival: dayOf(poArrival(o, transitDays)),
     createdAt: o.createdAt.toISOString(),
   };
 }
 
 /** Keha drafts / sent / confirmed and Shopify orders that are ordered but not received. */
 export async function openOrders(shop: string): Promise<OpenOrderRow[]> {
-  const rows = await prisma.purchaseOrder.findMany({
-    where: {
-      shop,
-      OR: [
-        { source: "keha", status: { in: [...REORDER_HOLD_STATUSES] } },
-        { source: "shopify", status: "sent" },
-      ],
-    },
-    orderBy: [{ createdAt: "desc" }],
-    take: 200,
-  });
-  return rows.map(toOpenRow);
+  const [rows, transit] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where: {
+        shop,
+        OR: [
+          { source: "keha", status: { in: [...REORDER_HOLD_STATUSES] } },
+          { source: "shopify", status: "sent" },
+        ],
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 200,
+    }),
+    supplierTransit(shop),
+  ]);
+  return rows.map((r) => toOpenRow(r, r.supplierId ? transit.get(r.supplierId) : null));
 }
 
 export type ReorderData = {
