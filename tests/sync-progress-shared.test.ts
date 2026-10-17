@@ -13,6 +13,8 @@ import {
   etaText,
   formatMonth,
   partialText,
+  salesSpan,
+  salesSpanText,
   showReadyNotice,
   sizeText,
   stageErrorText,
@@ -190,5 +192,41 @@ describe("store size and the ready notice", () => {
     expect(showReadyNotice(s, false, at(60))).toBe(false);
     expect(showReadyNotice(s, true, new Date(new Date(T0).getTime() + READY_NOTICE_MS + 1))).toBe(false);
     expect(showReadyNotice({}, true, at(60))).toBe(false);
+  });
+});
+
+describe("months of sales really read (listing audit 2026-10-18)", () => {
+  const last = "2026-10-15";
+  const text = (first: string | null) => salesSpanText(salesSpan(first, last), t, count);
+
+  it("0 sales: an honest line, no month count", () => {
+    expect(salesSpan(null, last)).toEqual({ kind: "none" });
+    expect(salesSpan("2026-10-20", last)).toEqual({ kind: "none" }); // a first sale after the last day read
+    expect(text(null)).toBe("We didn't find any sales yet. Your plan fills in as sales come in.");
+  });
+
+  it("under 2 months: counted in days", () => {
+    expect(salesSpan("2026-10-02", last)).toEqual({ kind: "days", n: 14 });
+    expect(text("2026-09-01")).toBe("We read your 45 days of sales.");
+    expect(text(last)).toBe("We read your first day of sales.");
+  });
+
+  it("3 months: the real count, no seasons", () => {
+    expect(salesSpan("2026-07-15", last)).toEqual({ kind: "months", n: 3, seasons: false });
+    expect(salesSpan("2026-07-16", last)).toEqual({ kind: "months", n: 2, seasons: false }); // a day short of 3
+    expect(text("2026-07-15")).toBe("We read your 3 months of sales.");
+  });
+
+  it("13 months: seasons (the engine's own minimum)", () => {
+    expect(salesSpan("2025-09-15", last)).toEqual({ kind: "months", n: 13, seasons: true });
+    expect(salesSpan("2025-09-16", last)).toEqual({ kind: "months", n: 12, seasons: false });
+    expect(text("2025-09-15")).toBe("We read 13 months of your sales, so your plan reflects your seasons.");
+  });
+
+  it("14+ months: capped at the read window", () => {
+    expect(salesSpan("2025-08-15", last)).toEqual({ kind: "months", n: 14, seasons: true });
+    expect(salesSpan("2019-01-01", last)).toEqual({ kind: "months", n: 14, seasons: true });
+    expect(salesSpan("2019-01-01", last, 6)).toEqual({ kind: "months", n: 6, seasons: false });
+    expect(text("2019-01-01")).toBe("We read 14 months of your sales, so your plan reflects your seasons.");
   });
 });

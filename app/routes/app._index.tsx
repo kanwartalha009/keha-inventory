@@ -144,7 +144,7 @@ export default function Home() {
       {data.reviewAsk && <ReviewAsk />}
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 
-      {data.readyNotice && <ReadyNotice months={data.syncView.months} />}
+      {data.readyNotice && <ReadyNotice span={data.salesSpan} />}
 
       {/* First read: the sync screen (with what to do meanwhile) leads, then the setup guide. */}
       {data.state === "syncing" && (

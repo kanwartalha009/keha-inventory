@@ -73,7 +73,7 @@ describe("first sync: the sync screen", () => {
   it("small store: stages with months read, a measured ETA, the email promise and what to do meanwhile", () => {
     const html = home(syncing(400, 2));
     expect(html).toContain("Setting up your order plan");
-    expect(html).toContain("We&#x27;re reading 14 months of sales so the plan reflects your seasons.");
+    expect(html).toContain("We&#x27;re reading up to 14 months of sales, so the plan can reflect your seasons.");
     expect(html).toContain("You can close this page — we keep reading in the background.");
     expect(html).toContain("We&#x27;ll email you when your order plan is ready.");
     // 2 months of 4 datasets = 8 months in 2 h: 15 min a month, 48 left = 12 h.
@@ -166,12 +166,41 @@ describe("after the first months: compact card and labels", () => {
     const st = raw.shop!.backfillState as BackfillState;
     st.finishedAt = "2026-10-15T20:00:00Z";
     for (const d of ["stock", "sales", "visits", "totals"] as const) st.datasets![d] = { done: 13, total: 13 };
+    st.range = { from: "2025-09-01", until: "2026-10-15" };
+    raw.firstSaleDay = "2024-05-01"; // 14+ months of sales: capped at the read window
     const html = home(raw);
     expect(html).toContain('heading="Your order plan is ready"');
-    expect(html).toContain("We read 14 months of your sales, so your plan now reflects your seasons.");
+    expect(html).toContain("We read 14 months of your sales, so your plan reflects your seasons.");
     expect(html).not.toContain("Still reading older months");
     expect(html).not.toContain("so far");
     st.finishedAt = "2026-10-01T20:00:00Z";
     expect(home(raw)).not.toContain("Your order plan is ready");
+  });
+
+  it("the ready notice says the months of sales really read, not the read window (listing audit 2026-10-18)", () => {
+    const raw = homeRaw();
+    const st = raw.shop!.backfillState as BackfillState;
+    st.finishedAt = "2026-10-15T20:00:00Z";
+    st.range = { from: "2025-09-01", until: "2026-10-15" };
+    for (const d of ["stock", "sales", "visits", "totals"] as const) st.datasets![d] = { done: 14, total: 14 };
+    const notice = (first: string | null) => {
+      raw.firstSaleDay = first;
+      const html = home(raw);
+      expect(html).toContain('heading="Your order plan is ready"');
+      return html;
+    };
+    // 3 months of sales: no seasons claim, no "14".
+    const three = notice("2026-07-01");
+    expect(three).toContain("We read your 3 months of sales.");
+    expect(three).not.toContain("reflects your seasons");
+    expect(three).not.toContain("14 months");
+    // 13 months: seasons.
+    expect(notice("2025-09-15")).toContain("We read 13 months of your sales, so your plan reflects your seasons.");
+    // 14+ months: capped at 14.
+    expect(notice("2023-01-01")).toContain("We read 14 months of your sales, so your plan reflects your seasons.");
+    // No sales found: an honest line, never a month count.
+    const none = notice(null);
+    expect(none).toContain("We didn&#x27;t find any sales yet. Your plan fills in as sales come in.");
+    expect(none).not.toMatch(/months of (your )?sales/);
   });
 });

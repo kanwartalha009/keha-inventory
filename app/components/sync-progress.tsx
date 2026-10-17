@@ -14,10 +14,12 @@ import {
   etaBasisText,
   etaText,
   partialText,
+  salesSpanText,
   sizeText,
   stageErrorText,
   stageLabel,
   stageStatusText,
+  type SalesSpan,
   type SyncStage,
   type SyncView,
 } from "../lib/sync-progress-shared";
@@ -129,7 +131,7 @@ export function SyncProgress({ view, mode, setup }: { view: SyncView; mode: "ful
   return (
     <FormCard
       title={t("Setting up your order plan")}
-      sub={fill(t("We're reading {n} months of sales so the plan reflects your seasons."), { n: count(view.months) })}
+      sub={fill(t("We're reading up to {n} months of sales, so the plan can reflect your seasons."), { n: count(view.months) })}
     >
       <s-stack direction="block" gap="base">
         <s-paragraph>
@@ -152,11 +154,11 @@ export function SyncProgress({ view, mode, setup }: { view: SyncView; mode: "ful
 }
 
 /** "Your order plan is ready" — once the first full read is in (shown for a few days). */
-export function ReadyNotice({ months }: { months: number }) {
+export function ReadyNotice({ span }: { span: SalesSpan }) {
   const { t, locale } = useLocale();
   return (
     <s-banner tone="success" heading={t("Your order plan is ready")} dismissible>
-      {fill(t("We read {n} months of your sales, so your plan now reflects your seasons."), { n: formatCount(months, locale) })}
+      {salesSpanText(span, t, (n) => formatCount(n, locale))}
     </s-banner>
   );
 }

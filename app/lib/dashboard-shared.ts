@@ -16,7 +16,7 @@ import {
   type Dataset,
 } from "./sync/backfill-shared";
 import { fill } from "./i18n";
-import { buildSyncView, showReadyNotice, type SyncView } from "./sync-progress-shared";
+import { buildSyncView, salesSpan, showReadyNotice, type SalesSpan, type SyncView } from "./sync-progress-shared";
 
 type T = (s: string) => string;
 
@@ -65,6 +65,8 @@ export type HomeRaw = {
    * sent yet (dashboard.server). The Monday email setting is applied in buildHome. Undefined = no.
    */
   planReadyEmail?: boolean;
+  /** The store's earliest sales day ("YYYY-MM-DD"; null = no sales; undefined = not read). */
+  firstSaleDay?: string | null;
 };
 
 export type DatasetBar = { key: Dataset; percent: number; failed: boolean };
@@ -90,6 +92,8 @@ export type HomeData = {
   syncView: SyncView;
   /** Show "Your order plan is ready" (the read finished in the last few days and the store is ready). */
   readyNotice: boolean;
+  /** Sales history really read: from the first sale to the last day read, capped at the window. */
+  salesSpan: SalesSpan;
   setup: {
     leadTimeDone: boolean;
     leadTimeDays: number;
@@ -247,6 +251,8 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
       emailOnReady: !!raw.planReadyEmail && mondayEnabled,
     }),
     readyNotice: raw.shop ? showReadyNotice(backfill, state === "ready", now) : false,
+    // What was really read (not the fixed window): the ready notice says so.
+    salesSpan: salesSpan(raw.firstSaleDay ?? null, backfill.syncedThrough ?? backfill.range?.until ?? todayIn(raw.shop?.timezone, now)),
     setup: {
       leadTimeDone,
       leadTimeDays: settings.leadTimeDays,

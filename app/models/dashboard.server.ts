@@ -27,7 +27,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
   if (!row) return { shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 };
 
   const tracked = { shop, tracked: true, isBundle: false } as const;
-  const [money, trackedVariants, variantsWithCost, days, supplierCount, vendors, planReadyLog] = await Promise.all([
+  const [money, trackedVariants, variantsWithCost, days, supplierCount, vendors, planReadyLog, firstSale] = await Promise.all([
     prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" } }),
     prisma.variant.count({ where: tracked }),
     prisma.variant.count({ where: { ...tracked, cost: { not: null } } }),
@@ -42,6 +42,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
           .findUnique({ where: { shop_kind_periodKey: { shop, kind: PLAN_READY_KIND, periodKey: PLAN_READY_PERIOD } }, select: { status: true } })
           .catch(() => null)
       : Promise.resolve(undefined),
+    firstSaleDay(shop),
   ]);
 
   return {
@@ -62,7 +63,20 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     supplierCount,
     vendorCount: vendors.filter((v) => !!v.vendor?.trim()).length,
     planReadyEmail: planReadyLog !== undefined && planReadyLog?.status !== "SENT",
+    firstSaleDay: firstSale,
   };
+}
+
+/**
+ * The store's earliest sales day ("YYYY-MM-DD", null = none): one MIN(day) per shop, answered
+ * from the (shopNum, day) index of the facts. What the "plan is ready" notice and email count
+ * the months of sales from (the read window is fixed; a young store has less).
+ */
+export async function firstSaleDay(shop: string): Promise<string | null> {
+  const r = await facts.salesDaily.aggregate({ where: { shop }, _min: { day: true } });
+  const d = r._min.day as Date | string | null | undefined;
+  if (!d) return null;
+  return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
 }
 
 export async function getHomeData(shop: string, plan: PlanCode, now: Date = new Date()): Promise<HomeData> {

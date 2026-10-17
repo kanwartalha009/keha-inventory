@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   sendEmail: vi.fn(async (_input: Record<string, unknown>) => ({ ok: true }) as { ok: true } | { ok: false; reason: string }),
   transport: { on: true },
   readiness: vi.fn(async () => ({ ready: true }) as { ready: boolean }),
+  firstSale: vi.fn(async () => "2025-09-01" as string | null),
 }));
 
 vi.mock("../app/db.server", async () => {
@@ -38,11 +39,12 @@ vi.mock("../app/shopify.server", () => ({
   },
 }));
 vi.mock("../app/services/shop-locale.server", () => ({ readShopLocale: async () => "es" }));
-vi.mock("../app/models/dashboard.server", () => ({ getPlanReadiness: m.readiness }));
+vi.mock("../app/models/dashboard.server", () => ({ getPlanReadiness: m.readiness, firstSaleDay: m.firstSale }));
 
 import * as dbModule from "../app/db.server";
 import { maybeSendPlanReadyEmail } from "../app/services/plan-ready.server";
 import { PLAN_READY_KIND, composePlanReadyEmail, planReadyInWindow } from "../app/lib/plan-ready-email-shared";
+import { salesSpan } from "../app/lib/sync-progress-shared";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -81,21 +83,38 @@ beforeEach(() => {
   m.sendEmail.mockClear();
   m.transport.on = true;
   m.readiness.mockResolvedValue({ ready: true });
+  m.firstSale.mockResolvedValue("2025-09-01");
 });
 
 describe("composer", () => {
-  const input = { locale: "en" as const, storeName: "Acme", months: 14, gaps: false, links: { app: "https://admin.shopify.com/store/acme/apps/keha-inventory/app", unsubscribe: "https://x.test/u?token=a&b" } };
+  const input = { locale: "en" as const, storeName: "Acme", span: salesSpan("2025-08-01", "2026-10-16"), gaps: false, links: { app: "https://admin.shopify.com/store/acme/apps/keha-inventory/app", unsubscribe: "https://x.test/u?token=a&b" } };
 
   it("subject, body, one button into the app and the unsubscribe link; HTML escaped", () => {
     const e = composePlanReadyEmail(input);
     expect(e.subject).toBe("Your order plan is ready");
     expect(e.text).toContain("Your order plan for Acme is ready");
-    expect(e.text).toContain("We've finished reading 14 months of sales, stock and store visits");
+    expect(e.text).toContain("We've finished reading your sales, stock and store visits. We read 14 months of your sales, so your plan reflects your seasons.");
     expect(e.text).toContain(`Open your order plan: ${input.links.app}`);
     expect(e.text).toContain(`Unsubscribe: ${input.links.unsubscribe}`);
     expect(e.html).toContain('href="https://x.test/u?token=a&amp;b"');
     expect(e.html).not.toContain("A few months couldn");
     expect(composePlanReadyEmail({ ...input, gaps: true }).text).toContain("A few months couldn't be read; your plan uses the others.");
+  });
+
+  it("says the months of sales really read, never the read window (listing audit 2026-10-18)", () => {
+    const body = (first: string | null) => composePlanReadyEmail({ ...input, span: salesSpan(first, "2026-10-16") }).text;
+    // 3 months: no seasons claim.
+    expect(body("2026-07-10")).toContain("We read your 3 months of sales.");
+    expect(body("2026-07-10")).not.toMatch(/seasons|14 months/);
+    // 13 months: seasons.
+    expect(body("2025-09-10")).toContain("We read 13 months of your sales, so your plan reflects your seasons.");
+    // 14+ months of sales: capped at the 14-month read window.
+    expect(body("2020-01-01")).toContain("We read 14 months of your sales, so your plan reflects your seasons.");
+    // No sales at all: an honest line.
+    expect(body(null)).toContain("We didn't find any sales yet. Your plan fills in as sales come in.");
+    expect(body(null)).not.toMatch(/months of/);
+    // Translated.
+    expect(composePlanReadyEmail({ ...input, locale: "es", span: salesSpan("2026-07-10", "2026-10-16") }).text).toContain("Hemos leído tus 3 meses de ventas.");
   });
 
   it("in the store's language", () => {
@@ -124,6 +143,8 @@ describe("when it is sent", () => {
     expect(sent.subject).toBe("Tu plan de pedidos está listo"); // the store's language
     expect(sent.text).toContain("https://admin.shopify.com/store/acme/apps/");
     expect(sent.text).toContain("No se han podido leer algunos meses"); // visits skipped a month
+    // First sale 2025-09-01, read through 2026-10-16: 13 months, so seasons (store's language).
+    expect(sent.text).toContain("Hemos leído 13 meses de tus ventas, así que tu plan refleja tus temporadas.");
     expect(sent.headers["List-Unsubscribe"]).toMatch(/^<https:\/\/inventory\.example\.test\/email\/unsubscribe\?token=/);
     expect(sent.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
@@ -133,6 +154,15 @@ describe("when it is sent", () => {
     const r = await Promise.all([maybeSendPlanReadyEmail(S, NOW), maybeSendPlanReadyEmail(S, NOW)]);
     expect(r.filter((x) => x === "sent")).toHaveLength(1);
     expect(m.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("a young store: its real months of sales, not the 14-month read window", async () => {
+    seed();
+    m.firstSale.mockResolvedValue("2026-07-01");
+    expect(await maybeSendPlanReadyEmail(S, NOW)).toBe("sent");
+    const sent = m.sendEmail.mock.calls[0][0] as { text: string };
+    expect(sent.text).toContain("Hemos leído tus 3 meses de ventas.");
+    expect(sent.text).not.toContain("14");
   });
 
   it("to the Monday-email recipients when the store chose them", async () => {

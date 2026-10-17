@@ -19,15 +19,6 @@ export const SETUP_TR: Record<string, Tr> = {
     nl: "Je bestelplan wordt ingericht",
     pl: "Przygotowujemy Twój plan zamówień",
   },
-  "We're reading {n} months of sales so the plan reflects your seasons.": {
-    es: "Estamos leyendo {n} meses de ventas para que el plan refleje tus temporadas.",
-    fr: "Nous lisons {n} mois de ventes pour que le plan tienne compte de vos saisons.",
-    de: "Wir lesen {n} Monate Verkäufe, damit der Plan deine Saisons abbildet.",
-    it: "Stiamo leggendo {n} mesi di vendite perché il piano rifletta le tue stagioni.",
-    pt: "Estamos a ler {n} meses de vendas para que o plano reflita as suas épocas.",
-    nl: "We lezen {n} maanden verkopen, zodat het plan je seizoenen volgt.",
-    pl: "Odczytujemy {n} miesięcy sprzedaży, aby plan uwzględniał Twoje sezony.",
-  },
   "Large stores take a few hours — you can close this page.": {
     es: "Las tiendas grandes tardan unas horas: puedes cerrar esta página.",
     fr: "Les grandes boutiques prennent quelques heures : vous pouvez fermer cette page.",
@@ -345,15 +336,6 @@ export const SETUP_TR: Record<string, Tr> = {
     nl: "Je bestelplan is klaar",
     pl: "Twój plan zamówień jest gotowy",
   },
-  "We read {n} months of your sales, so your plan now reflects your seasons.": {
-    es: "Hemos leído {n} meses de tus ventas, así que tu plan ya refleja tus temporadas.",
-    fr: "Nous avons lu {n} mois de ventes : votre plan tient désormais compte de vos saisons.",
-    de: "Wir haben {n} Monate deiner Verkäufe gelesen – dein Plan bildet jetzt deine Saisons ab.",
-    it: "Abbiamo letto {n} mesi di vendite: ora il piano riflette le tue stagioni.",
-    pt: "Lemos {n} meses das suas vendas, por isso o plano já reflete as suas épocas.",
-    nl: "We hebben {n} maanden van je verkopen gelezen, dus je plan volgt nu je seizoenen.",
-    pl: "Odczytaliśmy {n} miesięcy Twojej sprzedaży, więc plan uwzględnia już Twoje sezony.",
-  },
   "Your order plan for {store} is ready": {
     es: "El plan de pedidos de {store} está listo",
     fr: "Le plan de commandes de {store} est prêt",
@@ -362,15 +344,6 @@ export const SETUP_TR: Record<string, Tr> = {
     pt: "O plano de encomendas de {store} está pronto",
     nl: "Het bestelplan voor {store} is klaar",
     pl: "Plan zamówień dla {store} jest gotowy",
-  },
-  "We've finished reading {months} months of sales, stock and store visits, so your order plan now reflects your seasons.": {
-    es: "Hemos terminado de leer {months} meses de ventas, stock y visitas, así que tu plan de pedidos ya refleja tus temporadas.",
-    fr: "Nous avons fini de lire {months} mois de ventes, de stock et de visites : votre plan de commandes tient désormais compte de vos saisons.",
-    de: "Wir haben {months} Monate Verkäufe, Bestand und Shop-Besuche gelesen – dein Bestellplan bildet jetzt deine Saisons ab.",
-    it: "Abbiamo finito di leggere {months} mesi di vendite, stock e visite: ora il piano ordini riflette le tue stagioni.",
-    pt: "Terminámos de ler {months} meses de vendas, stock e visitas, por isso o seu plano de encomendas já reflete as suas épocas.",
-    nl: "We hebben {months} maanden verkopen, voorraad en winkelbezoeken gelezen, dus je bestelplan volgt nu je seizoenen.",
-    pl: "Skończyliśmy odczytywać {months} miesięcy sprzedaży, stanów i odwiedzin, więc plan zamówień uwzględnia już Twoje sezony.",
   },
   "Open it to see what to order this week, from which supplier and by when.": {
     es: "Ábrelo para ver qué pedir esta semana, a qué proveedor y para cuándo.",

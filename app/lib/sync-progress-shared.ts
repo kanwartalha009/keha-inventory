@@ -20,6 +20,8 @@
 import { DATASETS, HISTORY_DATASETS, HISTORY_MONTHS, datasetPercent, type BackfillState, type Dataset, type DatasetProgress } from "./sync/backfill-shared";
 import { monthChunks, type DayRange } from "./sync/shopifyql-shared";
 import { fill } from "./i18n";
+import { daysBetween, toDayKey } from "./engine/dates-shared";
+import { monthsEarlier, SEASON } from "./engine/season-shared";
 
 type T = (s: string) => string;
 
@@ -343,4 +345,44 @@ export const READY_NOTICE_MS = 3 * 24 * 60 * 60 * 1000;
 export function showReadyNotice(state: BackfillState, ready: boolean, now: Date): boolean {
   const f = ms(state.finishedAt);
   return ready && f !== null && now.getTime() - f >= 0 && now.getTime() - f <= READY_NOTICE_MS;
+}
+
+// ── How much sales history the store really has (listing audit 2026-10-18) ──
+//
+// The read covers a fixed window (HISTORY_MONTHS), but a young store has less. The "plan is
+// ready" notice and email say what was really read: whole months from the store's first sale
+// to the last day read, capped at the window, and "reflects your seasons" only from 13 months
+// (the engine's own seasonality requirement, SEASON.minHistoryMonths).
+
+export type SalesSpan =
+  | { kind: "none" }
+  | { kind: "days"; n: number }
+  | { kind: "months"; n: number; seasons: boolean };
+
+/**
+ * `firstSaleDay`: the store's earliest sales day (null = no sales); `lastDay`: the newest day
+ * read. Under 2 whole months the span is counted in days ("45 days" reads better than "1 months").
+ */
+export function salesSpan(firstSaleDay: string | null | undefined, lastDay: string | null | undefined, window: number = HISTORY_MONTHS): SalesSpan {
+  const first = firstSaleDay ? toDayKey(firstSaleDay) : null;
+  const last = lastDay ? toDayKey(lastDay) : null;
+  if (!first || !last || first > last) return { kind: "none" };
+  let months = 0;
+  while (months < window && first <= monthsEarlier(last, months + 1)) months++;
+  if (months < 2) return { kind: "days", n: daysBetween(first, last) + 1 };
+  return { kind: "months", n: months, seasons: months >= SEASON.minHistoryMonths };
+}
+
+/** "We read 14 months of your sales, so your plan reflects your seasons." / "We read your 3 months of sales." */
+export function salesSpanText(span: SalesSpan, t: T, count: (n: number) => string): string {
+  switch (span.kind) {
+    case "none":
+      return t("We didn't find any sales yet. Your plan fills in as sales come in.");
+    case "days":
+      return span.n === 1 ? t("We read your first day of sales.") : fill(t("We read your {n} days of sales."), { n: count(span.n) });
+    case "months":
+      return span.seasons
+        ? fill(t("We read {n} months of your sales, so your plan reflects your seasons."), { n: count(span.n) })
+        : fill(t("We read your {n} months of sales."), { n: count(span.n) });
+  }
 }

@@ -9,6 +9,7 @@
  * Pure: the composer. When to send lives in services/plan-ready.server.
  */
 import { fill, translate, type Locale } from "./i18n";
+import { salesSpanText, type SalesSpan } from "./sync-progress-shared";
 
 export const PLAN_READY_KIND = "plan_ready";
 /** One period for the whole life of the install: the email goes out at most once. */
@@ -19,8 +20,12 @@ export const PLAN_READY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export type PlanReadyEmailInput = {
   locale: Locale;
   storeName: string;
-  /** Months of history read. */
-  months: number;
+  /**
+   * Sales history really read (lib/sync-progress-shared salesSpan): from the store's first sale to
+   * the last day read, capped at the read window — never the window itself (listing audit
+   * 2026-10-18: "14 months … reflects your seasons" was said to stores with 3 months of sales).
+   */
+  span: SalesSpan;
   /** Some months could not be read (the backfill skipped them). */
   gaps: boolean;
   links: { app: string; unsubscribe: string };
@@ -35,9 +40,8 @@ export function composePlanReadyEmail(input: PlanReadyEmailInput): PlanReadyEmai
   const tr = (key: string) => translate(input.locale, key);
   const subject = tr("Your order plan is ready");
   const heading = fill(tr("Your order plan for {store} is ready"), { store: input.storeName });
-  const body = fill(tr("We've finished reading {months} months of sales, stock and store visits, so your order plan now reflects your seasons."), {
-    months: input.months,
-  });
+  const count = (n: number) => new Intl.NumberFormat(input.locale).format(n);
+  const body = `${tr("We've finished reading your sales, stock and store visits.")} ${salesSpanText(input.span, tr, count)}`;
   const next = tr("Open it to see what to order this week, from which supplier and by when.");
   const gaps = input.gaps ? tr("A few months couldn't be read; your plan uses the others.") : null;
   const cta = tr("Open your order plan");

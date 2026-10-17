@@ -42,6 +42,7 @@ import { CASH_TR } from "./i18n-cash";
 import { SAMPLE_TR } from "./i18n-sample";
 import { QUALITY_TR } from "./i18n-quality";
 import { ENGINE_TR } from "./i18n-engine";
+import { COPY_TR } from "./i18n-copy";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -105,6 +106,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   sample: SAMPLE_TR,
   quality: QUALITY_TR,
   engine: ENGINE_TR,
+  copy: COPY_TR,
 };
 
 for (const area of Object.values(AREAS)) {

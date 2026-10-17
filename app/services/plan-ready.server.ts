@@ -14,8 +14,8 @@
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { readSettings } from "../lib/settings-shared";
-import { HISTORY_MONTHS, isDegraded, readBackfillState } from "../lib/sync/backfill-shared";
-import { syncChunks } from "../lib/sync-progress-shared";
+import { isDegraded, readBackfillState } from "../lib/sync/backfill-shared";
+import { salesSpan } from "../lib/sync-progress-shared";
 import { readMoneyBasis } from "../lib/dashboard-shared";
 import { listUnsubscribeHeaders } from "../lib/owner-email-shared";
 import { toSupportedLocale } from "../lib/i18n";
@@ -27,7 +27,7 @@ import {
 } from "../lib/plan-ready-email-shared";
 import { emailTransportConfigured } from "./email.server";
 import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
-import { getPlanReadiness } from "../models/dashboard.server";
+import { firstSaleDay, getPlanReadiness } from "../models/dashboard.server";
 
 export type PlanReadyResult =
   | "sent"
@@ -85,7 +85,8 @@ export async function maybeSendPlanReadyEmail(shop: string, now: Date = new Date
     const content = composePlanReadyEmail({
       locale,
       storeName: contact?.name || shop,
-      months: syncChunks(state).length || HISTORY_MONTHS,
+      // Months of sales really read (first sale → last day read), not the fixed read window.
+      span: salesSpan(await firstSaleDay(shop), state.syncedThrough ?? state.range?.until ?? state.finishedAt.slice(0, 10)),
       gaps: isDegraded(state),
       links: { app: adminAppUrl(shop, "/app"), unsubscribe },
     });
