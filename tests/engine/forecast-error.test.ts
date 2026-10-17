@@ -14,6 +14,7 @@ import {
   normalCdf,
   normalLoss,
   paceVarianceFactor,
+  rolePrior,
   structuralSigma,
 } from "../../app/lib/engine/index-shared";
 import { forwardInputFromMetric, planVariant } from "../../app/lib/engine/forward-plan-shared";
@@ -54,7 +55,7 @@ describe("the fill-rate safety factor (error-shared)", () => {
     expect(structuralSigma(2, 120, vf) / structuralSigma(2, 28, vf)).toBeGreaterThan(Math.sqrt(120 / 28));
   });
 
-  it("the backtest ratio: RMS of error ÷ model error, worth span ÷ P windows, shrunk toward 1 by one window", () => {
+  it("the backtest ratio: RMS of error ÷ model error, worth span ÷ P windows, pooled with the role's ratio (8 windows)", () => {
     const days = errorOriginDays(TODAY, 28);
     expect(days).toHaveLength(FORECAST_ERROR.origins);
     expect(days[0]).toBe(ago(28));
@@ -63,9 +64,19 @@ describe("the fill-rate safety factor (error-shared)", () => {
     const r = errorRatio(samples, 28);
     expect(r.ratio).toBeCloseTo(3, 12);
     expect(r.windows).toBeCloseTo((84 + 28) / 28, 12);
-    expect(r.used).toBeCloseTo(Math.sqrt((4 * 9 + 1) / 5), 12);
+    expect(r.used).toBeCloseTo(Math.sqrt((4 * 9 + 8 * 1) / 12), 12);
+    expect(errorRatio(samples, 28, 2).used).toBeCloseTo(Math.sqrt((4 * 9 + 8 * 4) / 12), 12);
     expect(r.bias).toBeCloseTo(0.3, 12);
     expect(errorRatio([], 28)).toMatchObject({ ratio: null, used: 1, samples: 0 });
+    // A variant without a backtest (young, planned like another) takes the role's ratio.
+    expect(errorRatio([], 28, 1.7).used).toBe(1.7);
+  });
+
+  it("the role's pooled ratio is the median of its variants' ratios; too few → null (the store's stands in)", () => {
+    expect(rolePrior([1, 2, 3, null, 10, 4])).toBe(3);
+    expect(rolePrior([1, 2, 3, 4, 5, 6])).toBe(3.5);
+    expect(rolePrior([2, 3, null])).toBeNull();
+    expect(rolePrior([2, 3], 2)).toBe(2.5);
   });
 });
 
@@ -94,6 +105,10 @@ describe("computeVariant: safety from the forecast's own error", () => {
     expect(withBacktest.inputs.error!.ratio!).toBeGreaterThan(2);
     expect(modelOnly.inputs.error!.ratio).toBeNull();
     expect(withBacktest.safety!).toBeGreaterThan(modelOnly.safety!);
+    // The role's pooled ratio moves every variant of the role the same way.
+    const pooled = computeVariant(variantInput({ ...split(swinging), role: "A", onHand: 200, errorPrior: 2 }))!;
+    expect(pooled.inputs.error).toMatchObject({ prior: 2, used: 2 });
+    expect(pooled.safety!).toBeGreaterThan(modelOnly.safety!);
   });
 
   it("higher fill targets (Safe) hold more; a measured lead-time spread adds d²σL²; the old model stays selectable", () => {

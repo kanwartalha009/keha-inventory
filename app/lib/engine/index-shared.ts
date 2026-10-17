@@ -113,6 +113,8 @@ export interface VariantInput {
    * model's error only (ρ = 1).
    */
   errorOrigins?: readonly { day: DayKey; multiplier: number }[] | null;
+  /** The ABC role's pooled ratio of real to model error (error-shared rolePrior); absent: 1. */
+  errorPrior?: number | null;
   /** "Don't cap" (the product's forecast override): no spike capping for this variant. */
   noCap?: boolean | null;
   /**
@@ -222,11 +224,11 @@ export interface VariantInputs {
   sigmaSeasonal: boolean;
   /**
    * B4: how safety stock was sized (error-shared): the protection days P, the model's error over
-   * them, the backtest's ratio of real to model error (null: no backtest) and the ratio used
-   * (shrunk toward 1), the error σ used (with lead-time spread), the fill target and the factor k
+   * them, the backtest's ratio of real to model error (null: no backtest), the role's pooled ratio
+   * and the ratio used (pooled with it), the error σ used (with lead-time spread), the fill target and the factor k
    * (safety = k × sigma). null with no advice or the old σ model (settings.safetyModel "sigma").
    */
-  error: { horizonDays: number; model: number; sigma: number; ratio: number | null; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number } | null;
+  error: { horizonDays: number; model: number; sigma: number; ratio: number | null; prior: number; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number } | null;
   /** B5: a confirmed sustained level change — the pace is the level since `day` (level-shift-shared). */
   levelShift: { day: DayKey; before: number; after: number; ratio: number; afterDays: number } | null;
   /**
@@ -481,15 +483,16 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     const sd = Math.max(sigma!, Math.sqrt(daily));
     const vf = pace ? 1 / Math.max(1, pace.inStockDays) : shift ? 1 / Math.max(1, shift.afterDays) : planLike ? 1 / Math.max(1, settings.minInStockDays) : (paceVarianceFactor(r.windows) ?? 1 / Math.max(1, r.inStockDays));
     const model = structuralSigma(sd, P, vf);
+    const prior = typeof input.errorPrior === "number" && Number.isFinite(input.errorPrior) && input.errorPrior > 0 ? input.errorPrior : 1;
     const backtest: ErrorRatio = planLike || !input.errorOrigins?.length
-      ? errorRatio([], P)
-      : errorRatio(pastErrors(hist, today, P, settings, capOff, spikes.cap, input.errorOrigins), P);
+      ? errorRatio([], P, prior)
+      : errorRatio(pastErrors(hist, today, P, settings, capOff, spikes.cap, input.errorOrigins), P, prior);
     const sigmaP = model * backtest.used;
     const total = Math.sqrt(sigmaP * sigmaP + (leadSigma !== null ? daily * daily * leadSigma * leadSigma : 0));
     const fillTarget = normalCdf(z);
     const k = fillSafetyFactor(fillTarget, daily * Math.max(cycle, MIN_REVIEW_DAYS), total);
     safety = k * total;
-    error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k };
+    error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, prior, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k };
   }
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;

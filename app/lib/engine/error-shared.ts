@@ -20,11 +20,13 @@
  *     the seasonal index as of that day, against what sold in the P days (sold-out days left out
  *     on both sides). Each error is divided by the model's error at that origin; ρ² = the mean
  *     of their squares (bias included: a forecast that keeps running low needs more safety).
- *  3. Shrunk toward the model (ρ = 1) by how much evidence there is: the origins overlap, so they
- *     are worth n = span ÷ P independent windows (span = first to last origin + P), at most the
- *     count; ρ²_used = (n·ρ² + 1) ÷ (n + 1) — the model counts as one window. (Out of sample on
- *     a real store the next P days' errors were still LARGER than the backtest's — A items' surges
- *     don't repeat on schedule — so the prior is kept light; docs/ACCURACY.md.)
+ *  3. Pooled with the ABC role's ratio (`rolePrior`: the median ratio of up to 200 of the role's
+ *     variants, highest revenue first — the store's when a role has fewer than 5; 1 without any):
+ *     the origins overlap, so a variant's own backtest is worth n = span ÷ P independent windows
+ *     (span = first to last origin + P), at most the count, and the role's counts as 8:
+ *     ρ²_used = (n·ρ² + 8·ρ_role²) ÷ (n + 8). On the real store's service simulation the variant's
+ *     own ratio alone (13 overlapping weeks) put stock where the error had been, not where it would
+ *     be: about one point of fill less for the same stock than the role's ratio (docs/ACCURACY.md).
  *  4. σ_P = ρ_used × structural σ; with a measured supplier lead-time spread, + d²·σ_L² inside the
  *     square root.
  *  5. The safety factor k for the role's FILL target β (the safety level's service level: Balanced
@@ -38,8 +40,12 @@ export const FORECAST_ERROR = Object.freeze({
   /** Weekly backtest origins (the last 13 weeks). */
   origins: 13,
   stepDays: 7,
-  /** Weight of the prior ratio (the model's own, 1) in independent windows. */
-  priorWindows: 1,
+  /** Weight of the prior ratio (the ABC role's pooled ratio, else 1) in independent windows. */
+  priorWindows: 8,
+  /** Variants per ABC role whose backtests make the role's pooled ratio (highest revenue first). */
+  roleSample: 200,
+  /** Fewer variants than this with a backtest in a role: the store's pooled ratio stands in. */
+  roleMin: 5,
   /** An origin counts when at least this share of its P days was in stock. */
   minInStockShare: 0.6,
   /** Safety factor bounds. */
@@ -131,6 +137,14 @@ export interface ErrorRatio {
   samples: number;
   /** Σ(actual − forecast) ÷ Σ forecast over the samples (> 0: the forecast ran low); null without. */
   bias: number | null;
+}
+
+/** The role's pooled ratio: the median of the variants' backtest ratios (null below `min` of them). */
+export function rolePrior(ratios: readonly (number | null)[], min: number = FORECAST_ERROR.roleMin): number | null {
+  const xs = ratios.filter((r): r is number => typeof r === "number" && Number.isFinite(r) && r > 0).sort((a, b) => a - b);
+  if (xs.length < Math.max(1, min)) return null;
+  const n = xs.length;
+  return n % 2 ? xs[(n - 1) / 2]! : (xs[n / 2 - 1]! + xs[n / 2]!) / 2;
 }
 
 export function errorRatio(samples: readonly ErrorSample[], P: number, prior = 1): ErrorRatio {

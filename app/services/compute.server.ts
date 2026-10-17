@@ -46,6 +46,7 @@ import {
   salesAtRisk,
   salesLostToSellOuts,
   soldOutPageTraffic,
+  type AbcRole,
   type DailyRow,
   type EngineSettings,
   type VariantResult,
@@ -87,7 +88,7 @@ import { resolveLeadTime } from "../lib/engine/order-shared";
 import { supplierLeadSigma } from "../lib/lead-time-shared";
 import { refreshLeadStats } from "../models/suppliers.server";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
-import { errorOriginDays } from "../lib/engine/error-shared";
+import { FORECAST_ERROR, errorOriginDays, rolePrior } from "../lib/engine/error-shared";
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
 import { CURVE_MAX_WEEKS, SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
@@ -274,6 +275,67 @@ async function loadOlderSeries(
   return buildSeries(sales, stock);
 }
 
+/**
+ * B4: each ABC role's pooled ratio of real to model forecast error (error-shared rolePrior), from
+ * up to FORECAST_ERROR.roleSample of its variants (highest 90-day revenue first, then id): their 14
+ * months read in chunk-sized batches and the same backtest computeVariant runs. Known before any
+ * chunk, so every chunk — and every chunk size — sizes safety stock the same way. A role with too
+ * few backtests takes the store's ratio; none at all → 1 (the model's own error).
+ */
+async function roleErrorPriors(
+  shop: string,
+  x: {
+    today: string;
+    plans: readonly { v: { id: string; collections: string[] | null; productType: string | null }; supplier: { leadTimeDays: number | null; orderCycleDays: number | null } | null; horizon: number }[];
+    roles: ReadonlyMap<string, AbcRole>;
+    revenue: ReadonlyMap<string, number>;
+    seasonCtx: Awaited<ReturnType<typeof loadSeasonContext>>;
+    pool: string[];
+    demandFilter: ReturnType<typeof demandWhere>;
+    overrides: Partial<EngineSettings>;
+    historyDays: number;
+    batch: number;
+  },
+): Promise<Map<AbcRole, number>> {
+  const picked: (typeof x.plans)[number][] = [];
+  for (const role of ["A", "B", "C"] as const) {
+    const mine = x.plans.filter((p) => (x.roles.get(p.v.id) ?? "C") === role);
+    mine.sort((a, b) => (x.revenue.get(b.v.id) ?? 0) - (x.revenue.get(a.v.id) ?? 0) || (a.v.id < b.v.id ? -1 : 1));
+    picked.push(...mine.slice(0, FORECAST_ERROR.roleSample));
+  }
+  const ratios = new Map<AbcRole, (number | null)[]>();
+  const from = addDays(x.today, -x.historyDays);
+  for (let i = 0; i < picked.length; i += Math.max(1, x.batch)) {
+    const part = picked.slice(i, i + Math.max(1, x.batch));
+    const series = await loadOlderSeries(shop, { ids: part.map((p) => p.v.id), from: addDays(x.today, -PACE_LOOKBACK_DAYS), before: x.today, pool: x.pool, demandFilter: x.demandFilter });
+    for (const p of part) {
+      const rows = series.get(p.v.id) ?? [];
+      const season = x.seasonCtx.forVariant(seasonGroupsOf(p.v), p.horizon);
+      const role = x.roles.get(p.v.id) ?? "C";
+      const r = computeVariant({
+        id: p.v.id,
+        series: rows.filter((d) => d.day >= from),
+        history: rows.filter((d) => d.day < from),
+        today: x.today,
+        onHand: 0,
+        role,
+        supplierLeadTimeDays: p.supplier?.leadTimeDays ?? null,
+        cycleDays: p.supplier?.orderCycleDays ?? null,
+        seasonal: season.seasonal,
+        trend: season.trend,
+        levels: x.seasonCtx.levelsFor(season, x.historyDays),
+        errorOrigins: x.seasonCtx.originsFor(season, errorOriginDays(x.today, p.horizon), p.horizon),
+        settings: x.overrides,
+      });
+      (ratios.get(role) ?? ratios.set(role, []).get(role)!).push(r?.inputs.error?.ratio ?? null);
+    }
+  }
+  const store = rolePrior([...ratios.values()].flat());
+  const out = new Map<AbcRole, number>();
+  for (const role of ["A", "B", "C"] as const) out.set(role, rolePrior(ratios.get(role) ?? []) ?? store ?? 1);
+  return out;
+}
+
 export async function computeShop(shop: string, opts: ComputeOptions = {}): Promise<ComputeResult> {
   const now = opts.now ?? Date.now;
   const startedAt = new Date(now());
@@ -445,6 +507,11 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     considered.map((v) => ({ id: v.id, revenue90: revenue.get(v.id) ?? 0 })),
     settings,
   );
+
+  // B4: each ABC role's pooled forecast-error ratio, before any chunk (roleErrorPriors).
+  const errorPriors = settings.safetyModel === "sigma"
+    ? new Map<AbcRole, number>()
+    : await roleErrorPriors(shop, { today, plans, roles, revenue, seasonCtx, pool, demandFilter, overrides, historyDays: settings.historyDays, batch: opts.chunkSize ?? COMPUTE_CHUNK });
 
   // Per-product forecast choices (R4): "Don't cap" and "Plan like…" — the reference paces are the
   // last run's (VariantMetric), so a style planned like another reads yesterday's pace.
@@ -628,6 +695,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         history: history.get(v.id) ?? null,
         // B4: the forecast-error backtest's origins and their season multipliers (error-shared).
         errorOrigins: seasonCtx.originsFor(season, errorOriginDays(today, horizon), horizon),
+        errorPrior: errorPriors.get(roles.get(v.id) ?? "C") ?? null,
         today,
         onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
         incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
