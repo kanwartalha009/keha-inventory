@@ -241,6 +241,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     pl: "Termin przed kolejnym zamówieniem u tego dostawcy — dodaj je, aby wysłać jedno zamówienie zamiast dwóch.",
   },
   "Add to this order": { es: "Añadir a este pedido", fr: "Ajouter à cette commande", de: "Zu dieser Bestellung", it: "Aggiungi a questo ordine", pt: "Adicionar a esta encomenda", nl: "Aan deze bestelling toevoegen", pl: "Dodaj do tego zamówienia" },
+  "Add to order": { es: "Añadir al pedido", fr: "Ajouter à la commande", de: "Zur Bestellung", it: "Aggiungi all'ordine", pt: "Adicionar à encomenda", nl: "Aan bestelling toevoegen", pl: "Dodaj do zamówienia" },
   "Actions": { es: "Acciones", fr: "Actions", de: "Aktionen", it: "Azioni", pt: "Ações", nl: "Acties", pl: "Akcje" },
 
   // ---- Old drafts, Don't reorder ----

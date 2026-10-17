@@ -483,7 +483,7 @@ function ScenarioOutput({
       {result.status === "ok" && (
         <>
           <CashChart result={result} />
-          <OrderList result={result} />
+          <OrderList result={result} scenarioId={scenario.id} />
           <CollectionDemandTable result={result} titles={titles} />
         </>
       )}
@@ -687,7 +687,7 @@ function groupName(g: PlannerGroup, t: T): string {
   return g.kind === "supplier" ? g.name : g.name || t("No vendor");
 }
 
-function OrderList({ result }: { result: ScenarioResult }) {
+function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?: string }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const all = result.groups.flatMap((g) => g.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })));
@@ -702,7 +702,7 @@ function OrderList({ result }: { result: ScenarioResult }) {
               <s-text color="subdued">
                 {fill(t("{n} products to order, {units} units."), { n: formatCount(result.order.lines, locale), units: formatCount(result.order.units, locale) })}
               </s-text>
-              <s-button {...link(reorderLink(all))}>{t("Add to reorder plan")}</s-button>
+              <s-button {...link(reorderLink(all, scenarioId ? { scenarioId } : undefined))}>{t("Add to order")}</s-button>
             </s-stack>
             <HowWeGotThis
               id="keha-plan-order"
@@ -715,7 +715,7 @@ function OrderList({ result }: { result: ScenarioResult }) {
               ]}
             />
             {result.groups.map((g) => (
-              <GroupTable key={g.key} group={g} currency={result.currency} />
+              <GroupTable key={g.key} group={g} currency={result.currency} scenarioId={scenarioId} />
             ))}
           </>
         )}
@@ -724,7 +724,7 @@ function OrderList({ result }: { result: ScenarioResult }) {
   );
 }
 
-function GroupTable({ group, currency }: { group: PlannerGroup; currency: string }) {
+function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; currency: string; scenarioId?: string }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const lead = fill(group.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(group.leadTimeDays, locale) });
@@ -737,7 +737,7 @@ function GroupTable({ group, currency }: { group: PlannerGroup; currency: string
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.late && <s-badge tone="critical">{t("Late — order now")}</s-badge>}
           </s-stack>
-          <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty }))))}>{t("Add to reorder plan")}</s-link>
+          <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), scenarioId ? { scenarioId, groupKey: group.key } : undefined))}>{t("Add to order")}</s-link>
         </s-stack>
         <s-text color="subdued">
           {`${t("Lead time")}: ${lead} · ${t("Order by")}: ${formatDay(group.orderBy, locale)} · ${fill(t("Units: {n}"), { n: formatCount(group.units, locale) })} · ${fill(t("Cost: {amount}"), {

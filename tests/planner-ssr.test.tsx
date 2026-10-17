@@ -130,7 +130,9 @@ describe("Planner page", () => {
     expect(html).toContain("Slow Mill");
     expect(html).toContain("Late — order now");
     expect(html).toContain("at retail price");
-    expect(html).toContain('href="/app/reorder?variants=1:25,2:19"'); // planned quantities carried (review fix)
+    // Add to order: the saved scenario's quantities, read by Order now on the server (no 250-line cap).
+    expect(html).toContain('href="/app/reorder?scenario=sc1"');
+    expect(html).toContain("Add to order");
     expect(html).toContain("60 days (supplier)");
     // Demand per collection: overlap note, titles, store total; last year without data → "—".
     expect(html).toContain("collection totals overlap");

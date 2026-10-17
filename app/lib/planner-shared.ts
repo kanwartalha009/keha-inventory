@@ -854,11 +854,21 @@ export function readScenarioResult(raw: unknown): ScenarioResult | null {
 }
 
 /**
- * `/app/reorder?variants=…` for the scenario's order lines (numeric ids, at most 250 — Reorder's
- * cap). Lines with a planned quantity are written `id:qty` so Reorder starts them at
- * max(planned, its everyday suggestion) (review fix: the planned quantities used to be lost).
+ * Order now for the scenario's order lines. With the scenario (`source`): `?scenario=<id>`
+ * (and `&group=<key>` for one supplier) — the Order now loader reads the saved scenario and
+ * starts every line at its planned quantity, however many there are (audit 2026-10-17: the
+ * old `?variants=` link kept 250 and silently dropped the rest). Without it, the lines
+ * themselves as `?variants=id:qty` (Order now starts them at max(planned, its own quantity)).
  */
-export function reorderLink(lines: readonly (string | { variantId: string; qty?: number | null })[]): string {
+export function reorderLink(
+  lines: readonly (string | { variantId: string; qty?: number | null })[],
+  source?: { scenarioId: string; groupKey?: string | null },
+): string {
+  if (source?.scenarioId) {
+    const params = new URLSearchParams({ scenario: source.scenarioId });
+    if (source.groupKey) params.set("group", source.groupKey);
+    return `/app/reorder?${params.toString().replace(/%3A/g, ":")}`;
+  }
   const qtyOf = new Map<string, number | null>();
   for (const l of lines) {
     const id = /(\d+)$/.exec(typeof l === "string" ? l : l.variantId)?.[1];
@@ -868,7 +878,7 @@ export function reorderLink(lines: readonly (string | { variantId: string; qty?:
     const cur = qtyOf.get(id);
     qtyOf.set(id, cur == null ? qty : qty == null ? cur : Math.max(cur, qty));
   }
-  const parts = [...qtyOf].slice(0, 250).map(([id, q]) => (q == null ? id : `${id}:${q}`));
+  const parts = [...qtyOf].map(([id, q]) => (q == null ? id : `${id}:${q}`));
   return parts.length ? `/app/reorder?variants=${parts.join(",")}` : "/app/reorder";
 }
 

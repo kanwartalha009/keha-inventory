@@ -30,6 +30,7 @@ import {
   readScenarioResult,
   reorderLink,
   scenarioErrorText,
+  scenarioQuantities,
   scenarioToForm,
   scorecardRows,
   seasonWindows,
@@ -421,6 +422,19 @@ describe("cash per week", () => {
       ["gid://shopify/ProductVariant/11", 40],
       ["gid://shopify/ProductVariant/12", 6],
     ]);
+  });
+
+  it("audit 2026-10-17: with the scenario, the link is a key Order now resolves — 1,000 lines, none dropped", () => {
+    const lines = Array.from({ length: 1000 }, (_, i) => ({ variantId: `gid://shopify/ProductVariant/${i + 1}`, qty: 2 }));
+    expect(reorderLink(lines, { scenarioId: "sc1" })).toBe("/app/reorder?scenario=sc1");
+    expect(reorderLink(lines, { scenarioId: "sc1", groupKey: "supplier:s1" })).toBe("/app/reorder?scenario=sc1&group=supplier:s1");
+    // Without one, every line is still written (no silent 250 cap).
+    expect(reorderLink(lines).split(",")).toHaveLength(1000);
+    const result = { groups: [{ key: "supplier:s1", lines }, { key: "vendor:x", lines: [{ variantId: lines[0]!.variantId, qty: 5 }] }] } as never;
+    expect(scenarioQuantities(result).size).toBe(1000);
+    expect(scenarioQuantities(result).get(lines[0]!.variantId)).toBe(5);
+    expect([...scenarioQuantities(result, "vendor:x")]).toEqual([[lines[0]!.variantId, 5]]);
+    expect(scenarioQuantities(null).size).toBe(0);
   });
 });
 
