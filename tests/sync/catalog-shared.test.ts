@@ -202,6 +202,21 @@ describe("row helpers", () => {
     ]);
   });
 
+  it("audit C2: an oversold level keeps on_hand 0 and a negative available (the planning position), unclamped", () => {
+    const [row] = levelRows("gid://shopify/ProductVariant/1", [
+      {
+        location: { id: "gid://shopify/Location/1" },
+        quantities: [
+          { name: "available", quantity: -1494 },
+          { name: "committed", quantity: 1494 },
+          { name: "on_hand", quantity: 0 },
+          { name: "incoming", quantity: 0 },
+        ],
+      },
+    ]);
+    expect(row).toMatchObject({ available: -1494, committed: 1494, onHand: 0 });
+  });
+
   it("stock page sizes keep the estimated cost under 1000", () => {
     for (const n of [0, 1, 3, 10, 50, 250, 400]) {
       const { first, levels } = stockPageSizes(n);

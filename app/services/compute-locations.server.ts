@@ -112,7 +112,7 @@ async function computeLocation(shop: string, locationId: string, role: string, s
       _max: { day: true },
     }),
     prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, locationId }, _min: { day: true } }),
-    prisma.stockNow.findMany({ where: { shop, locationId }, select: { variantId: true, onHand: true, incoming: true } }),
+    prisma.stockNow.findMany({ where: { shop, locationId }, select: { variantId: true, onHand: true, available: true, incoming: true } }),
   ]);
 
   const sales: SalesDay[] = salesG.map((g) => ({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 }));
@@ -138,7 +138,7 @@ async function computeLocation(shop: string, locationId: string, role: string, s
       // A warehouse in the online pool is measured at the online pool's pace (see the shared header).
       series: (fromPool ? x.pool.series.get(v.id) : series.get(v.id)) ?? [],
       today: x.today,
-      onHand: s?.onHand ?? 0,
+      onHand: s?.available ?? 0, // planning position: Shopify available (may be negative), not on_hand (audit C2)
       incoming: s?.incoming ?? 0,
       role: x.roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,

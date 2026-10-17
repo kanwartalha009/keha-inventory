@@ -99,12 +99,12 @@ function seed() {
     db.tables.salesDaily.push({ shop: S, day: d(day), variantId: BUNDLE, locationKey: "all", channel: "Online Store", sold: 5, returned: 0, gross: 300 });
   }
   db.tables.stockNow = [
-    { shop: S, variantId: A, locationId: L1, onHand: 100, incoming: 0 },
-    { shop: S, variantId: A, locationId: L2, onHand: 50, incoming: 0 }, // not in the online pool
-    { shop: S, variantId: B, locationId: L1, onHand: 0, incoming: 24 },
-    { shop: S, variantId: C, locationId: L1, onHand: 30, incoming: 0 },
-    { shop: S, variantId: DRAFT, locationId: L1, onHand: 40, incoming: 0 },
-    { shop: S, variantId: SPARSE, locationId: L1, onHand: 20, incoming: 0 },
+    { shop: S, variantId: A, locationId: L1, onHand: 100, available: 100, incoming: 0 },
+    { shop: S, variantId: A, locationId: L2, onHand: 50, available: 50, incoming: 0 }, // not in the online pool
+    { shop: S, variantId: B, locationId: L1, onHand: 0, available: 0, incoming: 24 },
+    { shop: S, variantId: C, locationId: L1, onHand: 30, available: 30, incoming: 0 },
+    { shop: S, variantId: DRAFT, locationId: L1, onHand: 40, available: 40, incoming: 0 },
+    { shop: S, variantId: SPARSE, locationId: L1, onHand: 20, available: 20, incoming: 0 },
   ];
   // Review H2 case: SPARSE sold 1 unit on 15 of the 90 days and has NO pool stock rows.
   for (const day of all.filter((_x, i) => i % 6 === 0)) {
@@ -149,6 +149,16 @@ describe("computeShop", () => {
     expect(a.status).toBe("healthy");
     expect(a.role).toBe("A");
     expect((a.inputs as { onHand: number }).onHand).toBe(100);
+  });
+
+  it("audit C2: the planning position is Shopify available (negative when oversold), not on_hand", async () => {
+    // Oversold: nothing on the shelf, 1,500 sold but not shipped (committed) → available −1,500.
+    const row = db.tables.stockNow.find((s) => s.variantId === A && s.locationId === L1)!;
+    Object.assign(row, { onHand: 0, available: -1500, committed: 1500 });
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    expect((a.inputs as { onHand: number }).onHand).toBe(-1500);
+    expect(a.status).toBe("out");
   });
 
   it("review fix: Keha order units that already landed are not counted as incoming again", async () => {

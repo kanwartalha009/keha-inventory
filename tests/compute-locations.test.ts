@@ -75,9 +75,9 @@ function seed() {
     db.tables.stockDaily.push({ shop: S, day: d(day), variantId: C, locationId: WH, endUnits: 30, outOfStock: false });
   }
   db.tables.stockNow = [
-    { shop: S, variantId: A, locationId: WH, onHand: 300, incoming: 0 },
-    { shop: S, variantId: A, locationId: SHOP1, onHand: 0, incoming: 0 },
-    { shop: S, variantId: C, locationId: WH, onHand: 30, incoming: 0 },
+    { shop: S, variantId: A, locationId: WH, onHand: 300, available: 300, incoming: 0 },
+    { shop: S, variantId: A, locationId: SHOP1, onHand: 0, available: 0, incoming: 0 },
+    { shop: S, variantId: C, locationId: WH, onHand: 30, available: 30, incoming: 0 },
   ];
   db.tables.sessionsDaily = [];
   db.tables.shopDaily = [];

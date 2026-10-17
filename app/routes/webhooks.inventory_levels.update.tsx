@@ -4,6 +4,11 @@
  * between are coalesced into it, so a burst costs one Admin read and the final state is
  * always applied. Idempotent: a refresh re-reads Shopify's current state. Always 200 (the
  * refresh runs after the ack); the nightly stock-now run is the safety net.
+ *
+ * The payload's own `available` is NOT written: the refresh re-reads every level of the item
+ * through GraphQL and stores available, on_hand, committed and incoming together (field
+ * semantics: catalog-shared StockLevelRow), so the planning position (available, may be
+ * negative) and on hand never drift apart.
  */
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";

@@ -409,6 +409,20 @@ export function toLocationRow(node: unknown): LocationRow | null {
 // Stock now
 // ---------------------------------------------------------------------------
 
+/**
+ * One StockNow row: Shopify's inventory states at one location (InventoryLevel.quantities,
+ * Admin API 2026-10; names per shopify.dev "Inventory states"). Never clamped — negatives flow.
+ *
+ *  - available: sellable now = on_hand − committed − reserved − damaged − safety_stock −
+ *    quality_control. NEGATIVE when oversold (sold, not shipped, nothing on the shelf).
+ *    This is the PLANNING POSITION (audit 2026-10-17 C2): compute's "onHand" input reads it.
+ *  - onHand: units physically at the location (on_hand), including units already promised to
+ *    open orders. Display ("In stock"), transfers and the auto-receive / landed-units
+ *    baselines (which compare it with StockDaily.endUnits history) use it.
+ *  - committed: units on placed, unfulfilled orders (and draft-order reservations).
+ *  - incoming: units on their way (Shopify transfers / purchase orders), not yet on hand.
+ * A state Shopify does not return is 0.
+ */
 export type StockLevelRow = {
   variantId: string;
   locationId: string;

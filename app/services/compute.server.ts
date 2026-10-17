@@ -204,7 +204,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     pool.length
       ? prisma.stockNow.findMany({
           where: { shop, locationId: { in: pool } },
-          select: { variantId: true, onHand: true, incoming: true },
+          select: { variantId: true, onHand: true, available: true, incoming: true },
         })
       : Promise.resolve([]),
   ]);
@@ -241,10 +241,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const revenue = revenueOf(channelSales);
   const dataSince = new Map(dataSinceG.map((g) => [g.variantId, g._min.day ? dayKey(g._min.day) : null]));
   const lastSale = new Map(lastSaleG.map((g) => [g.variantId, g._max.day ? dayKey(g._max.day) : null]));
-  const onHand = new Map<string, { onHand: number; incoming: number }>();
+  // onHand: physical units (Shopify on_hand) — auto-receive / landed estimates compare it with
+  // history. available: the PLANNING POSITION (Shopify available = on_hand − committed − reserved
+  // − damaged − safety_stock − quality_control); negative when oversold (audit 2026-10-17 C2).
+  const onHand = new Map<string, { onHand: number; available: number; incoming: number }>();
   for (const s of stockNow) {
-    const cur = onHand.get(s.variantId) ?? { onHand: 0, incoming: 0 };
+    const cur = onHand.get(s.variantId) ?? { onHand: 0, available: 0, incoming: 0 };
     cur.onHand += s.onHand;
+    cur.available += s.available;
     cur.incoming += s.incoming;
     onHand.set(s.variantId, cur);
   }
@@ -300,7 +304,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const seasonOf = new Map<string, VariantSeason>();
   const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
   for (const { v, supplier, horizon } of plans) {
-    const stockNowRow = onHand.get(v.id) ?? { onHand: 0, incoming: 0 };
+    const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
     const season = seasonCtx.forVariant(v.collections ?? [], horizon);
     seasonOf.set(v.id, season);
     const r = computeVariant({
@@ -308,7 +312,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       isBundle: false,
       series: series.get(v.id) ?? [],
       today,
-      onHand: stockNowRow.onHand,
+      onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
       incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
       role: roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
