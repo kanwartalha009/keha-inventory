@@ -97,14 +97,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (body.intent === "supplierCode") {
     const code = readSupplierCode(body.supplierCode);
     if (!code.ok) return { ok: false, error: "supplierCode" } satisfies VariantDetailAction;
-    return (await setProductSupplierCode(session.shop, detail.variant.productId, code.code)) satisfies VariantDetailAction;
+    return (await setProductSupplierCode(shop, detail.variant.productId, code.code)) satisfies VariantDetailAction;
   }
   if (body.intent === "caseQty") {
     // The supplier code can be saved with it (one save bar for the card).
     if ("supplierCode" in body) {
       const code = readSupplierCode(body.supplierCode);
       if (!code.ok) return { ok: false, error: "supplierCode" } satisfies VariantDetailAction;
-      await setProductSupplierCode(session.shop, detail.variant.productId, code.code);
+      await setProductSupplierCode(shop, detail.variant.productId, code.code);
     }
     const raw = body.caseQty;
     const n = raw === null || raw === "" ? null : Number(raw);

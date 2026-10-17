@@ -5,7 +5,7 @@
  * upgrade JSON (403).
  */
 import type { LoaderFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { exportProductsStream, exportSuppliersCsv } from "../models/setup-import.server";
 
@@ -16,14 +16,14 @@ const HEADERS = (name: string) => ({
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.csvImport) return upgradeResponse("csvImport", "CSV import is on the Growth plan.");
   switch (params.file) {
     case "suppliers.csv":
-      return new Response(await exportSuppliersCsv(session.shop), { headers: HEADERS("suppliers.csv") });
+      return new Response(await exportSuppliersCsv(shop), { headers: HEADERS("suppliers.csv") });
     case "product-settings.csv":
-      return new Response(exportProductsStream(session.shop), { headers: HEADERS("product-settings.csv") });
+      return new Response(exportProductsStream(shop), { headers: HEADERS("product-settings.csv") });
     default:
       throw new Response("Not found", { status: 404 });
   }

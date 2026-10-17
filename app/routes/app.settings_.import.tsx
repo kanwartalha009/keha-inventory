@@ -13,7 +13,7 @@ import { useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { applyImport, importCounts, planImport, type ApplyResult } from "../models/setup-import.server";
 import { AppPage, FormCard } from "../components/ui";
@@ -38,9 +38,9 @@ import {
 export type ImportPageData = { enabled: boolean; counts: { suppliers: number; variants: number } };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<ImportPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
-  return { enabled: features.csvImport, counts: await importCounts(session.shop) };
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
+  return { enabled: features.csvImport, counts: await importCounts(shop) };
 };
 
 export type ImportAction =
@@ -51,8 +51,8 @@ export type ImportAction =
 
 /** POST multipart: intent (preview | import), entity (suppliers | products), file, fingerprint (import). */
 export const action = async ({ request }: ActionFunctionArgs): Promise<ImportAction | Response> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.csvImport) return upgradeResponse("csvImport", "CSV import is on the Growth plan.");
   const length = Number(request.headers.get("Content-Length") ?? 0);
   if (length > MAX_IMPORT_BYTES + 64 * 1024) return { ok: false, intent: "upload", error: "tooBig" } satisfies ImportAction;
@@ -64,12 +64,12 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ImportAct
   const text = await file.text();
   const fileName = file.name.slice(0, 120);
   if (form.get("intent") === "import") {
-    const r: ApplyResult = await applyImport(session.shop, entity, text, file.size, String(form.get("fingerprint") ?? ""));
+    const r: ApplyResult = await applyImport(shop, entity, text, file.size, String(form.get("fingerprint") ?? ""));
     return r.ok
       ? { ok: true, intent: "import", fileName, preview: r.preview, applied: r.applied, variants: r.variants }
       : { ok: false, intent: "import", fileName, reason: r.reason, preview: r.preview };
   }
-  const planned = await planImport(session.shop, entity, text, file.size);
+  const planned = await planImport(shop, entity, text, file.size);
   return { ok: true, intent: "preview", fileName, preview: planned.preview };
 };
 
