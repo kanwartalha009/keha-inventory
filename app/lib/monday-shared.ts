@@ -12,7 +12,7 @@
 import { fill, translate, type Locale } from "./i18n";
 import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
 import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
-import { hasFeature, visibleRows, type PlanCode } from "./plan-shared";
+import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
 
 // ---------------------------------------------------------------- send time
@@ -129,8 +129,8 @@ export type MondayEmailInput = {
   now: MondayValues;
   /** The row closest to 7 days earlier; null when there is none. */
   before: MondayValues | null;
-  /** "monthly" on Free (adds the "Refreshed monthly on Free" line). */
-  refresh: "monthly" | "daily";
+  /** "weekly" on Free (adds the "Refreshed weekly on Free" line; "monthly" on rows stored before). */
+  refresh: MoneyRefresh;
   links: { app: string; unsubscribe: string };
   /** The ranked action list (top 5 shown). */
   actions?: MondayAction[];
@@ -218,7 +218,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     heading: fill(tr("Your Monday summary for {store}"), { store: storeName }),
     atStake,
     rows,
-    refreshNote: input.refresh === "monthly" ? tr("Refreshed monthly on Free") : null,
+    refreshNote: input.refresh === "weekly" ? tr("Refreshed weekly on Free") : input.refresh === "monthly" ? tr("Refreshed monthly on Free") : null,
     topHeading: tr("Top things to do this week"),
     actions,
     lockedFixes: locked

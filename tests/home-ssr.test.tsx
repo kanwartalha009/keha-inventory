@@ -71,9 +71,9 @@ describe("Home", () => {
     expect(count(html, "Based on: ")).toBe(4);
     expect(html).toContain("Assumes stock on order arrives within 28 days");
     expect(html).toContain("Valued at retail price");
-    // Free plan: monthly refresh with an upgrade link.
-    expect(html).toContain("Refreshed monthly on Free");
-    expect(html).toContain('href="/app/plans"');
+    // Free plan: money refreshes weekly now (audit 2026-10-17); the monthly note (and its upgrade
+    // link) is gone until Home shows the weekly one (forecastNotes().refreshedWeekly).
+    expect(html).not.toContain("Refreshed monthly on Free");
     // Older months still loading: bars stay, with the partial note.
     expect(html).toContain("Older months are still loading.");
     expect(count(html, "<s-progress")).toBe(4);

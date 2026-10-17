@@ -25,7 +25,7 @@ const RANK: Record<PlanCode, number> = { free: 0, growth: 1, pro: 2 };
  *   ACTION_LIST_LIMIT (+ fullActionList), planner scenarios → SCENARIO_LIMIT.
  */
 export const FEATURE_PLAN = {
-  /** Money at stake refreshed daily (Free: monthly). */
+  /** Money at stake refreshed daily (Free: weekly). */
   dailyRefresh: "growth",
   /** The full action list and the full Monday email (Free: top 10). */
   fullActionList: "growth",
@@ -73,7 +73,14 @@ export const ACTION_LIST_LIMIT: Record<PlanCode, number | null> = { free: 10, gr
 export const SCENARIO_LIMIT: Record<PlanCode, number | null> = { free: 0, growth: 1, pro: null };
 
 /** How often the money-at-stake numbers are recomputed. */
-export const MONEY_REFRESH: Record<PlanCode, "monthly" | "daily"> = { free: "monthly", growth: "daily", pro: "daily" };
+/**
+ * How often money at stake (and the action list) is recomputed. Free: weekly — computed before
+ * the Monday email (the first nightly compute of the store's ISO week, Monday morning), so
+ * "this week" in the email is this week's numbers (it was monthly: month-old figures every
+ * Monday). "monthly" stays readable on MoneyAtStake rows stored before.
+ */
+export type MoneyRefresh = "monthly" | "weekly" | "daily";
+export const MONEY_REFRESH: Record<PlanCode, Exclude<MoneyRefresh, "monthly">> = { free: "weekly", growth: "daily", pro: "daily" };
 
 export function hasFeature(plan: PlanCode, feature: Feature): boolean {
   return RANK[plan] >= RANK[FEATURE_PLAN[feature]];

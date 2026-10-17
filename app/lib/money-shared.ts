@@ -6,6 +6,7 @@
  */
 import type { AtRiskBasis, CashStuckBasis, LostBasis, TrafficBasis } from "./engine/money-shared";
 import type { CostBasis, MoneyWindow } from "./engine/types-shared";
+import type { MoneyRefresh } from "./plan-shared";
 
 export const MONEY_CARDS = ["atRisk", "lost90", "cashStuck", "soldOutTraffic"] as const;
 export type MoneyCardKey = (typeof MONEY_CARDS)[number];
@@ -16,8 +17,8 @@ type Basis<B> = B & { window: MoneyWindow; currency: string; costBasis: CostBasi
 export type MoneyBasisJson = {
   computedAt: string;
   currency: string;
-  /** "monthly" on Free (spec §3), "daily" on paid plans. */
-  refresh: "monthly" | "daily";
+  /** "weekly" on Free (audit 2026-10-17; "monthly" on rows stored before), "daily" on paid plans. */
+  refresh: MoneyRefresh;
   atRisk: Basis<AtRiskBasis>;
   lost90: Basis<LostBasis>;
   cashStuck: Basis<CashStuckBasis>;

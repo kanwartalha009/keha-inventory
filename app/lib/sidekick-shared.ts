@@ -19,6 +19,7 @@
  * Text is English (Sidekick answers in the merchant's language itself).
  */
 import type { MoneyCardKey } from "./money-shared";
+import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import { byWeek, bySupplier, cashTotals, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
 import {
@@ -505,7 +506,7 @@ export const MONEY_TITLES: Record<MoneyCardKey, string> = {
 export type MoneyIn = {
   day: string;
   currency: string;
-  refresh: "monthly" | "daily";
+  refresh: MoneyRefresh;
   cards: { key: MoneyCardKey; value: number | null; how: string }[];
   dead: { cash: number | null; units: number | null; variants: number; retail: boolean; deadDays: number } | null;
 };

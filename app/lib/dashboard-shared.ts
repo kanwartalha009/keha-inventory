@@ -4,7 +4,7 @@
  * pass `now`), no fake numbers: anything unknown stays null and renders "—".
  */
 import { MONEY_CARDS, type MoneyBasisJson, type MoneyCardKey, type MoneySnapshot } from "./money-shared";
-import { MONEY_REFRESH, type PlanCode } from "./plan-shared";
+import { MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { readSettings } from "./settings-shared";
 import {
   DATASETS,
@@ -64,7 +64,7 @@ export type HomeData = {
   lastNightlyAt: string | null;
   dataLate: boolean;
   state: HomeState;
-  refresh: "monthly" | "daily";
+  refresh: MoneyRefresh;
   money: MoneySnapshot | null;
   sync: { done: boolean; first90Ready: boolean; datasets: DatasetBar[] };
   setup: {

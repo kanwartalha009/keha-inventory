@@ -28,11 +28,12 @@ import type { DailyRow, EngineSettings, VariantResult } from "./engine/index-sha
 import type { ProductTraffic, StoreConversion } from "./engine/money-shared";
 import type { Coverage } from "./engine/season-shared";
 import { zForSafetyLevel } from "./engine/safety-shared";
-import { addDays } from "./engine/dates-shared";
+import { addDays, weekStart } from "./engine/dates-shared";
 import type { ActionDraft } from "./actions-shared";
 import { DONE_REOPEN_DAYS, dedupeKey } from "./actions-shared";
 import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
+import type { MoneyRefresh } from "./plan-shared";
 import { poArrival } from "./supplier-shared";
 
 export const SCOPE_ONLINE = "online";
@@ -474,8 +475,13 @@ export function metricRow(r: VariantResult, extra?: Record<string, unknown>): Me
   };
 }
 
-/** Free plan: money is recomputed only when the last row is from an earlier calendar month. */
-export function moneyDue(refresh: "monthly" | "daily", lastDay: string | null, today: string): boolean {
+/**
+ * Is money (and the action list) due today? Daily: always. Weekly (Free): when the last row is
+ * from an earlier ISO week (store-local days) — the first compute of the week is Monday's
+ * nightly run, before the 08:00 Monday email. Monthly (rows stored before): an earlier month.
+ */
+export function moneyDue(refresh: MoneyRefresh, lastDay: string | null, today: string): boolean {
   if (refresh === "daily" || !lastDay) return true;
+  if (refresh === "weekly") return lastDay < weekStart(today);
   return lastDay.slice(0, 7) < today.slice(0, 7);
 }

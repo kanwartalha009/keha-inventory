@@ -79,7 +79,7 @@ describe("buildHome", () => {
     const h = buildHome(homeRaw(), "free", NOW);
     expect(h.state).toBe("ready");
     expect(h.storeName).toBe("acme");
-    expect(h.refresh).toBe("monthly");
+    expect(h.refresh).toBe("weekly");
     expect(h.money?.values).toEqual({ atRisk: 1234.5, lost90: null, cashStuck: 800, soldOutTraffic: 0 });
     expect(h.setup).toMatchObject({ leadTimeDone: false, costPercent: 50, costsDone: false, mondayEnabled: true, allDone: false });
     expect(buildHome(homeRaw(), "growth", NOW).refresh).toBe("daily");

@@ -363,7 +363,7 @@ describe("plans", () => {
     expect(actions.results).toHaveLength(10);
     expect(actions.results!.some((x) => String(x._meta.action).startsWith("Fix"))).toBe(false);
     expect(actions.note).toBe("Ranked by money at stake; the list covers the 10 largest actions.");
-    expect((await body("get_money_at_stake")).refreshed).toBe("monthly");
+    expect((await body("get_money_at_stake")).refreshed).toBe("weekly");
     for (const tool of SIDEKICK_TOOLS) {
       const text = await (await get(tool, "query=hoodie")).text();
       expect(policyViolations(text), tool).toEqual([]);

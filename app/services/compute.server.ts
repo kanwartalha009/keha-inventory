@@ -5,8 +5,8 @@
  * Reads only the database (no Shopify calls). Phase 1 pooling rule: see compute-shared.
  * Only ACTIVE products' tracked, non-bundle variants are computed; DRAFT / ARCHIVED products
  * get no VariantMetric (stale rows are removed) and never reach the money cards. VariantMetric is refreshed on every run;
- * money on the Free plan only when the last MoneyAtStake row is from an earlier calendar
- * month (MONEY_REFRESH), daily otherwise.
+ * money on the Free plan only when the last MoneyAtStake row is from an earlier ISO week (store
+ * time: Monday's nightly run, before the 08:00 Monday email; MONEY_REFRESH), daily otherwise.
  *
  * Task 2.1 / 2.4:
  *  - seasonal × trend (§7.3, season.server + engine/season-shared) per variant, for the horizon
@@ -20,7 +20,7 @@
  *    minimum order; case pack: casePackFor(). The order-total minimum is the Reorder screen's.
  *  - safety level → z per ABC role (engineSettingsFrom).
  *  - the action list (§7.7, engine/actions-rules-shared) is written with the money cards, on the
- *    same cadence (Free: monthly, paid: daily), so Free's € figures refresh monthly everywhere.
+ *    same cadence (Free: weekly, paid: daily), so Free's € figures refresh weekly everywhere.
  *
  * Forward order plan (Order plan, 2026-10-17): VariantMetric.orderBy (online pool) is the order-by
  * date of engine/forward-plan-shared — the function Order now, the 90-day calendar and the Dashboard

@@ -174,7 +174,11 @@ describe("rows and refresh", () => {
     expect(jsonSafe({ a: NaN, b: [1, -Infinity] })).toEqual({ a: null, b: [1, null] });
   });
 
-  it("Free refreshes money once per calendar month; paid plans daily", () => {
+  it("Free refreshes money once per ISO week (Monday's first run); paid plans daily; monthly rows stay readable", () => {
+    expect(moneyDue("weekly", null, "2026-10-16")).toBe(true);
+    expect(moneyDue("weekly", "2026-10-12", "2026-10-18")).toBe(false); // Mon … Sun: same week
+    expect(moneyDue("weekly", "2026-10-18", "2026-10-19")).toBe(true); // Sunday → Monday
+    expect(moneyDue("weekly", "2026-10-01", "2026-10-16")).toBe(true); // a month-old row is due
     expect(moneyDue("daily", "2026-10-16", "2026-10-16")).toBe(true);
     expect(moneyDue("monthly", null, "2026-10-16")).toBe(true);
     expect(moneyDue("monthly", "2026-10-01", "2026-10-16")).toBe(false);

@@ -241,17 +241,17 @@ describe("computeShop", () => {
     expect(basis.soldOutTraffic).toMatchObject({ productsSoldOut: 1, soldOutSessions: 150, aov: 50 });
   });
 
-  it("Free plan: money only once per calendar month, metrics every run", async () => {
-    await computeShop(S, { now: () => NOW, plan: async () => "free" });
+  it("Free plan: money once per ISO week (store time), first run on Monday before the 08:00 email; metrics every run", async () => {
+    await computeShop(S, { now: () => NOW, plan: async () => "free" }); // Friday 16 Oct
     const first = db.tables.moneyAtStake[0];
-    expect((first.basis as MoneyBasisJson).refresh).toBe("monthly");
-    const later = Date.parse("2026-10-20T08:00:00Z");
-    const r = await computeShop(S, { now: () => later, plan: async () => "free" });
+    expect((first.basis as MoneyBasisJson).refresh).toBe("weekly");
+    const sunday = Date.parse("2026-10-18T20:00:00Z"); // 22:00 Sunday in Madrid: same week
+    const r = await computeShop(S, { now: () => sunday, plan: async () => "free" });
     expect(r.money).toBe("not_due");
     expect(db.tables.moneyAtStake).toHaveLength(1);
-    expect(db.tables.variantMetric.every((m) => (m.computedAt as Date).getTime() === later)).toBe(true);
-    const nextMonth = Date.parse("2026-11-01T08:00:00Z");
-    expect((await computeShop(S, { now: () => nextMonth, plan: async () => "free" })).money).toBe("computed");
+    expect(db.tables.variantMetric.every((m) => (m.computedAt as Date).getTime() === sunday)).toBe(true);
+    const monday = Date.parse("2026-10-19T04:00:00Z"); // 06:00 Monday in Madrid: a new week
+    expect((await computeShop(S, { now: () => monday, plan: async () => "free" })).money).toBe("computed");
     expect(db.tables.moneyAtStake).toHaveLength(2);
   });
 
@@ -338,10 +338,10 @@ describe("computeShop — action list", () => {
     expect(action("clear:PZ")).toBeUndefined();
   });
 
-  it("Free plan: actions refresh with the money cards (monthly)", async () => {
+  it("Free plan: actions refresh with the money cards (weekly)", async () => {
     await computeShop(S, { now: () => NOW, plan: async () => "free" });
     action("clear:PC")!.amount = 1;
-    const r = await computeShop(S, { now: () => Date.parse("2026-10-20T08:00:00Z"), plan: async () => "free" });
+    const r = await computeShop(S, { now: () => Date.parse("2026-10-18T08:00:00Z"), plan: async () => "free" });
     expect(r.money).toBe("not_due");
     expect(r.actions).toBeUndefined();
     expect(action("clear:PC")!.amount).toBe(1);

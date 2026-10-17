@@ -36,7 +36,7 @@ import {
 } from "../lib/monday-shared";
 import { MONEY_CARDS } from "../lib/money-shared";
 import { canRetryOwnerEmail, listUnsubscribeHeaders, weekKey } from "../lib/owner-email-shared";
-import { hasFeature, MONEY_REFRESH, type PlanCode } from "../lib/plan-shared";
+import { hasFeature, MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "../lib/plan-shared";
 import { tabOf, type ActionKind, type ActionState } from "../lib/actions-shared";
 import { buildSlackMonday } from "../lib/slack-shared";
 import { readSettings } from "../lib/settings-shared";
@@ -74,9 +74,10 @@ type ShopRow = {
 
 type MoneyRow = { day: Date; basis?: unknown } & Record<(typeof MONEY_CARDS)[number], unknown>;
 
-/** Oldest money-at-stake numbers the email may show: 36 h on daily refresh, 35 days on Free (monthly). */
-export const MAX_MONEY_AGE_MS: Record<"daily" | "monthly", number> = {
+/** Oldest money-at-stake numbers the email may show: 36 h on daily refresh, 8 days on Free (weekly). */
+export const MAX_MONEY_AGE_MS: Record<MoneyRefresh, number> = {
   daily: 36 * 60 * 60 * 1000,
+  weekly: 8 * 24 * 60 * 60 * 1000,
   monthly: 35 * 24 * 60 * 60 * 1000,
 };
 
@@ -195,7 +196,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const nowValues = values(money.latest);
   if (MONEY_CARDS.every((k) => nowValues[k] == null)) return "skipped:no_data";
 
-  // Never send stale numbers: paid plans refresh daily, Free monthly.
+  // Never send stale numbers: paid plans refresh daily, Free weekly.
   const plan = await planFor(shop);
   const refresh = MONEY_REFRESH[plan];
   const computedAt = moneyComputedAt(money.latest);

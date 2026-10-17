@@ -377,7 +377,7 @@ describe("runMondayEmails", () => {
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { to: string[]; text: string };
     expect(sent.to).toEqual(["ops@acme.test", "buyer@acme.test"]);
-    expect(sent.text).toContain("Refreshed monthly on Free");
+    expect(sent.text).toContain("Refreshed weekly on Free");
     expect(sent.text).not.toContain("vs last week"); // no row a week earlier
   });
 
@@ -413,14 +413,15 @@ describe("stale numbers", () => {
     expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
   });
 
-  it("Free (monthly refresh): up to 35 days, with the monthly line", async () => {
+  it("Free (weekly refresh, audit 2026-10-17): up to 8 days, with the weekly line — never month-old numbers", async () => {
     planFor.mockResolvedValue("free");
     tables.shop = [shopRow({ locale: "en" })];
-    tables.moneyAtStake = [{ ...money("2026-09-15", "1500.00"), basis: computed(36 * 24) }];
-    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+    // Monthly refresh used to send 34-day-old numbers as "this week".
     tables.moneyAtStake = [{ ...money("2026-09-15", "1500.00"), basis: computed(34 * 24) }];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
+    tables.moneyAtStake = [{ ...money("2026-10-18", "1500.00"), basis: computed(7 * 24) }];
     expect(await runMondayEmails(S, MON)).toBe("sent");
-    expect((sendEmail.mock.calls[0][0] as { text: string }).text).toContain("Refreshed monthly on Free");
+    expect((sendEmail.mock.calls[0][0] as { text: string }).text).toContain("Refreshed weekly on Free");
   });
 });
 

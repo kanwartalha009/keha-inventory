@@ -77,7 +77,7 @@ describe("spec §3 feature table", () => {
   });
 
   it("applies the per-plan limits", () => {
-    expect(MONEY_REFRESH).toEqual({ free: "monthly", growth: "daily", pro: "daily" });
+    expect(MONEY_REFRESH).toEqual({ free: "weekly", growth: "daily", pro: "daily" });
     expect(ACTION_LIST_LIMIT).toEqual({ free: 10, growth: null, pro: null });
     expect(SCENARIO_LIMIT).toEqual({ free: 0, growth: 1, pro: null });
     const rows = Array.from({ length: 25 }, (_, i) => i);
