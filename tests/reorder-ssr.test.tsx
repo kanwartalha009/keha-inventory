@@ -192,7 +192,11 @@ describe("Order now loader", () => {
 
 describe("Open orders tab", () => {
   it("lists Keha and Shopify orders with links to their pages", () => {
-    const html = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders: reorderData().openOrders } satisfies OpenOrdersPageData);
+    const orders: OpenOrdersPageData["orders"] = [
+      { id: "po1", number: "PO-0001", source: "keha", status: "sent", partial: false, supplierName: "Acme Textiles", units: 24, remaining: 24, cost: 60, currency: "EUR", ships: null, arrival: "2026-11-02", ageDays: 16, stale: false, overdue: false },
+      { id: "po2", number: "#PO7", source: "shopify", status: "sent", partial: false, supplierName: "Zeta", units: 10, remaining: 10, cost: null, currency: "EUR", ships: null, arrival: null, ageDays: 15, stale: false, overdue: false },
+    ];
+    const html = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders } satisfies OpenOrdersPageData);
     expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Open orders</);
     expect(html).toContain("PO-0001");
     expect(html).toContain("From Shopify");
@@ -263,7 +267,7 @@ const pageData = (o: OrderDetail, over: Partial<OrderPageView> = {}): OrderPageV
 });
 
 describe("Order page", () => {
-  it("draft: email the supplier, downloads, cancel; lines and totals", () => {
+  it("draft: email the supplier, downloads, delete; lines and totals", () => {
     const html = render("/app/reorder/po1", "order", OrderPage, pageData(order()));
     expect(html).toContain("PO-0001");
     expect(html).toContain("Draft");
@@ -271,7 +275,8 @@ describe("Order page", () => {
     expect(html).toContain("Mark as sent");
     expect(html).toContain("Download PDF");
     expect(html).toContain("Download CSV");
-    expect(html).toContain("Cancel order");
+    expect(html).toContain("Delete draft");
+    expect(html).not.toContain("Cancel order");
     expect(html).toContain("Units: 18");
     expect(html).toContain("Cost: €36.00");
     expect(html).not.toContain("Supplier link");
@@ -290,7 +295,7 @@ describe("Order page", () => {
     expect(html).toContain("Supplier link");
     expect(html).toContain("https://inventory.keha.io/supplier/confirm/abc");
     expect(html).toContain("without prices");
-    expect(html).toContain("Mark as received");
+    expect(html).toContain("Receive items");
     expect(html).toContain("Mark as confirmed");
     expect(html).toContain("Email again");
     expect(html).toContain("Nov 15, 2026");

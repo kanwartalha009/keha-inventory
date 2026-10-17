@@ -151,6 +151,14 @@ const OPEN_ORDERS: OpenOrderRow[] = [
   { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", supplierName: "Lisbon Linen", units: 120, cost: 1440, currency: "EUR", arrival: "2026-11-20", createdAt: "2026-10-08T00:00:00Z" },
   { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, cost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
 ];
+// The Open orders tab's rows (ships / arrives / remaining / age, merchant audit 2026-10-17).
+const OPEN_ORDER_ROWS: OpenOrdersPageData["orders"] = [
+  { id: "po4", number: "PO-0003", source: "keha", status: "sent", partial: false, supplierName: "Acme Textiles", units: 40, remaining: 40, cost: 100, currency: "EUR", ships: null, arrival: "2026-10-12", ageDays: 30, stale: false, overdue: true },
+  { id: "po1", number: "PO-0001", source: "keha", status: "confirmed", partial: true, supplierName: "Acme Textiles", units: 24, remaining: 10, cost: 60, currency: "EUR", ships: "2026-10-28", arrival: "2026-11-02", ageDays: 16, stale: false, overdue: false },
+  { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", partial: false, supplierName: "Lisbon Linen", units: 120, remaining: 120, cost: 1440, currency: "EUR", ships: "2026-11-01", arrival: "2026-12-06", ageDays: 9, stale: false, overdue: false },
+  { id: "po5", number: "PO-0004", source: "keha", status: "draft", partial: false, supplierName: "Lisbon Linen", units: 60, remaining: 60, cost: 720, currency: "EUR", ships: null, arrival: null, ageDays: 21, stale: true, overdue: false },
+  { id: "po2", number: "#PO7", source: "shopify", status: "sent", partial: false, supplierName: "Zeta", units: 10, remaining: 10, cost: null, currency: "EUR", ships: null, arrival: null, ageDays: 15, stale: false, overdue: false },
+];
 
 function transfersPlan() {
   const inputs = { leadTimeDays: 10, cycleDays: 10, z: 1.65, seasonal: 1, trend: 1 };
@@ -513,7 +521,7 @@ const screens: Screen[] = [
   S({ slug: "next-90-days--growth", screen: "Order plan → Next 90 days", state: "Growth", nav: "orderplan", url: "/app/reorder/calendar", plan: "growth", Component: OrderCalendar, data: (): CalendarPageData => ({ enabled: true, plan: orderPlanFixture() }), expect: ["Next 90 days", "Lisbon Linen", "Download CSV"] }),
   S({ slug: "season-plan--growth-scenario", screen: "Order plan → Season plan", state: "Growth, with scenario", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner(), expect: ["Season plan", "Black Friday 2026", "Slow Mill"] }),
   S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),
-  S({ slug: "open-orders--growth", screen: "Order plan → Open orders", state: "Growth", nav: "orderplan", url: "/app/reorder/orders", plan: "growth", Component: OpenOrders, data: (): OpenOrdersPageData => ({ enabled: true, orders: OPEN_ORDERS }), expect: ["Open orders", "PO-0001", "From Shopify"] }),
+  S({ slug: "open-orders--growth", screen: "Order plan → Open orders", state: "Growth", nav: "orderplan", url: "/app/reorder/orders", plan: "growth", Component: OpenOrders, data: (): OpenOrdersPageData => ({ enabled: true, orders: OPEN_ORDER_ROWS, today: "2026-10-17" }), expect: ["Open orders", "PO-0001", "From Shopify"] }),
 
   S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV"] }),
   S({ slug: "products--pro-2-locations", screen: "Products", state: "Pro, 2 locations", nav: "products", url: "/app/products", plan: "pro", Component: Products, data: () => products("pro"), expect: ["Products", "Linen shirt", "keha-switcher"] }),
@@ -529,7 +537,7 @@ const screens: Screen[] = [
   S({ slug: "plans--growth", screen: "Plans", state: "Growth (active)", nav: "plans", url: "/app/plans", plan: "growth", Component: Plans, data: () => ({ plans: PLANS, plan: "growth", billing: { status: "ACTIVE", planCode: "growth" }, comped: false, checked: true, manageUrl: "https://admin.shopify.com/x" }), expect: ["Current plan", "Change plan", "Compare plans"] }),
 
   S({ slug: "purchase-order--draft", screen: "Purchase order", state: "Draft", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order()), expect: ["PO-0001", "Email supplier", "Download PDF"] }),
-  S({ slug: "purchase-order--sent", screen: "Purchase order", state: "Sent, supplier link", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), { link: "https://inventory.keha.io/supplier/confirm/abc", hidePrices: true }), expect: ["PO-0001", "Supplier link", "Mark as received"] }),
+  S({ slug: "purchase-order--sent", screen: "Purchase order", state: "Sent, supplier link", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), { link: "https://inventory.keha.io/supplier/confirm/abc", hidePrices: true }), expect: ["PO-0001", "Supplier link", "Receive items"] }),
 
   S({ slug: "supplier-confirm", screen: "Supplier confirm (public)", state: "Open, prices shown", nav: "public", url: `/supplier/confirm/${TOKEN}`, pattern: "/supplier/confirm/:token", plan: "growth", Component: SupplierConfirm, data: (l) => confirm(l), expect: ["PO-0001", "Linen shirt", "Acme Textiles"] }),
 ];
