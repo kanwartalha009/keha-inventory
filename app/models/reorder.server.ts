@@ -142,6 +142,64 @@ export async function kehaOnOrder(
   );
 }
 
+const PLAN_ORDER_SELECT = {
+  id: true,
+  status: true,
+  createdAt: true,
+  lines: true,
+  confirmedShipDate: true,
+  expectedDate: true,
+  supplierId: true,
+  sentAt: true,
+  receivedAt: true,
+  cancelledAt: true,
+} as const;
+
+/** A Keha order as the order plan compares it with the nightly run (H2). */
+export type KehaPlanOrder = {
+  id: string;
+  status: string;
+  createdAt: Date;
+  confirmedShipDate: Date | null;
+  expectedDate: Date | null;
+  supplierId: string | null;
+  sentAt: Date | null;
+  receivedAt: Date | null;
+  cancelledAt: Date | null;
+  lines: PoLine[];
+};
+
+/**
+ * The Keha orders the order plan reads (H2): every draft / sent / confirmed order, plus those
+ * received or cancelled since `closedSince` (the run) — what was left on them when they closed
+ * no longer arrives — and the supplier transit days for their arrival dates.
+ */
+export async function kehaPlanOrders(shop: string, closedSince: Date): Promise<{ orders: KehaPlanOrder[]; transit: Map<string, number | null> }> {
+  const [rows, transit] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where: {
+        shop,
+        source: "keha",
+        OR: [
+          { status: { in: [...REORDER_HOLD_STATUSES] } },
+          { status: "received", receivedAt: { gte: closedSince } },
+          { status: "cancelled", cancelledAt: { gte: closedSince } },
+        ],
+      },
+      select: PLAN_ORDER_SELECT,
+    }),
+    supplierTransit(shop),
+  ]);
+  return { orders: rows.map((o) => ({ ...o, lines: readPoLines(o.lines) })), transit };
+}
+
+/** Keha orders by id, whatever their status (an order a metric counted that closed earlier than expected). */
+export async function kehaOrdersById(shop: string, ids: string[]): Promise<KehaPlanOrder[]> {
+  if (!ids.length) return [];
+  const rows = await prisma.purchaseOrder.findMany({ where: { shop, source: "keha", id: { in: ids } }, select: PLAN_ORDER_SELECT });
+  return rows.map((o) => ({ ...o, lines: readPoLines(o.lines) }));
+}
+
 /** Keha drafts nobody sent for DRAFT_EXPIRY_DAYS: they no longer net off the order plan. */
 export async function staleDraftCount(shop: string, now: Date): Promise<number> {
   const drafts = await prisma.purchaseOrder.findMany({ where: { shop, source: "keha", status: "draft" }, select: { status: true, createdAt: true, lines: true } });

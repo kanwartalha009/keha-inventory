@@ -53,6 +53,7 @@ import type { StoreConversion } from "../lib/engine/money-shared";
 import {
   arrivalDay,
   kehaOpenUnits,
+  kehaOrderShares,
   SCOPE_ONLINE,
   buildSeries,
   datedIncoming,
@@ -270,13 +271,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // units: the Reorder screen nets drafts against it, and landed units are in on-hand.
   const openPoRows = await prisma.purchaseOrder.findMany({
     where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
-    select: { source: true, status: true, createdAt: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
+    select: { id: true, source: true, status: true, createdAt: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
   });
   // H2: a confirmed SHIP date lands `transitDays` later (the supplier's freight time).
   const transitOf = new Map(suppliers.map((x) => [x.id, x.transitDays ?? null]));
   // The one on-order rule (supplier-shared onOrderByVariant): orders that count as ordered, the
   // remaining units of each line, arrival = ship date + transit.
   const rawPos: OpenPo[] = openPoRows.filter((po) => poCountsAsOrdered(po, startedAt)).map((po) => ({
+    id: po.id,
     source: po.source,
     arrival: arrivalDay(po, po.supplierId ? (transitOf.get(po.supplierId) ?? null) : null),
     sentDay: po.sentAt ? localDate(po.sentAt, tz) : null,
@@ -286,6 +288,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
   const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, demandFilter, to, onHand));
   const kehaOpen = kehaOpenUnits(openPos.filter(isKeha));
+  // Each Keha order's share of the incoming (inputs.kehaOrders): the order plan takes the units of
+  // an order closed short / cancelled after this run out at once (H2).
+  const kehaShares = kehaOrderShares(rawPos, openPos);
   const dated = datedIncoming(openPos);
 
   // ---- seasonality and trend (§7.3) ----
@@ -417,6 +422,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         supplierId: supplierIdOf.get(r.id) ?? null,
         kehaOnOrder: kehaRaw.get(r.id) ?? 0,
         kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
+        kehaOrders: kehaShares.get(r.id) ?? [],
         // Forward order plan inputs (forward-plan-shared forwardInputFromMetric).
         safety: r.safety,
         seasonCurve: forwardOf.get(r.id)?.seasonCurve ?? null,

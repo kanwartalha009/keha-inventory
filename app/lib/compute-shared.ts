@@ -267,7 +267,38 @@ export function arrivalDay(
 
 /** An open purchase order line as the landed estimate reads it. */
 export type OpenPoLine = { variantId: string; qty: number; received?: number; baseOnHand?: number };
-export type OpenPo = { source: string; arrival: string | null; sentDay: string | null; lines: OpenPoLine[] };
+export type OpenPo = { source: string; arrival: string | null; sentDay: string | null; lines: OpenPoLine[]; id?: string };
+
+/**
+ * One Keha order's share of a variant's incoming at compute time (H2), stored in
+ * VariantMetric.inputs.kehaOrders: `open` = its remaining units (kehaOnOrder's part), `units` = the
+ * part still counted as incoming after the landed estimate (in `arrivals` on `day`; null = undated).
+ * The order plan compares it with the order now: units of an order closed short, cancelled or
+ * deleted since the run come out of the projection at once instead of the next night.
+ */
+export type KehaOrderShare = { po: string; open: number; units: number; day: string | null };
+
+/** Per variant, each Keha order's share (see KehaOrderShare). `landed` = withLandedEstimate(raw). */
+export function kehaOrderShares(raw: readonly OpenPo[], landed: readonly OpenPo[]): Map<string, KehaOrderShare[]> {
+  const out = new Map<string, KehaOrderShare[]>();
+  raw.forEach((po, i) => {
+    if (po.source !== "keha" || !po.id) return;
+    const after = landed[i];
+    po.lines.forEach((l, j) => {
+      const open = lineRemaining(l);
+      if (open <= 0) return;
+      const units = after?.lines[j] ? lineRemaining(after.lines[j]!) : open;
+      const list = out.get(l.variantId) ?? [];
+      const cur = list.find((x) => x.po === po.id);
+      if (cur) {
+        cur.open += open;
+        cur.units += units;
+      } else list.push({ po: po.id!, open, units, day: po.arrival });
+      out.set(l.variantId, list);
+    });
+  });
+  return out;
+}
 
 /** What the landed estimate needs from the database (online pool, same as auto-receive). */
 export type LandedFacts = {

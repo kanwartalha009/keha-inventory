@@ -11,7 +11,9 @@
  * Read per variant: the stored metric (rate, σ, status, orderQty and its inputs: seasonal and
  * trend, the seasonal shape, safety, lead time, cycle, on hand, incoming with dates, orderNeed),
  * the supplier (Settings → Suppliers, else matched by vendor) for the case pack and minimums,
- * and the open Keha units compute did not count yet (fresh drafts, orders sent since the run).
+ * and what changed on Keha orders since the run (lib/keha-since-run-shared, H2): units compute
+ * did not count yet (fresh drafts, orders sent since) arrive after one lead time; units of an
+ * order closed short, cancelled or deleted since come out of the incoming at once.
  * Drafts older than DRAFT_EXPIRY_DAYS don't count (they are reported, not netted). Variants the
  * merchant marked "Don't reorder" are left out (and counted).
  *
@@ -38,12 +40,22 @@ import {
 } from "../lib/engine/forward-plan-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { REORDER_HOLD_STATUSES } from "../lib/purchase-order-shared";
+import { kehaSinceRun, readKehaShares, type KehaOrderNow } from "../lib/keha-since-run-shared";
 import { supplierGroupKey, vendorGroupKey } from "../lib/reorder-shared";
-import { casePackFor, poCountsAsOrdered, readMinOrderScope, supplierFor, toStoreCurrency, type SupplierLite } from "../lib/supplier-shared";
+import {
+  casePackFor,
+  lineRemaining,
+  onOrderByVariant,
+  poCountsAsOrdered,
+  readMinOrderScope,
+  supplierFor,
+  toStoreCurrency,
+  type SupplierLite,
+} from "../lib/supplier-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
-import { kehaOnOrder, shopBasics, staleDraftCount } from "./reorder.server";
+import { kehaOrdersById, kehaPlanOrders, shopBasics, staleDraftCount, type KehaPlanOrder } from "./reorder.server";
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
@@ -51,10 +63,32 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** VariantMetric.inputs.kehaOnOrder: Keha units compute already counted as incoming. */
-function kehaCounted(inputs: unknown): number {
-  const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>).kehaOnOrder : undefined;
-  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
+const DAY_MS = 86_400_000;
+
+/** Per variant: each Keha order touching it and its units still to arrive (closed orders: what was left). */
+function kehaOrdersByVariant(orders: readonly KehaPlanOrder[]): Map<string, { o: KehaPlanOrder; remaining: number }[]> {
+  const out = new Map<string, { o: KehaPlanOrder; remaining: number }[]>();
+  for (const o of orders) {
+    const per = new Map<string, number>();
+    for (const l of o.lines) per.set(l.variantId, (per.get(l.variantId) ?? 0) + lineRemaining(l));
+    for (const [v, remaining] of per) (out.get(v) ?? out.set(v, []).get(v)!).push({ o, remaining });
+  }
+  return out;
+}
+
+/** One variant's Keha orders as kehaSinceRun reads them, against the metric's run time. */
+function kehaNow(list: readonly { o: KehaPlanOrder; remaining: number }[] | undefined, runAt: Date, now: Date): Map<string, KehaOrderNow> {
+  const out = new Map<string, KehaOrderNow>();
+  for (const { o, remaining } of list ?? []) {
+    const closedAt = o.status === "received" ? o.receivedAt : o.status === "cancelled" ? o.cancelledAt : null;
+    out.set(o.id, {
+      counts: poCountsAsOrdered(o, now),
+      sent: o.status === "sent" || o.status === "confirmed",
+      remaining,
+      closedSinceRun: !!closedAt && closedAt.getTime() >= runAt.getTime() && !!o.sentAt && o.sentAt.getTime() <= runAt.getTime(),
+    });
+  }
+  return out;
 }
 
 function inputNum(inputs: unknown, key: string): number | null {
@@ -102,7 +136,7 @@ const VARIANT_SELECT = {
   productCreatedAt: true,
 } as const;
 
-const METRIC_SELECT = { variantId: true, status: true, rate: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, inputs: true } as const;
+const METRIC_SELECT = { variantId: true, status: true, rate: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, inputs: true, computedAt: true } as const;
 
 export type PlanSupplierRow = SupplierLite & { email: string | null; currency: string | null };
 
@@ -149,13 +183,19 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const basics = await shopBasics(shop);
   const today: DayKey = todayIn(basics.timezone, now);
   const days = planDays(today);
-  const [onOrderAll, supplierRows, staleDrafts] = await Promise.all([
-    // Open Keha units that still count (sent, confirmed, drafts up to 14 days old).
-    kehaOnOrder(shop, REORDER_HOLD_STATUSES, undefined, { now }),
+  // The run the stored metrics come from: Keha orders closed since then are read too (H2).
+  const run = await prisma.variantMetric.aggregate({ where: { shop, scope }, _min: { computedAt: true } });
+  const firstRun = run?._min?.computedAt;
+  const closedSince = firstRun instanceof Date ? firstRun : new Date(now.getTime() - 2 * DAY_MS);
+  const [kehaRead, supplierRows, staleDrafts] = await Promise.all([
+    kehaPlanOrders(shop, closedSince),
     planSuppliers(shop),
     staleDraftCount(shop, now),
   ]);
-  const withKeha = [...onOrderAll.keys()];
+  // Open Keha units that still count (sent, confirmed, drafts up to 14 days old): the one rule.
+  const onOrderAll = onOrderByVariant(kehaRead.orders, { now, transitOf: (id) => kehaRead.transit.get(id) });
+  const kehaOrders = new Map(kehaRead.orders.map((o) => [o.id, o]));
+  const withKeha = [...new Set([...onOrderAll.keys(), ...kehaRead.orders.flatMap((o) => o.lines.map((l) => l.variantId))])];
   const [metricRows, unplannable] = await Promise.all([
     prisma.variantMetric.findMany({
       where: {
@@ -177,6 +217,11 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   ]);
   const metrics = new Map(metricRows.map((m) => [m.variantId, m]));
   const ids = [...metrics.keys()];
+  // Orders a metric counted that aren't open any more nor closed since the window above (deleted,
+  // or closed before it): read by id; still missing = deleted.
+  const missing = [...new Set(metricRows.flatMap((m) => (readKehaShares(m.inputs) ?? []).map((x) => x.po)))].filter((id) => !kehaOrders.has(id));
+  for (const o of await kehaOrdersById(shop, missing)) kehaOrders.set(o.id, o);
+  const kehaByVariant = kehaOrdersByVariant([...kehaOrders.values()]);
   const [variantRows, noData, dead] = await Promise.all([
     ids.length ? prisma.variant.findMany({ where: { shop, id: { in: ids }, tracked: true, isBundle: false }, select: VARIANT_SELECT }) : Promise.resolve([]),
     productCount(shop, unplannable.filter((m) => m.status === "not_enough_data").map((m) => m.variantId)),
@@ -225,8 +270,9 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     }
     const style = supplier?.minOrderScope === "product";
     const pack = casePackFor(v.caseQty, supplier);
-    const counted = onOrderAll.get(v.id)?.qty ?? 0;
-    const notCounted = Math.max(0, counted - kehaCounted(m.inputs));
+    // Keha orders since the run (H2): units added (drafts, sent since) arrive after one lead time;
+    // units closed short / cancelled / deleted come out of the incoming now.
+    const since = kehaSinceRun(m.inputs, kehaNow(kehaByVariant.get(v.id), m.computedAt ?? closedSince, now));
     const fRate = m.rate !== null ? m.rate * (inputNum(m.inputs, "seasonal") ?? 1) * (inputNum(m.inputs, "trend") ?? 1) : null;
     const costs = lineCosts(num(v.cost), v.costCurrency, storeCur, supplier?.currency ?? null, supplier?.exchangeRate ?? null);
     specs.push({
@@ -235,7 +281,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       supplierKey: key,
       unitCost: costs.store,
       weight: fRate ?? 0,
-      input: forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted, days }),
+      input: forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted: since.notCounted, removed: since.removed, days }),
     });
     if (!suppliers[key]) {
       const supCur = (supplier?.currency || basics.currency).toUpperCase();

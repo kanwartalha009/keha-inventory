@@ -188,6 +188,8 @@ describe("computeShop", () => {
     (db.tables.purchaseOrder[0]!.lines as { baseOnHand: number }[])[0]!.baseOnHand = 60;
     await computeShop(S, { now: () => NOW });
     expect(metric(A).inputs).toMatchObject({ incoming: 28, kehaOnOrder: 80, kehaLanded: 52 });
+    // H2: each Keha order's share is stored, so the order plan can take a closed order out at once.
+    expect(metric(A).inputs).toMatchObject({ kehaOrders: [{ po: "po1", open: 80, units: 28, day: "2026-10-30" }] });
   });
 
   it("H3: sales at risk is projected day by day with each order's arrival date", async () => {

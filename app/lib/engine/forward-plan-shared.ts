@@ -18,7 +18,8 @@
  *  - safety stock, lead time (resolveLeadTime), cycle, on hand and incoming in the stock pool.
  *    Incoming with a date (Shopify and Keha purchase orders, compute's landed estimate applied)
  *    arrives on that day (overdue → today); incoming without a date, and open Keha units compute
- *    did not count yet (fresh drafts, orders sent since), arrive after one lead time.
+ *    did not count yet (fresh drafts, orders sent since), arrive after one lead time. Keha units
+ *    closed short / cancelled / deleted since the run are taken out (withoutIncoming, H2).
  *  - the per-line rounding (lineQuantity: case pack, then MOQ).
  *
  * Rules:
@@ -416,13 +417,52 @@ export interface StoredMetric {
 const numIn = (o: Record<string, unknown>, k: string): number | null => (finite(o[k]) ? (o[k] as number) : null);
 
 /**
+ * Take units out of the stored incoming (H2: Keha units closed short / cancelled / deleted since
+ * the run). Each cut comes off its own arrival day first (`day`), then the latest arrivals, then
+ * the undated part; never more than the incoming. Returns the new incoming, arrivals and the
+ * units taken (the stored need grows by them).
+ */
+export function withoutIncoming(
+  incoming: number,
+  arrivals: readonly { day: DayKey; units: number }[],
+  cuts: readonly { day: DayKey | null; units: number }[],
+): { incoming: number; arrivals: { day: DayKey; units: number }[]; taken: number } {
+  const list = arrivals.map((a) => ({ ...a }));
+  const latest = [...list].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  const total = Math.max(0, finite(incoming) ? incoming : 0);
+  let taken = 0;
+  for (const c of cuts) {
+    let left = Math.min(Math.max(0, finite(c.units) ? c.units : 0), total - taken);
+    taken += left;
+    const take = (a: { units: number }) => {
+      const u = Math.min(Math.max(0, a.units), left);
+      a.units -= u;
+      left -= u;
+    };
+    if (c.day) for (const a of list) if (left > 0 && a.day === c.day) take(a);
+    for (const a of latest) if (left > 0) take(a);
+    // Anything still left comes off the undated part (incoming − dated arrivals).
+  }
+  return { incoming: total - taken, arrivals: list.filter((a) => a.units > 0), taken };
+}
+
+/**
  * ForwardVariantInput from a stored VariantMetric (online pool or a location). Rows written
  * before the forward plan existed (no safety / seasonCurve / arrivals in inputs) still plan:
- * safety from z × σ × √lead time, flat seasonality, undated incoming.
+ * safety from z × σ × √lead time, flat seasonality, undated incoming. `removed`: units on order
+ * at the run that will no longer arrive (H2, lib/keha-since-run-shared): out of the incoming,
+ * and the stored need grows by them.
  */
 export function forwardInputFromMetric(
   m: StoredMetric,
-  x: { today: DayKey; pack: number | null; moq: number | null; notCounted: number; days: number },
+  x: {
+    today: DayKey;
+    pack: number | null;
+    moq: number | null;
+    notCounted: number;
+    days: number;
+    removed?: readonly { day: DayKey | null; units: number }[];
+  },
 ): ForwardVariantInput {
   const inputs = m.inputs && typeof m.inputs === "object" ? (m.inputs as Record<string, unknown>) : {};
   const lead = numIn(inputs, "leadTimeDays") ?? 0;
@@ -436,6 +476,9 @@ export function forwardInputFromMetric(
     const r = a as Record<string, unknown>;
     if (typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && finite(r.units)) arrivals.push({ day: r.day, units: r.units });
   }
+  const storedIncoming = numIn(inputs, "incoming") ?? 0;
+  const cut = x.removed?.length ? withoutIncoming(storedIncoming, arrivals, x.removed) : null;
+  const storedNeed = numIn(inputs, "orderNeed");
   const computedOn = typeof inputs.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(inputs.today) ? inputs.today : null;
   return {
     today: x.today,
@@ -450,10 +493,10 @@ export function forwardInputFromMetric(
     leadTimeDays: lead,
     cycleDays: numIn(inputs, "cycleDays") ?? 0,
     onHand: numIn(inputs, "onHand") ?? 0,
-    incoming: numIn(inputs, "incoming") ?? 0,
-    arrivals,
-    need: numIn(inputs, "orderNeed"),
-    orderQty: m.orderQty,
+    incoming: cut ? cut.incoming : storedIncoming,
+    arrivals: cut ? cut.arrivals : arrivals,
+    need: storedNeed === null ? null : storedNeed + (cut?.taken ?? 0),
+    orderQty: cut?.taken && storedNeed === null && finite(m.orderQty) ? m.orderQty + cut.taken : m.orderQty,
     notCounted: x.notCounted,
     pack: x.pack,
     moq: x.moq,
