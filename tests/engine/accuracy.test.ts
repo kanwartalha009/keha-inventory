@@ -6,7 +6,11 @@ import {
   absPctError,
   daysInMonth,
   forecastUnits,
+  INSTOCK_PREFIX,
+  NAIVE_PREFIX,
   gradeMonth,
+  inStockShareOf,
+  scoreFromRows,
   monthEnd,
   monthStart,
   nextMonthStart,
@@ -58,7 +62,7 @@ describe("grading", () => {
     { variantId: STORE_ROW, predicted: 130 },
   ];
 
-  it("store error over the same variants; top-20 mean over variants with revenue and a sale", () => {
+  it("M7: store WAPE over the same variants; top-20 WAPE (Σ|F − A| ÷ ΣA) and bias over variants with revenue", () => {
     const g = gradeMonth({
       snapshot,
       actualUnits: new Map([["a", 100], ["b", 20], ["other", 999]]),
@@ -68,9 +72,59 @@ describe("grading", () => {
     expect(g.actual.get("z")).toBe(0); // covered month, no sale = 0
     expect(g.actual.get(STORE_ROW)).toBe(120); // "other" was not snapshotted
     expect(g.storeErrorPct).toBeCloseTo((10 / 120) * 100, 10);
-    // a: 10 %, b: 50 % → 30 %; z has no revenue.
-    expect(g.top20ErrorPct).toBeCloseTo(30, 10);
+    // a: |90 − 100| + b: |30 − 20| = 20 over 120 sold → 16.7 % (the old mean of % errors said 30 %).
+    expect(g.top20ErrorPct).toBeCloseTo((20 / 120) * 100, 10);
+    expect(g.score!.top20.engine.biasPct).toBeCloseTo(0, 10);
+    expect(g.score!.store.engine.biasPct).toBeCloseTo((10 / 120) * 100, 10);
     expect(g.graded).toBe(2);
+  });
+
+  it("M7: a top seller that sold nothing is graded (WAPE never drops a zero actual)", () => {
+    const g = gradeMonth({ snapshot, actualUnits: new Map([["a", 100], ["b", 0]]), revenue: new Map([["a", 1000], ["b", 300]]), coverage: 1 });
+    // |90 − 100| + |30 − 0| = 40 over 100 → 40 %; the old rule left b out.
+    expect(g.top20ErrorPct).toBeCloseTo(40, 10);
+    expect(g.graded).toBe(2);
+  });
+
+  it("M7: stock-out days are excluded from the forecast side; the naive baseline sits beside the engine", () => {
+    const snap = [
+      ...snapshot,
+      { variantId: `${NAIVE_PREFIX}a`, predicted: 120 },
+      { variantId: `${NAIVE_PREFIX}b`, predicted: 30 },
+    ];
+    // b was in stock half the month: its 30 forecast is graded as 15 against the 20 it sold.
+    const g = gradeMonth({
+      snapshot: snap,
+      actualUnits: new Map([["a", 100], ["b", 20]]),
+      revenue: new Map([["a", 1000], ["b", 300]]),
+      coverage: 1,
+      inStockShare: new Map([["b", 0.5]]),
+    });
+    expect(g.top20ErrorPct).toBeCloseTo(((10 + 5) / 120) * 100, 10);
+    expect(g.score!.top20.naive.wapePct).toBeCloseTo(((20 + 5) / 120) * 100, 10);
+    expect(g.score!.top20.naive.biasPct).toBeCloseTo(((20 - 5) / 120) * 100, 10);
+    expect(g.actual.get(`${NAIVE_PREFIX}a`)).toBe(100);
+    expect(g.shares).toEqual(new Map([["b", 0.5]]));
+    // Re-read from the stored rows (the scorecard): the same figures.
+    const rows = [
+      ...snap.map((r) => ({ ...r, actual: g.actual.get(r.variantId) ?? null })),
+      { variantId: `${INSTOCK_PREFIX}b`, predicted: 0.5, actual: null },
+    ];
+    expect(scoreFromRows(rows, new Map([["a", 1000], ["b", 300]]))).toEqual(g.score);
+  });
+
+  it("in-stock share: sold-out days (out AND nothing sold) leave the month; backorder days stay", () => {
+    expect(inStockShareOf([{ outOfStock: true, sold: 0 }, { outOfStock: true, sold: 3 }, { outOfStock: false, sold: 0 }, { outOfStock: false, sold: 1 }])).toBe(0.75);
+    expect(inStockShareOf([])).toBeNull();
+  });
+
+  it("the snapshot keeps the naive baseline (last-28-day rate × days) per variant", () => {
+    const rows = snapshotRows([{ variantId: "a", rate: 2, seasonal: 1.5, trend: 1, naiveRate: 3 }], "2026-11-01");
+    expect(rows).toEqual([
+      { variantId: "a", predicted: 90 },
+      { variantId: STORE_ROW, predicted: 90 },
+      { variantId: `${NAIVE_PREFIX}a`, predicted: 90 },
+    ]);
   });
 
   it("only the top 20 by revenue", () => {
@@ -92,6 +146,8 @@ describe("grading", () => {
       storeErrorPct: null,
       top20ErrorPct: null,
       graded: 0,
+      score: null,
+      shares: new Map(),
     });
     expect(gradeMonth({ snapshot, actualUnits: new Map([["a", 1]]), revenue: new Map(), coverage: 0.8 }).storeErrorPct).not.toBeNull();
     const zero = gradeMonth({ snapshot, actualUnits: new Map(), revenue: new Map([["a", 5]]), coverage: 1 });

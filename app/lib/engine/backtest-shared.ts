@@ -33,6 +33,7 @@ import {
   ACCURACY_TOP,
   STORE_ROW,
   absPctError,
+  isReservedRow,
   daysInMonth,
   gradeMonth,
   monthEnd,
@@ -161,8 +162,10 @@ export interface BacktestMonthResult {
   store: { predicted: number; actual: number | null; absPctError: number | null } | null;
   top20: {
     rows: BacktestRow[];
-    /** Mean abs % error over rows with an error (gradeMonth's top20ErrorPct). */
+    /** Mean abs % error over rows with an error (rows with a sale). */
     meanAbsPctError: number | null;
+    /** The app's top-20 WAPE (accuracy-shared gradeMonth top20ErrorPct). */
+    wapePct: number | null;
     graded: number;
     /** Of the top 20 considered variants by revenue in M, how many had no forecast. */
     topSellersWithoutForecast: number;
@@ -290,7 +293,7 @@ export function backtestMonth(data: BacktestData, month: string): BacktestMonthR
   const g = reason ? null : gradeMonth({ snapshot, actualUnits, revenue: revenueM, coverage: fCoverage });
 
   const titleOf = new Map(data.variants.map((v) => [v.id, v.title]));
-  const forecastRows = snapshot.filter((r) => r.variantId !== STORE_ROW);
+  const forecastRows = snapshot.filter((r) => !isReservedRow(r.variantId));
   const rows: BacktestRow[] = g
     ? topByRevenue(forecastRows, revenueM).map((r) => {
         const actual = g.actual.get(r.variantId) ?? 0;
@@ -337,8 +340,11 @@ export function backtestMonth(data: BacktestData, month: string): BacktestMonthR
         : { predicted: storePredicted, actual: storeActual, absPctError: g ? g.storeErrorPct : null },
     top20: {
       rows,
-      meanAbsPctError: g ? g.top20ErrorPct : null,
-      graded: g ? g.graded : 0,
+      // The mean of the rows' % errors (rows with a sale), as this report always showed it…
+      meanAbsPctError: g ? meanOf(rows.map((x) => x.absPctError)) : null,
+      // …and the app's own top-20 figure since M7 (WAPE: Σ|F − A| ÷ ΣA, zero actuals included).
+      wapePct: g ? g.top20ErrorPct : null,
+      graded: g ? rows.filter((x) => x.absPctError !== null).length : 0,
       topSellersWithoutForecast,
     },
     season: {

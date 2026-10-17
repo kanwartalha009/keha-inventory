@@ -314,5 +314,10 @@ describe("accuracy scorecard", () => {
       [V(2), "Shirt 2", 10, 10, 0],
       [V(1), "Shirt 1", 20, 16, 25],
     ]);
+    // M7 (added field): engine vs naive WAPE / bias from the stored rows; no naive rows → n 0, null.
+    expect(s.detail!.top20.engine).toMatchObject({ n: 2, forecast: 30, actual: 26 });
+    expect(s.detail!.top20.engine.wapePct).toBeCloseTo((4 / 26) * 100, 10);
+    expect(s.detail!.top20.engine.biasPct).toBeCloseTo((4 / 26) * 100, 10);
+    expect(s.detail!.top20.naive).toMatchObject({ n: 0, wapePct: null });
   });
 });

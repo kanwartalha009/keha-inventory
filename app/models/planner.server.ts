@@ -9,6 +9,8 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { accuracyDetail } from "../services/accuracy.server";
+import type { MonthScore } from "../lib/engine/accuracy-shared";
 import { canAddScenario, SCENARIO_LIMIT, type PlanCode } from "../lib/plan-shared";
 import {
   GOAL_WINDOW_DAYS,
@@ -251,6 +253,12 @@ export type ScorecardData =
       top20ErrorPct: number | null;
       graded: number;
       rows: ScorecardRow[];
+      /**
+       * Audit 2026-10-17 (M7): engine vs the naive last-28-days baseline, WAPE and bias, store
+       * and top 20, stock-out days excluded (accuracy.server accuracyDetail). Null for a month
+       * graded before.
+       */
+      detail?: MonthScore | null;
     }
   | { kind: "empty"; firstDate: string };
 
@@ -283,6 +291,7 @@ export async function loadScorecard(shop: string, today: string): Promise<Scorec
     top20ErrorPct: latest.top20ErrorPct,
     graded: latest.graded,
     rows: scorecardRows(snapshot, revenue, titles),
+    detail: await accuracyDetail(shop, month),
   };
 }
 

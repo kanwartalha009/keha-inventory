@@ -1,25 +1,35 @@
 /**
- * Forecast accuracy, data side (spec §6.6 "accuracy", §7.8). Runs from the hourly scheduler;
- * every step is idempotent, so a second run in the same hour (or a restart) changes nothing.
+ * Forecast accuracy, data side (spec §6.6 "accuracy", §7.8; audit 2026-10-17 M7). Runs from the
+ * hourly scheduler; every step is idempotent, so a second run in the same hour (or a restart)
+ * changes nothing.
  *
  * Per installed shop, on the store's clock:
  *  - Snapshot (the first run on days 1–3 of the month, review fix: a missed 1st no longer skips
  *    the month): when ForecastSnapshot has no row for this month yet and the latest
  *    VariantMetric run is fresh (≤ 36 h old), write predicted units for the month per variant
- *    with a rate (rate × seasonal-for-this-month × trend × days in month) plus the "__store__"
- *    total. createMany skipDuplicates: the first snapshot of a month is kept.
+ *    with a rate (rate × seasonal-for-this-month × applied trend × days in month), the
+ *    "__store__" total and the naive baseline ("__naive__:<id>": the last-28-day in-stock rate ×
+ *    days). createMany skipDuplicates: the first snapshot of a month is kept.
  *  - Grade (any day): EVERY snapshotted month before this one with no AccuracyMonth row yet whose
  *    sales history reaches its final day (review fix: not only last month), oldest first. Fills
- *    ForecastSnapshot.actual from SalesDaily — the online pool LOCATION view only (channel "all",
- *    locationKey in the pool keys), never added to the channel view — and writes AccuracyMonth.
- *    Revenue for the top-20 ranking comes from the channel view (locationKey "all") on its own,
- *    over the month BEFORE the graded month (rankingWindow: no look-ahead, as the backtest).
-  */
+ *    ForecastSnapshot.actual from the pool's demand view (compute-shared demandWhere; one view,
+ *    never both), keeps each variant's in-stock share of the month ("__instock__:<id>": sold-out
+ *    days are excluded from the forecast side, accuracy-shared gradeMonth) and writes
+ *    AccuracyMonth (storeErrorPct / top20ErrorPct = the engine's WAPE). Revenue for the top-20
+ *    ranking comes from the channel view (locationKey "all") on its own, over the month BEFORE
+ *    the graded month (rankingWindow: no look-ahead, as the backtest).
+ *  - accuracyDetail: the scorecard's engine vs naive figures, re-read from those rows.
+ */
 import prisma from "../db.server";
 import {
+  INSTOCK_PREFIX,
   STORE_ROW,
   daysInMonth,
   gradeMonth,
+  inStockShareOf,
+  isReservedRow,
+  scoreFromRows,
+  type MonthScore,
   monthEnd,
   monthStart,
   monthsToGrade,
@@ -29,7 +39,7 @@ import {
 } from "../lib/engine/accuracy-shared";
 import { spanStats, type TrendMode } from "../lib/engine/season-shared";
 import { readSettings } from "../lib/settings-shared";
-import { POOL_LOCATION_SELECT, demandScope, demandWhere, salesCoverage, type DemandScope } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds, pooledOutOfStock, salesCoverage, type DemandScope } from "../lib/compute-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
@@ -61,7 +71,7 @@ export async function runAccuracy(shop: string, now: Date = new Date()): Promise
   return {
     status: "ok",
     snapshot: await snapshotMonth(shop, today, now, demand, coverage, trendMode),
-    grade: await gradeMonths(shop, today, demand, coverage),
+    grade: await gradeMonths(shop, today, demand, coverage, poolLocationIds(locations)),
   };
 }
 
@@ -79,7 +89,7 @@ async function snapshotMonth(
   if (existing > 0) return "exists";
   const metrics = await prisma.variantMetric.findMany({
     where: { shop, scope: "online" },
-    select: { variantId: true, rate: true, computedAt: true },
+    select: { variantId: true, rate: true, computedAt: true, inputs: true },
   });
   if (!metrics.length) return "no_data";
   const latest = metrics.reduce((m, x) => Math.max(m, x.computedAt.getTime()), 0);
@@ -98,7 +108,7 @@ async function snapshotMonth(
   const rows = snapshotRows(
     metrics.map((m) => {
       const s = season.forVariant(collectionsOf.get(m.variantId) ?? [], days);
-      return { variantId: m.variantId, rate: m.rate, seasonal: s.seasonal, trend: s.trend };
+      return { variantId: m.variantId, rate: m.rate, seasonal: s.seasonal, trend: s.trend, naiveRate: naiveRateOf(m.inputs) };
     }),
     month,
   );
@@ -117,6 +127,7 @@ async function gradeMonths(
   today: string,
   demand: DemandScope,
   coverage: ReturnType<typeof salesCoverage>,
+  pool: string[],
 ): Promise<AccuracyResult["grade"]> {
   const [snapshotted, graded] = await Promise.all([
     prisma.forecastSnapshot.findMany({
@@ -131,14 +142,20 @@ async function gradeMonths(
     today,
     coverage.to,
   );
-  for (const month of plan.due) await gradeOneMonth(shop, month, demand, coverage);
+  for (const month of plan.due) await gradeOneMonth(shop, month, demand, coverage, pool);
   if (plan.due.length) return "written";
   if (plan.waiting.length) return "waiting";
   return snapshotted.length ? "exists" : "no_snapshot";
 }
 
 /** Grades one snapshotted month (its data is complete). */
-async function gradeOneMonth(shop: string, month: string, demand: DemandScope, coverage: ReturnType<typeof salesCoverage>): Promise<void> {
+async function gradeOneMonth(
+  shop: string,
+  month: string,
+  demand: DemandScope,
+  coverage: ReturnType<typeof salesCoverage>,
+  pool: string[],
+): Promise<void> {
   const end = monthEnd(month);
   const snapshot = await prisma.forecastSnapshot.findMany({
     where: { shop, month: dayDate(month) },
@@ -160,11 +177,13 @@ async function gradeOneMonth(shop: string, month: string, demand: DemandScope, c
       _sum: { gross: true },
     }),
   ]);
+  const ids = snapshot.filter((r) => !isReservedRow(r.variantId)).map((r) => r.variantId);
   const g = gradeMonth({
     snapshot,
     actualUnits: new Map(unitsG.map((x) => [x.variantId, num(x._sum.sold)])),
     revenue: new Map(revenueG.map((x) => [x.variantId, num(x._sum.gross)])),
     coverage: covered,
+    inStockShare: await inStockShares(shop, ids, days, demand, pool),
   });
   const updates = [...g.actual];
   for (let i = 0; i < updates.length; i += WRITE_BATCH) {
@@ -177,12 +196,75 @@ async function gradeOneMonth(shop: string, month: string, demand: DemandScope, c
       ),
     );
   }
+  // The in-stock share per variant, so the scorecard re-reads the same figures (scoreFromRows).
+  const shareRows = [...g.shares].map(([id, share]) => ({ shop, month: dayDate(month), variantId: INSTOCK_PREFIX + id, predicted: share }));
+  for (let i = 0; i < shareRows.length; i += 5000) await prisma.forecastSnapshot.createMany({ data: shareRows.slice(i, i + 5000), skipDuplicates: true });
   const data = { storeErrorPct: g.storeErrorPct, top20ErrorPct: g.top20ErrorPct, graded: g.graded, computedAt: new Date() };
   await prisma.accuracyMonth.upsert({
     where: { shop_month: { shop, month: dayDate(month) } },
     create: { shop, month: dayDate(month), ...data },
     update: data,
   });
+}
+
+/** The naive baseline's rate: the 28-day window of the stored sales rate (in-stock days only). */
+export function naiveRateOf(inputs: unknown): number | null {
+  const w = inputs && typeof inputs === "object" ? (inputs as { windows?: unknown }).windows : null;
+  if (!Array.isArray(w)) return null;
+  const r = w.find((x) => x && typeof x === "object" && (x as { days?: unknown }).days === 28) as { rate?: unknown } | undefined;
+  return typeof r?.rate === "number" && Number.isFinite(r.rate) && r.rate >= 0 ? r.rate : null;
+}
+
+/**
+ * Share of the graded month each variant was in stock in the pool (inStockShareOf): pooled
+ * StockDaily per day, sold out = pooled ending units ≤ 0 (or every reporting location out) AND
+ * nothing sold that day (the pool's demand view). Variants without stock rows are left out (1).
+ */
+async function inStockShares(
+  shop: string,
+  ids: readonly string[],
+  days: { gte: Date; lte: Date },
+  demand: DemandScope,
+  pool: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!ids.length || !pool.length) return out;
+  const [stockG, outG, soldG] = await Promise.all([
+    prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days }, _sum: { endUnits: true }, _count: { _all: true } }),
+    prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days, outOfStock: true }, _count: { _all: true } }),
+    prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...demandWhere(demand), day: days }, _sum: { sold: true } }),
+  ]);
+  const want = new Set(ids);
+  const outN = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
+  const sold = new Map(soldG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, num(g._sum.sold)]));
+  const byVariant = new Map<string, { outOfStock: boolean; sold: number }[]>();
+  for (const g of stockG) {
+    if (!want.has(g.variantId)) continue;
+    const k = `${g.variantId}|${dayKey(g.day)}`;
+    const list = byVariant.get(g.variantId) ?? byVariant.set(g.variantId, []).get(g.variantId)!;
+    list.push({ outOfStock: pooledOutOfStock({ endUnits: num(g._sum.endUnits), reported: g._count._all, outReported: outN.get(k) ?? 0 }), sold: sold.get(k) ?? 0 });
+  }
+  for (const [id, list] of byVariant) {
+    const share = inStockShareOf(list);
+    if (share !== null) out.set(id, share);
+  }
+  return out;
+}
+
+/**
+ * The scorecard's figures for a graded month, from its stored rows (the same maths grading
+ * used): engine and naive WAPE and bias, store and top 20. Null when the month has no rows.
+ */
+export async function accuracyDetail(shop: string, month: string): Promise<MonthScore | null> {
+  const rows = await prisma.forecastSnapshot.findMany({ where: { shop, month: dayDate(month) }, select: { variantId: true, predicted: true, actual: true } });
+  if (!rows.length) return null;
+  const rank = rankingWindow(month);
+  const revenueG = await prisma.salesDaily.groupBy({
+    by: ["variantId"],
+    where: { shop, locationKey: ALL, day: { gte: dayDate(rank.from), lte: dayDate(rank.to) } },
+    _sum: { gross: true },
+  });
+  return scoreFromRows(rows, new Map(revenueG.map((x) => [x.variantId, num(x._sum.gross)])));
 }
 
 let running = false;

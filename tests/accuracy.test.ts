@@ -13,7 +13,7 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
-import { runAccuracy, runAccuracyAllShops } from "../app/services/accuracy.server";
+import { accuracyDetail, runAccuracy, runAccuracyAllShops } from "../app/services/accuracy.server";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
@@ -60,6 +60,12 @@ describe("snapshot", () => {
       { m: "2026-11-01", v: A, p: 60 },
       { m: "2026-11-01", v: "__store__", p: 60 },
     ]);
+  });
+
+  it("M7: keeps the naive baseline per variant (last-28-day in-stock rate × days)", async () => {
+    db.tables.variantMetric[0].inputs = { windows: [{ days: 28, rate: 3 }, { days: 56, rate: 2 }] };
+    await runAccuracy(S, FIRST);
+    expect(db.tables.forecastSnapshot.find((x) => x.variantId === `__naive__:${A}`)!.predicted).toBe(90);
   });
 
   it("is idempotent and keeps the first snapshot", async () => {
@@ -125,11 +131,35 @@ describe("grading last month", () => {
     const m = db.tables.accuracyMonth[0];
     expect((m.month as Date).toISOString().slice(0, 10)).toBe("2026-10-01");
     expect(m.storeErrorPct).toBeCloseTo((11 / 82) * 100, 10);
-    expect(m.top20ErrorPct).toBeCloseTo((0 + 55) / 2, 10);
+    // M7: top-20 WAPE = (|62 − 62| + |31 − 20|) ÷ 82 (was the mean of % errors: 27.5 %).
+    expect(m.top20ErrorPct).toBeCloseTo((11 / 82) * 100, 10);
     expect(m.graded).toBe(2);
     // Idempotent.
     expect((await runAccuracy(S, new Date("2026-11-01T10:00:00Z"))).grade).toBe("exists");
     expect(db.tables.accuracyMonth).toHaveLength(1);
+  });
+
+  it("M7: sold-out days leave the forecast side; the scorecard detail shows engine vs naive", async () => {
+    october();
+    db.tables.forecastSnapshot.push({ shop: S, month: d("2026-10-01"), variantId: `__naive__:${B}`, predicted: 40, actual: null });
+    // B: in stock 20 days (it sold 1 a day), then 11 sold-out days (0 units, nothing sold).
+    db.tables.stockDaily = [];
+    for (let i = 0; i < 31; i++) {
+      const day = d(addDays("2026-10-01", i));
+      db.tables.stockDaily.push({ shop: S, day, variantId: B, locationId: L1, endUnits: i < 20 ? 5 : 0, outOfStock: i >= 20 });
+    }
+    await runAccuracy(S, FIRST);
+    // B's 31 forecast × 20/31 in stock = 20 vs 20 sold: 0 error. Store: 62 + 20 vs 82 → 0 %.
+    const m = db.tables.accuracyMonth[0];
+    expect(m.top20ErrorPct).toBeCloseTo(0, 10);
+    expect(m.storeErrorPct).toBeCloseTo(0, 10);
+    expect(db.tables.forecastSnapshot.find((x) => x.variantId === `__instock__:${B}`)!.predicted).toBeCloseTo(20 / 31, 12);
+    const detail = (await accuracyDetail(S, "2026-10-01"))!;
+    expect(detail.top20.engine).toMatchObject({ n: 2 });
+    expect(detail.top20.engine.wapePct).toBeCloseTo(0, 10);
+    // Naive for B only: 40 × 20/31 vs 20.
+    expect(detail.top20.naive.n).toBe(1);
+    expect(detail.top20.naive.wapePct).toBeCloseTo(((40 * 20) / 31 - 20) / 20 * 100, 10);
   });
 
   it("review fix: the top 20 is ranked by revenue in the month BEFORE the graded month (as the backtest)", async () => {
