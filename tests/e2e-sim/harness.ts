@@ -35,6 +35,7 @@ import { state } from "./mocks";
 import { facts } from "../../app/services/facts-store.server";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere } from "../../app/lib/compute-shared";
 import { SEASON } from "../../app/lib/engine/season-shared";
+import { SPIKE_CAP, robustCap } from "../../app/lib/engine/outliers-shared";
 import { readSettings } from "../../app/lib/settings-shared";
 import { dayDate } from "../../app/lib/sync/facts-shared";
 
@@ -375,12 +376,30 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
   for (const v of store.variants) {
     const m = metricOf.get(v.id);
     if (!m || m.rate === null || inputsOf(v.id).pace) continue;
-    const day = (d: number) => {
+    const raw = (d: number) => {
       const i = v.idx * D + d;
       const sold = store.sold[0]![i]! + store.sold[1]![i]! + store.sold[2]![i]! - store.returned[0]![i]!;
       const pool = [W1, W2, POS].reduce((a, loc) => a + (v.at[loc] ? store.stock[loc]![i]! : 0), 0);
-      return { sold, out: pool <= 0 && !(sold > 0) };
+      return { sold, ended: pool <= 0 };
     };
+    // R4 (forecast quality): the day a variant ran out (it ended at 0 but sold, the day before
+    // ended with stock) is PARTIAL — counted at least at the window's full-day pace; one-off
+    // spikes are capped at median + 4 × max(1.4826 × MAD, √mean) of the in-stock full days of the
+    // 90-day series compute reads (older history only for the out-of-stock-most-of-the-window
+    // variants, whose stored pace these checks skip).
+    const day = (d: number) => {
+      const x = raw(d);
+      // (The day before must be in the 90-day series compute reads: its first day is never partial.)
+      const partial = x.ended && x.sold > 0 && d > Math.max(v.firstStock, D - 90) && !raw(d - 1).ended;
+      return { sold: x.sold, out: x.ended && !(x.sold > 0), partial };
+    };
+    const capValues: number[] = [];
+    for (let d = D - 1; d >= Math.max(v.firstStock, D - 90) && capValues.length < SPIKE_CAP.windowDays; d--) {
+      const x = day(d);
+      if (!x.out && !x.partial && x.sold >= 0) capValues.push(x.sold);
+    }
+    const cap = (inputsOf(v.id).spikes as { off?: boolean } | undefined)?.off ? null : robustCap(capValues);
+    const capped = (n: number) => (cap !== null && n > cap ? cap : n);
     let num = 0;
     let den = 0;
     let naiveNum = 0;
@@ -390,17 +409,25 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
       let soldIn = 0;
       let data = 0;
       let soldAll = 0;
+      let full = 0;
+      const partials: number[] = [];
       for (let d = Math.max(D - w.days, v.firstStock); d < D; d++) {
         const x = day(d);
         data++;
-        soldAll += x.sold;
+        soldAll += capped(x.sold);
         if (x.out) {
           if (w.days === 90) soldOutDays++;
         } else {
           inStock++;
-          soldIn += x.sold;
+          if (x.partial) partials.push(capped(x.sold));
+          else {
+            full++;
+            soldIn += capped(x.sold);
+          }
         }
       }
+      const fullPace = full > 0 ? Math.max(0, soldIn / full) : 0;
+      for (const p of partials) soldIn += Math.max(p, fullPace);
       if (inStock >= 7) {
         num += w.weight * Math.max(0, soldIn / inStock);
         den += w.weight;
