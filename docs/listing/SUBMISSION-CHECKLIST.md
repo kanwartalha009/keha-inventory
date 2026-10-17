@@ -29,7 +29,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 4. **Legal name** on Railway: `INVENTORY_LEGAL_NAME` = the registered company. The live privacy and terms pages
    name the operator only as "Keha".
 5. **Partner Dashboard → App pricing** (Shopify App Pricing): `free`, `growth` $49 / $490, `pro` $99 / $990,
-   14-day trial on paid plans, exactly as `LISTING.md` → Pricing. Welcome link = `/app`.
+   7-day trial on paid plans, exactly as `LISTING.md` → Pricing. Welcome link = `/app`.
 6. **Partner Dashboard → API access → Protected customer data**: request Level 2 (needed by
    `shopifyqlQuery` / `read_reports`, shopify.dev states "Level 2 access to Customer data including name,
    address, phone, and email fields"); answers from `PCD-ANSWERS.md`, every **[Kanwar to confirm]** resolved.

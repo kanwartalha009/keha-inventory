@@ -194,7 +194,7 @@ The app requests no `read_orders`, `read_customers` or `read_all_orders`, subscr
       Monday email and data-request answers depend on them); `INVENTORY_SUPPORT_EMAIL`,
       `INVENTORY_LEGAL_NAME` set; `/health` shows sync fresh and `pricing.lastOkAt`.
 - [ ] Partner Dashboard → App pricing: plans `free`, `growth` ($49 / $490), `pro` ($99 / $990),
-      14-day trial on paid plans.
+      7-day trial on paid plans.
 - [ ] Protected customer data form: Level 2 requested for `read_reports`, answers from
       `PCD-ANSWERS.md`, "log access" = Yes.
 - [ ] `npm run deploy` (Flow extension) and release the version; open the app once to accept

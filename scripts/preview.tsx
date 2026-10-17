@@ -403,8 +403,8 @@ const alerts: AlertsLoaderData = { form: alertsToForm(DEFAULT_SETTINGS), slack: 
 
 const PLANS = [
   { code: "free", name: "Free", amountMonthly: 0, amountAnnual: 0, currency: "USD", trialDays: 0 },
-  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 14 },
-  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 14 },
+  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 7 },
+  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 7 },
 ];
 
 const poLine = (n: number, title: string, qty: number, unitCost: number | null): PoLine => ({ variantId: VID(n), qty, unitCost, productTitle: title, variantTitle: "M", sku: `SKU-${n}` });

@@ -21,13 +21,13 @@ export type Plan = {
   trialDays: number;
 };
 
-// Spec §3: Free / Growth $49 / Pro $99, 14-day free trial, annual = 2 months
+// Spec §3: Free / Growth $49 / Pro $99, 7-day free trial (owner 2026-10-17, Partner Dashboard), annual = 2 months
 // free (10 × monthly). Which features each plan includes lives in
 // app/lib/plan-shared.ts.
 const FALLBACK: Plan[] = [
   { code: "free", name: "Free", amountMonthly: 0, amountAnnual: 0, currency: "USD", trialDays: 0 },
-  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 14 },
-  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 14 },
+  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 7 },
+  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 7 },
 ];
 
 let cache: { at: number; plans: Plan[] } | null = null;

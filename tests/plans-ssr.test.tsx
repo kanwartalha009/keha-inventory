@@ -17,8 +17,8 @@ import PlansPage from "../app/routes/app.plans";
 
 const plans = [
   { code: "free", name: "Free", amountMonthly: 0, amountAnnual: 0, currency: "USD", trialDays: 0 },
-  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 14 },
-  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 14 },
+  { code: "growth", name: "Growth", amountMonthly: 4900, amountAnnual: 49000, currency: "USD", trialDays: 7 },
+  { code: "pro", name: "Pro", amountMonthly: 9900, amountAnnual: 99000, currency: "USD", trialDays: 7 },
 ];
 
 function render(data: Record<string, unknown>) {
@@ -40,7 +40,7 @@ describe("Plans page", () => {
     expect(html).toContain("keha-seg"); // visible Monthly / Annual switch
     expect(html).toContain("$49.00");
     expect(html).toContain("$99.00");
-    expect(html).toContain("14-day free trial");
+    expect(html).toContain("7-day free trial");
     expect(html).toContain("Recommended");
     expect(html).not.toContain("Most popular");
     expect(html).toContain("No revenue tiers or SKU limits.");

@@ -95,7 +95,7 @@ describe("listing pricing", () => {
     return { monthly: Number(m![1]) / 100, annual: Number(m![2]) / 100, trial: Number(m![3]) };
   };
 
-  it("matches the plan catalog: prices, annual = 2 months free, 14-day trial", () => {
+  it("matches the plan catalog: prices, annual = 2 months free, 7-day trial", () => {
     for (const code of PLAN_CODES) {
       const p = plan(code);
       const row = listing.match(new RegExp(`^\\| ${PLAN_LABEL[code]} \\| \\$(\\d+) \\| \\$(\\d+) \\| ([^|]+) \\|$`, "m"));
@@ -105,8 +105,16 @@ describe("listing pricing", () => {
       expect(p.annual).toBe(p.monthly * 10);
       expect(row![3].trim()).toBe(p.trial ? `${p.trial} days` : "none");
     }
-    expect(plan("growth")).toEqual({ monthly: 49, annual: 490, trial: 14 });
-    expect(plan("pro")).toEqual({ monthly: 99, annual: 990, trial: 14 });
+    expect(plan("growth")).toEqual({ monthly: 49, annual: 490, trial: 7 });
+    expect(plan("pro")).toEqual({ monthly: 99, annual: 990, trial: 7 });
+  });
+
+  it("says 7-day trial in the owner checklists too (owner 2026-10-17: Growth and Pro trials are 7 days)", () => {
+    for (const doc of ["docs/listing/SUBMISSION-CHECKLIST.md", "docs/listing/REVIEWER.md"]) {
+      const text = read(doc);
+      expect(text, doc).toContain("7-day trial on paid plans");
+      expect(text, doc).not.toMatch(/\b14-day trial\b/);
+    }
   });
 
   it("lists every plan-card line word for word, each marked shipped or not built", () => {

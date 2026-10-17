@@ -117,8 +117,8 @@ App pricing. Plan handles: `free`, `growth`, `pro`. Annual = 2 months free (10 Ã
 | Plan | Monthly | Annual | Free trial |
 |---|---|---|---|
 | Free | $0 | $0 | none |
-| Growth | $49 | $490 | 14 days |
-| Pro | $99 | $990 | 14 days |
+| Growth | $49 | $490 | 7 days |
+| Pro | $99 | $990 | 7 days |
 
 Plan card features, word for word from `PLAN_POINTS` (`app/lib/plan-matrix.ts`), each marked
 with whether the code ships it (all do as of the merge of the Planner and Pro stores). Never
