@@ -5,6 +5,7 @@
  */
 
 export type SafetyLevel = "lean" | "balanced" | "safe";
+export type TrendMode = "off" | "store";
 
 export type ShopSettings = {
   /** Default supplier lead time in days (spec §5.5: 14). */
@@ -18,6 +19,14 @@ export type ShopSettings = {
   tooMuchDays: number;
   /** "Dead" threshold in days (90). */
   deadDays: number;
+  /**
+   * Growth assumption in the demand forecast. "off" (default): today's sales pace
+   * (× season) is the forecast. "store": also multiply by the store's year-on-year
+   * trend (spec §7.4 as written). Audit 2026-10-17 on a real store: "store" was
+   * ~3× less accurate (WAPE 90% vs 36%), because today's pace already contains the
+   * growth — so it's an opt-in.
+   */
+  trendMode: TrendMode;
   mondayEmail: {
     /** Spec D5: on by default, to the store owner. */
     enabled: boolean;
@@ -48,6 +57,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   safetyLevel: "balanced",
   tooMuchDays: 180,
   deadDays: 90,
+  trendMode: "off",
   mondayEmail: { enabled: true, recipients: [] },
   alerts: { instant: true, slackWebhook: null, slackMonday: true, slackError: null },
 };
@@ -69,6 +79,7 @@ export function readSettings(raw: unknown): ShopSettings {
     safetyLevel: level === "lean" || level === "safe" || level === "balanced" ? level : DEFAULT_SETTINGS.safetyLevel,
     tooMuchDays: int(r.tooMuchDays, 30, 730, DEFAULT_SETTINGS.tooMuchDays),
     deadDays: int(r.deadDays, 30, 730, DEFAULT_SETTINGS.deadDays),
+    trendMode: r.trendMode === "store" ? "store" : "off",
     mondayEmail: {
       enabled: typeof me.enabled === "boolean" ? me.enabled : DEFAULT_SETTINGS.mondayEmail.enabled,
       recipients: Array.isArray(me.recipients) ? me.recipients.filter((x): x is string => typeof x === "string") : [],

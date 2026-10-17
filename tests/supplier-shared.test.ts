@@ -65,3 +65,31 @@ describe("PO lines", () => {
     expect(poArrival({ confirmedShipDate: null, expectedDate: null })).toBeNull();
   });
 });
+
+describe("arrival, drafts and currency (audit 2026-10-17)", () => {
+  it("adds transit days to a confirmed ship date, not to the lead-time estimate", async () => {
+    const { poArrival } = await import("../app/lib/supplier-shared");
+    const c = new Date("2026-11-01T00:00:00Z");
+    const e = new Date("2026-11-10T00:00:00Z");
+    expect(poArrival({ confirmedShipDate: c, expectedDate: e }, 35)?.toISOString().slice(0, 10)).toBe("2026-12-06");
+    expect(poArrival({ confirmedShipDate: null, expectedDate: e }, 35)).toBe(e);
+    expect(poArrival({ confirmedShipDate: c, expectedDate: e }, null)).toBe(c);
+  });
+
+  it("stops counting drafts after 14 days; sent and confirmed always count", async () => {
+    const { poCountsAsOrdered } = await import("../app/lib/supplier-shared");
+    const now = new Date("2026-10-30T00:00:00Z");
+    expect(poCountsAsOrdered({ status: "draft", createdAt: new Date("2026-10-20T00:00:00Z") }, now)).toBe(true);
+    expect(poCountsAsOrdered({ status: "draft", createdAt: new Date("2026-10-10T00:00:00Z") }, now)).toBe(false);
+    expect(poCountsAsOrdered({ status: "sent", createdAt: new Date("2026-01-01T00:00:00Z") }, now)).toBe(true);
+    expect(poCountsAsOrdered({ status: "received", createdAt: now }, now)).toBe(false);
+  });
+
+  it("converts with the exchange rate, or says unknown", async () => {
+    const { toStoreCurrency, toSupplierCurrency } = await import("../app/lib/supplier-shared");
+    expect(toStoreCurrency(100, 0.92)).toBeCloseTo(92);
+    expect(toSupplierCurrency(92, 0.92)).toBeCloseTo(100);
+    expect(toStoreCurrency(100, null)).toBeNull();
+    expect(toStoreCurrency(null, 1)).toBeNull();
+  });
+});

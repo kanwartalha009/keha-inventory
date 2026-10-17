@@ -13,7 +13,18 @@ export interface SupplierLite {
   minOrderTotal: number | null;
   casePack: number | null;
   vendorMatch: string[];
+  /** Days from the supplier's ship date to arrival (freight). null = ship date is the arrival. */
+  transitDays?: number | null;
+  /** Minimum order value in the supplier's currency. */
+  minOrderValue?: number | null;
+  /** What `minOrder` applies to: each variant, or each product (style) split across its variants. */
+  minOrderScope?: MinOrderScope;
+  /** 1 unit of the supplier's currency in the store's currency; null = unknown. */
+  exchangeRate?: number | null;
 }
+
+export type MinOrderScope = "variant" | "product";
+export const readMinOrderScope = (v: unknown): MinOrderScope => (v === "product" ? "product" : "variant");
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
@@ -62,9 +73,47 @@ export interface PoLine {
 
 export const OPEN_PO_STATUSES = ["sent", "confirmed"] as const;
 
-/** Expected arrival: the supplier's confirmed date, else the lead-time estimate. */
-export function poArrival(po: { confirmedShipDate: Date | null; expectedDate: Date | null }): Date | null {
-  return po.confirmedShipDate ?? po.expectedDate ?? null;
+const DAY_MS = 86_400_000;
+
+/**
+ * Expected arrival. The supplier confirms a SHIP date; stock arrives `transitDays`
+ * later (sea/air freight; audit 2026-10-17). Without a confirmation: the lead-time
+ * estimate (`expectedDate`, already order → arrival).
+ */
+export function poArrival(
+  po: { confirmedShipDate: Date | null; expectedDate: Date | null },
+  transitDays?: number | null,
+): Date | null {
+  if (po.confirmedShipDate) {
+    const t = transitDays && transitDays > 0 ? Math.floor(transitDays) : 0;
+    return t ? new Date(po.confirmedShipDate.getTime() + t * DAY_MS) : po.confirmedShipDate;
+  }
+  return po.expectedDate ?? null;
+}
+
+/**
+ * Drafts nobody sent stop counting as "already ordered" after this many days, so a
+ * forgotten draft can't quietly cause under-ordering (audit 2026-10-17).
+ */
+export const DRAFT_EXPIRY_DAYS = 14;
+
+/** Does this order's quantity still net off suggestions? Sent/confirmed always; drafts only while fresh. */
+export function poCountsAsOrdered(po: { status: string; createdAt: Date }, now: Date): boolean {
+  if (po.status === "sent" || po.status === "confirmed") return true;
+  if (po.status !== "draft") return false;
+  return now.getTime() - po.createdAt.getTime() < DRAFT_EXPIRY_DAYS * DAY_MS;
+}
+
+/** A store-currency amount in the supplier's currency (null when the rate is unknown). */
+export function toSupplierCurrency(storeAmount: number | null, exchangeRate: number | null | undefined): number | null {
+  if (storeAmount == null || !exchangeRate || !(exchangeRate > 0)) return null;
+  return storeAmount / exchangeRate;
+}
+
+/** A supplier-currency amount in the store's currency (null when the rate is unknown). */
+export function toStoreCurrency(supplierAmount: number | null, exchangeRate: number | null | undefined): number | null {
+  if (supplierAmount == null || !exchangeRate || !(exchangeRate > 0)) return null;
+  return supplierAmount * exchangeRate;
 }
 
 /** Read PurchaseOrder.lines defensively (malformed entries are dropped). */
