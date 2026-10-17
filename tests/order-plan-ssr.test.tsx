@@ -1,5 +1,5 @@
 /**
- * Order plan (Kanwar 2026-10-17): Next 90 days (Growth / Free / empty), the shared helpers
+ * Order plan (Kanwar 2026-10-17): Next 13 weeks (Growth / Free / empty), the shared helpers
  * (Order this week, the Free preview, links, CSV) on a plan built with the real forward plan.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -30,10 +30,10 @@ function render(data: CalendarPageData) {
   return renderToString(<Stub initialEntries={["/app/reorder/calendar"]} hydrationData={{ loaderData: { cal: data } }} />);
 }
 
-describe("Next 90 days", () => {
+describe("Next 13 weeks", () => {
   it("Growth: summary, cash strip, 13 week rows, the first busy week open with its suppliers and lines", () => {
     const html = render({ enabled: true, plan: orderPlanFixture() });
-    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Next 90 days</);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Next 13 weeks</);
     expect(html).toMatch(/\d+ orders in the next 13 weeks · [\d,]+ units · €[\d,]+/);
     expect(html).toContain("keha-orderplan-strip");
     expect(html.split("keha-orderplan-week ").length - 1 + (html.split("keha-orderplan-week\"").length - 1)).toBe(13);
@@ -62,14 +62,14 @@ describe("Next 90 days", () => {
 
   it("nothing to order", () => {
     const html = render({ enabled: true, plan: EMPTY_ORDER_PLAN(PLAN_TODAY, "EUR") });
-    expect(html).toContain("No orders needed in the next 90 days.");
+    expect(html).toContain("No orders needed in the next 13 weeks.");
     expect(html).not.toContain("Download CSV");
     expect(html).not.toContain("Week by week");
   });
 
   it("nothing to order but products that can't be planned: the count line goes with it", () => {
     const html = render({ enabled: true, plan: { ...EMPTY_ORDER_PLAN(PLAN_TODAY, "EUR"), cantPlan: { noData: 2, dead: 0 } } });
-    expect(html).toContain("No orders needed in the next 90 days.");
+    expect(html).toContain("No orders needed in the next 13 weeks.");
     expect(html).toContain("2 products can&#x27;t be planned yet — not enough sales history.");
   });
 
@@ -89,7 +89,7 @@ describe("Next 90 days", () => {
   it("Free (and below Growth): the tab bar stays and the tab teaches", () => {
     const html = render({ enabled: false, plan: EMPTY_ORDER_PLAN("") });
     expect(html).toContain("keha-tabs");
-    expect(html).toContain("90-day order calendar · Growth plan");
+    expect(html).toContain("13-week order calendar · Growth plan");
     expect(html).toContain('href="/app/plans?upgrade=orderCalendar"');
     expect(html).not.toContain("Download CSV");
   });
@@ -188,9 +188,8 @@ describe("order-plan-shared", () => {
     expect(lockTeaser({ ...plan, events: [] })).toBeNull();
   });
 
-  it("13 calendar weeks, 12 on the Dashboard", () => {
+  it("13 calendar weeks, on the Dashboard too (one cash horizon)", () => {
     expect(planWeeks(plan)).toHaveLength(13);
-    expect(planWeeks(plan, 12)).toHaveLength(12);
   });
 
   it("the Free preview: next order per variant, most urgent first, at most 10", () => {
@@ -238,7 +237,7 @@ describe("loaders: the plan gates on the server too", () => {
     vi.mocked(loadOrderPlan).mockResolvedValue(orderPlanFixture());
   };
 
-  it("Next 90 days: Growth loads the plan; Free gets only the teaching totals", async () => {
+  it("Next 13 weeks: Growth loads the plan; Free gets only the teaching totals", async () => {
     as("growth");
     expect((await calendarLoader(args("https://app.test/app/reorder/calendar"))).plan.events.length).toBeGreaterThan(0);
     as("free");
@@ -262,7 +261,7 @@ describe("loaders: the plan gates on the server too", () => {
   });
 });
 
-describe("Next 90 days footnote names the trend only when the growth assumption is on (2026-10-17)", () => {
+describe("Next 13 weeks footnote names the trend only when the growth assumption is on (2026-10-17)", () => {
   it("off (default): sales pace, last year's season, stock and stock on order — no trend", () => {
     const html = render({ enabled: true, plan: orderPlanFixture() });
     expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, stock now and stock on order with its dates.");

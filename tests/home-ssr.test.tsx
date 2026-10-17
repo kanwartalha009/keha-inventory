@@ -19,8 +19,9 @@ vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: vi.fn() }));
 
 import Home, { action, loader, type HomeLoaderData } from "../app/routes/app._index";
 import { orderPlanFixture } from "./order-plan-fixtures";
-import { lockTeaser, previewRows } from "../app/lib/order-plan-shared";
-import { buildHome, type HomeRaw } from "../app/lib/dashboard-shared";
+import { lockTeaser, planWeeks, previewRows } from "../app/lib/order-plan-shared";
+import { cashTotals } from "../app/lib/engine/forward-plan-shared";
+import { buildHome, formatAmount, type HomeRaw } from "../app/lib/dashboard-shared";
 import type { PlanCode } from "../app/lib/plan-shared";
 import type { ActionListView } from "../app/lib/action-list-shared";
 import { actionList, homeRaw } from "./home-fixtures";
@@ -316,7 +317,7 @@ describe("Home: this week's actions (task 2.3)", () => {
 describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
   const ready = (plan: PlanCode = "growth") => buildHome(homeRaw(), plan, NOW);
 
-  it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 12-week strip", () => {
+  it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 13-week strip", () => {
     const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
     expect(html.indexOf("Order this week")).toBeLessThan(html.indexOf("Money at stake"));
     expect(html).toContain("Lisbon Linen");
@@ -325,10 +326,22 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     // Review order → Order now with that supplier's orders of the next 7 days (a key, never a list of variants).
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     expect(html).toMatch(/[\d,]+ units from 1 supplier · €[\d,]+/);
-    expect(html).toMatch(/Cash needed, next 12 weeks: €[\d,]+/);
+    expect(html).toMatch(/Cash needed, next 13 weeks: €[\d,]+/);
     expect(html).toContain("keha-orderplan-strip");
     expect(html).toContain('href="/app/reorder/calendar"');
     expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
+  });
+
+  it("one cash horizon: the Dashboard strip shows the same 13 weeks and the same total as Next 13 weeks", () => {
+    const fx = orderPlanFixture();
+    const html = render({ ...ready(), orderPlan: { kind: "full", plan: fx } });
+    // Next 13 weeks' summary total (app.reorder_.calendar: cashTotals of every planned order).
+    const total = cashTotals(fx.events).cash!;
+    const shown = formatAmount(total, fx.currency, "en");
+    expect(html).toContain(`Cash needed, next 13 weeks: ${shown}`);
+    // 13 week columns in the strip, as on the calendar.
+    expect(planWeeks(fx)).toHaveLength(13);
+    expect(html).not.toMatch(/next 12 weeks|next 90 days/i);
   });
 
   it("nothing due this week: names the next order; nothing at all: says so", () => {
@@ -337,7 +350,7 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     const next = render({ ...ready(), orderPlan: { kind: "full", plan: later } });
     expect(next).toMatch(/Nothing to order this week\. Next order: (Lisbon Linen|Cap Co|Acme) by [A-Z][a-z]{2} \d+, 2026\./);
     const none = render({ ...ready(), orderPlan: { kind: "full", plan: { ...fx, events: [] } } });
-    expect(none).toContain("No orders needed in the next 90 days.");
+    expect(none).toContain("No orders needed in the next 13 weeks.");
     expect(none).not.toContain("keha-orderplan-strip");
   });
 
@@ -352,7 +365,7 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     const rows = previewRows(orderPlanFixture());
     const html = render({ ...ready("free"), orderPlan: { kind: "preview", rows } });
     expect(html).toContain("Linen shirt");
-    expect(html).toContain("Group by supplier, send purchase orders, see the next 90 days");
+    expect(html).toContain("Group by supplier, send purchase orders, see the next 13 weeks");
     expect(html).not.toContain("Review order");
     expect(html).not.toContain("keha-orderplan-strip");
     expect(html).not.toContain("Lisbon Linen");

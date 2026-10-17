@@ -243,7 +243,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
 
 // ── Order plan readiness (2026-10-17 click-through) ─────────────────────────
 //
-// The one rule behind every order-plan surface (Dashboard, Order now, Next 90 days, the Monday
+// The one rule behind every order-plan surface (Dashboard, Order now, Next 13 weeks, the Monday
 // email, Sidekick): while Home isn't "ready" the plan isn't either — say so and why, never
 // "nothing to order". Home's own state decides (homeState), so the surfaces can't disagree.
 

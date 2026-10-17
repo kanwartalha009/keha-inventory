@@ -1,7 +1,7 @@
 /**
  * Order plan (Kanwar 2026-10-17; ordering audit 2026-10-17): the forward order plan
  * (engine/forward-plan-shared) shaped for the screens — Dashboard "Order this week", Order now,
- * Order plan · Next 90 days, the Free preview and the 90-day CSV. Pure, client-safe; the
+ * Order plan · Next 13 weeks, the Free preview and the 13-week CSV. Pure, client-safe; the
  * database part is models/order-plan.server.ts.
  */
 import { addDays, type DayKey } from "./engine/dates-shared";
@@ -312,7 +312,7 @@ export function formatDayRange(from: DayKey | null, to: DayKey | null, locale: s
 }
 
 // ---------------------------------------------------------------------------
-// Ordering texts shared by Order now, Next 90 days and Products (ordering audit 2026-10-17)
+// Ordering texts shared by Order now, Next 13 weeks and Products (ordering audit 2026-10-17)
 // ---------------------------------------------------------------------------
 
 /** "27 Oct" (no year), in the admin language. */
@@ -444,7 +444,7 @@ export function lockTeaser(data: Pick<OrderPlanData, "events" | "variants">, lim
 }
 
 /**
- * Next 90 days' footnote: what an order-by date is and what it is based on. The trend is named
+ * Next 13 weeks' footnote: what an order-by date is and what it is based on. The trend is named
  * only when the growth assumption is on (Settings → Defaults, trendMode "store"): with it off the
  * forecast doesn't use it (2026-10-17 click-through).
  */

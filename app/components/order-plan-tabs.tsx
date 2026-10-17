@@ -1,5 +1,5 @@
 /**
- * Order plan tabs (Kanwar 2026-10-17): Order now · Next 90 days · Season plan · Open orders.
+ * Order plan tabs (Kanwar 2026-10-17): Order now · Next 13 weeks · Season plan · Open orders.
  * Each tab is its own route — the URLs emails, Slack, Flow and supplier links already use keep
  * working (/app/reorder; /app/planner redirects to /app/reorder/season) — and this strip links them.
  */
@@ -22,7 +22,7 @@ export function orderPlanTabLabel(id: OrderPlanTabId, t: T): string {
     case "now":
       return t("Order now");
     case "calendar":
-      return t("Next 90 days");
+      return t("Next 13 weeks");
     case "season":
       return t("Season plan");
     case "orders":

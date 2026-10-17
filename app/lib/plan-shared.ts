@@ -33,7 +33,7 @@ export const FEATURE_PLAN = {
   forecast: "growth",
   /** Order now in full: what to order from each supplier, by when (Free: read-only top 10 preview). */
   reorderPlan: "growth",
-  /** Order plan · Next 90 days: every order-by date, by week and supplier, with the cash needed. */
+  /** Order plan · Next 13 weeks: every order-by date, by week and supplier, with the cash needed. */
   orderCalendar: "growth",
   /** Supplier list with lead times, minimum orders and case packs. */
   suppliers: "growth",
@@ -151,7 +151,7 @@ export const PAGE_FEATURE: { path: string; feature: Feature }[] = [
 ];
 
 /**
- * The Order plan tabs (Order now · Next 90 days · Season plan · Open orders) gate themselves:
+ * The Order plan tabs (Order now · Next 13 weeks · Season plan · Open orders) gate themselves:
  * they keep the tab bar and teach inside the tab (Free sees Order now as a read-only preview).
  * Everything else under PAGE_FEATURE (a purchase order page) shows the plan page instead.
  */

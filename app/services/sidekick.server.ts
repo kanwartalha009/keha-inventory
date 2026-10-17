@@ -87,7 +87,7 @@ const identity = (s: string) => s;
 /**
  * The order plan, from the same forward plan the Order plan screens load (loadOrderPlan): with
  * the full order plan (`reorderPlan` + `orderCalendar`), the window's orders by supplier as on
- * Order now / Next 90 days; otherwise exactly the read-only top-10 preview of the Free
+ * Order now / Next 13 weeks; otherwise exactly the read-only top-10 preview of the Free
  * Order now page (previewRows), whatever the inputs.
  */
 export async function orderPlanForSidekick(

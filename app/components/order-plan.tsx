@@ -86,7 +86,7 @@ export function PreviewTable({ rows, readiness }: { rows: PreviewRow[]; readines
         <s-paragraph color="subdued">{notReadyLine(notReady)}</s-paragraph>
       </s-stack>
     );
-  if (!rows.length) return <s-paragraph color="subdued">{t("No orders needed in the next 90 days.")}</s-paragraph>;
+  if (!rows.length) return <s-paragraph color="subdued">{t("No orders needed in the next 13 weeks.")}</s-paragraph>;
   return (
     <>
       {notReady && <s-text color="subdued">{`${t("Your order plan isn't ready yet")}: ${notReadyLine(notReady)}`}</s-text>}
@@ -141,7 +141,7 @@ export function PreviewLock({ teaser, currency }: { teaser?: LockTeaser | null; 
           <s-badge icon="lock" tone="info">
             {planTag("reorderPlan", t)}
           </s-badge>
-          <s-text fontWeight="medium">{t("Group by supplier, send purchase orders, see the next 90 days")}</s-text>
+          <s-text fontWeight="medium">{t("Group by supplier, send purchase orders, see the next 13 weeks")}</s-text>
         </s-stack>
         <LockTeaserLine teaser={teaser} currency={currency ?? "USD"} />
         <s-text color="subdued">{t("Free shows your 10 most urgent products, read only.")}</s-text>
@@ -338,8 +338,8 @@ export function NoReorderConfirm({
       message={
         value
           ? scope === "product"
-            ? t("Every variant of this product leaves Order now, Next 90 days, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
-            : t("This variant leaves Order now, Next 90 days, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
+            ? t("Every variant of this product leaves Order now, Next 13 weeks, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
+            : t("This variant leaves Order now, Next 13 weeks, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
           : t("It comes back into your order plan from the next refresh of this page.")
       }
       confirmLabel={value ? t("Don't reorder") : t("Reorder again")}

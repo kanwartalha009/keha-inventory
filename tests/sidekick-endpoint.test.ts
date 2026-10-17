@@ -235,7 +235,7 @@ describe("route", () => {
 });
 
 describe("tools on Growth", () => {
-  it("get_order_plan: the same orders, quantities, dates and cash as Order now and Next 90 days", async () => {
+  it("get_order_plan: the same orders, quantities, dates and cash as Order now and Next 13 weeks", async () => {
     const orderNow = (await reorderLoader({ request: new Request("https://inventory.keha.io/app/reorder"), params: {}, context: {} } as never)) as ReorderPageData;
     const calendar = (await calendarLoader({ request: new Request("https://inventory.keha.io/app/reorder/calendar"), params: {}, context: {} } as never)) as CalendarPageData;
     expect(calendar.enabled).toBe(true);
@@ -243,7 +243,7 @@ describe("tools on Growth", () => {
     const linesOf = (r: Awaited<ReturnType<typeof body>>) =>
       r.results!.flatMap((g) => (g._meta.lines as Line[]).map((l) => [g.name, l.variant_gid, l.order_qty, l.arrives, l.cost] as const)).sort();
 
-    // Next 90 days (within_days 90) = the calendar loader: every order, by supplier, same totals and weeks.
+    // Next 13 weeks (within_days 90) = the calendar loader: every order, by supplier, same totals and weeks.
     const all = await body("get_order_plan", "within_days=90");
     const events = calendar.plan.events;
     expect(events.length).toBeGreaterThan(2);

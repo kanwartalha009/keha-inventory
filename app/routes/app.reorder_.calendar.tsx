@@ -1,5 +1,5 @@
 /**
- * Order plan · Next 90 days (/app/reorder/calendar; Kanwar 2026-10-17). Growth
+ * Order plan · Next 13 weeks (/app/reorder/calendar; Kanwar 2026-10-17). Growth
  * (`orderCalendar`); Free keeps the tab bar and sees what the tab does.
  *
  * The forward order plan (engine/forward-plan-shared, models/order-plan.server): every order the
@@ -98,13 +98,13 @@ function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanRe
     <>
       <StaleDrafts n={plan.staleDrafts} />
       <FormCard
-        title={notReady ? t("Your order plan isn't ready yet") : t("Next 90 days")}
+        title={notReady ? t("Your order plan isn't ready yet") : t("Next 13 weeks")}
         sub={
           notReady
             ? // Still reading the store / fewer than 14 days of sales: say why — never "No orders needed".
               notReadyLine(notReady)
             : totals.lines === 0
-            ? t("No orders needed in the next 90 days.")
+            ? t("No orders needed in the next 13 weeks.")
             : fill(t("{orders} orders in the next 13 weeks · {units} units · {cash}"), {
                 // One order per supplier and week.
                 orders: formatCount(weeks.reduce((a, w) => a + w.suppliers.length, 0), locale),

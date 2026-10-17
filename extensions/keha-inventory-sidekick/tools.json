@@ -2,7 +2,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "get_order_plan",
-    "description": "The store's order plan for the next 90 days: every order the forecast needs, grouped by supplier (or by vendor when no supplier is set), with order quantities after case packs and minimums, order-by and arrival dates, units and cost per supplier, the cash needed, and cash per week for windows over 14 days. Use for 'what do I need to reorder this week', 'what should I order from <supplier>' and 'how much cash do I need for stock next month'.",
+    "description": "The store's order plan for the next 13 weeks: every order the forecast needs, grouped by supplier (or by vendor when no supplier is set), with order quantities after case packs and minimums, order-by and arrival dates, units and cost per supplier, the cash needed, and cash per week for windows over 14 days. Use for 'what do I need to reorder this week', 'what should I order from <supplier>' and 'how much cash do I need for stock next month'.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -14,7 +14,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 90,
-          "description": "Orders whose order-by date falls within this many days from today; overdue orders are always included. 1 for today, 7 for this week, 30 for next month, 90 for the whole 90-day plan. Default 14."
+          "description": "Orders whose order-by date falls within this many days from today; overdue orders are always included. 1 for today, 7 for this week, 30 for next month, 90 for the whole 13-week plan. Default 14."
         }
       }
     }

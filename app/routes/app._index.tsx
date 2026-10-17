@@ -3,8 +3,8 @@
  *
  *  1. "Order this week" from the forward order plan (models/order-plan.server): per supplier
  *     the products, units, cash and earliest order-by date, with "Review order" (Order now with
- *     those lines at the planned quantities, that supplier only); then a 12-week cash strip
- *     linking to Order plan · Next 90 days. Free: the read-only top-10 preview and the teaching
+ *     those lines at the planned quantities, that supplier only); then a 13-week cash strip
+ *     linking to Order plan · Next 13 weeks. Free: the read-only top-10 preview and the teaching
  *     lock instead (suppliers, purchase orders and the calendar are Growth).
  *  2. Money at stake (4 cards, each with "How we got this").
  *  3. The setup guide while incomplete (Lead times, Suppliers, Product costs, Monday email),
@@ -205,7 +205,7 @@ function ReviewAsk() {
   return null;
 }
 
-/** The lead block: what to order this week, by supplier, and the cash needed over 12 weeks. */
+/** The lead block: what to order this week, by supplier, and the cash needed over the next 13 weeks. */
 function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const { t, locale } = useLocale();
   const heading = t("Order this week");
@@ -235,8 +235,9 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const week = thisWeek(plan);
-  const weeks = planWeeks(plan, 12);
-  const strip = cashTotals(weeks.flatMap((w) => w.suppliers.flatMap((s) => s.events)));
+  // One cash horizon (merchant #2): the same 13 weeks and the same total as Next 13 weeks.
+  const weeks = planWeeks(plan);
+  const strip = cashTotals(plan.events);
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
   return (
     <FormCard
@@ -255,7 +256,7 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
                   supplier: supplierName(plan, week.next.supplierKey, t),
                   date: formatDay(week.next.orderBy, locale),
                 })
-              : t("No orders needed in the next 90 days.")}
+              : t("No orders needed in the next 13 weeks.")}
           </s-paragraph>
         ) : (
           <>
@@ -318,8 +319,8 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
         {strip.lines > 0 && (
           <s-stack direction="block" gap="small-200">
             <div className="keha-row-between">
-              <s-text fontWeight="medium">{fill(t("Cash needed, next 12 weeks: {cash}"), { cash: money(strip.cash) })}</s-text>
-              <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
+              <s-text fontWeight="medium">{fill(t("Cash needed, next 13 weeks: {cash}"), { cash: money(strip.cash) })}</s-text>
+              <s-link {...link("/app/reorder/calendar")}>{t("See the next 13 weeks")}</s-link>
             </div>
             <CashStrip weeks={weeks} currency={plan.currency} compact />
             {strip.missingCost > 0 && (

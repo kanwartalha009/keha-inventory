@@ -45,7 +45,7 @@ describe("spec §3 feature table", () => {
     fullActionList: "growth",
     forecast: "growth",
     reorderPlan: "growth",
-    // Kanwar 2026-10-17: the 90-day order calendar (Order plan · Next 90 days).
+    // Kanwar 2026-10-17: the 13-week order calendar (Order plan · Next 13 weeks).
     orderCalendar: "growth",
     suppliers: "growth",
     poExport: "growth",

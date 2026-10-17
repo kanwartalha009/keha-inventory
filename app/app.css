@@ -720,7 +720,7 @@ s-table { font-variant-numeric: tabular-nums; }
 .keha-legend__swatch--out { background: var(--tile-rose-bg); border: 1px solid var(--tile-rose-fg); }
 
 /* Order plan */
-/* Order plan · Next 90 days: one row per ISO week that opens to its suppliers; the cash strip. */
+/* Order plan · Next 13 weeks: one row per ISO week that opens to its suppliers; the cash strip. */
 .keha-orderplan-strip { width: 100%; }
 .keha-orderplan-weeks { display: flex; flex-direction: column; border-top: 1px solid var(--keha-border-secondary); }
 .keha-orderplan-weeks > :last-child { border-bottom: 0; }

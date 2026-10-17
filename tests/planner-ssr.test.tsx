@@ -123,7 +123,7 @@ describe("Planner page", () => {
     const html = render("/app/reorder/season", data());
     // One of the Order plan tabs (Kanwar 2026-10-17): the tab bar, Season plan selected.
     expect(html).toContain('heading="Order plan"');
-    for (const tab of ["Order now", "Next 90 days", "Season plan", "Open orders"]) expect(html).toContain(tab);
+    for (const tab of ["Order now", "Next 13 weeks", "Season plan", "Open orders"]) expect(html).toContain(tab);
     expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Season plan</);
     expect(html).toContain("Based on the last 90 days only; we don&#x27;t have last year&#x27;s sales yet.");
     expect(html).toContain("Black Friday 2026");

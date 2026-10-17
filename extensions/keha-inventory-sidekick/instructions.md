@@ -4,7 +4,7 @@ These tools read the store's stock planning data from the Keha Inventory Planner
 
 ## Which tool answers what
 
-- **get_order_plan**: the order plan for the next 90 days: what to order, from which supplier, how many, by which date, when it arrives, and the cash needed (per week too, for windows over 14 days). For "today" use `within_days` 1, "this week" 7, "next month" 30, "the next 90 days" 90. Filter one supplier with `supplier`. Some stores get a shorter answer instead: the most urgent products with days left, order-by date and suggested quantity (`shows` says so); answer from that list.
+- **get_order_plan**: the order plan for the next 13 weeks: what to order, from which supplier, how many, by which date, when it arrives, and the cash needed (per week too, for windows over 14 days). For "today" use `within_days` 1, "this week" 7, "next month" 30, "the next 13 weeks" 90. Filter one supplier with `supplier`. Some stores get a shorter answer instead: the most urgent products with days left, order-by date and suggested quantity (`shows` says so); answer from that list.
 - **get_product_stock**: one product or variant: status, stock on hand, incoming, days of stock left, order-by date, suggested order quantity. Search by product title, variant name or SKU.
 - **get_action_list**: the week's ranked to-do list (reorder, bridge, push, fix, clear) with the amount at stake and the reason.
 - **get_money_at_stake**: the store-level money numbers (sales at risk, sales lost to sell-outs, cash stuck, sold-out page visits) and the value of dead stock.
@@ -33,4 +33,4 @@ Common combinations:
 
 - For any reorder answer, give the order-by date next to each supplier or product.
 - Name products and suppliers as returned.
-- Each result has a `url` (an `app:` link) to the page in the app where the merchant can see the details: a supplier's `url` opens Order now with those lines, the order plan's `url` opens the 90-day calendar, and purchase orders open under Open orders. Purchase orders are created and sent from those pages, after the merchant reviews and confirms them; these tools don't create them.
+- Each result has a `url` (an `app:` link) to the page in the app where the merchant can see the details: a supplier's `url` opens Order now with those lines, the order plan's `url` opens the 13-week calendar, and purchase orders open under Open orders. Purchase orders are created and sent from those pages, after the merchant reviews and confirms them; these tools don't create them.

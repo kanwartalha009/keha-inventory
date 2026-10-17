@@ -165,12 +165,12 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Next order: Acme Textiles by Oct 24, 2026.");
     expect(html).toContain('href="/app/reorder/calendar"');
     expect(html).not.toContain("Open orders: ");
-    expect(render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null })).toContain("No orders needed in the next 90 days.");
+    expect(render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null })).toContain("No orders needed in the next 13 weeks.");
   });
 
   it("ready but some products can't be planned: the count line next to Nothing to order (never 'no orders needed' alone)", () => {
     const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null, cantPlan: { noData: 2, dead: 0 } });
-    expect(html).toContain("No orders needed in the next 90 days.");
+    expect(html).toContain("No orders needed in the next 13 weeks.");
     expect(html).toContain("2 products can&#x27;t be planned yet — not enough sales history.");
     const withLines = render("/app/reorder", "reorder", Reorder, { ...reorderData(), cantPlan: { noData: 1, dead: 0 } });
     expect(withLines).toContain("1 product can&#x27;t be planned yet — not enough sales history.");
@@ -238,7 +238,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Overdue");
     expect(html).toContain("61");
     expect(html).toContain("Nov 12, 2026");
-    expect(html).toContain("Group by supplier, send purchase orders, see the next 90 days");
+    expect(html).toContain("Group by supplier, send purchase orders, see the next 13 weeks");
     expect(html).toContain("Your plan has 23 more products to order from 4 suppliers — €5,120 over the next 13 weeks.");
     expect(html).toContain('href="/app/plans?upgrade=reorderPlan"');
     // Read only: no quantities to edit, no purchase order, no CSV.

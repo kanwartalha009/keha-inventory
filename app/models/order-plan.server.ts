@@ -3,7 +3,7 @@
  * pool (the online pool, or one warehouse / store), from the latest VariantMetric run
  * (engine/forward-plan-shared planStore). Database only, no Shopify calls.
  *
- * ONE function behind the Dashboard ("Order this week"), Order now, Next 90 days, Products
+ * ONE function behind the Dashboard ("Order this week"), Order now, Next 13 weeks, Products
  * ("To order", order-by date), Sidekick and the Monday email: every order is placed on its
  * order-by date, with the supplier's minimums (per line, per style, per order in units and in
  * money) applied per batch — so the Dashboard's cash is Order now's cash.
@@ -180,7 +180,7 @@ export type PlanVariantState = {
 export type OrderPlanOptions = {
   /** "online" (default) or a Location.id (Pro location views). */
   scope?: string;
-  /** Also read last year's sales in each order's weeks (Order now, Next 90 days). */
+  /** Also read last year's sales in each order's weeks (Order now, Next 13 weeks). */
   lastYear?: boolean;
 };
 

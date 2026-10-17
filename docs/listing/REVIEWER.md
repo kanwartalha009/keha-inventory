@@ -42,7 +42,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 | Plan | Unlocks |
 |---|---|
 | Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
-| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 90 days with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
+| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
 | Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
 **Steps (Growth plan, store with history).**
@@ -57,7 +57,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 3. **Dashboard → Order this week** (first on the page): each supplier with orders due in the
    next 7 days (overdue ones included) — products, units, cash and order-by date — with
    **Review order**, which opens Order now for that supplier at the planned quantities. Below it,
-   the cash needed for the next 12 weeks with **See the next 90 days**.
+   the cash needed for the next 13 weeks with **See the next 13 weeks**.
 4. **Dashboard → money cards:** open "How we got this" on any card to see the inputs. A dash (—)
    means not enough data, never zero.
 5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Bridge, Promote, Fix, Clear).
@@ -81,7 +81,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
    **Download CSV**, **Email supplier** (or **Copy link**), or **Mark as sent**. A draft not sent
    within 14 days stops counting as ordered (a banner says so).
-10. **Order plan → Next 90 days:** every order for the next 13 weeks by week and supplier, with
+10. **Order plan → Next 13 weeks:** every order for the next 13 weeks by week and supplier, with
     units, cash per week (a line without a cost price shows "—" and is counted, never 0) and
     order-by dates; open a week → a supplier → **Create order** opens Order now with those lines
     (the order is still created only after the confirm there). **Download CSV** exports the plan.
@@ -122,7 +122,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
     4. **Season plan:** more than one scenario can be kept.
 16. **Free plan check:** switch to Free on Shopify's plan page → **Order plan → Order now** and
     the Dashboard show a read-only preview of the 10 most urgent products (days left, order-by
-    date, suggested quantity) with an **Upgrade** button; Next 90 days, Season plan and Open
+    date, suggested quantity) with an **Upgrade** button; Next 13 weeks, Season plan and Open
     orders keep the tab bar and show what they do with an **Upgrade** button; the product page shows locked forecast fields;
     Settings → Locations keeps the **Counts in supplier orders** toggle and shows the roles locked
     with "Pro plan".

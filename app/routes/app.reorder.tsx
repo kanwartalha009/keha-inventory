@@ -12,7 +12,7 @@
  * order. "Create order" (with a confirm showing units and cost) saves a Draft for one group and
  * opens it (/app/reorder/:id) — nothing is sent until the merchant emails it or marks it sent.
  *
- * Links: `?supplier=<key>&from=&to=` (Dashboard, Next 90 days: that supplier's planned orders in
+ * Links: `?supplier=<key>&from=&to=` (Dashboard, Next 13 weeks: that supplier's planned orders in
  * the range, resolved here — never truncated), `?scenario=<id>&group=<key>` (Season plan: its
  * planned quantities, resolved here), `?variants=gid,…` (an action's "Add to order", at most 250
  * — highlights those lines). `?supplier=<key>` alone shows that supplier only.
@@ -196,7 +196,7 @@ export type ReorderPageData = ReorderData & {
   /** `?supplier=` matched a group: only that group is shown. */
   supplierFilter?: { key: string; name: string; kind: "supplier" | "vendor" } | null;
   hiddenGroups?: number;
-  /** The planned orders of a link's date range are shown (Next 90 days). */
+  /** The planned orders of a link's date range are shown (Next 13 weeks). */
   linkRange?: { from: string; to: string } | null;
   /** `?scenario=` isn't a saved Season plan of this store. */
   scenarioMissing?: boolean;
@@ -308,12 +308,12 @@ export default function Reorder() {
                       supplier: data.next.kind === "supplier" ? data.next.name : data.next.name || t("No vendor"),
                       date: formatDay(data.next.orderBy, locale),
                     })
-                  : t("No orders needed in the next 90 days.")
+                  : t("No orders needed in the next 13 weeks.")
               }
               action={
                 <s-stack direction="block" gap="small" alignItems="center">
                   {data.cantPlan && <CantPlan plan={{ cantPlan: data.cantPlan }} />}
-                  <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
+                  <s-link {...link("/app/reorder/calendar")}>{t("See the next 13 weeks")}</s-link>
                 </s-stack>
               }
             />

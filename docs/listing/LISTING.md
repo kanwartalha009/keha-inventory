@@ -65,7 +65,7 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 | Claim | Code |
 |---|---|
 | Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
-| Cash each week, next 13 weeks | Order plan → Next 90 days (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 12-week cash strip |
+| Cash each week, next 13 weeks | Order plan → Next 13 weeks (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
 | Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
 | Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
 | Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
@@ -134,7 +134,7 @@ keep).
 ### Growth
 
 - Shipped — Full order plan by supplier, with purchase orders
-- Shipped — 90-day order calendar with cash per week
+- Shipped — 13-week order calendar with cash per week
 - Shipped — Numbers refreshed daily, and every action
 - Shipped — Preorder bridge and dead-stock discounts
 - Shipped — Season plan (1 scenario) and forecast accuracy

@@ -1,9 +1,9 @@
 /**
- * Forward order plan (Order plan · Next 90 days; Kanwar 2026-10-17; ordering audit 2026-10-17). Pure.
+ * Forward order plan (Order plan · Next 13 weeks; Kanwar 2026-10-17; ordering audit 2026-10-17). Pure.
  *
  * Per variant, a day-by-day projection from today with the nightly engine's own numbers (no new
  * data): what to order, when, and how much — and, for the whole store, the cash needed per week.
- * ONE rule for every screen (Dashboard "Order this week", Order now, Next 90 days, Products,
+ * ONE rule for every screen (Dashboard "Order this week", Order now, Next 13 weeks, Products,
  * Sidekick, the Monday email): an order is placed ON its order-by date.
  *
  * Inputs are exactly what compute stored for the variant (VariantMetric + inputs):

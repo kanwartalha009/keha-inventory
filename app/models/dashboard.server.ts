@@ -81,7 +81,7 @@ export async function reviewAskDue(shop: string, now: Date = new Date()): Promis
 
 /**
  * Is the order plan ready (Home's own state: syncing / not enough sales / nothing tracked)?
- * Order now, Next 90 days, the Monday email and Sidekick ask this before they say anything about
+ * Order now, Next 13 weeks, the Monday email and Sidekick ask this before they say anything about
  * what to order. The plan code doesn't change the state, so any plan will do.
  */
 export async function getPlanReadiness(shop: string, now: Date = new Date()): Promise<PlanReadiness> {

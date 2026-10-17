@@ -108,7 +108,7 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     expect(r.cash_per_week).toBeUndefined();
   });
 
-  it("the next 90 days: the whole calendar by supplier, cash per week, unknown costs counted (never 0)", () => {
+  it("the next 13 weeks: the whole calendar by supplier, cash per week, unknown costs counted (never 0)", () => {
     const r = orderPlanResponse(plan, { supplier: null, withinDays: 90 });
     const totals = cashTotals(plan.events);
     expect(r.totals).toEqual({ suppliers: 3, orders: totals.lines, units: totals.units, cash: totals.cash, lines_without_cost: totals.missingCost });

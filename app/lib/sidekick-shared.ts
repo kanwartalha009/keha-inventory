@@ -296,7 +296,7 @@ export function fitResponse(
 //
 // One source of truth with the Order plan screens: the forward order plan
 // (models/order-plan.server loadOrderPlan → engine/forward-plan-shared). Day-0 orders are
-// Order now's lines (/app/reorder), the 13 weeks are Next 90 days (/app/reorder/calendar),
+// Order now's lines (/app/reorder), the 13 weeks are Next 13 weeks (/app/reorder/calendar),
 // and Free gets the same read-only top-10 preview the Free Order now page shows.
 
 export type OrderPlanOptions = { supplier: string | null; withinDays: number };
