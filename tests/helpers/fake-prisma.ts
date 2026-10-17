@@ -2,14 +2,14 @@
  * In-memory stand-in for the Prisma client (the query engine can't run in CI sandboxes).
  * Supports the subset the sync / compute / health code uses: findMany / findFirst / findUnique,
  * count, create, createMany (skipDuplicates by `keys`), upsert, update, updateMany, deleteMany,
- * aggregate (_max / _min), groupBy (_sum / _max / _count), and batch $transaction.
+ * aggregate (_max / _min / _sum / _count), groupBy (_sum / _max / _count), and batch $transaction.
  *
- * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains (+ mode: "insensitive"), startsWith }, OR / AND / NOT.
+ * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains (+ mode: "insensitive"), startsWith, has }, OR / AND / NOT.
  * Dates compare by time. Compound unique keys (`shop_variantId_locationId: {...}`) are flattened.
  */
 export type Row = Record<string, unknown>;
 
-const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "startsWith", "equals", "mode"]);
+const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "startsWith", "equals", "mode", "has"]);
 
 function norm(v: unknown): unknown {
   if (v instanceof Date) return v.getTime();
@@ -21,14 +21,27 @@ function isOpObject(c: unknown): c is Record<string, unknown> {
   return !!c && typeof c === "object" && !(c instanceof Date) && !Array.isArray(c) && Object.keys(c).some((k) => OPS.has(k));
 }
 
+/** Flattened where objects (a where is matched against every row: flatten it once). */
+const flatCache = new WeakMap<Row, Row>();
+/** `in` / `notIn` lists as normalised Sets (a list is checked against every row). */
+const setCache = new WeakMap<unknown[], Set<unknown>>();
+function listSet(arg: unknown[]): Set<unknown> {
+  let set = setCache.get(arg);
+  if (!set) setCache.set(arg, (set = new Set(arg.map(norm))));
+  return set;
+}
+
 /** `{ a_b: { a: 1, b: 2 } }` → `{ a: 1, b: 2 }` (compound unique selectors). */
 function flattenWhere(where: Row): Row {
+  const hit = flatCache.get(where);
+  if (hit) return hit;
   const out: Row = {};
   for (const [k, v] of Object.entries(where)) {
     if (k !== "OR" && k !== "AND" && k !== "NOT" && v && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v) && !isOpObject(v)) {
       Object.assign(out, v);
     } else out[k] = v;
   }
+  flatCache.set(where, out);
   return out;
 }
 
@@ -48,9 +61,11 @@ export function matches(row: Row, where: Row | undefined): boolean {
           case "equals":
             return v === a;
           case "in":
-            return (arg as unknown[]).map(norm).includes(v);
+            return listSet(arg as unknown[]).has(v);
           case "notIn":
-            return !(arg as unknown[]).map(norm).includes(v);
+            return !listSet(arg as unknown[]).has(v);
+          case "has":
+            return Array.isArray(row[k]) && (row[k] as unknown[]).map(norm).includes(a);
           case "lt":
             return v != null && (v as number) < (a as number);
           case "lte":
@@ -118,8 +133,11 @@ const DEFAULT_KEYS: Record<string, string[]> = {
   sessionsDaily: ["shop", "day", "landingPath", "trafficType"],
 };
 
-/** `keys[table]` = the columns of its primary / unique key, used by createMany skipDuplicates. */
-export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedAtTables: string[] = []): FakeDb {
+/**
+ * `keys[table]` = the columns of its primary / unique key, used by createMany skipDuplicates.
+ * `extras`: client members besides the models (e.g. `$queryRawUnsafe`, tests/helpers/fake-raw).
+ */
+export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedAtTables: string[] = [], extras: Record<string, unknown> = {}): FakeDb {
   const keys = { ...DEFAULT_KEYS, ...keysIn };
   const tables: Record<string, Row[]> = {};
   const calls: { table: string; op: string; args: unknown }[] = [];
@@ -132,7 +150,6 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
   function model(table: string) {
     const rows = () => (tables[table] ??= []);
     const log = (op: string, args: unknown) => calls.push({ table, op, args });
-    const sameKey = (a: Row, b: Row) => (keys[table] ?? ["id"]).every((k) => norm(a[k]) === norm(b[k]));
     return {
       findMany: async (args: { where?: Row; select?: Record<string, boolean>; orderBy?: Row | Row[]; distinct?: string[]; take?: number } = {}) => {
         log("findMany", args);
@@ -171,12 +188,18 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
       },
       createMany: async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => {
         log("createMany", { count: data.length, skipDuplicates });
+        // The table's keys, indexed once per call (a key scan per row is quadratic on big tables).
+        const cols = keys[table] ?? ["id"];
+        const keyOf = (r: Row) => JSON.stringify(cols.map((k) => norm(r[k])));
+        const seen = new Set(rows().map(keyOf));
         let count = 0;
         for (const d of data) {
-          const dup = rows().some((r) => sameKey(r, d));
+          const k = keyOf(d);
+          const dup = seen.has(k);
           if (dup && skipDuplicates) continue;
           if (dup) throw new Error(`unique constraint failed on ${table}`);
           rows().push(stamp(table, { ...d }));
+          seen.add(k);
           count++;
         }
         return { count };
@@ -221,14 +244,28 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
           }
           return out;
         };
-        const out: Row = {
+        // _sum: null when no row has a value (as Prisma); _count: rows (or non-null values per field).
+        const sum = (fields: Record<string, boolean> | undefined) => {
+          if (!fields) return undefined;
+          const out: Row = {};
+          for (const f of Object.keys(fields)) {
+            const vals = list.map((r) => norm(r[f])).filter((v) => v !== null && v !== undefined) as number[];
+            out[f] = vals.length ? vals.reduce((a, b) => a + Number(b), 0) : null;
+          }
+          return out;
+        };
+        const count =
+          args._count === true
+            ? list.length
+            : args._count
+              ? Object.fromEntries(Object.keys(args._count).map((f) => [f, f === "_all" ? list.length : list.filter((r) => r[f] != null).length]))
+              : undefined;
+        return {
           _max: agg(args._max, (a, b) => (a as number) > (b as number)),
           _min: agg(args._min, (a, b) => (a as number) < (b as number)),
+          ...(args._sum ? { _sum: sum(args._sum) } : {}),
+          ...(args._count ? { _count: count } : {}),
         };
-        if (args._sum) out._sum = Object.fromEntries(Object.keys(args._sum).map((f) => [f, list.length ? list.reduce((a, r) => a + Number(norm(r[f]) ?? 0), 0) : null]));
-        if (args._count === true) out._count = list.length;
-        else if (args._count) out._count = Object.fromEntries(Object.keys(args._count).map((f) => [f, f === "_all" ? list.length : list.filter((r) => r[f] != null).length]));
-        return out;
       },
       groupBy: async (args: {
         by: string[];
@@ -302,6 +339,7 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
           };
         }
         if (name === "then") return undefined;
+        if (name in extras) return extras[name];
         if (!cache.has(name)) cache.set(name, model(name));
         return cache.get(name);
       },
