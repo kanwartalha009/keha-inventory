@@ -9,8 +9,8 @@
  *  2. Money at stake (4 cards, each with "How we got this").
  *  3. The setup guide while incomplete (Lead times, Suppliers, Product costs, Monday email),
  *     sync progress per dataset and the empty states. First 10 minutes (audit 2026-10-17):
- *     before the store is ready the setup guide comes FIRST, then the sync progress, so the
- *     merchant has something to do while we read the store.
+ *     whenever the store isn't ready (syncing, not enough sales, nothing tracked) the setup guide
+ *     comes BEFORE the sync progress, so the merchant has something to do while we read the store.
  *  4. "This week's actions" (task 2.3) once the store is ready.
  * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
  * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
@@ -165,9 +165,13 @@ export default function Home() {
         </s-section>
       )}
 
+      {/* Not enough sales / nothing tracked: the setup guide BEFORE the sync progress, as while
+          syncing (2026-10-17 click-through: it sat at the bottom, under the progress). */}
+      {(data.state === "noSales" || data.state === "noTracked") && !data.setup.allDone && <SetupGuide data={data} />}
+
       {data.state !== "syncing" && !data.sync.done && <SyncProgress data={data} />}
 
-      {data.state !== "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
+      {ready && !data.setup.allDone && <SetupGuide data={data} />}
     </AppPage>
   );
 }

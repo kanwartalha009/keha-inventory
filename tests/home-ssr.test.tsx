@@ -138,6 +138,15 @@ describe("Home", () => {
     // 9 of 14 days: 5 more nights of sales from today (16 Oct in Madrid) → 21 Oct.
     expect(html).toContain("Your first order plan needs 14 days of sales — we&#x27;ll show it here on Oct 21, 2026.");
     expect(html).not.toContain("Sales at risk (next 28 days)");
+    // 2026-10-17 click-through (history still loading, setup not done): the not-enough-sales card,
+    // then the setup guide, then the sync progress — never the setup guide at the bottom.
+    const card = html.indexOf("Not enough sales yet to advise");
+    const setup = html.indexOf("Setup guide");
+    const progress = html.indexOf("Reading your store…");
+    expect(card).toBeGreaterThanOrEqual(0);
+    expect(card).toBeLessThan(setup);
+    expect(setup).toBeLessThan(progress);
+    expect(count(html, "Setup guide")).toBe(1);
   });
 
   it("no stock tracked: catalog read but nothing tracked", () => {
@@ -148,6 +157,7 @@ describe("Home", () => {
     expect(html).toContain("Turn on &#x27;Track quantity&#x27; for your products in Shopify.");
     expect(html).toContain('href="shopify://admin/products"');
     expect(html).not.toContain("Sales at risk (next 28 days)");
+    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Reading your store…"));
   });
 
   it("data late: banner when the last nightly run is older than 36 h", () => {
