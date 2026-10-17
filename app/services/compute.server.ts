@@ -100,6 +100,9 @@ import { planFor } from "./entitlements.server";
 import { syncLocationMetrics } from "./compute-locations.server";
 import { writeVariantMetrics } from "./metric-writes.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
+import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
+import { legacyDays, lastSaleBefore, locationDays, type SalesViewWhere } from "../models/fact-days.server";
+import { buildFactDays, fillVariantDays } from "./sync/fact-days.server";
 
 const HISTORY_DAYS = 90;
 const TRAFFIC_DAYS = 30;
@@ -116,7 +119,69 @@ export type ComputeResult = {
   actions?: number;
 };
 
-export type ComputeOptions = { now?: () => number; plan?: (shop: string) => Promise<PlanCode> };
+export type ComputeOptions = {
+  now?: () => number;
+  plan?: (shop: string) => Promise<PlanCode>;
+  /**
+   * Build the shop's stored first / last days when they are not built yet (default true; DB
+   * scale #3). false keeps reading the facts — the equality tests compare both.
+   */
+  buildDays?: boolean;
+};
+
+/** A variant's stored days as compute selects them (Variant columns). */
+type StoredVariantDays = { id: string; firstStockDay: Date | null; firstSaleDay: Date | null; lastSaleDay: Date | null };
+
+/**
+ * The pool's last sale before the 90-day window and its first stock day, per variant (what the
+ * engine reads as lastSaleDay / dataSinceDay) — DB scale #3. With the stored days built: first
+ * stock day = the earliest VariantLocationDays.firstStockDay over the pool's locations; last sale
+ * = Variant.lastSaleDay (all channels) or, with a location left out, the latest location-view
+ * last sale outside it; a null Variant column is read from the facts once and stored
+ * (fillVariantDays). The last sale is only known BEFORE the window when it is older than the
+ * window; otherwise `undefined` here — resolveLastSale reads it for the variants whose series
+ * cannot stand in for it. Without the stored days: the facts (legacyDays), exact.
+ */
+async function poolDays(
+  shop: string,
+  variants: readonly StoredVariantDays[],
+  x: { ready: boolean; from: string; pool: string[]; demand: ReturnType<typeof demandScope>; view: SalesViewWhere },
+): Promise<{ lastSale: Map<string, string | null | undefined>; dataSince: Map<string, string | null> }> {
+  const ids = variants.map((v) => v.id);
+  if (!x.ready) return legacyDays(shop, ids, { from: x.from, view: x.view, locations: x.pool });
+  const lastSale = new Map<string, string | null | undefined>();
+  const dataSince = new Map<string, string | null>();
+  const loc = await locationDays(shop, ids);
+  const inPool = new Set(x.pool);
+  const excluded = new Set([ALL, ...(x.demand.view === "location" ? x.demand.exclude : [])]);
+  let filled: Map<string, { lastSaleDay?: string | null }> = new Map();
+  if (x.demand.view === "channel") {
+    const missing = variants.filter((v) => v.lastSaleDay === null).map((v) => v.id);
+    if (missing.length) filled = await fillVariantDays(shop, { firstStockDay: [], firstSaleDay: [], lastSaleDay: missing });
+  }
+  for (const v of variants) {
+    let first: string | null = null;
+    let last: string | null = null;
+    for (const r of loc.get(v.id) ?? []) {
+      if (r.firstStockDay && inPool.has(r.locationKey) && (first === null || r.firstStockDay < first)) first = r.firstStockDay;
+      if (r.lastSaleDay && !excluded.has(r.locationKey) && (last === null || r.lastSaleDay > last)) last = r.lastSaleDay;
+    }
+    dataSince.set(v.id, first);
+    if (x.demand.view === "channel") last = v.lastSaleDay ? dayKey(v.lastSaleDay) : (filled.get(v.id)?.lastSaleDay ?? null);
+    lastSale.set(v.id, storedLastSaleBefore(last, x.from));
+  }
+  return { lastSale, dataSince };
+}
+
+/** Reads the exact last sale before the window for `ids` still unknown in `lastSale` (in place). */
+async function resolveLastSale(shop: string, lastSale: Map<string, string | null | undefined>, ids: readonly string[], from: string, view: SalesViewWhere): Promise<void> {
+  const unknown = ids.filter((id) => lastSale.get(id) === undefined);
+  if (!unknown.length) return;
+  for (const [id, day] of await lastSaleBefore(shop, unknown, from, view)) lastSale.set(id, day);
+}
+
+/** Does the series hold a day with a sale (the engine's own last sale, rate-shared lastSaleDay)? */
+const seriesSold = (rows: readonly DailyRow[] | undefined) => !!rows?.some((r) => Number.isFinite(r.sold) && r.sold > 0);
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
@@ -155,9 +220,20 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const startedAt = new Date(now());
   const shopRow = await prisma.shop.findUnique({
     where: { domain: shop },
-    select: { timezone: true, currency: true, settings: true, uninstalledAt: true, backfillState: true },
+    select: { timezone: true, currency: true, settings: true, uninstalledAt: true, backfillState: true, factDaysAt: true },
   });
   if (!shopRow || shopRow.uninstalledAt) return { status: "skipped" };
+  // Stored first / last days (DB scale #3): built once per shop, here, the first time.
+  let daysReady = !!shopRow.factDaysAt;
+  if (!daysReady && opts.buildDays !== false) {
+    try {
+      const b = await buildFactDays(shop, startedAt);
+      daysReady = true;
+      console.log(`[compute] ${shop}: stored first / last days built (${b.variants} variants, ${b.locationRows} location rows)`);
+    } catch (e) {
+      console.error(`[compute] ${shop}: building the stored days failed; reading the facts`, e);
+    }
+  }
   const tz = safeTimeZone(shopRow.timezone);
   const today = localDate(startedAt, tz);
   const from = addDays(today, -HISTORY_DAYS);
@@ -189,6 +265,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         status: true,
         noReorder: true,
         inventoryPolicy: true,
+        firstStockDay: true,
+        firstSaleDay: true,
+        lastSaleDay: true,
       },
     }),
     prisma.supplier.findMany({
@@ -203,7 +282,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const demandFilter = demandWhere(demand);
 
   // ---- facts (grouped in SQL) ----
-  const [channelG, poolSalesG, stockG, outG, lastSaleG, dataSinceG, stockNow] = await Promise.all([
+  const [channelG, poolSalesG, stockG, outG, days, stockNow] = await Promise.all([
     // Channel view: revenue (ABC), unit price and returns only.
     prisma.salesDaily.groupBy({
       by: ["variantId", "day"],
@@ -231,19 +310,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
           _count: { _all: true },
         })
       : Promise.resolve([]),
-    prisma.salesDaily.groupBy({
-      by: ["variantId"],
-      where: { shop, ...demandFilter, sold: { gt: 0 }, day: { lt: dayDate(from) } },
-      _max: { day: true },
-    }),
-    // Oldest pool stock day per variant: start of the no-sale period for never-sold variants.
-    pool.length
-      ? prisma.stockDaily.groupBy({
-          by: ["variantId"],
-          where: { shop, locationId: { in: pool } },
-          _min: { day: true },
-        })
-      : Promise.resolve([]),
+    // Last sale before the window, oldest pool stock day (start of the no-sale period for
+    // never-sold variants): stored days, never the whole history (DB scale #3).
+    poolDays(shop, considered, { ready: daysReady, from, pool, demand, view: demandFilter }),
     pool.length
       ? prisma.stockNow.findMany({
           where: { shop, locationId: { in: pool } },
@@ -282,13 +351,16 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }));
   const series = buildSeries(poolSales, stock, channelSales);
   const revenue = revenueOf(channelSales);
-  const dataSince = new Map(dataSinceG.map((g) => [g.variantId, g._min.day ? dayKey(g._min.day) : null]));
-  const lastSale = new Map(lastSaleG.map((g) => [g.variantId, g._max.day ? dayKey(g._max.day) : null]));
+  const { dataSince, lastSale } = days;
+  const fewInStock = (id: string) => (series.get(id) ?? []).filter((r) => !soldOutDay(r)).length < settings.minInStockDays;
+  // The last sale before the window, where the series cannot stand in for it (no sale in the
+  // series) or the older-series rule below asks whether there is one: exact, per variant.
+  await resolveLastSale(shop, lastSale, considered.filter((v) => !seriesSold(series.get(v.id)) || fewInStock(v.id)).map((v) => v.id), from, demandFilter);
   const olderSeries = await loadOlderSeries(shop, {
     // Data audit #2: too few in-stock days in the 90 days but sales before them — out of stock
     // most of the window. Their pace comes from older in-stock days (engine inStockPace).
     ids: considered
-      .filter((v) => lastSale.get(v.id) && (series.get(v.id) ?? []).filter((r) => !soldOutDay(r)).length < settings.minInStockDays)
+      .filter((v) => lastSale.get(v.id) && fewInStock(v.id))
       .map((v) => v.id),
     from: addDays(today, -PACE_LOOKBACK_DAYS),
     before: from,
@@ -505,7 +577,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     roles,
     seasonOf,
     curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
-    pool: { series, lastSale, dataSince },
+    pool: { series, lastSale, dataSince, resolveLastSale: (ids: readonly string[]) => resolveLastSale(shop, lastSale, ids, from, demandFilter) },
+    daysReady,
   });
   // Every metric row of this run is written (online pool and locations): plans cached from the
   // run while it was being written are dropped (L2; the fingerprint also sees the new rows).

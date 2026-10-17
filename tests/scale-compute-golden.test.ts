@@ -54,5 +54,25 @@ describe("compute on the scale fixture equals the recorded output", () => {
       expect(result).toEqual(want.result);
       expect(output).toEqual(want.output);
     }, 60_000);
+
+    it(`${name}: the same with the stored days not built (reads the facts, DB scale #3)`, async () => {
+      if (process.env.KEHA_WRITE_GOLDEN === "1") return;
+      const { output } = await run(opts, () => computeShop(FX_SHOP, { now: () => FX_NOW, buildDays: false }));
+      expect(db.tables.shop[0].factDaysAt ?? null).toBeNull();
+      expect(output).toEqual((golden[name] as { output: unknown }).output);
+    }, 60_000);
+
+    it(`${name}: the same on a second run, the days kept by the sync (built on the first)`, async () => {
+      if (process.env.KEHA_WRITE_GOLDEN === "1") return;
+      seedScaleFixture(db, opts);
+      await computeShop(FX_SHOP, { now: () => FX_NOW });
+      expect(db.tables.shop[0].factDaysAt).toBeInstanceOf(Date);
+      expect((db.tables.variantLocationDays ?? []).length).toBeGreaterThan(90);
+      db.tables.variantMetric = [];
+      db.tables.moneyAtStake = [];
+      db.tables.action = [];
+      await computeShop(FX_SHOP, { now: () => FX_NOW });
+      expect(computeOutput(db)).toEqual((golden[name] as { output: unknown }).output);
+    }, 60_000);
   }
 });

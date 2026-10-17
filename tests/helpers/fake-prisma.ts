@@ -110,8 +110,16 @@ export type FakeDb = {
   reset: () => void;
 };
 
+/** Composite primary keys of tables without an `id` that code writes with createMany (merged under `keys`). */
+const DEFAULT_KEYS: Record<string, string[]> = {
+  variantLocationDays: ["shop", "variantId", "locationKey"],
+  stockDaily: ["shop", "day", "variantId", "locationId"],
+  salesDaily: ["shop", "day", "variantId", "locationKey", "channel"],
+};
+
 /** `keys[table]` = the columns of its primary / unique key, used by createMany skipDuplicates. */
-export function createFakePrisma(keys: Record<string, string[]> = {}, updatedAtTables: string[] = []): FakeDb {
+export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedAtTables: string[] = []): FakeDb {
+  const keys = { ...DEFAULT_KEYS, ...keysIn };
   const tables: Record<string, Row[]> = {};
   const calls: { table: string; op: string; args: unknown }[] = [];
   let clock = 0;

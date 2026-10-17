@@ -17,6 +17,8 @@ vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "gr
 
 import * as dbModule from "../app/db.server";
 import { computeShop } from "../app/services/compute.server";
+import { applyDays } from "../app/services/sync/fact-days.server";
+import { collectStock, newCollector } from "../app/lib/sync/fact-days-shared";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
 import type { MoneyBasisJson } from "../app/lib/money-shared";
 import { forwardInputFromMetric, planVariant } from "../app/lib/engine/forward-plan-shared";
@@ -230,7 +232,12 @@ describe("computeShop", () => {
     db.tables.shop[0].settings = { deadDays: 180 };
     await computeShop(S, { now: () => NOW });
     expect(metric(C).status).not.toBe("dead"); // only 90 days of stock data
-    db.tables.stockDaily.push({ shop: S, day: d("2026-03-30"), variantId: C, locationId: L1, endUnits: 30, outOfStock: false });
+    const older = { shop: S, day: d("2026-03-30"), variantId: C, locationId: L1, endUnits: 30, outOfStock: false };
+    db.tables.stockDaily.push(older);
+    // As the sync stores it: the stored first / last days follow the written facts (DB scale #3).
+    const written = newCollector();
+    collectStock(written, { since: "2026-03-30", until: "2026-03-30" }, [{ ...older, day: "2026-03-30" }]);
+    await applyDays(S, written);
     await computeShop(S, { now: () => NOW });
     expect(metric(C).status).toBe("dead");
     expect((metric(C).inputs as { noSaleDays: number }).noSaleDays).toBe(200);

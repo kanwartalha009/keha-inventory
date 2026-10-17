@@ -49,6 +49,8 @@ import {
 } from "../../lib/sync/facts-shared";
 import type { HistoryDataset } from "../../lib/sync/backfill-shared";
 import { retentionCutoff } from "../../lib/sync/store-time-shared";
+import { collectSales, collectStock, type DaysCollector } from "../../lib/sync/fact-days-shared";
+import { applyDays, collectorFor, fixDaysAfterRetention } from "./fact-days.server";
 
 const INSERT_BATCH = 5000;
 /**
@@ -129,6 +131,7 @@ export async function storeStock(
   range: DayRange,
   today: string,
   locations: LocationRef[],
+  days: DaysCollector | null = null,
 ): Promise<StoreResult> {
   const index = locationNameIndex(locations);
   const unmapped = new Set<string>();
@@ -145,6 +148,7 @@ export async function storeStock(
         prisma.stockDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
       ),
     ]);
+    if (days) collectStock(days, part, facts);
     rows += facts.length;
     skipped += r.skipped;
   };
@@ -185,11 +189,12 @@ export async function storeSales(
   range: DayRange,
   today: string,
   locations: LocationRef[],
+  days: DaysCollector | null = null,
 ): Promise<StoreResult> {
   const out: StoreResult = { rows: 0, skipped: 0, unmapped: [] };
   await forEachChunk(
     range,
-    (part) => storeSalesRange(shop, ql, part, today, locations),
+    (part) => storeSalesRange(shop, ql, part, today, locations, days),
     (_part, r) => {
       out.rows += r.rows;
       out.skipped += r.skipped;
@@ -207,6 +212,7 @@ async function storeSalesRange(
   range: DayRange,
   today: string,
   locations: LocationRef[],
+  days: DaysCollector | null,
 ): Promise<StoreResult> {
   // The row cap is left to storeSales (it splits the whole step); RESPONSE_TOO_LARGE still
   // splits each view here, as before.
@@ -250,6 +256,7 @@ async function storeSalesRange(
       prisma.salesDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
     ),
   ]);
+  if (days) collectSales(days, range, facts);
   return { rows: facts.length, skipped: byLocation.skipped + byChannel.skipped, unmapped: loc.unmapped };
 }
 
@@ -300,6 +307,11 @@ export async function storeVisits(shop: string, ql: ShopifyqlClient, range: DayR
   return { rows: facts.length, skipped, unmapped: [] };
 }
 
+/**
+ * One dataset × range. Stock and sales also keep the stored first / last days current (DB scale
+ * #3, fact-days.server): what was written — all of it, or the parts written before a failure —
+ * is merged once the step is over.
+ */
 export async function storeHistory(
   dataset: HistoryDataset,
   shop: string,
@@ -308,10 +320,14 @@ export async function storeHistory(
   today: string,
   locations: LocationRef[],
 ): Promise<StoreResult> {
-  if (dataset === "stock") return storeStock(shop, ql, range, today, locations);
-  if (dataset === "sales") return storeSales(shop, ql, range, today, locations);
   if (dataset === "totals") return storeTotals(shop, ql, range, today);
-  return storeVisits(shop, ql, range, today);
+  if (dataset === "visits") return storeVisits(shop, ql, range, today);
+  const days = await collectorFor(shop);
+  try {
+    return dataset === "stock" ? await storeStock(shop, ql, range, today, locations, days) : await storeSales(shop, ql, range, today, locations, days);
+  } finally {
+    if (days) await applyDays(shop, days);
+  }
 }
 
 /**
@@ -319,12 +335,16 @@ export async function storeHistory(
  * TODO(phase 2): roll them up monthly before deleting.
  */
 export async function applyRetention(shop: string, today: string): Promise<number> {
-  const where = { shop, day: { lt: dayDate(retentionCutoff(today)) } };
+  const cutoff = retentionCutoff(today);
+  const where = { shop, day: { lt: dayDate(cutoff) } };
   const r = await prisma.$transaction([
     prisma.salesDaily.deleteMany({ where }),
     prisma.stockDaily.deleteMany({ where }),
     prisma.sessionsDaily.deleteMany({ where }),
     prisma.shopDaily.deleteMany({ where }),
   ]);
-  return r.reduce((a, x) => a + x.count, 0);
+  const removed = r.reduce((a, x) => a + x.count, 0);
+  // Stored first days older than the cutoff move to the first remaining row (DB scale #3).
+  if (removed) await fixDaysAfterRetention(shop, cutoff);
+  return removed;
 }

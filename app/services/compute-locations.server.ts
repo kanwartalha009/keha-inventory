@@ -34,6 +34,8 @@ import { casePackFor, type SupplierLite } from "../lib/supplier-shared";
 import { planningLocations } from "../lib/locations-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { writeVariantMetrics } from "./metric-writes.server";
+import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
+import { lastSaleBefore, legacyDays, locationDays, type LocationDayRow } from "../models/fact-days.server";
 
 /** Variant ids per `in` filter when reading one location's facts (bounded query size). */
 const READ_CHUNK = 1000;
@@ -68,13 +70,23 @@ export type LocationComputeInput = {
   seasonOf: ReadonlyMap<string, VariantSeason>;
   /** The pool's weekly seasonal shape per variant (compute's curveFor; absent = flat). */
   curveOf?: ReadonlyMap<string, readonly (number | null)[] | null>;
-  /** The online pool's daily series, last sale and first stock day (warehouses in the pool). */
+  /**
+   * The online pool's daily series, last sale before the window and first stock day (warehouses
+   * in the pool). A last sale `undefined` is not known yet (compute's poolDays): resolveLastSale
+   * reads it, in place, for the variants whose share series cannot stand in for it.
+   */
   pool: {
     series: ReadonlyMap<string, DailyRow[]>;
-    lastSale: ReadonlyMap<string, string | null>;
+    lastSale: ReadonlyMap<string, string | null | undefined>;
     dataSince: ReadonlyMap<string, string | null>;
+    resolveLastSale?: (ids: readonly string[]) => Promise<void>;
   };
+  /** The shop's stored first / last days are built (DB scale #3): read them, not the facts. */
+  daysReady?: boolean;
 };
+
+/** Does the series hold a day with a sale (the engine's own last sale)? */
+const seriesSold = (rows: readonly DailyRow[] | undefined) => !!rows?.some((r) => Number.isFinite(r.sold) && r.sold > 0);
 
 export type LocationComputeResult = { locations: number; metrics: number };
 
@@ -114,12 +126,30 @@ export async function syncLocationMetrics(shop: string, enabled: boolean, input:
     for (const r of nowRows) onHand.get(r.variantId)?.set(r.locationId, (onHand.get(r.variantId)!.get(r.locationId) ?? 0) + r.onHand);
     for (const [id, m] of onHand) shares.set(id, warehouseShares(m));
   }
+  // Stored first / last days per variant × location (DB scale #3), read once for every location.
+  const days = input.daysReady ? await locationDays(shop, ids) : null;
   let metrics = 0;
   for (const l of planning) {
     const source = demandSourceFor(l.role, countsForOnline(byId.get(l.id)!));
-    metrics += await computeLocation(shop, l.id, l.role, source, input, { onlineSold, shares });
+    metrics += await computeLocation(shop, l.id, l.role, source, input, { onlineSold, shares, days });
   }
   return { locations: planning.length, metrics };
+}
+
+/**
+ * One location's last sale before the window and first stock day from the stored days (DB scale
+ * #3): the last sale is known only when it is older than the window (else undefined, see
+ * computeLocation).
+ */
+function fromStored(days: ReadonlyMap<string, LocationDayRow[]>, ids: readonly string[], locationId: string, from: string) {
+  const lastSale = new Map<string, string | null | undefined>();
+  const dataSince = new Map<string, string | null>();
+  for (const id of ids) {
+    const row = days.get(id)?.find((r) => r.locationKey === locationId);
+    dataSince.set(id, row?.firstStockDay ?? null);
+    lastSale.set(id, storedLastSaleBefore(row?.lastSaleDay ?? null, from));
+  }
+  return { lastSale, dataSince };
 }
 
 /** Runs `read` over the planned variant ids in chunks and concatenates the rows. */
@@ -135,11 +165,16 @@ async function computeLocation(
   role: string,
   source: DemandSource,
   x: LocationComputeInput,
-  pooled: { onlineSold: ReadonlyMap<string, ReadonlyMap<string, number>>; shares: ReadonlyMap<string, ReadonlyMap<string, number>> },
+  pooled: {
+    onlineSold: ReadonlyMap<string, ReadonlyMap<string, number>>;
+    shares: ReadonlyMap<string, ReadonlyMap<string, number>>;
+    days: ReadonlyMap<string, LocationDayRow[]> | null;
+  },
 ): Promise<number> {
   // Only the planned variants (active, tracked, not bundles), only the rate window (x.range).
   const ids = x.plans.map((p) => p.v.id);
-  const [salesG, stockRows, lastSaleG, dataSinceG, stockNow] = await Promise.all([
+  const view = { channel: ALL, locationKey: locationId };
+  const [salesG, stockRows, stored, stockNow] = await Promise.all([
     // Location view only: this location's POS sales.
     chunked(ids, (chunk) =>
       prisma.salesDaily.groupBy({
@@ -154,26 +189,31 @@ async function computeLocation(
         select: { variantId: true, day: true, endUnits: true, outOfStock: true },
       }),
     ),
-    prisma.salesDaily.groupBy({
-      by: ["variantId"],
-      where: { shop, channel: ALL, locationKey: locationId, sold: { gt: 0 }, day: { lt: dayDate(x.from) } },
-      _max: { day: true },
-    }),
-    prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, locationId }, _min: { day: true } }),
+    // Last sale here before the window, first stock day here: stored days (DB scale #3), else the facts.
+    pooled.days ? Promise.resolve(fromStored(pooled.days, ids, locationId, x.from)) : legacyDays(shop, ids, { from: x.from, view, locations: [locationId] }),
     prisma.stockNow.findMany({ where: { shop, locationId }, select: { variantId: true, onHand: true, available: true, incoming: true } }),
   ]);
 
   const sales: SalesDay[] = salesG.map((g) => ({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 }));
   const stock = locationStockDays(stockRows.map((r) => ({ variantId: r.variantId, day: dayKey(r.day), endUnits: r.endUnits, outOfStock: r.outOfStock })));
   const series = buildSeries(sales, stock);
-  const lastSale = new Map(lastSaleG.map((g) => [g.variantId, g._max.day ? dayKey(g._max.day) : null]));
-  const dataSince = new Map(dataSinceG.map((g) => [g.variantId, g._min.day ? dayKey(g._min.day) : null]));
+  const lastSale: Map<string, string | null | undefined> = stored.lastSale;
+  const dataSince = stored.dataSince;
   const now = new Map(stockNow.map((s) => [s.variantId, s]));
   const carried = carriedAt(now.keys(), new Set(stockRows.map((r) => r.variantId)));
 
   const ownSold = new Map<string, number>();
   for (const s of sales) ownSold.set(s.variantId, (ownSold.get(s.variantId) ?? 0) + s.sold);
   const fromPool = source === "online_pool";
+
+  // A pool warehouse gets its share of the online demand on the pool's days (see the shared header).
+  const seriesOf = (id: string) =>
+    fromPool ? shareSeries(x.pool.series.get(id) ?? [], pooled.onlineSold.get(id), pooled.shares.get(id)?.get(locationId) ?? 0) : (series.get(id) ?? []);
+  // The last sale before the window where the series has no sale to stand in for it: exact
+  // (stored days know only the overall last sale; DB scale #3).
+  const unknown = x.plans.filter(({ v }) => carried.has(v.id) && (fromPool ? x.pool.lastSale : lastSale).get(v.id) === undefined && !seriesSold(seriesOf(v.id))).map(({ v }) => v.id);
+  if (unknown.length && fromPool) await x.pool.resolveLastSale?.(unknown);
+  if (unknown.length && !fromPool) for (const [id, day] of await lastSaleBefore(shop, unknown, x.from, view)) lastSale.set(id, day);
 
   const results: { r: VariantResult; supplierId: string | null }[] = [];
   for (const { v, supplier } of x.plans) {
@@ -183,10 +223,7 @@ async function computeLocation(
     const computed = computeVariant({
       id: v.id,
       isBundle: false,
-      // A pool warehouse gets its share of the online demand on the pool's days (see the shared header).
-      series: fromPool
-        ? shareSeries(x.pool.series.get(v.id) ?? [], pooled.onlineSold.get(v.id), pooled.shares.get(v.id)?.get(locationId) ?? 0)
-        : (series.get(v.id) ?? []),
+      series: seriesOf(v.id),
       today: x.today,
       onHand: s?.available ?? 0, // planning position: Shopify available (may be negative), not on_hand (audit C2)
       incoming: s?.incoming ?? 0,

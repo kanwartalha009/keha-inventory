@@ -56,6 +56,7 @@ import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
 import { clearOrderPlanCache, forgetOrderPlan, planCache } from "./plan-cache.server";
+import { firstSaleRows } from "./fact-days.server";
 import { kehaOrdersById, kehaPlanOrders, shopBasics, staleDraftCount, type KehaPlanOrder } from "./reorder.server";
 
 const num = (v: unknown): number | null => {
@@ -451,7 +452,8 @@ async function addLastYear(
       where: { shop, variantId: { in: ids }, locationKey: ALL, day: { gte: dayDate(lo), lt: dayDate(hi) } },
       _sum: { sold: true },
     }),
-    prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: ids }, locationKey: ALL }, _min: { day: true } }),
+    // First channel-view sale per variant: stored days, not the whole history (DB scale #3).
+    firstSaleRows(shop, ids),
     prisma.salesDaily.aggregate({ where: { shop, locationKey: ALL }, _min: { day: true } }),
   ]);
   const dayKey = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : typeof d === "string" ? d.slice(0, 10) : null);

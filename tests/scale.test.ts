@@ -3,6 +3,11 @@
  * guards; the heavy fixtures live in their own files:
  *  - #1 large months: tests/sync/large-month.test.ts (a 3.72 M-row stock month) — here: the
  *    row cap splits a SALES step into parts that are each read, reconciled and written alone.
+ *  - #3 no full-history scans: once a shop's stored first / last days are built, compute and
+ *    per-location compute read StockDaily / SalesDaily only with a lower day bound (the windows
+ *    they need) or as single-variant index lookups (findFirst) — never a variant's whole history.
+ *    Equality with the facts-based results: tests/scale-compute-golden.test.ts; the sync keeping
+ *    the days equal to a fresh scan: tests/fact-days.test.ts.
  *  - #5 connections: an explicit Prisma pool; no `in` list past Postgres's 32,767 bind
  *    parameters on Products.
  */
@@ -11,9 +16,10 @@ import type { FakeDb } from "./helpers/fake-prisma";
 
 vi.mock("../app/db.server", async () => {
   const { createFakePrisma } = await import("./helpers/fake-prisma");
-  const db = createFakePrisma({ salesDaily: ["shop", "day", "variantId", "locationKey", "channel"] });
+  const db = createFakePrisma({ variantMetric: ["shop", "variantId", "scope"], moneyAtStake: ["shop", "day"], action: ["shop", "dedupeKey"] });
   return { default: db.client, __fake: db };
 });
+vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "pro" }));
 
 import * as dbModule from "../app/db.server";
 import { DB_CONNECTION_LIMIT, DB_POOL_TIMEOUT_S, withPoolSettings } from "../app/lib/db-url-shared";
@@ -22,6 +28,9 @@ import { storeSales } from "../app/services/sync/facts.server";
 import { addDays, type DayRange } from "../app/lib/sync/shopifyql-shared";
 import type { ShopifyqlClient } from "../app/services/sync/shopifyql.server";
 import { ShopifyqlRowCapError } from "../app/lib/sync/shopifyql-shared";
+import { computeShop } from "../app/services/compute.server";
+import { matches, type Row } from "./helpers/fake-prisma";
+import { FX_NOW, FX_SHOP, seedScaleFixture } from "./fixtures/scale-compute-fixture";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "scale.myshopify.com";
@@ -68,6 +77,48 @@ describe("#1 the row cap splits a sales step; each part is reconciled and writte
       ["2026-09-21", "2026-09-30"],
     ]);
   });
+});
+
+describe("#3 compute never reads a variant's whole history once the stored days are built", () => {
+  /**
+   * Fact reads without a lower day bound (a variant's whole history) and the rows Postgres walks
+   * for them: every row of the read's shop (and variants, when listed) — the index prefix
+   * (shop, variantId, day); filters on other columns do not shorten the walk.
+   */
+  function fullHistoryReads(snapshot: Record<string, Row[]>) {
+    const reads = db.calls.filter((c) => (c.table === "salesDaily" || c.table === "stockDaily") && (c.op === "groupBy" || c.op === "findMany" || c.op === "aggregate"));
+    const unbounded = reads.filter((c) => {
+      const day = (c.args as { where?: { day?: Record<string, unknown> } }).where?.day;
+      return !day || !("gte" in day || "in" in day || "gt" in day);
+    });
+    const walked = unbounded.reduce((a, c) => {
+      const w = (c.args as { where: Row }).where;
+      return a + (snapshot[c.table] ?? []).filter((r) => matches(r, { shop: w.shop, ...(w.variantId ? { variantId: w.variantId } : {}) })).length;
+    }, 0);
+    return { reads: reads.length, unbounded: unbounded.length, walked };
+  }
+
+  it("before (facts): whole-history groupBys over every row; after (stored days): bounded windows and index lookups only", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    seedScaleFixture(db, {});
+    const snapshot = { salesDaily: [...db.tables.salesDaily], stockDaily: [...db.tables.stockDaily] };
+    db.calls.length = 0;
+    await computeShop(FX_SHOP, { now: () => FX_NOW, buildDays: false });
+    const before = fullHistoryReads(snapshot);
+    expect(before.unbounded).toBeGreaterThan(0);
+
+    seedScaleFixture(db, {});
+    await computeShop(FX_SHOP, { now: () => FX_NOW }); // builds the days once
+    db.calls.length = 0;
+    await computeShop(FX_SHOP, { now: () => FX_NOW });
+    const after = fullHistoryReads(snapshot);
+    const lookups = db.calls.filter((c) => (c.table === "salesDaily" || c.table === "stockDaily") && c.op === "findFirst").length;
+    // What is left unbounded is the lazy fill of null Variant columns: variants with no fact rows
+    // (never sold), so Postgres walks nothing for them.
+    expect(after.walked).toBe(0);
+    expect(before.walked).toBeGreaterThan(50_000);
+    console.info(`[scale] compute on the 30-variant fixture: before ${before.unbounded} whole-history reads walking ${before.walked} fact rows; after ${after.unbounded} walking ${after.walked} (${after.reads} fact reads in all, ${lookups} single-variant index lookups)`);
+  }, 60_000);
 });
 
 describe("#5 connections", () => {

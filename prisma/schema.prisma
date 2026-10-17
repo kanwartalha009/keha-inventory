@@ -118,6 +118,10 @@ model Shop {
   settings      Json      @default("{}") // lead time, cycle, thresholds, alerts (spec §5.5)
   backfillState Json      @default("{}") // per-dataset months done / pct / lastError (spec §6.6)
   lastNightlyAt DateTime?
+  /// When the stored first / last days (Variant.firstStockDay …, VariantLocationDays) were built
+  /// from the facts; the sync keeps them current from then on. null = not built yet: readers use
+  /// the facts (DB scale #3).
+  factDaysAt    DateTime?
 }
 
 model Location {
@@ -158,6 +162,13 @@ model Variant {
   noReorder        Boolean   @default(false)
   /// Shopify ProductVariant.inventoryPolicy: CONTINUE = keeps selling when out of stock (backorders owed); DENY / null = missed sales are lost.
   inventoryPolicy  String?
+  /// First day with a StockDaily row at any location (DB scale #3; null = none or not known yet,
+  /// filled lazily by compute — lib/sync/fact-days-shared).
+  firstStockDay    DateTime? @db.Date
+  /// First day with a channel-view SalesDaily row (locationKey "all").
+  firstSaleDay     DateTime? @db.Date
+  /// Last channel-view day with sold > 0.
+  lastSaleDay      DateTime? @db.Date
   updatedAt        DateTime  @updatedAt
 
   @@index([shop])
@@ -188,6 +199,21 @@ model StockDaily {
 
   @@id([shop, day, variantId, locationId])
   @@index([shop, variantId, day])
+}
+
+/// Per variant × location first stock day and last sale day (DB scale #3): what per-location
+/// compute, the pool (a subset of the locations) and pool demand without a left-out store read
+/// instead of scanning the facts' whole history. locationKey: a Location.id (stock rows and its
+/// POS sales), "online" or "pos:<name>" (sales location view). Complete once Shop.factDaysAt is
+/// set: no row / null = none. Maintained by the sync writes (services/sync/fact-days.server).
+model VariantLocationDays {
+  shop          String
+  variantId     String
+  locationKey   String
+  firstStockDay DateTime? @db.Date
+  lastSaleDay   DateTime? @db.Date
+
+  @@id([shop, variantId, locationKey])
 }
 
 model SessionsDaily {
