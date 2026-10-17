@@ -87,7 +87,7 @@ import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shar
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
 import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
-import { OPEN_PO_STATUSES, casePackFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
+import { OPEN_PO_STATUSES, casePackFor, cycleFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { loadSeasonContext } from "./season.server";
 import { readSettings } from "../lib/settings-shared";
@@ -324,7 +324,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     }),
     prisma.supplier.findMany({
       where: { shop },
-      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true },
+      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true, orderCycleDays: true },
     }),
   ]);
   const pool = poolLocationIds(locations);
@@ -377,7 +377,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const plans = considered.map((v) => {
     const supplier = supplierFor(v, suppliers);
     const lead = resolveLeadTime(supplier?.leadTimeDays ?? null, settings);
-    return { v, supplier, horizon: lead.days + settings.cycleDays };
+    // The supplier's own order cycle (Settings → Suppliers "Order every … days"), else the store's.
+    return { v, supplier, horizon: lead.days + cycleFor(supplier, settings.cycleDays) };
   });
   const seasonCtx = await loadSeasonContext(shop, {
     today,
@@ -576,6 +577,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         lastSaleDay: lastSale.get(v.id) ?? null,
         dataSinceDay: dataSince.get(v.id) ?? null,
         supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
+        cycleDays: supplier?.orderCycleDays ?? null,
         caseQty: casePackFor(v.caseQty, supplier),
         minOrder: supplier?.minOrder ?? null,
         seasonal: season.seasonal,

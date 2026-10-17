@@ -67,8 +67,13 @@ export type PlanSupplierInfo = {
   leadTimeDays?: number;
   leadTimeSource?: "supplier" | "default";
   hasEmail?: boolean;
-  /** The longest order cycle of its products (days) — the "Can join this order" window. */
+  /**
+   * The order cycle (days) — the "Can join this order" window and the supplier order builder's:
+   * the supplier's own "Order every … days", else the longest cycle of its products.
+   */
   cycleDays?: number | null;
+  /** The supplier's own "Order every … days" (Settings → Suppliers); null = the store's order cycle. */
+  orderCycleDays?: number | null;
 };
 
 export type OrderPlanData = {

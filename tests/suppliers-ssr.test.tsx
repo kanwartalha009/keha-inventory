@@ -28,8 +28,8 @@ function render(path: string, id: string, Component: React.ComponentType, data: 
 
 const suppliers = (over: Partial<SuppliersData> = {}): SuppliersData => ({
   suppliers: [
-    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, transitDays: 21, minOrderValue: 1500, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
-    { id: "s2", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: 0.92, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
+    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, transitDays: 21, orderCycleDays: 30, minOrderValue: 1500, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
+    { id: "s2", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: 0.92, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
   ],
   vendors: ["Acme", "Beta"],
   currency: "EUR",
@@ -46,6 +46,9 @@ describe("Settings → Suppliers", () => {
     expect(html).toContain("30 days");
     expect(html).toContain("10 per item · 200 per order · €1,500 minimum · cases of 6");
     expect(html).toContain("21 days in transit");
+    // The supplier's own order cycle (2026-10-17); a supplier without one shows nothing extra.
+    expect(html).toContain("Order every 30 days");
+    expect((html.match(/Order every \d+ days/g) ?? []).length).toBe(1);
     expect(html).toContain("Vendors: Acme");
     expect(html).toContain("Products picked: 3");
     expect(html).toContain("Email saved");
@@ -70,6 +73,7 @@ describe("Settings → Suppliers", () => {
     expect(html).toContain("Days from ship date to arrival — sea or air freight.");
     expect(html).not.toContain("Hide prices from the supplier"); // collapsed
     expect(html).not.toContain("Minimum order value"); // collapsed
+    expect(html).not.toContain("How often you place an order with this supplier"); // collapsed (More options)
     const visible = (html.match(/<s-(text|email|number)-field/g) ?? []).length + (html.match(/<s-choice-list/g) ?? []).length;
     expect(visible).toBeLessThanOrEqual(8);
   });
@@ -126,6 +130,7 @@ describe("Settings → Suppliers: per-style minimum, money minimum, exchange rat
       minOrderScope: "product",
       currency: "USD",
       exchangeRate: "0.92",
+      orderCycleDays: "60",
     };
     const res = await action({
       request: new Request("https://x/app/settings/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intent: "save", form }) }),
@@ -136,7 +141,7 @@ describe("Settings → Suppliers: per-style minimum, money minimum, exchange rat
     expect(saveSupplier).toHaveBeenCalledWith(
       "acme.myshopify.com",
       null,
-      expect.objectContaining({ transitDays: 21, minOrderValue: 1500.5, minOrderScope: "product", currency: "USD", exchangeRate: 0.92 }),
+      expect.objectContaining({ transitDays: 21, orderCycleDays: 60, minOrderValue: 1500.5, minOrderScope: "product", currency: "USD", exchangeRate: 0.92 }),
     );
     saveSupplier.mockClear();
   });

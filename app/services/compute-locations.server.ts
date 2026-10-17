@@ -266,6 +266,7 @@ async function computeLocation(
       lastSaleDay: (fromPool ? x.pool.lastSale.get(v.id) : lastSale.get(v.id)) ?? null,
       dataSinceDay: (fromPool ? x.pool.dataSince.get(v.id) : dataSince.get(v.id)) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
+      cycleDays: supplier?.orderCycleDays ?? null,
       caseQty: casePackFor(v.caseQty, supplier),
       minOrder: supplier?.minOrder ?? null,
       seasonal: season?.seasonal ?? 1,

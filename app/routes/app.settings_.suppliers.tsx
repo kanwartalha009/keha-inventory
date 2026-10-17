@@ -2,8 +2,9 @@
  * Settings → Suppliers (/app/settings/suppliers), spec §5.5, Growth
  * (`suppliers`). List, add, edit and delete suppliers: name, email (stored
  * encrypted), lead time, minimum per item, minimum order total, case pack,
- * vendor match — currency and "hide prices" under More options (7 visible
- * fields, spec ≤ 8).
+ * vendor match — order cycle ("Order every … days", 2026-10-17), minimum scope, money
+ * minimum, currency, exchange rate and "hide prices" under More options (8 visible fields,
+ * spec ≤ 8).
  *
  * Assignment: by vendor (vendor match), or by product through the admin's own
  * product picker (App Bridge resourcePicker), which sets the supplier on every
@@ -56,6 +57,8 @@ export type SuppliersData = {
   suppliers: SupplierListRow[];
   vendors: string[];
   currency: string;
+  /** The store's order cycle (Settings → Defaults): a supplier without its own uses it. */
+  cycleDays?: number;
   enabled: boolean;
   /** The supplier being edited ("new" or an id) and its form; null = list only. */
   editing: { id: string | null; form: SupplierForm } | null;
@@ -72,7 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Suppliers
     const form = await supplierForm(session.shop, edit);
     if (form) editing = { id: edit, form };
   }
-  return { suppliers, vendors: ctx.vendors, currency: ctx.currency, enabled: features.suppliers, editing };
+  return { suppliers, vendors: ctx.vendors, currency: ctx.currency, cycleDays: ctx.cycleDays, enabled: features.suppliers, editing };
 };
 
 export type SuppliersAction =
@@ -180,6 +183,7 @@ export default function SuppliersSettings() {
           initial={data.editing.form}
           vendors={data.vendors}
           storeCurrency={data.currency}
+          storeCycleDays={data.cycleDays ?? null}
           saving={fetcher.state !== "idle"}
           errors={result && !result.ok ? (result.errors ?? {}) : {}}
           onSave={(form) => post({ intent: "save", id: data.editing?.id ?? null, form })}
@@ -296,6 +300,9 @@ function SupplierRow({
           {s.transitDays ? (
             <s-text color="subdued">{fill(t("{n} days in transit"), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}
+          {s.orderCycleDays ? (
+            <s-text color="subdued">{fill(t("Order every {n} days"), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
+          ) : null}
         </s-stack>
       </s-table-cell>
       <s-table-cell>{minimums.length ? minimums.join(" · ") : "—"}</s-table-cell>
@@ -340,6 +347,7 @@ function SupplierEditor({
   initial,
   vendors,
   storeCurrency,
+  storeCycleDays,
   saving,
   errors,
   onSave,
@@ -349,15 +357,16 @@ function SupplierEditor({
   initial: SupplierForm;
   vendors: string[];
   storeCurrency: string;
+  storeCycleDays: number | null;
   saving: boolean;
   errors: SupplierErrors;
   onSave: (form: SupplierForm) => void;
   onCancel: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [form, setForm] = useState<SupplierForm>(initial);
   // More options opens by itself when one of its fields has an error after a save.
-  const moreHasError = !!(errors.minOrderValue || errors.exchangeRate || errors.currency);
+  const moreHasError = !!(errors.orderCycleDays || errors.minOrderValue || errors.exchangeRate || errors.currency);
   const [more, setMore] = useState(false);
   useEffect(() => {
     if (moreHasError) setMore(true);
@@ -439,6 +448,14 @@ function SupplierEditor({
         {errors.vendorMatch && <s-text tone="critical">{err("vendorMatch")}</s-text>}
         <Disclosure id="supplier-more" title={t("More options")} open={more} onToggle={() => setMore((m) => !m)}>
           <s-stack direction="block" gap="base">
+            {numberField(
+              "orderCycleDays",
+              t("Order every"),
+              storeCycleDays
+                ? fill(t("How often you place an order with this supplier. Leave empty to use your store's order cycle ({n} days)."), { n: formatCount(storeCycleDays, locale) })
+                : t("How often you place an order with this supplier. Leave empty to use your store's order cycle."),
+              t("days"),
+            )}
             <SelectField<MinOrderScope>
               label={t("Minimum per item applies to")}
               value={form.minOrderScope}

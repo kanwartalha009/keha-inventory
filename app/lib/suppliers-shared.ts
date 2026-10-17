@@ -20,6 +20,8 @@ export type SupplierForm = {
   casePack: string;
   /** Days from the supplier's ship date to arrival (sea or air freight). Empty = none. */
   transitDays: string;
+  /** How often the merchant orders from this supplier, in days. Empty = the store's order cycle. */
+  orderCycleDays: string;
   /** Minimum order value in the supplier's currency. Empty = none. */
   minOrderValue: string;
   /** What "Minimum per item" applies to: "variant" (each size/colour) or "product" (split across sizes by sales). */
@@ -41,6 +43,8 @@ export type SupplierInput = {
   minOrderTotal: number | null;
   casePack: number | null;
   transitDays: number | null;
+  /** null = the store's order cycle (Settings → Defaults). */
+  orderCycleDays: number | null;
   minOrderValue: number | null;
   minOrderScope: MinOrderScope;
   exchangeRate: number | null;
@@ -69,6 +73,7 @@ export const SUPPLIER_BOUNDS = {
   minOrderTotal: { min: 1, max: 1_000_000 },
   casePack: { min: 1, max: 10_000 },
   transitDays: { min: 0, max: 365 },
+  orderCycleDays: { min: 1, max: 365 },
 } as const;
 export type SupplierNumberKey = keyof typeof SUPPLIER_BOUNDS;
 
@@ -89,6 +94,7 @@ export const EMPTY_SUPPLIER_FORM: SupplierForm = {
   minOrderTotal: "",
   casePack: "",
   transitDays: "",
+  orderCycleDays: "",
   minOrderValue: "",
   minOrderScope: "variant",
   exchangeRate: "",
@@ -110,6 +116,7 @@ export function supplierToForm(s: {
   minOrderTotal: number | null;
   casePack: number | null;
   transitDays?: number | null;
+  orderCycleDays?: number | null;
   minOrderValue?: number | null;
   minOrderScope?: string | null;
   exchangeRate?: number | null;
@@ -126,6 +133,7 @@ export function supplierToForm(s: {
     minOrderTotal: str(s.minOrderTotal),
     casePack: str(s.casePack),
     transitDays: str(s.transitDays),
+    orderCycleDays: str(s.orderCycleDays),
     minOrderValue: str(s.minOrderValue),
     minOrderScope: readMinOrderScope(s.minOrderScope),
     exchangeRate: str(s.exchangeRate),
@@ -147,6 +155,7 @@ export function readSupplierForm(raw: unknown): SupplierForm {
     minOrderTotal: s("minOrderTotal"),
     casePack: s("casePack"),
     transitDays: s("transitDays"),
+    orderCycleDays: s("orderCycleDays"),
     minOrderValue: s("minOrderValue"),
     minOrderScope: readMinOrderScope(r.minOrderScope),
     exchangeRate: s("exchangeRate"),
@@ -223,6 +232,7 @@ export function validateSupplierForm(
   const minOrderTotal = num("minOrderTotal", false);
   const casePack = num("casePack", false);
   const transitDays = num("transitDays", false);
+  const orderCycleDays = num("orderCycleDays", false);
   // Lead time is the total from order to arrival, so the freight part can't be longer.
   if (transitDays !== null && leadTimeDays !== null && transitDays > leadTimeDays) errors.transitDays = "transit";
 
@@ -257,6 +267,7 @@ export function validateSupplierForm(
       // A case pack of 1 is no case pack.
       casePack: casePack && casePack > 1 ? casePack : null,
       transitDays: transitDays || null,
+      orderCycleDays,
       minOrderValue,
       minOrderScope: readMinOrderScope(form.minOrderScope),
       exchangeRate,

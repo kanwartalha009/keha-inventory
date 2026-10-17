@@ -483,6 +483,15 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect(metric(B).inputs).toMatchObject({ leadTimeSource: "default", z: 1.65, serviceLevel: 0.95 }); // role B on Safe
   });
 
+  it("the supplier's order cycle (Order every … days) replaces the store's: quantities cover lead time + that cycle", async () => {
+    db.tables.supplier = [{ id: "S1", shop: S, name: "Acme", leadTimeDays: 30, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: ["acme co"], orderCycleDays: 60 }];
+    db.tables.variant.find((v) => v.id === A)!.vendor = "Acme Co";
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).inputs).toMatchObject({ leadTimeDays: 30, cycleDays: 60 });
+    // Without its own cycle a supplier's products keep the store's (Settings → Defaults, 14 days).
+    expect(metric(B).inputs).toMatchObject({ cycleDays: 14 });
+  });
+
   it("H2: a confirmed ship date arrives after the supplier's transit days", async () => {
     db.tables.supplier = [{ id: "S1", shop: S, name: "Acme", leadTimeDays: 40, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: [], transitDays: 21 }];
     db.tables.purchaseOrder = [

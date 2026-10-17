@@ -93,6 +93,16 @@ function kehaNow(list: readonly { o: KehaPlanOrder; remaining: number }[] | unde
   return out;
 }
 
+/**
+ * The supplier's own order cycle (Settings → Suppliers "Order every … days") replaces the cycle the
+ * nightly run stored, so a changed cycle applies at once: order quantities cover lead time + that
+ * cycle (forward plan H = lead + cycle). The next run stores it itself (compute reads the supplier).
+ */
+export function withSupplierCycle<I extends { cycleDays: number }>(input: I, supplier: { orderCycleDays?: number | null } | null): I {
+  const own = supplier?.orderCycleDays;
+  return typeof own === "number" && Number.isInteger(own) && own >= 1 ? { ...input, cycleDays: own } : input;
+}
+
 function inputNum(inputs: unknown, key: string): number | null {
   const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>)[key] : undefined;
   return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -122,6 +132,7 @@ const SUPPLIER_SELECT = {
   vendorMatch: true,
   currency: true,
   transitDays: true,
+  orderCycleDays: true,
   minOrderValue: true,
   minOrderScope: true,
   exchangeRate: true,
@@ -162,6 +173,7 @@ export async function planSuppliers(shop: string): Promise<PlanSupplierRow[]> {
     vendorMatch: s.vendorMatch ?? [],
     currency: s.currency ?? null,
     transitDays: s.transitDays ?? null,
+    orderCycleDays: s.orderCycleDays ?? null,
     minOrderValue: num(s.minOrderValue),
     minOrderScope: readMinOrderScope(s.minOrderScope),
     exchangeRate: num(s.exchangeRate),
@@ -298,7 +310,10 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       supplierKey: key,
       unitCost: costs.store,
       weight: fRate ?? 0,
-      input: forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted: since.notCounted, removed: since.removed, days }),
+      input: withSupplierCycle(
+        forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted: since.notCounted, removed: since.removed, days }),
+        supplier,
+      ),
     });
     if (!suppliers[key]) {
       const supCur = (supplier?.currency || basics.currency).toUpperCase();
@@ -320,7 +335,8 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
             leadTimeDays: supplier.leadTimeDays,
             leadTimeSource: "supplier",
             hasEmail: !!supplier.email,
-            cycleDays: null,
+            cycleDays: supplier.orderCycleDays ?? null,
+            orderCycleDays: supplier.orderCycleDays ?? null,
           }
         : {
             key,
@@ -338,6 +354,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
             leadTimeSource: "default",
             hasEmail: false,
             cycleDays: null,
+            orderCycleDays: null,
           };
       rules[key] = {
         styleMin: style ? (supplier?.minOrder ?? null) : null,
@@ -347,7 +364,8 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     }
     const cyc = inputNum(m.inputs, "cycleDays");
     const info = suppliers[key]!;
-    if (cyc !== null && (info.cycleDays === null || info.cycleDays === undefined || cyc > info.cycleDays)) info.cycleDays = cyc;
+    // The supplier's own order cycle wins; otherwise the longest cycle its products were computed with.
+    if (!info.orderCycleDays && cyc !== null && (info.cycleDays === null || info.cycleDays === undefined || cyc > info.cycleDays)) info.cycleDays = cyc;
   }
 
   const plan = planStore(specs, rules, today);

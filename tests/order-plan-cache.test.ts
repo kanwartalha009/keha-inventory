@@ -115,7 +115,7 @@ describe("cachedOrderPlan", () => {
       ["delete", () => deleteDraft(S, "d2")],
       ["don't reorder", () => setNoReorder(S, { productId: "P1" }, true)],
       ["case size", () => setProductCaseSize(S, "P2", 6)],
-      ["supplier", () => saveSupplier(S, null, { name: "Acme", email: null, leadTimeDays: 20, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"] })],
+      ["supplier", () => saveSupplier(S, null, { name: "Acme", email: null, leadTimeDays: 20, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"] })],
       ["settings", () => saveShopSettings(S, { ...readSettings({}), leadTimeDays: 21 })],
     ];
     for (const [name, step] of steps) {

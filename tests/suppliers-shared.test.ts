@@ -41,6 +41,7 @@ describe("validateSupplierForm", () => {
         minOrderTotal: 200,
         casePack: 6,
         transitDays: null,
+        orderCycleDays: null,
         minOrderValue: null,
         minOrderScope: "variant",
         exchangeRate: null,
@@ -74,6 +75,21 @@ describe("validateSupplierForm", () => {
     // Transit 0 means none; an unknown scope reads as each size/colour.
     const zero = validateSupplierForm({ ...form({ transitDays: "0" }), minOrderScope: "style" as never });
     expect(zero.ok && zero.input).toMatchObject({ transitDays: null, minOrderScope: "variant" });
+  });
+
+  it("order cycle: whole days 1–365, empty = the store's cycle (2026-10-17)", () => {
+    const r = validateSupplierForm(form({ orderCycleDays: " 75 " }));
+    expect(r.ok && r.input.orderCycleDays).toBe(75);
+    const empty = validateSupplierForm(form({ orderCycleDays: "" }));
+    expect(empty.ok && empty.input.orderCycleDays).toBeNull();
+    for (const bad of ["0", "366", "7.5", "-3", "abc"]) {
+      expect(validateSupplierForm(form({ orderCycleDays: bad })), bad).toEqual({ ok: false, errors: { orderCycleDays: "range" } });
+    }
+    expect(readSupplierForm({ orderCycleDays: 30 }).orderCycleDays).toBe("30");
+    const row = { name: "Acme", email: null, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, currency: null, hidePrices: false, vendorMatch: [] };
+    expect(supplierToForm({ ...row, orderCycleDays: null }).orderCycleDays).toBe("");
+    expect(supplierToForm(row).orderCycleDays).toBe("");
+    expect(supplierToForm({ ...row, orderCycleDays: 30 }).orderCycleDays).toBe("30");
   });
 
   it("needsExchangeRate: only a different, valid currency", () => {
@@ -126,6 +142,7 @@ describe("validateSupplierForm", () => {
       minOrderTotal: 50,
       casePack: null,
       transitDays: 5,
+      orderCycleDays: 30,
       minOrderValue: 250.5,
       minOrderScope: "product" as const,
       exchangeRate: null,

@@ -63,6 +63,8 @@ export type ShopBasics = {
   timezone: string;
   locale: string;
   leadTimeDays: number;
+  /** The store's order cycle (Settings → Defaults). */
+  cycleDays: number;
   /** Growth assumption (Settings → Defaults): "store" applies the trend; "off" (default) doesn't. */
   trendMode: TrendMode;
 };
@@ -74,6 +76,7 @@ export async function shopBasics(shop: string): Promise<ShopBasics> {
     timezone: row?.timezone ?? "UTC",
     locale: row?.locale ?? "en",
     leadTimeDays: readSettings(row?.settings).leadTimeDays,
+    cycleDays: readSettings(row?.settings).cycleDays,
     trendMode: readSettings(row?.settings).trendMode,
   };
 }

@@ -15,6 +15,8 @@ export interface SupplierLite {
   vendorMatch: string[];
   /** Days from the supplier's ship date to arrival (freight). null = ship date is the arrival. */
   transitDays?: number | null;
+  /** How often the merchant orders from this supplier (days); null = the store's order cycle. */
+  orderCycleDays?: number | null;
   /** Minimum order value in the supplier's currency. */
   minOrderValue?: number | null;
   /** What `minOrder` applies to: each variant, or each product (style) split across its variants. */
@@ -46,6 +48,12 @@ export function supplierFor<S extends SupplierLite>(
   if (!vendor) return null;
   const sorted = [...suppliers].sort((a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : 1));
   return sorted.find((s) => s.vendorMatch.some((v) => norm(v) === vendor)) ?? null;
+}
+
+/** The order cycle for a supplier's products: its own "Order every … days", else the store's (Settings → Defaults). */
+export function cycleFor(supplier: Pick<SupplierLite, "orderCycleDays"> | null | undefined, storeCycleDays: number): number {
+  const own = supplier?.orderCycleDays;
+  return typeof own === "number" && Number.isInteger(own) && own >= 1 ? own : storeCycleDays;
 }
 
 /** Case pack for one line: the variant's own caseQty wins over the supplier's default. */

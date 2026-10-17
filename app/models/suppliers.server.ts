@@ -21,6 +21,8 @@ export type SupplierListRow = {
   minOrderTotal: number | null;
   casePack: number | null;
   transitDays: number | null;
+  /** Order every … days; null = the store's order cycle. */
+  orderCycleDays: number | null;
   /** In the supplier's currency. */
   minOrderValue: number | null;
   minOrderScope: MinOrderScope;
@@ -41,6 +43,7 @@ const LIST_SELECT = {
   minOrderTotal: true,
   casePack: true,
   transitDays: true,
+  orderCycleDays: true,
   minOrderValue: true,
   minOrderScope: true,
   exchangeRate: true,
@@ -88,6 +91,7 @@ function data(input: SupplierInput) {
     minOrderTotal: input.minOrderTotal,
     casePack: input.casePack,
     transitDays: input.transitDays,
+    orderCycleDays: input.orderCycleDays,
     minOrderValue: input.minOrderValue,
     minOrderScope: input.minOrderScope,
     exchangeRate: input.exchangeRate,
@@ -153,7 +157,7 @@ export async function storeCurrency(shop: string): Promise<string> {
 }
 
 /** The store's vendors (vendor-match choices) and defaults for a new supplier. */
-export async function supplierContext(shop: string): Promise<{ vendors: string[]; currency: string; leadTimeDays: number }> {
+export async function supplierContext(shop: string): Promise<{ vendors: string[]; currency: string; leadTimeDays: number; cycleDays: number }> {
   const [vendors, row] = await Promise.all([
     prisma.variant.groupBy({
       by: ["vendor"],
@@ -167,5 +171,6 @@ export async function supplierContext(shop: string): Promise<{ vendors: string[]
     vendors: vendors.map((v) => v.vendor).filter((v): v is string => !!v && !!v.trim()),
     currency: row?.currency ?? "USD",
     leadTimeDays: readSettings(row?.settings).leadTimeDays,
+    cycleDays: readSettings(row?.settings).cycleDays,
   };
 }

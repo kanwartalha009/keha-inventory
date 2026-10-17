@@ -353,6 +353,9 @@ model Supplier {
   /// Days from the supplier's ship date to stock arriving (sea/air freight). Arrival = confirmed ship date + transit.
   /// leadTimeDays stays the total from order to arrival.
   transitDays   Int?
+  /// How often the merchant orders from this supplier (days; optional). null = the store's order cycle (Settings → Defaults).
+  /// Order quantities cover lead time + this cycle; the supplier order builder gathers what is due within it.
+  orderCycleDays Int?
   /// Minimum order value in the supplier's currency (optional; alongside the unit minimum).
   minOrderValue Decimal? @db.Decimal(18, 2)
   /// What minOrder applies to: "variant" (each size/colour) or "product" (each style, split across its variants by sales share).

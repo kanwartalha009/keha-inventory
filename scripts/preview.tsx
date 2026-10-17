@@ -361,9 +361,9 @@ function variantDetail(): VariantDetailData {
 
 const suppliers: SuppliersData = {
   suppliers: [
-    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, transitDays: 21, minOrderValue: 1500, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
-    { id: "s2", name: "Lisbon Linen", hasEmail: true, leadTimeDays: 21, minOrder: null, minOrderTotal: 500, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "product", exchangeRate: null, currency: null, hidePrices: true, vendorMatch: [], products: 12 },
-    { id: "s3", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: 0.92, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
+    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, transitDays: 21, orderCycleDays: 30, minOrderValue: 1500, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
+    { id: "s2", name: "Lisbon Linen", hasEmail: true, leadTimeDays: 21, minOrder: null, minOrderTotal: 500, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "product", exchangeRate: null, currency: null, hidePrices: true, vendorMatch: [], products: 12 },
+    { id: "s3", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: 0.92, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
   ],
   vendors: ["Acme", "Beta"],
   currency: "EUR",
