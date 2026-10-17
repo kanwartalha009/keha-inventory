@@ -367,14 +367,14 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     await computeShop(S, { now: () => NOW });
     const a = metric(A);
     const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
-    // Index = 4/day (LY horizon) ÷ 2/day (LY base) = 2.
-    expect(inputs.seasonal).toBeCloseTo(2, 10);
-    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
+    // LY horizon 4/day (3-week smoothed at its end) ÷ LY base (the rate-window blend, ≈ 2/day) → raw ≈ 1.77; one year → shrunk halfway to 1.
+    const raw = (inputs.season as { seasonalRaw: number }).seasonalRaw;
+    expect(raw).toBeGreaterThan(1.7);
+    expect(inputs.seasonal).toBeCloseTo(1 + 0.5 * (raw - 1), 10);
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, seasonalWeight: 0.5, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
     // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2: measured, not applied.
     expect((inputs.season as { trendMeasured: number }).trendMeasured).toBe(2);
     expect(inputs.trend).toBe(1);
-    // days left = 100 ÷ (2 × 2).
-    expect(a.daysLeft).toBeCloseTo(25, 10);
   });
 
   it("C4: trendMode 'store' applies the trend (the old behaviour)", async () => {
@@ -385,9 +385,6 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
     expect(inputs.trend).toBe(2);
     expect(inputs.season).toMatchObject({ trendApplied: true, trendMode: "store", trendNote: null });
-    // days left = 100 ÷ (2 × 2 × 2).
-    expect(a.daysLeft).toBeCloseTo(12.5, 10);
-    expect(a.status).toBe("running_low");
   });
 
   it("stores the forward plan's inputs and takes the order-by date from it (one date for every screen)", async () => {

@@ -9,18 +9,25 @@
  *    [from, to] and not in a skipped month. A covered day with no units sold 0. A day outside
  *    coverage is MISSING: it counts in neither the units nor the day count (never a zero).
  *  - units/day over a span = Σ units on covered days ÷ covered days.
- *  - Seasonal index for a horizon of H days starting today:
- *        LY span  = the same calendar dates one year back: [today − 1y, today − 1y + H − 1]
- *        LY base  = the 28 days ending yesterday, one year back: [yesterday − 1y − 27, yesterday − 1y]
- *        index    = units/day(LY span) ÷ units/day(LY base), clamped to 0.2–5.0.
- *    BASE WINDOW CHOICE: 28 days, because (a) it is the heaviest of the sales-rate windows
- *    (rate = 0.5·rate_28 + …), so "now" and "base" describe the same weeks a year apart;
- *    (b) it matches the trend window; (c) it fits inside 13 months of history
- *    (365 + 28 = 393 days), which is the spec's history requirement. A 90-day base would need
- *    ~15 months, so seasonality could not start from a 13-month backfill.
- *    Requirements: the history starts on or before today − 13 calendar months; both spans have
- *    ≥ 80 % covered days; the base sold > 0. Otherwise 1.0, labelled "No seasonal data yet".
- *    H is capped at 365 days so the LY span is always in the past.
+ *  - Seasonal index for a horizon of H days starting today (audit 2026-10-17, H5: copying last
+ *    year's calendar dates hurt accuracy — an April Easter/promo spike was copied as ×1.38):
+ *        year y (y = 1, 2) = the same WEEKDAYS 364·y days back (as the trend), so a Black Friday
+ *                   or a weekend lines up with itself;
+ *        LY span_y  = [today − 364y, today − 364y + H − 1], SMOOTHED: the mean, over its days, of a
+ *                   centred 3-week (21-day) average of the units/day around each day, so one spike
+ *                   week is spread over three;
+ *        LY base_y  = the sales rate's own blend one year back: Σ wᵢ·units/day over the Nᵢ days
+ *                   ending yesterday − 364y ÷ Σ wᵢ, with the rate's windows and weights
+ *                   (28/56/90 d × 0.5/0.3/0.2); a window with < 80 % covered days is dropped and
+ *                   the weights renormalised (as the rate drops windows), so "now" (the rate) and
+ *                   "then" (the base) are the same blend of the same weeks a year apart;
+ *        raw_y      = span_y ÷ base_y; raw = the mean over the usable years;
+ *        index      = 1 + w × (raw − 1), SHRUNK toward 1: w = 0.5 with one usable year (one year
+ *                   is one sample: half of a copied spike is noise), 1 with two; clamped 0.2–5.0.
+ *    Requirements: the history starts on or before today − 13 calendar months; year 1's span and
+ *    its 28-day base window have ≥ 80 % covered days; the base sold > 0. Otherwise 1.0, labelled
+ *    "No seasonal data yet". H is capped at 364 days so the LY span is always in the past.
+ *    The weekly shape (seasonCurve) uses the same years, base, smoothing and shrinkage.
  *  - Trend = units/day(last 28 days) ÷ units/day(the same 28 days 364 days earlier, weekdays
  *    aligned), clamped to 0.5–2.0. Needs ≥ 80 % covered days in both windows and last year's
  *    window sold > 0; otherwise 1.0 (spec: "without last year's data: 1.0").
@@ -40,7 +47,21 @@ export const SEASON = Object.freeze({
   seasonalMin: 0.2,
   seasonalMax: 5,
   baseDays: 28,
-  maxHorizonDays: 365,
+  maxHorizonDays: 364,
+  /** Last year = this many days back (52 weeks: weekdays aligned), × y for year y. */
+  yearShiftDays: 364,
+  /** Years of history the index averages (1 or 2). */
+  maxYears: 2,
+  /** Centred moving average around each day: ± this many days (21 days = 3 weeks). */
+  smoothRadiusDays: 10,
+  /** Weight of (index − 1) with only one usable year; two years → 1. */
+  oneYearWeight: 0.5,
+  /** The LY base blend: the sales rate's own windows and weights (types-shared ENGINE_DEFAULTS). */
+  baseWindows: Object.freeze([
+    { days: 28, weight: 0.5 },
+    { days: 56, weight: 0.3 },
+    { days: 90, weight: 0.2 },
+  ]),
   trendDays: 28,
   trendShiftDays: 364,
   trendMin: 0.5,
@@ -131,39 +152,120 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 export type SeasonalReason = "ok" | "short_history" | "low_coverage" | "no_base_sales";
 
 export interface SeasonalResult {
-  /** The multiplier to apply: the clamped index, or 1 when not applied. */
+  /** The multiplier to apply: the shrunk, clamped index, or 1 when not applied. */
   value: number;
   applied: boolean;
   reason: SeasonalReason;
-  /** Index before clamping (null when not computable). */
+  /** Mean of the usable years' smoothed span ÷ base, before shrinking and clamping (null when not computable). */
   raw: number | null;
   horizonDays: number;
-  span: SpanStats;
-  base: SpanStats;
+  /** Year 1's span (raw, unsmoothed stats; `smoothedPerDay` holds the 3-week smoothed level). */
+  span: SpanStats & { smoothedPerDay: number | null };
+  /** Year 1's 28-day base window (`blendedPerDay` = the rate-window blend actually used). */
+  base: SpanStats & { blendedPerDay: number | null };
+  /** Usable years (0–2) and the shrink weight used (0.5 for one year, 1 for two). */
+  years: number;
+  weight: number;
+}
+
+/** Covered-day units/day per day of [from, to] for fast windowed means (prefix sums). */
+function dailyIndex(s: UnitsSeries, from: DayKey, to: DayKey) {
+  const n = Math.max(0, daysBetween(from, to) + 1);
+  const units = new Float64Array(n + 1);
+  const days = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const day = addDays(from, i);
+    const c = isCovered(s.coverage, day);
+    const u = c ? s.units.get(day) : undefined;
+    units[i + 1] = units[i]! + (c && typeof u === "number" && Number.isFinite(u) ? u : 0);
+    days[i + 1] = days[i]! + (c ? 1 : 0);
+  }
+  /** Units/day over offsets [a, b] (clipped), null when no day there is covered. */
+  const mean = (a: number, b: number): number | null => {
+    const lo = Math.max(0, a);
+    const hi = Math.min(n - 1, b);
+    if (hi < lo) return null;
+    const d = days[hi + 1]! - days[lo]!;
+    return d > 0 ? (units[hi + 1]! - units[lo]!) / d : null;
+  };
+  return { n, mean };
+}
+
+/** The rate-window blend of units/day over the windows ending on `end` (null = no usable window). */
+function blendedBase(s: UnitsSeries, end: DayKey): { perDay: number | null; first: SpanStats } {
+  let num = 0;
+  let den = 0;
+  let first: SpanStats | null = null;
+  for (const w of SEASON.baseWindows) {
+    const st = spanStats(s, addDays(end, -(w.days - 1)), end);
+    if (!first) first = st;
+    if (st.coverage < SEASON.minCoverage || st.unitsPerDay === null) continue;
+    num += w.weight * st.unitsPerDay;
+    den += w.weight;
+  }
+  // The shortest (28-day) window must be usable: it is the heaviest part of the rate.
+  const okFirst = first !== null && first.coverage >= SEASON.minCoverage;
+  return { perDay: okFirst && den > 0 ? num / den : null, first: first! };
+}
+
+/** Smoothed (centred 3-week) units/day averaged over the days of [from, from + len − 1]. */
+function smoothedSpan(s: UnitsSeries, from: DayKey, len: number): number | null {
+  const R = SEASON.smoothRadiusDays;
+  const idx = dailyIndex(s, addDays(from, -R), addDays(from, len - 1 + R));
+  let sum = 0;
+  let k = 0;
+  for (let d = 0; d < len; d++) {
+    const m = idx.mean(d, d + 2 * R);
+    if (m === null) continue;
+    sum += m;
+    k++;
+  }
+  return k > 0 ? sum / k : null;
+}
+
+/** One year back (y = 1, 2): span coverage, smoothed span level and the blended base. */
+function yearRatio(s: UnitsSeries, t: DayKey, H: number, y: number) {
+  const shift = SEASON.yearShiftDays * y;
+  const spanFrom = addDays(t, -shift);
+  const span = spanStats(s, spanFrom, addDays(spanFrom, H - 1));
+  const base = blendedBase(s, addDays(t, -1 - shift));
+  const smoothed = span.coverage >= SEASON.minCoverage ? smoothedSpan(s, spanFrom, H) : null;
+  const ratio = smoothed !== null && base.perDay !== null && base.perDay > 0 ? smoothed / base.perDay : null;
+  return { span, base, smoothed, ratio };
+}
+
+/** 1 + w × (raw − 1), clamped to 0.2 … 5. */
+export function shrinkIndex(raw: number, years: number): number {
+  const w = years >= 2 ? 1 : SEASON.oneYearWeight;
+  return clamp(1 + w * (raw - 1), SEASON.seasonalMin, SEASON.seasonalMax);
 }
 
 /** Seasonal index for the H days starting today (see the module header). */
 export function seasonalIndex(s: UnitsSeries, today: DayKey, horizonDays: number): SeasonalResult {
   const t = toDayKey(today);
   const H = Math.max(1, Math.min(SEASON.maxHorizonDays, Math.round(Number.isFinite(horizonDays) ? horizonDays : 1)));
-  const spanFrom = shiftYears(t, -1);
-  const span = spanStats(s, spanFrom, addDays(spanFrom, H - 1));
-  const baseTo = shiftYears(addDays(t, -1), -1);
-  const base = spanStats(s, addDays(baseTo, -(SEASON.baseDays - 1)), baseTo);
-  const out = (reason: SeasonalReason, raw: number | null = null): SeasonalResult => ({
-    value: reason === "ok" && raw !== null ? clamp(raw, SEASON.seasonalMin, SEASON.seasonalMax) : 1,
+  const y1 = yearRatio(s, t, H, 1);
+  const ys = [y1];
+  for (let y = 2; y <= SEASON.maxYears; y++) ys.push(yearRatio(s, t, H, y));
+  const usable = ys.filter((x) => x.ratio !== null);
+  const raw = usable.length && y1.ratio !== null ? usable.reduce((a, x) => a + x.ratio!, 0) / usable.length : null;
+  const out = (reason: SeasonalReason): SeasonalResult => ({
+    value: reason === "ok" && raw !== null ? shrinkIndex(raw, usable.length) : 1,
     applied: reason === "ok",
     reason,
-    raw,
+    raw: reason === "ok" ? raw : null,
     horizonDays: H,
-    span,
-    base,
+    span: { ...y1.span, smoothedPerDay: y1.smoothed },
+    base: { ...y1.base.first, blendedPerDay: y1.base.perDay },
+    years: reason === "ok" ? usable.length : 0,
+    weight: reason === "ok" ? (usable.length >= 2 ? 1 : SEASON.oneYearWeight) : 0,
   });
   const from = s.coverage.from;
   if (!from || from > monthsEarlier(t, SEASON.minHistoryMonths)) return out("short_history");
-  if (span.coverage < SEASON.minCoverage || base.coverage < SEASON.minCoverage) return out("low_coverage");
-  if (!base.unitsPerDay || base.unitsPerDay <= 0) return out("no_base_sales");
-  return out("ok", (span.unitsPerDay ?? 0) / base.unitsPerDay);
+  if (y1.span.coverage < SEASON.minCoverage || y1.base.first.coverage < SEASON.minCoverage) return out("low_coverage");
+  if (!y1.base.perDay || y1.base.perDay <= 0) return out("no_base_sales");
+  if (y1.ratio === null) return out("low_coverage");
+  return out("ok");
 }
 
 export type TrendReason = "ok" | "off" | "low_coverage" | "no_last_year_sales";
@@ -220,24 +322,45 @@ export function trendFactor(s: UnitsSeries, today: DayKey, mode: TrendMode = "of
 export const CURVE_MAX_WEEKS = 50;
 
 /**
- * Weekly seasonal shape for the forward order plan (forward-plan-shared): for week k starting
- * today (days 7k … 7k+6), units/day over the same calendar dates one year back ÷ units/day over
- * the seasonal index's own base (the 28 days ending yesterday, one year back). Unclamped,
- * rounded to 3 decimals; a week with < 80 % covered days is null. Null when the base itself is
- * unusable. Only used when the seasonal index was applied, with the same source (store or
- * collection) as the index, so it never introduces data the index didn't use.
+ * Weekly seasonal shape for the forward order plan and the status / money projections: for week
+ * k starting today (days 7k … 7k+6), per usable year (as seasonalIndex: weekdays aligned, 364·y
+ * days back) the centred 3-week units/day around that week ÷ that year's blended base, averaged
+ * over the years and shrunk toward 1 like the index (0.5 with one year). Unclamped (the users
+ * clamp), rounded to 3 decimals; a week with < 80 % covered days is null. Null when year 1's
+ * base is unusable. Only used when the seasonal index was applied, with the same source (store
+ * or collection) as the index, so it never introduces data the index didn't use.
  */
 export function seasonCurve(s: UnitsSeries, today: DayKey, weeks: number): (number | null)[] | null {
   const t = toDayKey(today);
-  const baseTo = shiftYears(addDays(t, -1), -1);
-  const base = spanStats(s, addDays(baseTo, -(SEASON.baseDays - 1)), baseTo);
-  if (base.coverage < SEASON.minCoverage || !base.unitsPerDay || base.unitsPerDay <= 0) return null;
-  const from = shiftYears(t, -1);
   const n = Math.max(1, Math.min(CURVE_MAX_WEEKS, Math.ceil(Number.isFinite(weeks) ? weeks : 1)));
+  const years: { from: DayKey; base: number; idx: ReturnType<typeof dailyIndex> }[] = [];
+  for (let y = 1; y <= SEASON.maxYears; y++) {
+    const shift = SEASON.yearShiftDays * y;
+    const base = blendedBase(s, addDays(t, -1 - shift)).perDay;
+    if (base === null || !(base > 0)) {
+      if (y === 1) return null;
+      continue;
+    }
+    const from = addDays(t, -shift);
+    years.push({ from, base, idx: dailyIndex(s, addDays(from, -7), addDays(from, 7 * n + 6)) });
+  }
   const out: (number | null)[] = [];
   for (let k = 0; k < n; k++) {
-    const w = spanStats(s, addDays(from, 7 * k), addDays(from, 7 * k + 6));
-    out.push(w.coverage >= SEASON.minCoverage && w.unitsPerDay !== null ? Math.round((w.unitsPerDay / base.unitsPerDay) * 1000) / 1000 : null);
+    const ratios: number[] = [];
+    for (const y of years) {
+      const week = spanStats(s, addDays(y.from, 7 * k), addDays(y.from, 7 * k + 6));
+      if (week.coverage < SEASON.minCoverage) continue;
+      // Offsets in y.idx start 7 days before y.from: the week is [7k + 7, 7k + 13], ± 7 days.
+      const m = y.idx.mean(7 * k, 7 * k + 20);
+      if (m !== null) ratios.push(m / y.base);
+    }
+    if (!ratios.length) {
+      out.push(null);
+      continue;
+    }
+    const raw = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    const w = ratios.length >= 2 ? 1 : SEASON.oneYearWeight;
+    out.push(Math.round(Math.max(0, 1 + w * (raw - 1)) * 1000) / 1000);
   }
   return out;
 }
@@ -346,9 +469,11 @@ export function seasonFacts(s: VariantSeason) {
     seasonalApplied: s.seasonalResult.applied,
     seasonalReason: s.seasonalResult.reason,
     seasonalRaw: s.seasonalResult.raw,
+    seasonalYears: s.seasonalResult.years,
+    seasonalWeight: s.seasonalResult.weight,
     horizonDays: s.seasonalResult.horizonDays,
-    lastYearSpan: { from: s.seasonalResult.span.from, to: s.seasonalResult.span.to, unitsPerDay: s.seasonalResult.span.unitsPerDay, coverage: s.seasonalResult.span.coverage },
-    lastYearBase: { from: s.seasonalResult.base.from, to: s.seasonalResult.base.to, unitsPerDay: s.seasonalResult.base.unitsPerDay, coverage: s.seasonalResult.base.coverage },
+    lastYearSpan: { from: s.seasonalResult.span.from, to: s.seasonalResult.span.to, unitsPerDay: s.seasonalResult.span.unitsPerDay, smoothedPerDay: s.seasonalResult.span.smoothedPerDay, coverage: s.seasonalResult.span.coverage },
+    lastYearBase: { from: s.seasonalResult.base.from, to: s.seasonalResult.base.to, unitsPerDay: s.seasonalResult.base.unitsPerDay, blendedPerDay: s.seasonalResult.base.blendedPerDay, coverage: s.seasonalResult.base.coverage },
     trendApplied: s.trendResult.applied,
     trendReason: s.trendResult.reason,
     trendRaw: s.trendResult.raw,

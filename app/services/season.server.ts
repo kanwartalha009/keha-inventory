@@ -10,7 +10,6 @@ import prisma from "../db.server";
 import {
   SEASON,
   createSeasonContext,
-  shiftYears,
   type Coverage,
   type TrendMode,
   type UnitsSeries,
@@ -21,6 +20,8 @@ import { addDays } from "../lib/sync/shopifyql-shared";
 export type SeasonContext = ReturnType<typeof createSeasonContext>;
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+/** Member variant ids per `in` filter (bounded query size). */
+const MEMBER_CHUNK = 5000;
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
 export async function loadSeasonContext(
@@ -38,10 +39,13 @@ export async function loadSeasonContext(
 ): Promise<SeasonContext> {
   const { today, poolKeys, coverage } = input;
   const yesterday = addDays(today, -1);
-  // Oldest day any span reads: the LY base (28 days ending yesterday − 1y) or the LY trend window.
-  const from = addDays(shiftYears(yesterday, -1), -(SEASON.baseDays + 7));
-  const lyFrom = shiftYears(today, -1);
-  const lyTo = addDays(lyFrom, Math.min(SEASON.maxHorizonDays, Math.max(1, input.maxHorizonDays)) - 1);
+  // Oldest day any span reads: the oldest year's base blend (its longest rate window) and the
+  // 3-week smoothing margin, or the LY trend window (season-shared seasonalIndex / trendFactor).
+  const longestBase = Math.max(...SEASON.baseWindows.map((w) => w.days));
+  const from = addDays(today, -(SEASON.yearShiftDays * SEASON.maxYears + longestBase + SEASON.smoothRadiusDays + 7));
+  const horizon = Math.min(SEASON.maxHorizonDays, Math.max(1, input.maxHorizonDays));
+  // Newest last-year day a span (or the weekly curve) reads, smoothing margin included.
+  const lyTo = addDays(today, -SEASON.yearShiftDays + horizon + SEASON.smoothRadiusDays + 7);
   const pool = { shop, channel: ALL, locationKey: { in: poolKeys } };
 
   const [storeG, units12G] = await Promise.all([
@@ -66,35 +70,26 @@ export async function loadSeasonContext(
 
   const qualifying = [...units12m].filter(([, u]) => u >= SEASON.collectionMinUnits12m).map(([c]) => c);
   const collections = new Map<string, UnitsSeries>();
-  if (qualifying.length) {
-    // Two windows only: [LY base … LY horizon end] and the last 28 days.
-    const windows = [
-      { gte: dayDate(from), lte: dayDate(lyTo < yesterday ? lyTo : yesterday) },
-      { gte: dayDate(addDays(today, -SEASON.trendDays)), lte: dayDate(yesterday) },
-    ];
-    const rows = (
-      await Promise.all(
-        windows.map((day) =>
-          prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { ...pool, day }, _sum: { sold: true } }),
-        ),
-      )
-    ).flat();
-    const seen = new Set<string>();
-    const byVariant = new Map<string, Map<string, number>>();
-    for (const g of rows) {
-      const k = `${g.variantId}|${dayKey(g.day)}`;
-      if (seen.has(k)) continue; // the two windows never overlap in practice; guard anyway
-      seen.add(k);
-      const m = byVariant.get(g.variantId) ?? byVariant.set(g.variantId, new Map()).get(g.variantId)!;
-      m.set(dayKey(g.day), num(g._sum.sold));
-    }
-    for (const c of qualifying) {
-      const units = new Map<string, number>();
-      for (const id of members.get(c) ?? []) {
-        for (const [day, u] of byVariant.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + u);
+  // One day-level query per qualifying collection (its members' units summed in SQL), over the
+  // last-year windows (both years, bases and smoothing: [from … lyTo]) and the last 28 days.
+  const windows = [
+    { gte: dayDate(from), lte: dayDate(lyTo < yesterday ? lyTo : yesterday) },
+    ...(lyTo < addDays(today, -SEASON.trendDays) ? [{ gte: dayDate(addDays(today, -SEASON.trendDays)), lte: dayDate(yesterday) }] : []),
+  ];
+  for (const c of qualifying) {
+    const ids = members.get(c) ?? [];
+    const units = new Map<string, number>();
+    for (const day of windows) {
+      for (let i = 0; i < ids.length; i += MEMBER_CHUNK) {
+        const rows = await prisma.salesDaily.groupBy({
+          by: ["day"],
+          where: { ...pool, variantId: { in: ids.slice(i, i + MEMBER_CHUNK) }, day },
+          _sum: { sold: true },
+        });
+        for (const g of rows) units.set(dayKey(g.day), (units.get(dayKey(g.day)) ?? 0) + num(g._sum.sold));
       }
-      collections.set(c, { units, coverage });
     }
+    collections.set(c, { units, coverage });
   }
   return createSeasonContext({ today, store: { units: storeUnits, coverage }, collections, units12m, trendMode: input.trendMode ?? "off" });
 }
