@@ -4,7 +4,8 @@
  * supplier's confirm link. Unit costs are left out when the supplier sees no
  * prices. Lines are shown as a size grid (lib/po-grid-shared: one row per style
  * and colour, sizes as columns, the supplier's style code, totals per row and
- * column); products without sizes as a flat list.
+ * column); products without sizes as a flat list. Freight & duty (landed cost)
+ * is never on it: only the order's own line costs.
  *
  * pdfkit's built-in Helvetica only covers Windows-1252 (Western European).
  * Text outside it (e.g. Polish ł, ą) is written without its accent rather

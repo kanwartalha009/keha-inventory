@@ -17,7 +17,7 @@
  */
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import { poCountsAsOrdered, readPoLines, supplierFor, casePackFor, toStoreCurrency, lineRemaining } from "../lib/supplier-shared";
+import { poCountsAsOrdered, readPoLines, supplierFor, casePackFor, lineRemaining } from "../lib/supplier-shared";
 import { supplierGroupKey, vendorGroupKey } from "../lib/reorder-shared";
 import { lineCosts, type PlanSupplierInfo } from "../lib/order-plan-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
@@ -27,7 +27,7 @@ import {
   type BuilderDraft,
   type SupplierOrderView,
 } from "../lib/supplier-order-shared";
-import { computeOrderPlan, planSuppliers, type PlanSupplierRow } from "./order-plan.server";
+import { computeOrderPlan, planSuppliers, supplierInfoOf, type PlanSupplierRow } from "./order-plan.server";
 import { addDraftLines, draftLines, insertWithNumber, shopBasics, type OrderEditResult, type ShopBasics } from "./reorder.server";
 
 const num = (v: unknown): number | null => {
@@ -53,28 +53,8 @@ function supplierOfKey(key: string, suppliers: readonly PlanSupplierRow[]): Plan
 function infoFromSettings(key: string, suppliers: readonly PlanSupplierRow[], basics: ShopBasics, vendorName: string | null): PlanSupplierInfo | null {
   const store = basics.currency.toUpperCase();
   const s = supplierOfKey(key, suppliers);
-  if (s) {
-    const cur = (s.currency || store).toUpperCase();
-    const minValue = s.minOrderValue ?? null;
-    return {
-      key,
-      kind: "supplier",
-      supplierId: s.id,
-      name: s.name,
-      currency: cur,
-      exchangeRate: s.exchangeRate ?? null,
-      minOrderTotal: s.minOrderTotal ?? null,
-      minOrderValue: minValue,
-      minOrderValueStore: minValue === null ? null : cur === store ? minValue : toStoreCurrency(minValue, s.exchangeRate),
-      minOrder: s.minOrder ?? null,
-      minOrderScope: s.minOrderScope ?? "variant",
-      leadTimeDays: s.leadTimeDays,
-      leadTimeSource: "supplier",
-      hasEmail: !!s.email,
-      cycleDays: s.orderCycleDays ?? null,
-      orderCycleDays: s.orderCycleDays ?? null,
-    };
-  }
+  // The same supplier info the plan builds (terms, minimums, payment terms, measured lead time).
+  if (s) return supplierInfoOf(s, store);
   if (!key.startsWith("vendor:") || vendorName === null) return null;
   return {
     key,

@@ -6,7 +6,8 @@ on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro store
 for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
 this week", Done in the action menu) and for the merged build (Order now = the next 7 days,
 editable drafts, receiving per line, re-open) and for the supplier order builder (one purchase
-order per supplier per cycle) and for size-grid purchase orders; labels are the app's English strings.
+order per supplier per cycle) and for the supplier module (payment terms, freight & duty, the
+monthly budget, measured delivery times, size-grid purchase orders); labels are the app's English strings.
 
 ---
 
@@ -83,6 +84,11 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    sales), a minimum order value in the supplier's currency, and — when that currency differs
    from the store's — the exchange rate. **Order every … days** is how often you order from
    this supplier (empty = the store's order cycle); order quantities cover the lead time plus it.
+   Also under **More options**: **Payment terms** (pay everything when ordering, or a **Deposit**
+   with the rest at shipment, on arrival or some days after arrival) and **Freight & duty** (a % of
+   the goods cost, paid on arrival). Once orders from this supplier are received, its row shows how
+   it really delivers ("Usually 6 days late", on-time share and spread, from 3 deliveries; fewer:
+   "2 deliveries measured").
    **Settings → Import & export** does the same for many suppliers and products at once:
    **Download CSV** (the current values), change a case pack or a supplier in the file, upload
    it; the check lists what will change and any row with a problem — nothing is saved until
@@ -93,7 +99,8 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
    **Download CSV**, **Download CSV (size grid)**, **Email supplier** (or **Copy link**), or **Mark as sent**.
    The PDF lists clothing and shoes as a size grid (one row per style and colour, sizes as columns,
-   the style code — the product page's **Supplier code**, else the start of the SKUs — and totals). A draft not sent
+   the style code — the product page's **Supplier code**, else the start of the SKUs — and totals);
+   it never shows freight & duty. A draft not sent
    within 14 days stops counting as ordered (a banner says so).
 10. **Order now → Build supplier order** (on a supplier's card, inside "Can join this order" when
     it is there): one purchase order for that supplier's whole order cycle — **Due now** and
@@ -102,12 +109,20 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
     Units, cost and the supplier's minimums update as you type ("Add 24 units to reach … minimum",
     **Top up to the minimum**). **Create draft order** → confirm: one draft with every line (nothing
     is sent). Back on Order now and Next 13 weeks those lines are no longer due. Open the builder
-    again: it offers **Add to PO-00xx** for that draft instead of a second one.
+    again: it offers **Add to PO-00xx** for that draft instead of a second one. With payment terms or
+    freight & duty set for the supplier, **This order** shows them, the cost "+ freight & duty", and
+    "If you order today: … deposit when you order · … at shipment, about <date> · …".
 11. **Order plan → Next 13 weeks:** every order for the next 13 weeks by week and supplier, with
     units, cash per week (a line without a cost price shows "—" and is counted, never 0) and
     order-by dates; open a week → a supplier → **Create order** opens Order now with those lines
     (the order is still created only after the confirm there), **Build supplier order** opens the
-    builder for that week. **Download CSV** exports the plan.
+    builder for that week. **Download CSV** exports the plan. The cash strip puts each payment in
+    the week it is paid (the suppliers' payment terms; without terms, the week of the order) and
+    shows what is still due on orders already sent ("Still due on open orders"). With a **Monthly
+    budget for stock** (Settings → Defaults → More options) the **Monthly budget** card compares each
+    month with it; a month over it has **Fit to budget**: the orders that could wait until next month
+    (lowest priority first; never below a supplier's minimum), each with its risk — a suggestion,
+    nothing changes.
 12. Open the supplier link from the email (no login): pick a date → **Confirm ship date**. Back
     in the app **Order plan → Open orders** shows the ship date and the arrival (ship date + the
     supplier's transit time), sorted by arrival, and **Products** shows "On order with Keha".
@@ -117,8 +132,8 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
     landed is received automatically (and says so, with the date).
 13. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
     **More options**: Order cycle, Too much stock after, Dead after, **Safety level** (Lean /
-    Balanced / Safe) and **Growth assumption** (off and recommended by default, or add the store's
-    year-on-year growth). **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
+    Balanced / Safe), **Growth assumption** (off and recommended by default, or add the store's
+    year-on-year growth) and an optional **Monthly budget for stock**. **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
     incoming-webhook link → **Send a test message**. The Monday email opens with **Order this
     week** (one line per supplier with units, cash and order-by date, **Review order**), and its
     subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").

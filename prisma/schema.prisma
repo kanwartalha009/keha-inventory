@@ -456,6 +456,24 @@ model Supplier {
   vendorMatch   String[]
   /// Hide unit costs on the supplier confirmation page (spec §14).
   hidePrices    Boolean  @default(false)
+  /// Payment terms (Kanwar 2026-10-17): % paid when the order is placed; the rest at `balanceDue`.
+  /// null (with balanceDue null) = everything paid when ordering.
+  depositPercent Int?
+  /// When the balance is paid: "ship" (supplier's ship date), "arrival", "after_arrival" (balanceDays after arrival).
+  balanceDue    String?
+  balanceDays   Int?
+  /// Freight + duty as a % of the goods cost (e.g. 12). In cost lines and cash, never on the supplier's documents.
+  landedCostPercent Decimal? @db.Decimal(6, 2)
+  /// Measured lead time (received Keha / Shopify orders, models/suppliers.server refreshLeadStats):
+  /// deliveries measured, average promised and actual days order → arrival, average delay, the
+  /// standard deviation of the actual lead time, the share delivered on time, and when measured.
+  leadSamples      Int?
+  leadPromisedDays Float?
+  leadActualDays   Float?
+  leadDelayDays    Float?
+  leadSigmaDays    Float?
+  leadOnTimeShare  Float?
+  leadStatsAt      DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

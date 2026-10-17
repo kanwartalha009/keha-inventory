@@ -22,7 +22,8 @@ import type { MoneyCardKey } from "./money-shared";
 import type { PlanNotReady } from "./dashboard-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
-import { byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd } from "./engine/forward-plan-shared";
+import { PLAN_WEEKS, byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd } from "./engine/forward-plan-shared";
+import { cashWeeks } from "./cash-shared";
 import {
   orderLink,
   supplierName,
@@ -407,9 +408,28 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
     totals: { suppliers: groups.length, orders: totals.lines, units: totals.units, cash: money(totals.cash), lines_without_cost: totals.missingCost || undefined },
   };
   if (opts.withinDays > 14) {
+    // Supplier module: `cash` is what is PAID in the week (payment terms: deposits, balances,
+    // freight & duty; without terms, the week's orders), what is still due on open orders included.
+    const committed = (data.committed ?? []).filter((p) => supplierMatches(name(p.supplierKey), opts.supplier));
+    const paid = cashWeeks(events, committed, data.today, PLAN_WEEKS);
     out.cash_per_week = byWeek(events, data.today)
-      .filter((w) => w.lines > 0)
-      .map((w) => ({ week_of: w.weekStart, week: weekLabel(w.weekStart), orders: w.lines, units: w.units, cash: money(w.cash), lines_without_cost: w.missingCost || undefined }));
+      .map((w, i) => ({ w, p: paid[i] }))
+      .filter(({ w, p }) => w.lines > 0 || (p?.total ?? 0) > 0)
+      .map(({ w, p }) => {
+        const cash = p && p.total > 0 ? p.total : w.cash === null ? null : 0;
+        return {
+          week_of: w.weekStart,
+          week: weekLabel(w.weekStart),
+          orders: w.lines,
+          units: w.units,
+          cash: money(cash),
+          cash_on_open_orders: p && p.committed > 0 ? money(p.committed) : undefined,
+          orders_value: w.cash !== null && cash !== null && Math.abs(w.cash - cash) > 0.005 ? money(w.cash) : undefined,
+          lines_without_cost: w.missingCost || undefined,
+        };
+      });
+    if (committed.length || events.some((e) => e.payments?.some((x) => x.kind !== "order")))
+      out.cash_note = "cash = paid in that week (supplier payment terms; balances still due on open orders included). orders_value = the value of the orders placed that week, when different.";
   }
   return fitResponse(out, { total: groups.length, what: "suppliers" });
 }

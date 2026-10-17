@@ -42,8 +42,11 @@ import { formatPrice } from "../lib/purchase-order-shared";
 import { quantitiesKey } from "../lib/quantities-key-shared";
 import { formatDayRange } from "../lib/order-plan-shared";
 import { groupTitle, readQty } from "../lib/reorder-shared";
+import { landedText, paymentPhrases, termsText } from "../lib/cash-shared";
+import { MIN_SAMPLES, reliabilityText } from "../lib/lead-time-shared";
 import {
   addedLine,
+  builderPayments,
   builderTeaser,
   builderTotals,
   minimumStatus,
@@ -222,6 +225,11 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
   const remove = (id: string) => setAdded((a) => a.filter((x) => x.variantId !== id));
 
   const leadLabel = fill(view.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(view.leadTimeDays, locale) });
+  // Supplier module: how the supplier really delivers (received orders), its payment terms, freight & duty.
+  const reliability = reliabilityText(view.leadStats, t, (n) => formatCount(n, locale));
+  const late = !!view.leadStats && view.leadStats.samples >= MIN_SAMPLES && Math.round(view.leadStats.delayAvg) >= 1;
+  const pay = builderPayments(view, totals.cost, today);
+  const payText = paymentPhrases(pay.payments, view.terms, t, { money: (n) => formatPrice(n, view.storeCurrency, locale), day: (d) => formatDay(d, locale) }).join(" · ");
   const cycleLabel = fill(view.cycleSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(view.cycleDays, locale) });
   const windowDays = daysBetween(today, view.cycleTo) + 1;
   const sections: { id: BuilderSection; title: string; sub: string }[] = [
@@ -290,7 +298,18 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
       >
         <s-stack direction="block" gap="base">
           <div className="keha-kv keha-kv--flush">
-            <KvRow label={t("Lead time")} value={leadLabel} />
+            <KvRow
+              label={t("Lead time")}
+              value={
+                <span className="keha-inline">
+                  <span>{leadLabel}</span>
+                  {reliability && (late ? <s-badge tone="warning">{reliability}</s-badge> : <s-text color="subdued">{reliability}</s-text>)}
+                </span>
+              }
+            />
+            {(view.terms || view.landedPct) && (
+              <KvRow label={t("Payment terms")} value={[termsText(view.terms, t), landedText(view.landedPct, t, locale)].filter(Boolean).join(" ")} />
+            )}
             <KvRow
               label={t("Order every")}
               value={
@@ -304,8 +323,17 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
             />
           </div>
           <s-stack direction="block" gap="none">
-            <s-text fontWeight="medium">{`${fill(t("Units: {n}"), { n: formatCount(totals.units, locale) })} · ${fill(t("Cost: {amount}"), { amount: costText })}`}</s-text>
+            <s-text fontWeight="medium">
+              {[
+                fill(t("Units: {n}"), { n: formatCount(totals.units, locale) }),
+                fill(t("Cost: {amount}"), { amount: costText }),
+                pay.landed ? fill(t("+ {amount} freight & duty"), { amount: formatPrice(pay.landed, view.storeCurrency, locale) }) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </s-text>
             {totals.missingCost > 0 && <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(totals.missingCost, locale) })}</s-text>}
+            {payText && (view.terms || pay.landed) && <s-text color="subdued">{fill(t("If you order today: {payments}."), { payments: payText })}</s-text>}
           </s-stack>
           <MinimumBox view={view} title={title} status={status} minimumsText={minimumsText as string[]} empty={totals.units === 0} onTopUp={topUp} />
         </s-stack>

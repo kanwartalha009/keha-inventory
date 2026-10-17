@@ -36,6 +36,7 @@ import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
 import { computeOrderPlan } from "./order-plan.server";
 import { forgetOrderPlan } from "./plan-cache.server";
+import { refreshLeadStats } from "./suppliers.server";
 import {
   REORDER_HOLD_STATUSES,
   applyDraftEdit,
@@ -68,6 +69,8 @@ export type ShopBasics = {
   cycleDays: number;
   /** Growth assumption (Settings → Defaults): "store" applies the trend; "off" (default) doesn't. */
   trendMode: TrendMode;
+  /** Monthly budget for stock (Settings → Defaults); null = none. */
+  monthlyBudget?: number | null;
 };
 
 export async function shopBasics(shop: string): Promise<ShopBasics> {
@@ -79,6 +82,7 @@ export async function shopBasics(shop: string): Promise<ShopBasics> {
     leadTimeDays: readSettings(row?.settings).leadTimeDays,
     cycleDays: readSettings(row?.settings).cycleDays,
     trendMode: readSettings(row?.settings).trendMode,
+    monthlyBudget: readSettings(row?.settings).monthlyBudget,
   };
 }
 
@@ -157,6 +161,7 @@ export async function kehaOnOrder(
 
 const PLAN_ORDER_SELECT = {
   id: true,
+  number: true,
   status: true,
   createdAt: true,
   lines: true,
@@ -171,6 +176,8 @@ const PLAN_ORDER_SELECT = {
 /** A Keha order as the order plan compares it with the nightly run (H2). */
 export type KehaPlanOrder = {
   id: string;
+  /** PO-0001 (cash committed on open orders names its order). */
+  number?: string;
   status: string;
   createdAt: Date;
   confirmedShipDate: Date | null;
@@ -634,7 +641,17 @@ export async function transitionOrder(shop: string, id: string, to: PoStatus, no
   }
   const r = await prisma.purchaseOrder.updateMany({ where: { id, shop, status: o.status }, data });
   if (r.count === 1) forgetOrderPlan(shop);
+  if (r.count === 1 && to === "received") await remeasureLeadTimes(shop);
   return r.count === 1 ? { ok: true } : { ok: false, error: "changed" };
+}
+
+/** A received order is a measured delivery: the supplier's lead-time stats follow at once (never blocks the receipt). */
+async function remeasureLeadTimes(shop: string): Promise<void> {
+  try {
+    await refreshLeadStats(shop);
+  } catch (e) {
+    console.error(`[reorder] ${shop}: measuring supplier lead times failed`, e);
+  }
 }
 
 // ── Draft edits, receiving, re-opening, the Open orders list (merchant audit 2026-10-17) ──
@@ -731,6 +748,7 @@ export async function receiveOrder(
   }
   const u = await prisma.purchaseOrder.updateMany({ where: { id, shop, status: o.status }, data });
   if (u.count === 1) forgetOrderPlan(shop);
+  if (u.count === 1 && r.close) await remeasureLeadTimes(shop);
   return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };
 }
 

@@ -48,6 +48,11 @@ describe("validateSupplierForm", () => {
         currency: "USD",
         hidePrices: true,
         vendorMatch: ["Acme", "Acme Kids"],
+        // Supplier module: no payment terms (everything paid when ordering), no freight & duty.
+        balanceDue: null,
+        depositPercent: null,
+        balanceDays: null,
+        landedCostPercent: null,
       },
     });
   });
@@ -149,6 +154,10 @@ describe("validateSupplierForm", () => {
       currency: null,
       hidePrices: false,
       vendorMatch: ["Acme"],
+      balanceDue: "ship" as const,
+      depositPercent: 30,
+      balanceDays: null,
+      landedCostPercent: 12.5,
     };
     const r = validateSupplierForm(supplierToForm(stored));
     expect(r.ok && r.input).toEqual(stored);
@@ -161,7 +170,7 @@ describe("validateSupplierForm", () => {
   });
 
   it("has text for every error code", () => {
-    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors", "transit", "money", "rate"];
+    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors", "transit", "money", "rate", "percent"];
     for (const c of codes) expect(supplierErrorText(c, (s) => s).length).toBeGreaterThan(5);
   });
 

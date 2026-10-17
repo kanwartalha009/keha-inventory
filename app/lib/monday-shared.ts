@@ -157,6 +157,11 @@ export type MondayOrders =
       next: { name: string; orderBy: DayKey } | null;
       /** Products the plan can't plan (too little history; dead): the caveat on "nothing to order". */
       cantPlan?: { noData: number; dead: number } | null;
+      /**
+       * Supplier module: the cash paid this week (payment terms: deposits, balances, freight & duty)
+       * and, of it, still due on orders already sent. Absent / null = not shown.
+       */
+      cashOut?: { total: number; committed: number } | null;
     }
   | {
       /** The store isn't ready (still reading it, fewer than 14 days of sales): say why (2026-10-17). */
@@ -208,6 +213,8 @@ export type MondayOrderBlock = {
   empty: string | null;
   /** Free: the way to the full plan. */
   footer: { text: string; link: string; label: string } | null;
+  /** One line under the block (the cash paid this week); null = none. */
+  note?: string | null;
 };
 
 /** Everything the email and the Slack message show, worded and translated. */
@@ -365,7 +372,16 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
           .map((x, i, all) => (i < all.length - 1 && !/[.!?。]$/.test(x) ? `${x}.` : x))
           .join(" "),
     footer: null,
+    note: cashOutText(orders.cashOut, tr, money),
   };
+}
+
+/** "Cash to pay this week: €1,230 (€700 of it on orders already sent)." — null when nothing is paid. */
+function cashOutText(c: { total: number; committed: number } | null | undefined, tr: (k: string) => string, money: (v: number) => string): string | null {
+  if (!c || !(c.total > 0)) return null;
+  return c.committed > 0
+    ? fill(tr("Cash to pay this week: {amount} ({committed} of it on orders already sent)."), { amount: money(c.total), committed: money(c.committed) })
+    : fill(tr("Cash to pay this week: {amount}."), { amount: money(c.total) });
 }
 
 export function mondaySummary(input: MondayEmailInput): MondaySummary {
@@ -463,6 +479,7 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
       if (l.link && l.label) lines.push(`  ${l.label}: ${l.link}`);
     }
     if (ob.empty) lines.push(ob.empty);
+    if (ob.note) lines.push(ob.note);
     if (ob.footer) lines.push(ob.footer.text, `${ob.footer.label}: ${ob.footer.link}`);
     lines.push("");
   }
@@ -529,7 +546,7 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
   const orderSection = ob
     ? `<tr><td style="padding:16px 24px 0;"><h2 style="margin:0 0 4px;font-size:18px;">${esc(ob.heading)}</h2>${
         orderRows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${orderRows}</table>` : ""
-      }${ob.empty ? `<p style="margin:4px 0 0;">${esc(ob.empty)}</p>` : ""}${
+      }${ob.empty ? `<p style="margin:4px 0 0;">${esc(ob.empty)}</p>` : ""}${ob.note ? `<p style="margin:8px 0 0;${muted}">${esc(ob.note)}</p>` : ""}${
         ob.footer ? `<p style="margin:12px 0 0;${muted}">${esc(ob.footer.text)}</p><p style="margin:8px 0 0;">${button(ob.footer.link, ob.footer.label, true)}</p>` : ""
       }</td></tr>`
     : "";

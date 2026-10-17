@@ -23,6 +23,9 @@ export interface SupplierLite {
   minOrderScope?: MinOrderScope;
   /** 1 unit of the supplier's currency in the store's currency; null = unknown. */
   exchangeRate?: number | null;
+  /** Measured lead time (lib/lead-time-shared): deliveries measured and the σ of the actual lead time (days). */
+  leadSamples?: number | null;
+  leadSigmaDays?: number | null;
 }
 
 export type MinOrderScope = "variant" | "product";

@@ -38,9 +38,12 @@ import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
 import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
-import { formatAmount, formatCount } from "../lib/dashboard-shared";
+import { formatAmount, formatCount, formatPercent } from "../lib/dashboard-shared";
+import { landedText, termsText } from "../lib/cash-shared";
+import { MIN_SAMPLES, reliabilityDetail, reliabilityText } from "../lib/lead-time-shared";
 import {
   SUPPLIER_BOUNDS,
+  type BalanceChoice,
   needsExchangeRate,
   newSupplierForm,
   productIdsFrom,
@@ -267,6 +270,10 @@ function SupplierRow({
   const { t, locale } = useLocale();
   const shopify = useAppBridge();
   const menuId = `keha-supplier-menu-${s.id}`;
+  // Measured from received orders: "Usually 6 days late" (≥ 3 deliveries), with on-time share and spread.
+  const reliability = reliabilityText(s.leadStats, t, (n) => formatCount(n, locale));
+  const reliabilityMore = reliabilityDetail(s.leadStats, t, { count: (n) => formatCount(n, locale), percent: (x) => formatPercent(x, locale) });
+  const late = !!s.leadStats && s.leadStats.samples >= MIN_SAMPLES && Math.round(s.leadStats.delayAvg) >= 1;
   const minimums = [
     s.minOrder
       ? fill(s.minOrderScope === "product" ? t("{n} per product") : t("{n} per item"), { n: formatCount(s.minOrder, locale) })
@@ -292,11 +299,14 @@ function SupplierRow({
         <s-stack direction="block" gap="none">
           <s-text fontWeight="medium">{s.name}</s-text>
           <s-text color="subdued">{s.hasEmail ? t("Email saved") : t("No email")}</s-text>
+          {(s.terms || s.landedPct) && <s-text color="subdued">{[termsText(s.terms, t), landedText(s.landedPct, t, locale)].filter(Boolean).join(" ")}</s-text>}
         </s-stack>
       </s-table-cell>
       <s-table-cell>
         <s-stack direction="block" gap="none">
           <span className="keha-num">{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</span>
+          {reliability && <s-text tone={late ? "caution" : undefined} color={late ? undefined : "subdued"}>{reliability}</s-text>}
+          {reliabilityMore && <s-text color="subdued">{reliabilityMore}</s-text>}
           {s.transitDays ? (
             <s-text color="subdued">{fill(t("{n} days in transit"), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}
@@ -366,7 +376,15 @@ function SupplierEditor({
   const { t, locale } = useLocale();
   const [form, setForm] = useState<SupplierForm>(initial);
   // More options opens by itself when one of its fields has an error after a save.
-  const moreHasError = !!(errors.orderCycleDays || errors.minOrderValue || errors.exchangeRate || errors.currency);
+  const moreHasError = !!(
+    errors.orderCycleDays ||
+    errors.minOrderValue ||
+    errors.exchangeRate ||
+    errors.currency ||
+    errors.depositPercent ||
+    errors.balanceDays ||
+    errors.landedCostPercent
+  );
   const [more, setMore] = useState(false);
   useEffect(() => {
     if (moreHasError) setMore(true);
@@ -505,6 +523,32 @@ function SupplierEditor({
                 onInput={(e) => set("exchangeRate", val(e))}
               />
             )}
+            <SelectField<BalanceChoice>
+              label={t("Payment terms")}
+              value={form.balanceDue}
+              options={[
+                { value: "order", label: t("Pay everything when you order") },
+                { value: "ship", label: t("Deposit, then the rest at shipment") },
+                { value: "arrival", label: t("Deposit, then the rest on arrival") },
+                { value: "after_arrival", label: t("Deposit, then the rest some days after arrival") },
+              ]}
+              onChange={(v) => set("balanceDue", v)}
+              details={t("When you pay this supplier. The cash per week in your order plan follows it.")}
+            />
+            {form.balanceDue !== "order" &&
+              numberField("depositPercent", t("Deposit"), t("Paid when you place the order, in % of the goods. Use 0 for no deposit."), "%")}
+            {form.balanceDue === "after_arrival" && numberField("balanceDays", t("Rest paid after arrival"), t("Days after the stock arrives."), t("days"))}
+            <s-number-field
+              label={t("Freight & duty")}
+              details={t("Shipping and import duty in % of the goods cost, paid on arrival. In your costs and cash, never on the purchase order to the supplier.")}
+              value={form.landedCostPercent}
+              suffix="%"
+              inputMode="decimal"
+              min={0}
+              step={0.1}
+              error={err("landedCostPercent")}
+              onInput={(e) => set("landedCostPercent", val(e))}
+            />
             <s-checkbox
               label={t("Hide prices from the supplier")}
               details={t("The order PDF, CSV, email and confirmation page show no unit costs.")}

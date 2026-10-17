@@ -8,7 +8,8 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, notReadyText, type PlanNotReady, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
-import type { OrderWhy, PlanWeek } from "../lib/engine/forward-plan-shared";
+import type { OrderWhy } from "../lib/engine/forward-plan-shared";
+import type { CashSummary, CashWeek as PaidWeek } from "../lib/cash-shared";
 import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
@@ -19,43 +20,98 @@ import type { Feature } from "../lib/plan-shared";
 const STRIP_W = 640;
 const STRIP_H = 120;
 
-/** Bars of cash needed per week (unknown costs are not drawn as 0: the total says how many). */
-export function CashStrip({ weeks, currency, compact }: { weeks: PlanWeek[]; currency: string; compact?: boolean }) {
+/**
+ * Bars of cash paid per week (supplier module: each payment in the week it is paid — deposits,
+ * balances, freight & duty; without payment terms that is the order's week). What is still due on
+ * orders already sent is the darker part of each bar ("Open orders"). Unknown costs are not drawn
+ * as 0: the totals say how many lines have no cost.
+ */
+export function CashStrip({ cash, currency, compact }: { cash: PaidWeek[]; currency: string; compact?: boolean }) {
   const { t, locale } = useLocale();
   const money = (v: number | null) => formatAmount(v, currency, locale);
-  const bars = cashBars(
-    weeks.map((w) => ({ weekStart: w.weekStart, week: w.week, amount: w.cash ?? 0, lines: w.lines, retail: 0, missing: w.missingCost, late: w.overdue })),
-    STRIP_W,
-    compact ? 96 : STRIP_H,
-  );
   const h = compact ? 96 : STRIP_H;
-  const every = Math.max(1, Math.ceil(weeks.length / (compact ? 4 : 7)));
-  const total = weeks.reduce((a, w) => a + (w.cash ?? 0), 0);
-  const anyCost = weeks.some((w) => w.cash !== null);
-  const label = weeks.length
+  const bars = cashBars(
+    cash.map((w) => ({ weekStart: w.weekStart, week: w.week, amount: w.total, lines: 0, retail: 0, missing: 0, late: false })),
+    STRIP_W,
+    h,
+  );
+  const every = Math.max(1, Math.ceil(cash.length / (compact ? 4 : 7)));
+  const total = cash.reduce((a, w) => a + w.total, 0);
+  const committed = cash.some((w) => w.committed > 0);
+  const label = cash.length
     ? fill(t("Cash needed per week from {from} to {to}: {amount} in total."), {
-        from: formatDay(weeks[0]!.weekStart, locale),
-        to: formatDay(weeks[weeks.length - 1]!.weekStart, locale),
-        amount: money(anyCost ? total : null),
+        from: formatDay(cash[0]!.weekStart, locale),
+        to: formatDay(cash[cash.length - 1]!.weekStart, locale),
+        amount: money(total > 0 ? total : null),
       })
     : "";
   return (
-    <svg className="keha-chart keha-orderplan-strip" viewBox={`0 0 ${STRIP_W} ${h}`} role="img" aria-label={label} style={{ height: h }}>
-      {bars.map((b, i) => (
-        <g key={b.week.weekStart}>
-          {b.height > 0 && (
-            <rect className="keha-chart__bar" x={b.x} y={b.y} width={b.width} height={b.height} rx={2}>
-              <title>{`${formatWeekRange(b.week.weekStart, locale)}: ${money(weeks[i]!.cash)}`}</title>
-            </rect>
-          )}
-          {i % every === 0 && (
-            <text x={b.x + b.width / 2} y={h - 6} textAnchor="middle" fontSize="11" fill="currentColor">
-              {formatWeekRange(b.week.weekStart, locale)}
-            </text>
-          )}
-        </g>
+    <s-stack direction="block" gap="small-200">
+      <svg className="keha-chart keha-orderplan-strip" viewBox={`0 0 ${STRIP_W} ${h}`} role="img" aria-label={label} style={{ height: h }}>
+        {bars.map((b, i) => {
+          const w = cash[i]!;
+          const low = w.total > 0 ? (b.height * w.committed) / w.total : 0;
+          const tip = `${formatWeekRange(b.week.weekStart, locale)}: ${money(w.total > 0 ? w.total : null)}${w.committed > 0 ? ` · ${fill(t("{amount} on open orders"), { amount: money(w.committed) })}` : ""}`;
+          return (
+            <g key={b.week.weekStart}>
+              {b.height > 0 && (
+                <>
+                  <rect className="keha-chart__bar" x={b.x} y={b.y} width={b.width} height={b.height} rx={2}>
+                    <title>{tip}</title>
+                  </rect>
+                  {low > 0 && (
+                    <rect className="keha-chart__bar keha-chart__bar--committed" x={b.x} y={b.y + b.height - low} width={b.width} height={low} rx={2}>
+                      <title>{tip}</title>
+                    </rect>
+                  )}
+                </>
+              )}
+              {i % every === 0 && (
+                <text x={b.x + b.width / 2} y={h - 6} textAnchor="middle" fontSize="11" fill="currentColor">
+                  {formatWeekRange(b.week.weekStart, locale)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {committed && (
+        <s-stack direction="inline" gap="base">
+          <span className="keha-legend">
+            <span className="keha-legend__swatch keha-legend__swatch--bar" />
+            <s-text color="subdued">{t("Orders to place")}</s-text>
+          </span>
+          <span className="keha-legend">
+            <span className="keha-legend__swatch keha-legend__swatch--committed" />
+            <s-text color="subdued">{t("Still due on open orders")}</s-text>
+          </span>
+        </s-stack>
+      )}
+    </s-stack>
+  );
+}
+
+/**
+ * What the cash total is made of, when there is more to say than one number: orders to place vs
+ * still due on open orders, the freight & duty in it, and what is paid after the weeks shown.
+ */
+export function CashBreakdown({ summary, currency }: { summary: CashSummary; currency: string }) {
+  const { t, locale } = useLocale();
+  const money = (v: number) => formatAmount(v, currency, locale);
+  const lines = [
+    summary.committed > 0 ? fill(t("{toPlan} for orders to place · {committed} still due on open orders"), { toPlan: money(summary.toPlan), committed: money(summary.committed) }) : null,
+    summary.landed > 0 ? fill(t("Includes {amount} freight & duty."), { amount: money(summary.landed) }) : null,
+    summary.later > 0 ? fill(t("{amount} more is paid after these 13 weeks (balances and freight of the later orders)."), { amount: money(summary.later) }) : null,
+  ].filter((x): x is string => !!x);
+  if (!lines.length) return null;
+  return (
+    <s-stack direction="block" gap="none">
+      {lines.map((l) => (
+        <s-text key={l} color="subdued">
+          {l}
+        </s-text>
       ))}
-    </svg>
+    </s-stack>
   );
 }
 

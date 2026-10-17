@@ -721,6 +721,9 @@ s-table { font-variant-numeric: tabular-nums; }
 .keha-legend__swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
 .keha-legend__swatch--bar { background: var(--keha-accent); }
 .keha-legend__swatch--out { background: var(--tile-rose-bg); border: 1px solid var(--tile-rose-fg); }
+/* Cash strip (supplier module): what is still due on open orders, under the orders to place. */
+.keha-chart__bar--committed { fill: var(--keha-accent-strong); }
+.keha-legend__swatch--committed { background: var(--keha-accent-strong); }
 
 /* Order plan */
 /* Order plan · Next 13 weeks: one row per ISO week that opens to its suppliers; the cash strip. */

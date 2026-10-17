@@ -13,7 +13,7 @@ These tools read the store's stock planning data from the Keha Inventory Planner
 
 Common combinations:
 - "When does X run out and should I reorder?" → get_product_stock, then get_order_plan with that product's supplier if it is running low.
-- "How much cash do I need for stock next month?" → get_order_plan with `within_days` 30: `totals.cash`, and `cash_per_week` for the weeks.
+- "How much cash do I need for stock next month?" → get_order_plan with `within_days` 30: `totals.cash` (the orders' cost), and `cash_per_week` for what is paid each week (the suppliers' payment terms, balances still due on open orders included).
 - "Is stock already on the way?" → get_purchase_orders, and `incoming` / `on_order_with_keha` in get_product_stock.
 
 ## Reading the data

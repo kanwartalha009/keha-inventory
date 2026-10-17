@@ -89,6 +89,7 @@ export function buildSlackMonday(m: MondaySummary): SlackMessage {
     for (const l of o.lines)
       lines.push(`• ${l.flag ? `*${e(l.flag)}* ` : ""}${e(l.text)}${l.link && l.label ? ` ${slackLink(l.link, l.label)}` : ""}`);
     if (o.empty) lines.push(e(o.empty));
+    if (o.note) lines.push(e(o.note));
     if (o.footer) lines.push(`${e(o.footer.text)} ${slackLink(o.footer.link, o.footer.label)}`);
     lines.push("", `*${e(m.atStake)}*`);
   }

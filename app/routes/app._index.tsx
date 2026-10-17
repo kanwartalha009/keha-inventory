@@ -30,13 +30,14 @@ import { getHomeData, reviewAskDue } from "../models/dashboard.server";
 import { recordReviewAsk } from "../models/settings.server";
 import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../lib/review-ask-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
-import { CantPlan, CashStrip, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
+import { CantPlan, CashBreakdown, CashStrip, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
 import { cashTotals, ordersDue } from "../lib/engine/forward-plan-shared";
 import {
   lockTeaser,
   orderLink,
-  planWeeks,
+  paidSummary,
+  paidWeeks,
   previewRows,
   supplierName,
   thisWeek,
@@ -267,8 +268,10 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const week = thisWeek(plan);
-  // One cash horizon (merchant #2): the same 13 weeks and the same total as Next 13 weeks.
-  const weeks = planWeeks(plan);
+  // One cash horizon (merchant #2): the same 13 weeks and the same total as Next 13 weeks — each
+  // payment in the week it is paid (supplier payment terms), open orders' balances included.
+  const paid = paidWeeks(plan);
+  const cashOut = paidSummary(plan);
   const strip = cashTotals(plan.events);
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
   return (
@@ -349,13 +352,14 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
           </s-stack>
         )}
         <CantPlan plan={plan} />
-        {strip.lines > 0 && (
+        {(strip.lines > 0 || cashOut.committed > 0) && (
           <s-stack direction="block" gap="small-200">
             <div className="keha-row-between">
-              <s-text fontWeight="medium">{fill(t("Cash needed, next 13 weeks: {cash}"), { cash: money(strip.cash) })}</s-text>
+              <s-text fontWeight="medium">{fill(t("Cash needed, next 13 weeks: {cash}"), { cash: money(cashOut.any ? cashOut.total : null) })}</s-text>
               <s-link {...link("/app/reorder/calendar")}>{t("See the next 13 weeks")}</s-link>
             </div>
-            <CashStrip weeks={weeks} currency={plan.currency} compact />
+            <CashStrip cash={paid} currency={plan.currency} compact />
+            <CashBreakdown summary={cashOut} currency={plan.currency} />
             {strip.missingCost > 0 && (
               <s-text color="subdued">
                 {fill(t("{n} lines without a cost price are not in the cash totals."), { n: formatCount(strip.missingCost, locale) })}

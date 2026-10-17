@@ -47,6 +47,7 @@ import {
   casePackFor,
   lineRemaining,
   onOrderByVariant,
+  poArrival,
   poCountsAsOrdered,
   readMinOrderScope,
   supplierFor,
@@ -57,6 +58,9 @@ import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
 import { clearOrderPlanCache, forgetOrderPlan, planCache } from "./plan-cache.server";
+import { openOrderPayments, readLandedPct, readPaymentTerms, withPayments, type CommittedPayment, type PaymentTerms, type SupplierMoney } from "../lib/cash-shared";
+import { readLeadStats, type LeadStats } from "../lib/lead-time-shared";
+import { localDate } from "../lib/sync/store-time-shared";
 import { firstSaleRows } from "./fact-days.server";
 import { kehaOrdersById, kehaPlanOrders, shopBasics, staleDraftCount, type KehaPlanOrder } from "./reorder.server";
 
@@ -137,6 +141,16 @@ const SUPPLIER_SELECT = {
   minOrderValue: true,
   minOrderScope: true,
   exchangeRate: true,
+  depositPercent: true,
+  balanceDue: true,
+  balanceDays: true,
+  landedCostPercent: true,
+  leadSamples: true,
+  leadPromisedDays: true,
+  leadActualDays: true,
+  leadDelayDays: true,
+  leadSigmaDays: true,
+  leadOnTimeShare: true,
 } as const;
 
 const VARIANT_SELECT = {
@@ -158,7 +172,16 @@ const VARIANT_SELECT = {
 
 const METRIC_SELECT = { variantId: true, status: true, rate: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, inputs: true, computedAt: true } as const;
 
-export type PlanSupplierRow = SupplierLite & { email: string | null; currency: string | null };
+export type PlanSupplierRow = SupplierLite & {
+  email: string | null;
+  currency: string | null;
+  /** Payment terms (lib/cash-shared readPaymentTerms); null = everything paid when ordering. */
+  terms?: PaymentTerms | null;
+  /** Freight + duty, % of the goods; null = none. */
+  landedPct?: number | null;
+  /** Measured lead time; null = nothing measured. */
+  leadStats?: LeadStats | null;
+};
 
 /** Supplier rows of a shop with the ordering fields read defensively (Decimal → number). */
 export async function planSuppliers(shop: string): Promise<PlanSupplierRow[]> {
@@ -178,6 +201,11 @@ export async function planSuppliers(shop: string): Promise<PlanSupplierRow[]> {
     minOrderValue: num(s.minOrderValue),
     minOrderScope: readMinOrderScope(s.minOrderScope),
     exchangeRate: num(s.exchangeRate),
+    terms: readPaymentTerms(s),
+    landedPct: readLandedPct(s.landedCostPercent),
+    leadSamples: s.leadSamples ?? null,
+    leadSigmaDays: s.leadSigmaDays ?? null,
+    leadStats: readLeadStats(s),
   }));
 }
 
@@ -321,24 +349,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       const minValue = supplier?.minOrderValue ?? null;
       const minValueStore = minValue === null ? null : supCur === storeCur ? minValue : toStoreCurrency(minValue, supplier?.exchangeRate);
       suppliers[key] = supplier
-        ? {
-            key,
-            kind: "supplier",
-            supplierId: supplier.id,
-            name: supplier.name,
-            currency: supCur,
-            exchangeRate: supplier.exchangeRate ?? null,
-            minOrderTotal: supplier.minOrderTotal ?? null,
-            minOrderValue: minValue,
-            minOrderValueStore: minValueStore,
-            minOrder: supplier.minOrder ?? null,
-            minOrderScope: supplier.minOrderScope ?? "variant",
-            leadTimeDays: supplier.leadTimeDays,
-            leadTimeSource: "supplier",
-            hasEmail: !!supplier.email,
-            cycleDays: supplier.orderCycleDays ?? null,
-            orderCycleDays: supplier.orderCycleDays ?? null,
-          }
+        ? supplierInfoOf(supplier, storeCur)
         : {
             key,
             kind: "vendor",
@@ -383,6 +394,8 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     state.set(s.variantId, { deadline, skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false, overdue: !!p?.overdue });
   }
   const events = plan.events;
+  // Supplier module: freight + duty and the days each line is paid (payment terms).
+  withPayments(events, moneyOf(suppliers));
   for (const e of events) {
     if (e.deadline !== null || plan.variants.get(e.variantId)?.projected) continue;
     e.deadline = storedBy(e.variantId);
@@ -421,12 +434,16 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       moq: supplier?.minOrderScope === "product" ? null : (supplier?.minOrder ?? null),
     };
   }
+  // Still to pay on orders already sent / confirmed (cash committed).
+  const committed = committedPayments([...kehaOrders.values()], supplierRows, suppliers, { today, timezone: basics.timezone, leadTimeDays: basics.leadTimeDays, storeCurrency: storeCur, transit: kehaRead.transit });
   return {
     data: {
       today,
       currency: basics.currency,
       timezone: basics.timezone,
       events,
+      committed,
+      budget: basics.monthlyBudget ?? null,
       variants: variantInfo,
       suppliers,
       suppliersSetUp: supplierRows.length > 0,
@@ -439,6 +456,92 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     state,
     suppliers: supplierRows,
   };
+}
+
+/** A supplier (Settings → Suppliers) as the plan's supplier info: its terms, minimums and money fields. */
+export function supplierInfoOf(supplier: PlanSupplierRow, storeCurrency: string): PlanSupplierInfo {
+  const storeCur = storeCurrency.toUpperCase();
+  const supCur = (supplier.currency || storeCur).toUpperCase();
+  const minValue = supplier.minOrderValue ?? null;
+  return {
+    key: supplierGroupKey(supplier.id),
+    kind: "supplier",
+    supplierId: supplier.id,
+    name: supplier.name,
+    currency: supCur,
+    exchangeRate: supplier.exchangeRate ?? null,
+    minOrderTotal: supplier.minOrderTotal ?? null,
+    minOrderValue: minValue,
+    minOrderValueStore: minValue === null ? null : supCur === storeCur ? minValue : toStoreCurrency(minValue, supplier.exchangeRate),
+    minOrder: supplier.minOrder ?? null,
+    minOrderScope: supplier.minOrderScope ?? "variant",
+    leadTimeDays: supplier.leadTimeDays,
+    leadTimeSource: "supplier",
+    hasEmail: !!supplier.email,
+    cycleDays: supplier.orderCycleDays ?? null,
+    orderCycleDays: supplier.orderCycleDays ?? null,
+    ...supplierMoneyInfo(supplier),
+  };
+}
+
+/** The money fields of a supplier for the plan's supplier info (terms, landed %, transit, measured lead time). */
+function supplierMoneyInfo(s: PlanSupplierRow): Pick<PlanSupplierInfo, "terms" | "landedPct" | "transitDays" | "leadStats"> {
+  return { terms: s.terms ?? null, landedPct: s.landedPct ?? null, transitDays: s.transitDays ?? null, leadStats: s.leadStats ?? null };
+}
+
+function moneyOf(suppliers: Readonly<Record<string, PlanSupplierInfo>>): Record<string, SupplierMoney> {
+  const out: Record<string, SupplierMoney> = {};
+  for (const [key, s] of Object.entries(suppliers)) out[key] = { terms: s.terms ?? null, landedPct: s.landedPct ?? null, transitDays: s.transitDays ?? null };
+  return out;
+}
+
+/**
+ * Cash committed: what is still to pay on Keha orders already sent or confirmed (lib/cash-shared
+ * openOrderPayments) — their balance and freight + duty, from the supplier's terms. Lines are in the
+ * store's currency (Shopify cost). Orders without a supplier have no terms (nothing left to pay).
+ * Shopify purchase orders are left out: their payment terms live in Shopify. A supplier with only
+ * committed payments gets its name in `suppliers`.
+ */
+function committedPayments(
+  orders: readonly KehaPlanOrder[],
+  rows: readonly PlanSupplierRow[],
+  suppliers: Record<string, PlanSupplierInfo>,
+  x: { today: DayKey; timezone: string; leadTimeDays: number; storeCurrency: string; transit: Map<string, number | null> },
+): CommittedPayment[] {
+  const out: CommittedPayment[] = [];
+  for (const o of orders) {
+    if ((o.status !== "sent" && o.status !== "confirmed") || !o.supplierId || !o.sentAt) continue;
+    const s = rows.find((r) => r.id === o.supplierId);
+    if (!s || (!s.terms && !s.landedPct)) continue;
+    const sentDay = localDate(o.sentAt, x.timezone);
+    const at = poArrival(o, x.transit.get(o.supplierId) ?? s.transitDays ?? null);
+    const arrives = at ? at.toISOString().slice(0, 10) : addDays(sentDay, s.leadTimeDays ?? x.leadTimeDays);
+    let goods = 0;
+    let known = false;
+    for (const l of o.lines) {
+      if (l.unitCost === null || !(l.qty > 0)) continue;
+      goods += l.unitCost * l.qty;
+      known = true;
+    }
+    const key = supplierGroupKey(s.id);
+    const pays = openOrderPayments(
+      {
+        id: o.id,
+        number: o.number ?? "",
+        supplierKey: key,
+        sentDay,
+        shipDay: o.confirmedShipDate ? o.confirmedShipDate.toISOString().slice(0, 10) : null,
+        arrives,
+        goods: known ? Math.round(goods * 100) / 100 : null,
+        money: { terms: s.terms ?? null, landedPct: s.landedPct ?? null, transitDays: x.transit.get(o.supplierId) ?? s.transitDays ?? null },
+      },
+      x.today,
+    );
+    if (!pays.length) continue;
+    out.push(...pays);
+    if (!suppliers[key]) suppliers[key] = supplierInfoOf(s, x.storeCurrency);
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day) || a.number.localeCompare(b.number) || a.kind.localeCompare(b.kind));
 }
 
 /**

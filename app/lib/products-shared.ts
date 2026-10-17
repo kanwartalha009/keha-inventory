@@ -409,6 +409,8 @@ export type ForecastInputsView = {
   z: number | null;
   /** The engine's safety stock, z × σ × √(lead time + order cycle): stored inputs.safety (rows stored before: the same formula); null when unknown. */
   safety: number | null;
+  /** σ of the supplier's measured lead time the safety stock includes (days; supplier module); null = not used. */
+  leadSigma?: number | null;
   /** Where the seasonal pattern came from; null for rows stored without it. */
   seasonSource?: SeasonSourceView | null;
 };
@@ -447,6 +449,7 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     cycleDays: cycle,
     z,
     safety,
+    leadSigma: n(r.leadSigma),
     seasonSource: readSeasonSource(r.season),
   };
 }

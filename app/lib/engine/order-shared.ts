@@ -76,6 +76,18 @@ export function safetyStock(z: number, sigma: number, protectionDays: number): n
   return z * sigma * Math.sqrt(Math.max(0, protectionDays));
 }
 
+/**
+ * Safety stock with lead-time variability (supplier module, Kanwar 2026-10-17):
+ * z × √(P × σd² + d² × σL²) — P the protection days (lead time + cycle), σd the daily demand σ,
+ * d the daily forecast, σL the standard deviation of the supplier's measured lead time (days).
+ * Without a σL (fewer than 3 deliveries measured) or a forecast: safetyStock, unchanged.
+ */
+export function safetyStockWithLead(z: number, sigma: number, protectionDays: number, dailyDemand: number | null | undefined, leadSigmaDays: number | null | undefined): number {
+  if (!(typeof leadSigmaDays === "number" && Number.isFinite(leadSigmaDays) && leadSigmaDays > 0)) return safetyStock(z, sigma, protectionDays);
+  if (!(typeof dailyDemand === "number" && Number.isFinite(dailyDemand) && dailyDemand > 0)) return safetyStock(z, sigma, protectionDays);
+  return z * Math.sqrt(Math.max(0, protectionDays) * sigma * sigma + dailyDemand * dailyDemand * leadSigmaDays * leadSigmaDays);
+}
+
 /** safetyDays = safety ÷ daily forecast (the engine passes rate × seasonal × trend); 0 when it is 0. */
 export function safetyDays(safety: number, rate: number): number {
   return rate > 0 ? safety / rate : 0;

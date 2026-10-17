@@ -621,6 +621,13 @@ export interface PlanEvent {
   why?: OrderWhy | null;
   /** Units sold in the same weeks last year (weekday-aligned, the `why.days` window); null unknown. */
   lastYear?: number | null;
+  /**
+   * Freight + duty on the line (supplier module: cost × the supplier's landed %; lib/cash-shared);
+   * null / absent when the supplier has none or the cost is unknown. Never on the supplier's documents.
+   */
+  landed?: number | null;
+  /** When the line's money is paid (lib/cash-shared withPayments); absent = its cost on the order day. */
+  payments?: { day: DayKey; amount: number; kind: "order" | "deposit" | "balance" | "landed" }[];
 }
 
 /** Last day of the calendar: the Sunday of the 13th ISO week starting with today's. */
@@ -946,16 +953,20 @@ const unitOf = (s: Pick<PlanVariantSpec, "unitCost">) => (finite(s.unitCost) && 
 
 export interface CashTotals {
   units: number;
-  /** Sum of the known costs; null when no line has a cost (shown as "—"). */
+  /** Sum of the known costs, freight + duty included; null when no line has a cost (shown as "—"). */
   cash: number | null;
+  /** Of `cash`: freight + duty (supplier landed cost); null when none. */
+  landed?: number | null;
   /** Lines without a cost price (not in `cash`). */
   missingCost: number;
   lines: number;
 }
 
-export function cashTotals(events: readonly Pick<PlanEvent, "qty" | "cost">[]): CashTotals {
+export function cashTotals(events: readonly (Pick<PlanEvent, "qty" | "cost"> & { landed?: number | null })[]): CashTotals {
   let units = 0;
   let cash = 0;
+  let landed = 0;
+  let anyLanded = false;
   let known = 0;
   let missing = 0;
   for (const e of events) {
@@ -964,9 +975,16 @@ export function cashTotals(events: readonly Pick<PlanEvent, "qty" | "cost">[]): 
     else {
       cash += e.cost;
       known++;
+      if (typeof e.landed === "number" && Number.isFinite(e.landed) && e.landed > 0) {
+        cash += e.landed;
+        landed += e.landed;
+        anyLanded = true;
+      }
     }
   }
-  return { units, cash: known > 0 ? Math.round(cash * 100) / 100 : null, missingCost: missing, lines: events.length };
+  const out: CashTotals = { units, cash: known > 0 ? Math.round(cash * 100) / 100 : null, missingCost: missing, lines: events.length };
+  if (anyLanded) out.landed = Math.round(landed * 100) / 100;
+  return out;
 }
 
 export interface PlanSupplierWeek extends CashTotals {

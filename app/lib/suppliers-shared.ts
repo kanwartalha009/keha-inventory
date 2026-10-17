@@ -5,6 +5,11 @@
  */
 
 import { readMinOrderScope, type MinOrderScope } from "./supplier-shared";
+import { LANDED_PCT_MAX, isBalanceDue, type BalanceDue } from "./cash-shared";
+
+/** "order" = everything paid when ordering (no terms), else when the balance is paid. */
+export type BalanceChoice = "order" | BalanceDue;
+const readBalanceChoice = (v: unknown): BalanceChoice => (isBalanceDue(v) ? v : "order");
 
 type T = (s: string) => string;
 
@@ -32,6 +37,12 @@ export type SupplierForm = {
   currency: string;
   hidePrices: boolean;
   vendorMatch: string[];
+  /** Payment terms: when the balance is paid ("order" = all when ordering), the deposit % and the days after arrival. */
+  balanceDue: BalanceChoice;
+  depositPercent: string;
+  balanceDays: string;
+  /** Freight + duty, % of the goods cost. Empty = none. */
+  landedCostPercent: string;
 };
 
 /** A validated supplier, ready to store (the email is still plain text here). */
@@ -51,6 +62,11 @@ export type SupplierInput = {
   currency: string | null;
   hidePrices: boolean;
   vendorMatch: string[];
+  /** null = everything paid when ordering (absent: left as stored). */
+  balanceDue?: BalanceDue | null;
+  depositPercent?: number | null;
+  balanceDays?: number | null;
+  landedCostPercent?: number | null;
 };
 
 export type SupplierErrorCode =
@@ -64,7 +80,8 @@ export type SupplierErrorCode =
   | "vendors"
   | "transit"
   | "money"
-  | "rate";
+  | "rate"
+  | "percent";
 export type SupplierErrors = Partial<Record<keyof SupplierForm, SupplierErrorCode>>;
 
 export const SUPPLIER_BOUNDS = {
@@ -74,6 +91,8 @@ export const SUPPLIER_BOUNDS = {
   casePack: { min: 1, max: 10_000 },
   transitDays: { min: 0, max: 365 },
   orderCycleDays: { min: 1, max: 365 },
+  depositPercent: { min: 0, max: 100 },
+  balanceDays: { min: 0, max: 365 },
 } as const;
 export type SupplierNumberKey = keyof typeof SUPPLIER_BOUNDS;
 
@@ -101,6 +120,10 @@ export const EMPTY_SUPPLIER_FORM: SupplierForm = {
   currency: "",
   hidePrices: false,
   vendorMatch: [],
+  balanceDue: "order",
+  depositPercent: "",
+  balanceDays: "",
+  landedCostPercent: "",
 };
 
 /** A new supplier starts with the store's default lead time and currency. */
@@ -123,6 +146,10 @@ export function supplierToForm(s: {
   currency: string | null;
   hidePrices: boolean;
   vendorMatch: string[];
+  balanceDue?: string | null;
+  depositPercent?: number | null;
+  balanceDays?: number | null;
+  landedCostPercent?: number | null;
 }): SupplierForm {
   const str = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
   return {
@@ -140,6 +167,10 @@ export function supplierToForm(s: {
     currency: s.currency ?? "",
     hidePrices: s.hidePrices,
     vendorMatch: [...s.vendorMatch],
+    balanceDue: readBalanceChoice(s.balanceDue),
+    depositPercent: str(s.depositPercent),
+    balanceDays: str(s.balanceDays),
+    landedCostPercent: str(s.landedCostPercent),
   };
 }
 
@@ -162,6 +193,10 @@ export function readSupplierForm(raw: unknown): SupplierForm {
     currency: s("currency"),
     hidePrices: r.hidePrices === true,
     vendorMatch: Array.isArray(r.vendorMatch) ? r.vendorMatch.filter((v): v is string => typeof v === "string") : [],
+    balanceDue: readBalanceChoice(r.balanceDue),
+    depositPercent: s("depositPercent"),
+    balanceDays: s("balanceDays"),
+    landedCostPercent: s("landedCostPercent"),
   };
 }
 
@@ -255,6 +290,16 @@ export function validateSupplierForm(
   const vendorMatch = cleanVendors(form.vendorMatch);
   if (vendorMatch.length > VENDOR_MATCH_MAX) errors.vendorMatch = "vendors";
 
+  // Payment terms: only with a balance moment; the days only "after arrival".
+  const balanceDue = form.balanceDue && form.balanceDue !== "order" && isBalanceDue(form.balanceDue) ? form.balanceDue : null;
+  const depositPercent = balanceDue ? num("depositPercent", false) : null;
+  const balanceDays = balanceDue === "after_arrival" ? num("balanceDays", true) : null;
+  let landedCostPercent: number | null = null;
+  if (String(form.landedCostPercent ?? "").trim()) {
+    landedCostPercent = parseDecimal(String(form.landedCostPercent), 2, LANDED_PCT_MAX);
+    if (landedCostPercent === null) errors.landedCostPercent = "percent";
+  }
+
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -274,6 +319,10 @@ export function validateSupplierForm(
       currency: currency || null,
       hidePrices: form.hidePrices,
       vendorMatch,
+      balanceDue,
+      depositPercent: balanceDue ? (depositPercent ?? 0) : null,
+      balanceDays,
+      landedCostPercent,
     },
   };
 }
@@ -303,6 +352,8 @@ export function supplierErrorText(code: SupplierErrorCode, t: T): string {
       return t("Enter an amount like 500 or 499.99.");
     case "rate":
       return t("Enter a rate above 0, like 1.08.");
+    case "percent":
+      return t("Enter a percentage like 12 or 12.5.");
   }
 }
 

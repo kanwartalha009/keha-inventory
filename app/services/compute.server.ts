@@ -84,6 +84,8 @@ import {
 } from "../lib/compute-shared";
 import { generateActions, type RuleProduct, type RuleVariant } from "../lib/engine/actions-rules-shared";
 import { resolveLeadTime } from "../lib/engine/order-shared";
+import { supplierLeadSigma } from "../lib/lead-time-shared";
+import { refreshLeadStats } from "../models/suppliers.server";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
 import { SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
@@ -297,6 +299,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const overrides = engineSettingsFrom(shopSettings);
   const settings = resolveSettings(overrides);
 
+  // Supplier module: measure each supplier's lead time from its received orders first — the σ of the
+  // measured lead time feeds safety stock below. A failure keeps the stored stats (never blocks).
+  try {
+    await refreshLeadStats(shop);
+  } catch (e) {
+    console.error(`[compute] ${shop}: measuring supplier lead times failed; using the stored ones`, e);
+  }
+
   // ---- catalog and pool ----
   const [locations, variants, suppliers] = await Promise.all([
     prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT }),
@@ -326,7 +336,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     }),
     prisma.supplier.findMany({
       where: { shop },
-      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true, orderCycleDays: true },
+      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true, orderCycleDays: true, leadSamples: true, leadSigmaDays: true },
     }),
   ]);
   const pool = poolLocationIds(locations);
@@ -582,6 +592,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         lastSaleDay: lastSale.get(v.id) ?? null,
         dataSinceDay: dataSince.get(v.id) ?? null,
         supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
+        // Supplier module: the measured lead-time σ (≥ 3 deliveries) in safety stock.
+        leadTimeSigmaDays: supplierLeadSigma(supplier),
         cycleDays: supplier?.orderCycleDays ?? null,
         caseQty: casePackFor(v.caseQty, supplier),
         minOrder: supplier?.minOrder ?? null,

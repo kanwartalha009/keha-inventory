@@ -11,6 +11,9 @@ import { decryptSecret, encryptSecret } from "../lib/crypto.server";
 import { readSettings } from "../lib/settings-shared";
 import { readMinOrderScope, type MinOrderScope } from "../lib/supplier-shared";
 import { supplierToForm, type SupplierForm, type SupplierInput } from "../lib/suppliers-shared";
+import { deliveryOf, leadStats, readLeadStats, statsChanged, supplierOfOrder, type Delivery, type LeadStats } from "../lib/lead-time-shared";
+import { readLandedPct, readPaymentTerms, type PaymentTerms } from "../lib/cash-shared";
+import { localDate } from "../lib/sync/store-time-shared";
 
 export type SupplierListRow = {
   id: string;
@@ -32,6 +35,11 @@ export type SupplierListRow = {
   vendorMatch: string[];
   /** Products assigned by product (not by vendor). */
   products: number;
+  /** Payment terms (null = everything paid when ordering) and freight + duty %. */
+  terms?: PaymentTerms | null;
+  landedPct?: number | null;
+  /** Measured lead time from received orders; null = none yet. */
+  leadStats?: LeadStats | null;
 };
 
 const LIST_SELECT = {
@@ -50,13 +58,36 @@ const LIST_SELECT = {
   currency: true,
   hidePrices: true,
   vendorMatch: true,
+  depositPercent: true,
+  balanceDue: true,
+  balanceDays: true,
+  landedCostPercent: true,
+  leadSamples: true,
+  leadPromisedDays: true,
+  leadActualDays: true,
+  leadDelayDays: true,
+  leadSigmaDays: true,
+  leadOnTimeShare: true,
 } as const;
 
 /** Decimal columns (Prisma.Decimal) → plain numbers for the page. */
 const dec = (v: { toString(): string } | null): number | null => (v === null ? null : Number(v.toString()));
 
-function plain<T extends { minOrderValue: { toString(): string } | null; exchangeRate: { toString(): string } | null; minOrderScope: string }>(s: T) {
-  return { ...s, minOrderValue: dec(s.minOrderValue), exchangeRate: dec(s.exchangeRate), minOrderScope: readMinOrderScope(s.minOrderScope) };
+function plain<
+  T extends {
+    minOrderValue: { toString(): string } | null;
+    exchangeRate: { toString(): string } | null;
+    landedCostPercent: { toString(): string } | null;
+    minOrderScope: string;
+  },
+>(s: T) {
+  return {
+    ...s,
+    minOrderValue: dec(s.minOrderValue),
+    exchangeRate: dec(s.exchangeRate),
+    landedCostPercent: dec(s.landedCostPercent),
+    minOrderScope: readMinOrderScope(s.minOrderScope),
+  };
 }
 
 export async function listSuppliers(shop: string): Promise<SupplierListRow[]> {
@@ -66,7 +97,30 @@ export async function listSuppliers(shop: string): Promise<SupplierListRow[]> {
   ]);
   const products = new Map<string, number>();
   for (const a of assigned) if (a.supplierId) products.set(a.supplierId, (products.get(a.supplierId) ?? 0) + 1);
-  return rows.map(({ email, ...s }) => ({ ...plain(s), hasEmail: !!email, products: products.get(s.id) ?? 0 }));
+  return rows.map(({ email, ...s }) => {
+    const p = plain(s);
+    return {
+      id: p.id,
+      name: p.name,
+      leadTimeDays: p.leadTimeDays,
+      minOrder: p.minOrder,
+      minOrderTotal: p.minOrderTotal,
+      casePack: p.casePack,
+      transitDays: p.transitDays,
+      orderCycleDays: p.orderCycleDays,
+      minOrderValue: p.minOrderValue,
+      minOrderScope: p.minOrderScope,
+      exchangeRate: p.exchangeRate,
+      currency: p.currency,
+      hidePrices: p.hidePrices,
+      vendorMatch: p.vendorMatch,
+      hasEmail: !!email,
+      products: products.get(s.id) ?? 0,
+      terms: readPaymentTerms(p),
+      landedPct: readLandedPct(p.landedCostPercent),
+      leadStats: readLeadStats(p),
+    };
+  });
 }
 
 /** One supplier as an edit form (email decrypted); null when not this shop's. */
@@ -98,6 +152,10 @@ function data(input: SupplierInput) {
     currency: input.currency,
     hidePrices: input.hidePrices,
     vendorMatch: input.vendorMatch,
+    depositPercent: input.depositPercent,
+    balanceDue: input.balanceDue,
+    balanceDays: input.balanceDays,
+    landedCostPercent: input.landedCostPercent,
   };
 }
 
@@ -182,4 +240,75 @@ export async function supplierContext(shop: string): Promise<{ vendors: string[]
     leadTimeDays: readSettings(row?.settings).leadTimeDays,
     cycleDays: readSettings(row?.settings).cycleDays,
   };
+}
+
+/**
+ * Measure every supplier's lead time from its received orders (lib/lead-time-shared) and store the
+ * stats on the Supplier row — only rows whose numbers changed are written. Run by the nightly
+ * compute (before it reads the suppliers: the σ feeds safety stock) and after an order is received.
+ * Returns the suppliers updated.
+ */
+export async function refreshLeadStats(shop: string): Promise<number> {
+  const [suppliers, shopRow, orders] = await Promise.all([
+    prisma.supplier.findMany({
+      where: { shop },
+      select: {
+        id: true,
+        name: true,
+        vendorMatch: true,
+        leadTimeDays: true,
+        leadSamples: true,
+        leadPromisedDays: true,
+        leadActualDays: true,
+        leadDelayDays: true,
+        leadSigmaDays: true,
+        leadOnTimeShare: true,
+      },
+    }),
+    prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
+    prisma.purchaseOrder.findMany({
+      where: { shop, status: "received", sentAt: { not: null }, receivedAt: { not: null } },
+      select: { source: true, supplierId: true, supplierName: true, sentAt: true, receivedAt: true, expectedDate: true, createdAt: true },
+      orderBy: { receivedAt: "desc" },
+      take: 5000,
+    }),
+  ]);
+  if (!suppliers.length) return 0;
+  const tz = shopRow?.timezone ?? "UTC";
+  const day = (d: Date | null | undefined) => (d instanceof Date ? localDate(d, tz) : null);
+  const per = new Map<string, Delivery[]>();
+  for (const o of orders) {
+    const s = supplierOfOrder(o, suppliers);
+    if (!s) continue;
+    const d = deliveryOf({
+      source: o.source,
+      sentDay: day(o.sentAt),
+      receivedDay: day(o.receivedAt),
+      // A calendar day stored at UTC midnight (@db.Date).
+      expectedDay: o.expectedDate instanceof Date ? o.expectedDate.toISOString().slice(0, 10) : null,
+      firstSeenDay: day(o.createdAt),
+      leadTimeDays: s.leadTimeDays,
+    });
+    if (d) (per.get(s.id) ?? per.set(s.id, []).get(s.id)!).push(d);
+  }
+  let updated = 0;
+  for (const s of suppliers) {
+    const next = leadStats(per.get(s.id) ?? []);
+    if (!statsChanged(readLeadStats(s), next)) continue;
+    await prisma.supplier.updateMany({
+      where: { id: s.id, shop },
+      data: {
+        leadSamples: next?.samples ?? null,
+        leadPromisedDays: next?.promisedAvg ?? null,
+        leadActualDays: next?.actualAvg ?? null,
+        leadDelayDays: next?.delayAvg ?? null,
+        leadSigmaDays: next?.sigma ?? null,
+        leadOnTimeShare: next?.onTimeShare ?? null,
+        leadStatsAt: new Date(),
+      },
+    });
+    updated++;
+  }
+  if (updated) forgetOrderPlan(shop);
+  return updated;
 }

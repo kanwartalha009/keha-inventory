@@ -27,6 +27,11 @@ export type ShopSettings = {
    * growth — so it's an opt-in.
    */
   trendMode: TrendMode;
+  /**
+   * Monthly budget for stock purchases, store currency (Settings → Defaults, optional; Kanwar
+   * 2026-10-17). Next 13 weeks compares each month's cash out with it. null = none.
+   */
+  monthlyBudget: number | null;
   mondayEmail: {
     /** Spec D5: on by default, to the store owner. */
     enabled: boolean;
@@ -58,6 +63,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   tooMuchDays: 180,
   deadDays: 90,
   trendMode: "off",
+  monthlyBudget: null,
   mondayEmail: { enabled: true, recipients: [] },
   alerts: { instant: true, slackWebhook: null, slackMonday: true, slackError: null },
 };
@@ -80,6 +86,8 @@ export function readSettings(raw: unknown): ShopSettings {
     tooMuchDays: int(r.tooMuchDays, 30, 730, DEFAULT_SETTINGS.tooMuchDays),
     deadDays: int(r.deadDays, 30, 730, DEFAULT_SETTINGS.deadDays),
     trendMode: r.trendMode === "store" ? "store" : "off",
+    monthlyBudget:
+      typeof r.monthlyBudget === "number" && Number.isFinite(r.monthlyBudget) && r.monthlyBudget > 0 && r.monthlyBudget <= MONTHLY_BUDGET_MAX ? r.monthlyBudget : null,
     mondayEmail: {
       enabled: typeof me.enabled === "boolean" ? me.enabled : DEFAULT_SETTINGS.mondayEmail.enabled,
       recipients: Array.isArray(me.recipients) ? me.recipients.filter((x): x is string => typeof x === "string") : [],
@@ -104,6 +112,8 @@ export type SettingsForm = {
   safetyLevel: string;
   /** Growth assumption: "off" | "store"; anything else keeps the current mode. */
   trendMode: string;
+  /** Monthly budget (store currency); empty = none. Absent (older clients) keeps the current one. */
+  monthlyBudget?: string;
 };
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
@@ -111,6 +121,9 @@ export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
 const isLevel = (v: unknown): v is SafetyLevel => v === "lean" || v === "balanced" || v === "safe";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Highest monthly budget accepted (store currency). */
+export const MONTHLY_BUDGET_MAX = 1_000_000_000;
 
 /** Allowed ranges for the number fields (also shown in error messages). */
 export const SETTINGS_BOUNDS = {
@@ -126,6 +139,7 @@ export const SETTINGS_ERRORS = {
   emails: "Check the email addresses.",
   tooMany: "Up to 10 addresses.",
   slackUrl: "Paste a Slack incoming webhook link. It starts with https://hooks.slack.com/services/",
+  budget: "Enter an amount like 5000 or 4999.99, or leave it empty.",
   /** No valid APP_ENCRYPTION_KEY in production: secrets are never stored unencrypted (lib/crypto.server). */
   secretStorage: "Secure storage isn't set up for this app yet, so this can't be saved. Contact Keha support.",
 } as const;
@@ -155,6 +169,13 @@ export function applySettingsForm(
   const cycleDays = num("cycleDays");
   const tooMuchDays = num("tooMuchDays");
   const deadDays = num("deadDays");
+  let monthlyBudget = current.monthlyBudget;
+  if (form.monthlyBudget !== undefined) {
+    const raw = String(form.monthlyBudget).trim().replace(",", ".");
+    if (raw === "") monthlyBudget = null;
+    else if (!/^\d+(\.\d{1,2})?$/.test(raw) || !(Number(raw) > 0) || Number(raw) > MONTHLY_BUDGET_MAX) errors.monthlyBudget = SETTINGS_ERRORS.budget;
+    else monthlyBudget = Number(raw);
+  }
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -167,6 +188,7 @@ export function applySettingsForm(
       deadDays,
       safetyLevel: isLevel(form.safetyLevel) ? form.safetyLevel : current.safetyLevel,
       trendMode: form.trendMode === "off" || form.trendMode === "store" ? form.trendMode : current.trendMode,
+      monthlyBudget,
     },
   };
 }
@@ -179,6 +201,7 @@ export function settingsToForm(s: ShopSettings): SettingsForm {
     deadDays: String(s.deadDays),
     safetyLevel: s.safetyLevel,
     trendMode: s.trendMode,
+    monthlyBudget: s.monthlyBudget === null ? "" : String(s.monthlyBudget),
   };
 }
 

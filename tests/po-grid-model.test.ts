@@ -77,6 +77,11 @@ describe("the size-grid document", () => {
     const grid = buildPoGrid(doc.gridLines!, doc.hidePrices);
     expect(grid.blocks).toEqual([{ sizes: ["S", "M"], rows: [{ styleCode: "ART-9", productTitle: "Tee", label: "Black", qty: [4, 6], units: 10, cost: 100 }], columnTotals: [4, 6], units: 10, cost: 100 }]);
     expect(grid.flat.map((l) => l.productTitle)).toEqual(["Tote"]);
+    // Freight & duty (the supplier's landed cost %) is in the merchant's costs, never on the supplier's document.
+    fake.tables.supplier![0]!.landedCostPercent = 12;
+    const withFreight = await documentFor(S, (await getOrder(S, "po1"))!, NOW);
+    expect(buildPoGrid(withFreight.gridLines!, withFreight.hidePrices).blocks[0]!.cost).toBe(100);
+    expect(JSON.stringify(withFreight)).not.toMatch(/landed|freight/i);
     // The PDF draws the grid and the flat list, prices shown or hidden.
     for (const hidePrices of [false, true]) {
       const pdf = await renderPoPdf({ ...doc, hidePrices });

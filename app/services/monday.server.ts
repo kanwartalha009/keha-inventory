@@ -35,7 +35,7 @@ import {
   type MondayOrders,
   type MondayValues,
 } from "../lib/monday-shared";
-import { previewRows, supplierName, thisWeek } from "../lib/order-plan-shared";
+import { paidWithin, previewRows, supplierName, thisWeek } from "../lib/order-plan-shared";
 import { ordersDue } from "../lib/engine/forward-plan-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
 import { readiness } from "../models/dashboard.server";
@@ -205,6 +205,12 @@ export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale,
         })),
         next: week.next ? { name: supplierName(data, week.next.supplierKey, tr), orderBy: week.next.orderBy } : null,
         cantPlan: data.cantPlan,
+        // Supplier module: the cash paid in these 7 days (payment terms, freight & duty, open orders'
+        // balances) — said only when it differs from the orders' own cost above.
+        cashOut: (() => {
+          const c = paidWithin(data);
+          return c.total > 0 && (c.committed > 0 || Math.abs(c.total - (week.totals.cash ?? 0)) > 0.005) ? c : null;
+        })(),
       };
     }
     const rows = previewRows(data, 10);

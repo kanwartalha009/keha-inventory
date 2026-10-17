@@ -32,6 +32,7 @@ import { computeVariant, type AbcRole, type DailyRow, type EngineSettings, type 
 import { seasonFacts, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor, type SafetyLevelKey } from "../lib/engine/safety-shared";
 import { casePackFor, type SupplierLite } from "../lib/supplier-shared";
+import { supplierLeadSigma } from "../lib/lead-time-shared";
 import { planningLocations } from "../lib/locations-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
@@ -269,6 +270,7 @@ async function computeLocation(
       lastSaleDay: (fromPool ? x.pool.lastSale.get(v.id) : lastSale.get(v.id)) ?? null,
       dataSinceDay: (fromPool ? x.pool.dataSince.get(v.id) : dataSince.get(v.id)) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
+      leadTimeSigmaDays: supplierLeadSigma(supplier),
       cycleDays: supplier?.orderCycleDays ?? null,
       caseQty: casePackFor(v.caseQty, supplier),
       minOrder: supplier?.minOrder ?? null,

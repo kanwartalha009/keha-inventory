@@ -46,7 +46,7 @@ Keha turns your Shopify sales and stock into an order plan: what to order from e
 
 ```text
 Order plan by supplier: what to order, how many, and the last day to order
-Cash needed each week for every planned order over the next 13 weeks
+Cash needed each week on your suppliers' payment terms, for the next 13 weeks
 Purchase orders as PDF, CSV or email; suppliers confirm ship dates by link
 Forecasts skip sold-out days, and each one shows how it was worked out
 Monday to-do list: reorder, promote, fix or clear, ranked by money at stake

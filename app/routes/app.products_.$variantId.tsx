@@ -68,7 +68,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     months: monthlyTotals(series),
     recent: recentDays(series, 14),
     // Lead time, safety stock and the order cycle are part of the Growth forecast.
-    inputs: inputs && !features.forecast ? { ...inputs, leadTimeDays: null, leadTimeSource: null, cycleDays: null, z: null, safety: null } : inputs,
+    inputs: inputs && !features.forecast ? { ...inputs, leadTimeDays: null, leadTimeSource: null, cycleDays: null, z: null, safety: null, leadSigma: null } : inputs,
     seasonCollection: detail.seasonCollection,
     forecast: features.forecast,
   };
@@ -369,7 +369,21 @@ function ForecastInputs({
             <KvRow label={t("Safety level")} value={!forecast ? locked : num(inputs.z, 2)} />
             <KvRow
               label={t("Safety stock")}
-              value={!forecast ? locked : inputs.safety === null ? "—" : fill(t("{n} units"), { n: num(inputs.safety, 0) })}
+              value={
+                !forecast ? (
+                  locked
+                ) : inputs.safety === null ? (
+                  "—"
+                ) : inputs.leadSigma ? (
+                  // Supplier module: the measured spread of the supplier's deliveries is in it.
+                  <span className="keha-inline">
+                    <span>{fill(t("{n} units"), { n: num(inputs.safety, 0) })}</span>
+                    <s-text color="subdued">{fill(t("incl. late deliveries (± {n} days)"), { n: num(inputs.leadSigma, 1) })}</s-text>
+                  </span>
+                ) : (
+                  fill(t("{n} units"), { n: num(inputs.safety, 0) })
+                )
+              }
             />
           </div>
           <s-text color="subdued">

@@ -26,11 +26,12 @@ import {
   type TrendMode,
 } from "../lib/settings-shared";
 import { getShopSettings, saveShopSettings } from "../models/settings.server";
+import { storeCurrency } from "../models/suppliers.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const settings = await getShopSettings(session.shop);
-  return { form: settingsToForm(settings) };
+  const [settings, currency] = await Promise.all([getShopSettings(session.shop), storeCurrency(session.shop)]);
+  return { form: settingsToForm(settings), currency };
 };
 
 type ActionData = { ok: true; form: SettingsForm } | { ok: false; errors?: SettingsErrors; notReady?: boolean };
@@ -50,6 +51,8 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     deadDays: String(body.deadDays ?? ""),
     safetyLevel: String(body.safetyLevel ?? ""),
     trendMode: String(body.trendMode ?? ""),
+    // Absent (an older page): the budget stays as saved.
+    ...(body.monthlyBudget !== undefined ? { monthlyBudget: String(body.monthlyBudget ?? "") } : {}),
   };
   const current = await getShopSettings(session.shop);
   const r = applySettingsForm(current, form, new Date());
@@ -65,12 +68,12 @@ type NumberKey = keyof typeof SETTINGS_BOUNDS;
 
 export default function Settings() {
   const { t, locale, setLocale } = useLocale();
-  const { form: initial } = useLoaderData<typeof loader>();
+  const { form: initial, currency } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionData>();
   const [form, setForm] = useState<SettingsForm>(initial);
   const [saved, setSaved] = useState<SettingsForm>(initial);
-  // A non-default growth assumption keeps More options open, so it is never a hidden surprise.
-  const [more, setMore] = useState(initial.trendMode === "store");
+  // A non-default growth assumption (or a budget) keeps More options open, so it is never a hidden surprise.
+  const [more, setMore] = useState(initial.trendMode === "store" || !!initial.monthlyBudget);
   const saving = fetcher.state !== "idle";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
@@ -148,6 +151,17 @@ export default function Settings() {
                 ]}
                 selected={[form.trendMode as TrendMode]}
                 onChange={(v) => v[0] && set("trendMode", v[0])}
+              />
+              <s-number-field
+                label={t("Monthly budget for stock")}
+                details={t("Optional. Next 13 weeks compares each month's cash out with it and suggests which orders could wait. Leave empty for no budget.")}
+                value={form.monthlyBudget ?? ""}
+                suffix={currency}
+                inputMode="decimal"
+                min={0}
+                step={1}
+                error={err("monthlyBudget")}
+                onInput={(e) => set("monthlyBudget", val(e))}
               />
             </s-stack>
           </Disclosure>

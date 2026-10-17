@@ -12,7 +12,7 @@ import {
   orderQuantity,
   resolveLeadTime,
   safetyDays as safetyDaysOf,
-  safetyStock,
+  safetyStockWithLead,
   zForRole,
 } from "./order-shared";
 import {
@@ -74,6 +74,11 @@ export interface VariantInput {
    */
   dataSinceDay?: DayKey | null;
   supplierLeadTimeDays?: number | null;
+  /**
+   * Standard deviation of the supplier's measured lead time (days; lib/lead-time-shared, only with
+   * ≥ 3 deliveries measured). Safety stock then also covers late deliveries (safetyStockWithLead).
+   */
+  leadTimeSigmaDays?: number | null;
   cycleDays?: number | null;
   /** Weekly seasonal shape (season-shared seasonCurve; only when the index was applied). */
   seasonCurve?: readonly (number | null)[] | null;
@@ -150,6 +155,8 @@ export interface VariantInputs {
   plan: number;
   leadTimeDays: number;
   leadTimeSource: "supplier" | "default";
+  /** σ of the supplier's measured lead time in safety stock (days); absent when not measured / not used. */
+  leadSigma?: number;
   cycleDays: number;
   z: number;
   onHand: number;
@@ -299,7 +306,9 @@ export function computeVariant(input: VariantInput): VariantResult | null {
 
   // H4 (audit 2026-10-17): periodic review — the stock must cover demand uncertainty until the
   // NEXT order lands, i.e. over lead time + order cycle (the protection period), not lead only.
-  const safety = advice ? safetyStock(z, sigma!, lead.days + cycle) : null;
+  // Supplier module: + the variability of the supplier's measured lead time (σL), when measured.
+  const leadSigma = typeof input.leadTimeSigmaDays === "number" && Number.isFinite(input.leadTimeSigmaDays) && input.leadTimeSigmaDays > 0 ? input.leadTimeSigmaDays : null;
+  const safety = advice ? safetyStockWithLead(z, sigma!, lead.days + cycle, fRate, leadSigma) : null;
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
 
@@ -444,6 +453,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       plan,
       leadTimeDays: lead.days,
       leadTimeSource: lead.source,
+      ...(leadSigma !== null ? { leadSigma } : {}),
       cycleDays: cycle,
       z,
       onHand,

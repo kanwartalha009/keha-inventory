@@ -399,3 +399,14 @@ describe("Ordering: the product's supplier code (size-grid purchase orders)", ()
     expect(setProductCaseSize).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", 12);
   });
 });
+
+describe("How the forecast was built: the supplier's delivery spread in safety stock (supplier module)", () => {
+  it("measured (≥ 3 deliveries): said next to the safety stock; not measured: nothing extra", () => {
+    const base = detail(true);
+    const html = renderDetail({ ...base, inputs: { ...base.inputs!, leadSigma: 4.4 } });
+    expect(html).toContain("incl. late deliveries (± 4.4 days)");
+    expect(renderDetail(base)).not.toContain("incl. late deliveries");
+    expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12, leadSigma: 4.4 }, 1)!.leadSigma).toBe(4.4);
+    expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12 }, 1)!.leadSigma).toBeNull();
+  });
+});

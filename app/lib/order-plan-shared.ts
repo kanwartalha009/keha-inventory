@@ -13,6 +13,7 @@ import {
   cashTotals,
   dueDay,
   dueWithin,
+  planEnd,
   type CashTotals,
   type OrderWhy,
   type PlanBatch,
@@ -23,6 +24,8 @@ import {
 import { toCsv, variantName } from "./products-shared";
 import { fill } from "./i18n";
 import type { TrendMode } from "./settings-shared";
+import { cashMonths, cashSummary, cashWeeks, fitToBudget, paymentsOf, type CashMonth, type CashSummary, type CashWeek, type CommittedPayment, type FitMonth, type PaymentTerms } from "./cash-shared";
+import type { LeadStats } from "./lead-time-shared";
 
 type T = (s: string) => string;
 
@@ -74,6 +77,14 @@ export type PlanSupplierInfo = {
   cycleDays?: number | null;
   /** The supplier's own "Order every … days" (Settings → Suppliers); null = the store's order cycle. */
   orderCycleDays?: number | null;
+  /** Payment terms (lib/cash-shared); null / absent = everything paid when ordering. */
+  terms?: PaymentTerms | null;
+  /** Freight + duty, % of the goods (null = none). */
+  landedPct?: number | null;
+  /** Days from ship date to arrival (the "at shipment" balance day). */
+  transitDays?: number | null;
+  /** Measured lead time (lib/lead-time-shared); null = nothing measured yet. */
+  leadStats?: LeadStats | null;
 };
 
 export type OrderPlanData = {
@@ -96,6 +107,10 @@ export type OrderPlanData = {
   notReordered?: number;
   /** Growth assumption: the trend is in the forecast only with "store" (absent = "off"). */
   trendMode?: TrendMode;
+  /** Still to pay on orders already sent / confirmed (lib/cash-shared openOrderPayments). */
+  committed?: CommittedPayment[];
+  /** Monthly budget for stock (Settings → Defaults); null / absent = none. */
+  budget?: number | null;
 };
 
 export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UTC"): OrderPlanData => ({
@@ -208,6 +223,57 @@ export function thisWeek(data: Pick<OrderPlanData, "events" | "today">): ThisWee
 /** The calendar weeks (13 by default; the Dashboard strip uses 12). */
 export function planWeeks(data: Pick<OrderPlanData, "events" | "today">, weeks: number = PLAN_WEEKS): PlanWeek[] {
   return byWeek(data.events, data.today, weeks);
+}
+
+// ── Cash paid per week and per month (supplier module, lib/cash-shared) ─────────
+
+/** The cash paid in each of the next `weeks` weeks: the plan's orders on the days they are paid, plus what is still due on open orders. */
+export function paidWeeks(data: Pick<OrderPlanData, "events" | "today" | "committed">, weeks: number = PLAN_WEEKS): CashWeek[] {
+  return cashWeeks(data.events, data.committed ?? [], data.today, weeks);
+}
+
+/** The totals of paidWeeks, and what is paid after them. */
+export function paidSummary(data: Pick<OrderPlanData, "events" | "today" | "committed">, weeks: number = PLAN_WEEKS): CashSummary {
+  return cashSummary(data.events, data.committed ?? [], data.today, weeks);
+}
+
+/** The cash paid in the next `days` days (today included; "Order this week"'s window): orders to place + still due on open orders. */
+export function paidWithin(data: Pick<OrderPlanData, "events" | "today" | "committed">, days: number = ORDER_NOW_DAYS): { total: number; committed: number } {
+  const last = addDays(data.today, days - 1);
+  const inWindow = (d: DayKey) => (d < data.today ? data.today : d) <= last;
+  let total = 0;
+  let committed = 0;
+  for (const e of data.events) for (const p of paymentsOf(e)) if (inWindow(p.day)) total += p.amount;
+  for (const p of data.committed ?? []) {
+    if (!inWindow(p.day)) continue;
+    total += p.amount;
+    committed += p.amount;
+  }
+  return { total: Math.round(total * 100) / 100, committed: Math.round(committed * 100) / 100 };
+}
+
+/** The calendar months of the next 13 weeks with the cash paid in each. */
+export function planMonths(data: Pick<OrderPlanData, "events" | "today" | "committed">): CashMonth[] {
+  return cashMonths(data.events, data.committed ?? [], data.today, planEnd(data.today));
+}
+
+/** The months over the monthly budget, with the "Fit to budget" suggestion (empty without a budget). */
+export function planFit(data: Pick<OrderPlanData, "events" | "today" | "committed" | "budget" | "variants" | "batches" | "suppliers">): FitMonth[] {
+  if (!data.budget || !(data.budget > 0)) return [];
+  const rules: Record<string, { minTotal: number | null; minValue: number | null; styleMin: number | null }> = {};
+  for (const [key, s] of Object.entries(data.suppliers)) {
+    rules[key] = { minTotal: s.minOrderTotal ?? null, minValue: s.minOrderValueStore ?? null, styleMin: s.minOrderScope === "product" ? (s.minOrder ?? null) : null };
+  }
+  return fitToBudget({
+    today: data.today,
+    end: planEnd(data.today),
+    budget: data.budget,
+    events: data.events,
+    committed: data.committed ?? [],
+    variants: data.variants,
+    batches: data.batches ?? [],
+    rules,
+  });
 }
 
 export type PreviewRow = {

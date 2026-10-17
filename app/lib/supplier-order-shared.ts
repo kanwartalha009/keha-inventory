@@ -24,6 +24,8 @@ import { ORDER_NOW_DAYS, ordersDue, splitByShare, topUpToMinimum, topUpToValue, 
 import type { OrderPlanData, PlanSupplierInfo } from "./order-plan-shared";
 import { orderTotals, type OrderTotals } from "./reorder-shared";
 import type { PoLine } from "./supplier-shared";
+import { landedOf, orderPayments, type Payment, type PaymentTerms } from "./cash-shared";
+import type { LeadStats } from "./lead-time-shared";
 
 /** Where a line comes from: due now (or in the week opened from Next 13 weeks), due within the cycle, added by hand. */
 export type BuilderSection = "due" | "cycle" | "added";
@@ -103,6 +105,14 @@ export type SupplierOrderView = {
   lines: BuilderLine[];
   /** A fresh draft for this supplier (counts as ordered): lines can be added to it. */
   draft: BuilderDraft | null;
+  /** Payment terms (lib/cash-shared); null = everything paid when ordering. */
+  terms?: PaymentTerms | null;
+  /** Freight + duty, % of the goods; null = none. */
+  landedPct?: number | null;
+  /** Days from ship date to arrival (the "at shipment" day). */
+  transitDays?: number | null;
+  /** The supplier's measured lead time; null = none measured. */
+  leadStats?: LeadStats | null;
 };
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -197,6 +207,10 @@ export function buildSupplierOrder(input: BuildSupplierOrderInput): SupplierOrde
     hasEmail: !!info.hasEmail,
     lines: [],
     draft: input.draft ?? null,
+    terms: info.terms ?? null,
+    landedPct: info.landedPct ?? null,
+    transitDays: info.transitDays ?? null,
+    leadStats: info.leadStats ?? null,
   };
   // The order starts complete: the minimums applied once to the whole order.
   const qtys = topUpOrder(view, lines.map((l) => ({ ...l, qty: l.base })));
@@ -330,6 +344,21 @@ export function minimumStatus(
 export function builderTotals(view: Pick<SupplierOrderView, "currency" | "storeCurrency" | "exchangeRate">, lines: readonly QtyLine[]): OrderTotals {
   const q = new Map(lines.map((l) => [l.variantId, l.qty]));
   return orderTotals(view, lines, (id) => q.get(id) ?? 0);
+}
+
+/**
+ * The order's freight + duty and its payments if it is placed today: arrival after the lead time,
+ * the balance at the supplier's moment (lib/cash-shared). Store currency; null cost → no goods
+ * payment (unknown, never 0).
+ */
+export function builderPayments(
+  view: Pick<SupplierOrderView, "terms" | "landedPct" | "transitDays" | "leadTimeDays">,
+  cost: number | null,
+  today: DayKey,
+): { landed: number | null; payments: Payment[] } {
+  const landed = landedOf(cost, view.landedPct ?? null);
+  const arrives = addDays(today, Math.max(0, Math.round(view.leadTimeDays || 0)));
+  return { landed, payments: orderPayments({ orderDay: today, arrives, transitDays: view.transitDays ?? null }, cost, landed, view.terms ?? null) };
 }
 
 // ── Free plan: the teaching lock with the store's own numbers ─────────────────
