@@ -1,7 +1,7 @@
 /**
  * Supplier order builder (consolidated supplier purchase order, Kanwar 2026-10-17): the
  * supplier's order cycle in Settings → Suppliers, the builder page (/app/reorder/build), its
- * entry points on Order now and Next 90 days, and its plan lock. English text is the key (see
+ * entry points on Order now and Next 13 weeks, and its plan lock. English text is the key (see
  * app/lib/i18n.tsx). Tone as the rest of the admin: German "du", French "vous", Spanish "tú",
  * European Portuguese, Dutch "je", Polish informal.
  */
@@ -30,7 +30,7 @@ export const BUILDER_TR: Record<string, Tr> = {
     pl: "Jak często składasz zamówienie u tego dostawcy. Zostaw puste, aby użyć cyklu zamówień sklepu.",
   },
 
-  // ---- Entry points (Order now, Next 90 days) ----
+  // ---- Entry points (Order now, Next 13 weeks) ----
   "Build supplier order": { es: "Preparar pedido al proveedor", fr: "Préparer la commande fournisseur", de: "Lieferantenbestellung zusammenstellen", it: "Prepara ordine al fornitore", pt: "Preparar encomenda ao fornecedor", nl: "Leveranciersbestelling samenstellen", pl: "Przygotuj zamówienie u dostawcy" },
 
   // ---- The builder page ----

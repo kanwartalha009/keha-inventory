@@ -4,11 +4,11 @@
  *
  * One supplier's order for its whole order cycle, from the same forward plan as Order now, Next
  * 90 days, the Dashboard and Sidekick (models/order-plan.server computeOrderPlan): its lines due
- * now (or in a Next 90 days week), its lines due before its next order, and any of its products
+ * now (or in a Next 13 weeks week), its lines due before its next order, and any of its products
  * the merchant adds. "Create draft order" saves ONE Keha draft with every line; "Add to PO-00xx"
  * adds the lines to the supplier's fresh draft instead. Either way the draft counts as ordered
  * while it is under 14 days old (supplier-shared poCountsAsOrdered), so its lines leave Order
- * now, Next 90 days, Products and Sidekick — every unit counted once. Nothing is sent to the
+ * now, Next 13 weeks, Products and Sidekick — every unit counted once. Nothing is sent to the
  * supplier here; the merchant emails it or marks it sent on the order page.
  *
  * Which products belong to a supplier is supplierFor's answer (a product assignment wins over the

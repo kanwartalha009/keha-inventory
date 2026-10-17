@@ -7,7 +7,7 @@
  * 75-day supplier gets three or four small orders a month. The builder gathers, for one
  * supplier, from the same plan:
  *  - "Due now": its orders due in the next 7 days (overdue included) — Order now's lines — or,
- *    from Next 90 days, its orders of that week (`range`);
+ *    from Next 13 weeks, its orders of that week (`range`);
  *  - "Due before your next order": its later orders up to the end of the supplier's order cycle
  *    (Settings → Suppliers "Order every … days", else the store's cycle), each with its own
  *    order-by date;
@@ -25,7 +25,7 @@ import type { OrderPlanData, PlanSupplierInfo } from "./order-plan-shared";
 import { orderTotals, type OrderTotals } from "./reorder-shared";
 import type { PoLine } from "./supplier-shared";
 
-/** Where a line comes from: due now (or in the week opened from Next 90 days), due within the cycle, added by hand. */
+/** Where a line comes from: due now (or in the week opened from Next 13 weeks), due within the cycle, added by hand. */
 export type BuilderSection = "due" | "cycle" | "added";
 
 export type BuilderLine = {
@@ -82,9 +82,9 @@ export type SupplierOrderView = {
   /** The order cycle the window uses, and where it comes from. */
   cycleDays: number;
   cycleSource: "supplier" | "store";
-  /** First day of the window (today, or the week opened from Next 90 days). */
+  /** First day of the window (today, or the week opened from Next 13 weeks). */
   from: DayKey;
-  /** Opened from Next 90 days: that supplier-week's order-by range ("Due" then names it); null = due now. */
+  /** Opened from Next 13 weeks: that supplier-week's order-by range ("Due" then names it); null = due now. */
   range: { from: DayKey; to: DayKey } | null;
   /** First order-by day of "Due" (the range's start, else today). */
   dueFrom: DayKey;
@@ -129,7 +129,7 @@ export type BuildSupplierOrderInput = {
   /** The supplier as the plan knows it (plan.suppliers[key]), or built from Settings when it has no planned order. */
   info: PlanSupplierInfo;
   storeCycleDays: number;
-  /** Next 90 days: the supplier-week's order-by range. */
+  /** Next 13 weeks: the supplier-week's order-by range. */
   range?: { from: DayKey; to: DayKey } | null;
   draft?: BuilderDraft | null;
 };
@@ -352,7 +352,7 @@ export function builderTeaser(view: SupplierOrderView): BuilderTeaser {
 
 // ── Links ───────────────────────────────────────────────────────────────────
 
-/** The builder for one supplier (`range`: a Next 90 days supplier-week's order-by dates). */
+/** The builder for one supplier (`range`: a Next 13 weeks supplier-week's order-by dates). */
 export function builderLink(supplierKey: string, range?: { from: DayKey; to: DayKey } | null): string {
   const params = new URLSearchParams({ supplier: supplierKey });
   if (range) {
