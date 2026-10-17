@@ -165,7 +165,7 @@ export default function LocationsSettings() {
             {t("Supplier orders, sales per day and days left are worked out from the stock in every location that counts.")}
           </s-paragraph>
           <s-paragraph color="subdued">
-            {t("Warehouses and stores get their own plan: switch between them on Products and Reorder.")}
+            {t("Warehouses and stores get their own plan: switch between them on Products and Order plan.")}
           </s-paragraph>
           <s-paragraph color="subdued">
             {t("The transfer plan moves stock from warehouses to stores that are running low.")}

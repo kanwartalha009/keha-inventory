@@ -32,3 +32,14 @@ describe("i18n sweep", () => {
     expect(alertLine("en", sell, "https://x").detail).toBe("Visits to this product last week: 1,234.");
   });
 });
+
+describe("screen names (nav: Order plan; tabs: Order now, Next 90 days, Season plan, Open orders)", () => {
+  it("no English key names a 'Reorder' screen or page any more", async () => {
+    const { AREAS } = await import("../app/lib/i18n");
+    const keys = Object.values(AREAS).flatMap((a) => Object.keys(a));
+    // "Reorder" stays as the action (the Reorder tab of the action list, "Reorder again").
+    // Capitalised = the screen ("on Reorder"); lower case "what to reorder" is the verb.
+    const screen = /\b(on|in|to|open|from|see|and) (the )?Reorder\b|\bReorder (page|screen)\b/;
+    expect(keys.filter((k) => screen.test(k))).toEqual([]);
+  });
+});

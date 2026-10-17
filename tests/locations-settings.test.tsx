@@ -150,6 +150,8 @@ describe("Settings → Locations SSR", () => {
     expectSettingsAnatomy(html, { cards: ["Locations", "How this is used"], saveBar: "keha-settings-locations" });
     expect(html).toContain("Counted in supplier orders now: Main warehouse.");
     expect(html).not.toContain("Free and Growth plan all your stock as one pool.");
+    // The nav says "Order plan" (2026-10-17): no screen called "Reorder" any more.
+    expect(html).toContain("switch between them on Products and Order plan.");
   });
 
   it("Growth: the include toggle is editable (save bar), the role is locked with the plan name", () => {

@@ -10,7 +10,7 @@
  *    Roles (warehouse / store) and per-location planning stay Pro.
  *  - Per-location planning covers ACTIVE locations with the role warehouse or store; their
  *    VariantMetric rows use scope = Location.id (compute-locations).
- *  - The location switcher (`?location=<Location.id>`) on Products and Reorder: only a
+ *  - The location switcher (`?location=<Location.id>`) on Products and Order plan: only a
  *    planning location of this shop, only on Pro; anything else is the online stock pool.
  */
 import { countsForOnline, SCOPE_ONLINE, type PoolLocation } from "./compute-shared";

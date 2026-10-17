@@ -1,6 +1,6 @@
 /**
  * Locations, stores and transfers (Phase 3, spec §3 `locations` / `transfers`, §4 J7,
- * §5.5 Locations): Settings → Locations, the location switcher on Products and Reorder,
+ * §5.5 Locations): Settings → Locations, the location switcher on Products and Order plan,
  * and the transfer plan. English text is the key (see app/lib/i18n.tsx). Tone follows the
  * admin convention (German "du", French "vous", Spanish "tú", European Portuguese, Dutch
  * "je", Polish informal).
@@ -92,14 +92,14 @@ export const STORES_TR: Record<string, Tr> = {
     pl: "Twoje lokalizacje pojawią się tutaj po odczytaniu sklepu.",
   },
   "How this is used": { es: "Para qué sirve", fr: "À quoi cela sert", de: "Wofür das genutzt wird", it: "A cosa serve", pt: "Para que serve", nl: "Waarvoor dit wordt gebruikt", pl: "Do czego to służy" },
-  "Warehouses and stores get their own plan: switch between them on Products and Reorder.": {
-    es: "Los almacenes y las tiendas físicas tienen su propio plan: cambia entre ellos en Productos y Reposición.",
-    fr: "Les entrepôts et les magasins ont leur propre plan : passez de l'un à l'autre dans Produits et Réassort.",
-    de: "Lager und Filialen bekommen ihren eigenen Plan: Wechsle unter Produkte und Nachbestellen zwischen ihnen.",
-    it: "Magazzini e negozi hanno un piano proprio: passa dall'uno all'altro in Prodotti e Riordino.",
-    pt: "Os armazéns e as lojas físicas têm o seu próprio plano: alterne entre eles em Produtos e Reposição.",
-    nl: "Magazijnen en winkels krijgen hun eigen planning: wissel ertussen bij Producten en Bijbestellen.",
-    pl: "Magazyny i sklepy stacjonarne mają własny plan: przełączaj się między nimi w Produktach i Domawianiu.",
+  "Warehouses and stores get their own plan: switch between them on Products and Order plan.": {
+    es: "Los almacenes y las tiendas físicas tienen su propio plan: cambia entre ellos en Productos y Plan de pedidos.",
+    fr: "Les entrepôts et les magasins ont leur propre plan : passez de l'un à l'autre dans Produits et Plan de commandes.",
+    de: "Lager und Filialen bekommen ihren eigenen Plan: Wechsle unter Produkte und Bestellplan zwischen ihnen.",
+    it: "Magazzini e negozi hanno un piano proprio: passa dall'uno all'altro in Prodotti e Piano ordini.",
+    pt: "Os armazéns e as lojas físicas têm o seu próprio plano: alterne entre eles em Produtos e Plano de encomendas.",
+    nl: "Magazijnen en winkels krijgen hun eigen planning: wissel ertussen bij Producten en Bestelplan.",
+    pl: "Magazyny i sklepy stacjonarne mają własny plan: przełączaj się między nimi w Produktach i Planie zamówień.",
   },
   "The transfer plan moves stock from warehouses to stores that are running low.": {
     es: "El plan de transferencias mueve stock de los almacenes a las tiendas que se están quedando sin él.",
