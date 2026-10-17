@@ -48,6 +48,7 @@ Clear dead stock with a Shopify discount, created only after you confirm
 Monday email in your store's language, plus Slack and Shopify Flow alerts
 Season planner: order list with order-by dates and cash needed per week
 Pro: plan each warehouse and POS store, and create draft transfers in Shopify
+Ask Shopify Sidekick what to reorder, when stock runs out and what is on order
 ```
 
 Where each claim lives in the code:
@@ -65,6 +66,7 @@ Where each claim lives in the code:
 | Season planner: order list, order-by dates, cash per week (also collection goals, accuracy scorecard) | Order plan → Season plan, `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
 | Plan per warehouse and POS store | `app/routes/app.settings_.locations.tsx` (roles), location switcher on Products and Order plan → Order now (Pro) |
 | Draft transfers in Shopify | Order plan → Order now → "Transfers: warehouse → stores" (shown when the store plans two or more locations), `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
+| Ask Sidekick (reorder, run-out dates, open orders) | `extensions/keha-inventory-sidekick` (`admin.app.tools.data`), `app/routes/api.sidekick.$tool.tsx` (read-only; each plan gets what its screens show) |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks

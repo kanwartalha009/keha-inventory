@@ -27,12 +27,13 @@ Built from the Encore (Keha Preorder) app kit (playbook §2): React Router 7, Po
 | Monday email | 08:00 store time: the 4 numbers with week-on-week change, top 5 actions with buttons, last month's accuracy line, unsubscribe link; in the store's language; same summary to Slack | Free: top 10 · Growth+: full; Slack: Growth |
 | Instant alerts | Hourly: a best seller will run out within its lead time, or a busy product sold out; email on every plan, Slack on Growth; once per product per 7 days | All |
 | Shopify Flow | Triggers "Product needs reorder" and "Product went dead" (`extensions/keha-inventory-flow`) | Growth |
+| Shopify Sidekick | App data extension (`extensions/keha-inventory-sidekick`, target `admin.app.tools.data`): six read-only tools — order plan by supplier, product stock, this week's actions, money at stake, open purchase orders, forecast accuracy — answered from the database by `/api/sidekick/:tool`; `[sidekick] extensions_summary` in both tomls | What each plan's screens show (Free: no order plan, purchase orders or accuracy; no forecast fields; top 10 actions) |
 | Accuracy | Monthly forecast snapshot and grading of last month (top 20 variants + store total); in the Monday email and the Season plan's scorecard | Growth |
 | Privacy | No shopper data stored; GDPR webhooks; 48 h purge after uninstall; access log | All |
 
 Every plan-card line in `PLAN_POINTS` is built; `tests/listing.test.ts` fails if the listing
-ever marks one "Not built yet". Spec phase 4 (Sidekick, ad-stock control, linked stores,
-benchmarks) is not started and needs separate approval.
+ever marks one "Not built yet". Spec phase 4: the Sidekick data tools are built; ad-stock control,
+linked stores and benchmarks are not started and need separate approval.
 
 ## Backtest (spec §16, Phase 0.3)
 
@@ -86,6 +87,9 @@ app/
   models/*.server.ts       per-entity DB and Admin API reads/writes
   services/*.server.ts     workflows: sync, compute, email, pricing, GDPR, scheduler
   components/              Polaris web-component UI
+extensions/
+  keha-inventory-flow/     Shopify Flow triggers (2 × flow_trigger)
+  keha-inventory-sidekick/ Sidekick app data tools (ui_extension, admin.app.tools.data)
 tests/                     vitest: unit, SSR per screen, contracts, translation coverage
 ```
 

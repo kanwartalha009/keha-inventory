@@ -103,6 +103,17 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 17. **Uninstall:** all stored data for the store is deleted 48 hours later (immediately on
     Shopify's shop/redact).
 
+**Try it in Sidekick.** Open Sidekick in the Shopify admin and ask, for example:
+
+- "What do I need to reorder this week?"
+- "When does the <product name> run out?" (use a product of the test store)
+- "Which purchase orders are still open?"
+
+Sidekick answers from the app's data (order-by dates, days of stock left, expected arrivals)
+and links to the matching page in the app. These tools only read: nothing changes in the store,
+and purchase orders are still created and sent from the Reorder page after a confirm. Each plan
+gets what its own screens show (on Free there is no reorder plan or purchase-order list).
+
 **Why each permission (one line each).**
 
 | Scope | Why |

@@ -73,6 +73,8 @@ describe("/privacy", () => {
     expect(html).toContain("Resend");
     expect(html).toContain("Railway");
     expect(html).toContain("Product needs reorder");
+    expect(html).toContain("Shopify Sidekick");
+    expect(html).toContain("it collects nothing new and changes nothing in");
     expect(html).toContain("Transfers are created as drafts");
     expect(html).toContain("planner scenarios");
     expect(html).toContain("privacy@example.com");

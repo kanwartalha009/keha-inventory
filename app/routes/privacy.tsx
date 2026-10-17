@@ -122,6 +122,14 @@ export default function Privacy() {
         went dead” (product ID, cash stuck). Only workflows you build act on
         them.
       </p>
+      <p>
+        Shopify Sidekick: when someone in your Shopify admin asks Sidekick a
+        stock question, Sidekick can read the App’s answers (reorder plan,
+        product stock, actions, money at stake, purchase orders, forecast
+        accuracy) for your store only, in that admin session. This reads data
+        the App already holds; it collects nothing new and changes nothing in
+        your store.
+      </p>
 
       <h2>Emails and messages</h2>
       <ul>
