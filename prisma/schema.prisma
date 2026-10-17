@@ -477,6 +477,11 @@ model Supplier {
   leadSigmaDays    Float?
   leadOnTimeShare  Float?
   leadStatsAt      DateTime?
+  /// The language this supplier's purchase orders are written in (email, PDF, CSV, supplier page):
+  /// en | es | fr | de | it | pt | nl | pl; null = English (merchant audit 2026-10-18).
+  poLanguage    String?
+  /// Optional delivery terms on the purchase order, e.g. "FOB Ningbo", "EXW", "DDP Madrid".
+  incoterms     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -500,7 +505,10 @@ model PurchaseOrder {
   shopifyPoId       String?
   supplierName      String?   // snapshot (Shopify POs: origin.supplierName)
   currency          String?
+  /// The merchant's note to the supplier, on the PDF, CSV and email (older location-view drafts hold the location's name).
   note              String?
+  /// Where the goods go: a Location.id; null = the default ship-to (lib/po-document-shared defaultShipTo).
+  shipToLocationId  String?
   sentAt            DateTime?
   receivedAt        DateTime?
   cancelledAt       DateTime?

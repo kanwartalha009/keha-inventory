@@ -1,8 +1,9 @@
 /**
  * "Email supplier" (spec §5.3): the order goes to the supplier's email
  * (decrypted here only), from the app's verified sender with the store's
- * name, reply-to = the store's contact email, in the store's language, with
- * the supplier-page link (confirm the ship date, download the PDF). The email
+ * name, reply-to = the store's contact email, in the supplier's PO language
+ * (English by default; merchant audit 2026-10-18), with the order's details
+ * (buyer, ship-to, terms, Incoterms, dates, note) and the supplier-page link (confirm the ship date, download the PDF). The email
  * transport has no attachments, so the PDF is linked, not attached.
  *
  * A draft is marked Sent only after the email went out.
@@ -15,8 +16,10 @@ import prisma from "../db.server";
 import { decryptSecret } from "../lib/crypto.server";
 import { emailTransportConfigured, sendEmail } from "./email.server";
 import { getShopContact } from "./shop-contact.server";
-import { toSupportedLocale, translate } from "../lib/i18n";
-import { storeLabel } from "../lib/dashboard-shared";
+import { translate } from "../lib/i18n";
+import { formatDay, storeLabel } from "../lib/dashboard-shared";
+import { poDetailRows, readPoLanguage } from "../lib/po-document-shared";
+import { documentFor } from "./po-document.server";
 import {
   SUPPLIER_EMAIL_COOLDOWN_MS,
   SUPPLIER_EMAIL_DAILY_CAP,
@@ -90,11 +93,9 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
   const to = supplier?.email ? decryptSecret(supplier.email) : "";
   if (!to) return { ok: false, error: "noEmail" };
 
-  const [shopRow, contact] = await Promise.all([
-    prisma.shop.findUnique({ where: { domain: shop }, select: { locale: true } }),
-    getShopContact(shop),
-  ]);
-  const locale = toSupportedLocale(shopRow?.locale);
+  const [contact, doc] = await Promise.all([getShopContact(shop), documentFor(shop, order, now)]);
+  const locale = readPoLanguage(order.supplier?.poLanguage);
+  const tr = (k: string) => translate(locale, k);
   const storeName = contact?.name || storeLabel(shop);
   const hidePrices = hidePricesFor(order);
   const pricing = pricingFor(order);
@@ -110,8 +111,9 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
       arrival: order.arrival,
       confirmUrl: confirmUrl(appUrl, order.confirmToken),
       locale,
+      details: doc.details ? poDetailRows(doc.details, tr, (d) => formatDay(d, locale)) : undefined,
     },
-    (k) => translate(locale, k),
+    tr,
   );
   const replyTo = contact?.contactEmail || contact?.ownerEmail || undefined;
   const claim = await claimSupplierEmail(shop, order.id, now);

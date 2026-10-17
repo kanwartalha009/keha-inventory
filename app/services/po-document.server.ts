@@ -1,14 +1,18 @@
 /**
  * Everything the PDF / CSV of a Keha order needs (spec §5.3): the order, the
- * store's name and language, whether the supplier sees prices, and the
- * supplier-page link while it works. Shared by the merchant downloads and the
- * public supplier page. Prices are in the supplier's currency when it has an
- * exchange rate (else the store currency, labelled); the arrival is the ship
- * date + transit days.
+ * store's name, the supplier's PO language (Settings → Suppliers; English by
+ * default — merchant audit 2026-10-18), whether the supplier sees prices, the
+ * supplier-page link while it works, and the details block: buyer (the store's
+ * legal name and address), ship-to (the order's location, else the default),
+ * payment terms, Incoterms, expected ship / arrival dates and the note. Shared
+ * by the merchant downloads, the email and the public supplier page. Prices are
+ * in the supplier's currency when it has an exchange rate (else the store
+ * currency, labelled); the arrival is the ship date + transit days.
  */
 import prisma from "../db.server";
-import { toSupportedLocale } from "../lib/i18n";
-import { storeLabel } from "../lib/dashboard-shared";
+import { storeLabel, todayIn } from "../lib/dashboard-shared";
+import { defaultShipTo, poDates, readPoLanguage, type PoDetails } from "../lib/po-document-shared";
+import { poBuyer, poShipTo } from "./po-parties.server";
 import { confirmLinkOpen, supplierLines, type SupplierLine } from "../lib/purchase-order-shared";
 import type { GridLine } from "../lib/po-grid-shared";
 import { confirmUrl } from "../lib/po-email-shared";
@@ -17,9 +21,10 @@ import { getOrder, hidePricesFor, pricingFor, type OrderDetail } from "../models
 import type { PoPdfInput } from "./po-pdf.server";
 
 export async function documentFor(shop: string, order: OrderDetail, now: Date = new Date()): Promise<PoPdfInput> {
-  const [shopRow, contact] = await Promise.all([
-    prisma.shop.findUnique({ where: { domain: shop }, select: { locale: true } }),
+  const [shopRow, contact, details] = await Promise.all([
+    prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
     getShopContact(shop),
+    poDetailsFor(shop, order),
   ]);
   const appUrl = process.env.SHOPIFY_APP_URL || "";
   const hidePrices = hidePricesFor(order);
@@ -28,7 +33,8 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
   const linkOpen = confirmLinkOpen({ source: order.source, status: order.status, confirmExpiresAt: order.confirmExpiresAt }, now);
   const lines = supplierLines(order.lines, hidePrices, pricing.factor);
   return {
-    locale: toSupportedLocale(shopRow?.locale),
+    // The supplier's language, not the store's (merchant audit 2026-10-18).
+    locale: readPoLanguage(order.supplier?.poLanguage),
     storeName: contact?.name || storeLabel(shop),
     number: order.number,
     supplierName: order.supplier?.name ?? order.supplierName,
@@ -43,6 +49,36 @@ export async function documentFor(shop: string, order: OrderDetail, now: Date = 
     // The same lines grouped per product for the size grid (an opaque counter per product, never an id).
     gridLines: await gridLinesFor(shop, order.lines.map((l) => l.variantId), lines),
     confirmUrl: linkOpen && appUrl ? confirmUrl(appUrl, order.confirmToken) : null,
+    details: { ...details, ...datesOf(order, shopRow?.timezone ?? "UTC", now) },
+  };
+}
+
+/** Ship and arrival dates on the document (a draft: as if sent today). */
+function datesOf(order: OrderDetail, timezone: string, now: Date): Pick<PoDetails, "shipDate" | "shipConfirmed" | "arrival"> {
+  const d = poDates({
+    status: order.status,
+    arrival: order.arrival,
+    confirmedShipDate: order.confirmedShipDate,
+    orderDay: order.sentAt ? todayIn(timezone, new Date(order.sentAt)) : todayIn(timezone, now),
+    leadTimeDays: order.supplier?.leadTimeDays ?? null,
+    transitDays: order.supplier?.transitDays ?? null,
+  });
+  return { shipDate: d.ship, shipConfirmed: d.shipConfirmed, arrival: d.arrival };
+}
+
+/** Buyer, ship-to, terms, Incoterms and note for an order (dates: datesOf). */
+async function poDetailsFor(shop: string, order: OrderDetail): Promise<Omit<PoDetails, "shipDate" | "shipConfirmed" | "arrival">> {
+  const locations = await prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true, role: true, online: true } });
+  const shipToId = order.shipToLocationId && locations.some((l) => l.id === order.shipToLocationId) ? order.shipToLocationId : defaultShipTo(locations);
+  const [buyer, shipTo] = await Promise.all([poBuyer(shop), shipToId ? poShipTo(shop, shipToId) : Promise.resolve(null)]);
+  const known = shipToId ? locations.find((l) => l.id === shipToId) : null;
+  return {
+    buyer,
+    // Shopify unreachable: the location's name from our copy is still better than nothing.
+    shipTo: shipTo ?? (known ? { name: known.name, lines: [] } : null),
+    terms: order.supplier?.terms ?? null,
+    incoterms: order.supplier?.incoterms ?? null,
+    note: order.note ?? null,
   };
 }
 

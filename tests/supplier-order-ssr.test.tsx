@@ -176,7 +176,8 @@ describe("Supplier order builder (Free): the teaching lock with the supplier's o
     const g = (await builderLoader({ request: req, params: {}, context: {} } as never)) as BuilderPageData;
     expect(g.enabled && g.view?.key).toBe(KEY);
     expect(await post()).toEqual({ ok: true, id: "po9", number: "PO-0009" });
-    expect(createSupplierDraft).toHaveBeenCalledWith("acme.myshopify.com", KEY, { [V(1)]: 6 });
+    // Ship-to and the note (merchant audit 2026-10-18) go to the model as sent; it checks them.
+    expect(createSupplierDraft).toHaveBeenCalledWith("acme.myshopify.com", KEY, { [V(1)]: 6 }, { shipTo: undefined, note: undefined });
     expect(shouldRevalidate({ actionResult: { ok: true, id: "po9", number: "PO-0009" }, defaultShouldRevalidate: true } as never)).toBe(false);
     expect(shouldRevalidate({ actionResult: { ok: false, error: "changed" }, defaultShouldRevalidate: true } as never)).toBe(true);
   });

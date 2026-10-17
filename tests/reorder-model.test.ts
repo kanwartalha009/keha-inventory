@@ -151,13 +151,13 @@ describe("supplier page", () => {
       ...over,
     });
 
-  it("opens a sent order in the store language, without prices when hidden, and records the ship date", async () => {
+  it("opens a sent order in the supplier's PO language (English by default, not the store's), without prices when hidden, and records the ship date", async () => {
     fake.tables.purchaseOrder = [];
     seed();
     const found = await lookupConfirm(token, NOW);
     expect(found.ok).toBe(true);
     if (found.ok) {
-      expect(found.locale).toBe("es");
+      expect(found.locale).toBe("en");
       expect(found.view.hidePrices).toBe(true);
       expect(found.view.minDate).toBe("2026-10-16");
     }

@@ -1,13 +1,16 @@
 /**
  * The purchase-order email to a supplier (spec §5.3 "Email supplier"), in the
- * store's language. The email service sends text + HTML only (no
+ * supplier's PO language (Settings → Suppliers; English by default — merchant
+ * audit 2026-10-18), with the order's details (buyer, ship-to, payment terms,
+ * Incoterms, dates, note: lib/po-document-shared poDetailRows). The email service sends text + HTML only (no
  * attachments), so the email carries the lines and a link to the supplier
  * page, where the supplier confirms the ship date and downloads the PDF.
- * Pure: `tr` translates into the store language.
+ * Pure: `tr` translates into the PO language.
  */
 import { fill } from "./i18n";
 import { lineVariant, supplierTotals, type SupplierLine } from "./purchase-order-shared";
 import { formatDay } from "./dashboard-shared";
+import { detailText, type PoDetailRow } from "./po-document-shared";
 
 type T = (s: string) => string;
 
@@ -26,6 +29,8 @@ export type SupplierEmailInput = {
   shipDate?: string | null;
   /** Expected arrival: ship date + transit days, else the lead-time estimate. */
   arrival?: string | null;
+  /** Buyer, ship-to, terms, Incoterms, dates and note (poDetailRows); when given they replace the ship / arrival line. */
+  details?: readonly PoDetailRow[];
 };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -57,12 +62,14 @@ export function supplierEmail(input: SupplierEmailInput, tr: T): { subject: stri
     : `${fill(tr("Total units: {n}"), { n: num(totals.units) })} · ${fill(tr("Total cost: {amount}"), {
         amount: money(totals.cost ?? null, input.currency, input.locale),
       })}`;
-  const dates = [
-    input.shipDate ? fill(tr("Ship date: {date}"), { date: formatDay(input.shipDate, input.locale) }) : "",
-    input.arrival ? fill(tr("Expected arrival: ~{date}"), { date: formatDay(input.arrival, input.locale) }) : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const dates = input.details
+    ? input.details.map(detailText).join("\n")
+    : [
+        input.shipDate ? fill(tr("Ship date: {date}"), { date: formatDay(input.shipDate, input.locale) }) : "",
+        input.arrival ? fill(tr("Expected arrival: ~{date}"), { date: formatDay(input.arrival, input.locale) }) : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
   const text = [
     greeting,
     "",
@@ -83,7 +90,7 @@ export function supplierEmail(input: SupplierEmailInput, tr: T): { subject: stri
 <p>${esc(intro)}</p>
 <ul>${input.lines.map((l) => `<li>${esc(lineText(l))}</li>`).join("")}</ul>
 <p><strong>${esc(totalLine)}</strong></p>
-${dates ? `<p>${esc(dates)}</p>\n` : ""}<p>${esc(ask)}</p>
+${dates ? `<p>${dates.split("\n").map(esc).join("<br>")}</p>\n` : ""}<p>${esc(ask)}</p>
 <p><a href="${esc(input.confirmUrl)}" style="display:inline-block;background:#1a1a1a;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">${esc(
     tr("Confirm the ship date"),
   )}</a></p>

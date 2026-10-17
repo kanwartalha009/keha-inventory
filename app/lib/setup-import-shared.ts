@@ -33,6 +33,7 @@ import {
 import { readMinOrderScope } from "./supplier-shared";
 import { isBalanceDue } from "./cash-shared";
 import { readSupplierCode } from "./po-grid-shared";
+import { parsePoLanguage } from "./po-document-shared";
 
 type T = (s: string) => string;
 
@@ -182,6 +183,7 @@ export type IssueCode =
   | "yesNo"
   | "scope"
   | "paymentTerms"
+  | "language"
   | "codeLong"
   | "supplier";
 
@@ -237,7 +239,8 @@ const textField = (
     | "currency"
     | "depositPercent"
     | "balanceDays"
-    | "landedCostPercent",
+    | "landedCostPercent"
+    | "incoterms",
 ) => ({
   field,
   export: (f: SupplierForm) => String(f[field] ?? ""),
@@ -340,6 +343,24 @@ export const SUPPLIER_COLUMNS: SupplierColumn[] = [
     example: "12",
     ...textField("landedCostPercent"),
   },
+  // Purchase-order documents (merchant audit 2026-10-18).
+  {
+    header: "po_language",
+    aliases: ["order_language", "language"],
+    role: "value",
+    label: "Purchase order language",
+    hint: "en, es, fr, de, it, pt, nl or pl. Empty = English.",
+    example: "en",
+    field: "poLanguage",
+    export: (f) => f.poLanguage,
+    apply: (f, cell) => {
+      const l = parsePoLanguage(cell);
+      if (!l) return { code: "language" };
+      f.poLanguage = l;
+      return null;
+    },
+  },
+  { header: "incoterms", aliases: ["delivery_terms"], role: "value", label: "Delivery terms (Incoterms)", hint: "Optional, on the order: an Incoterm and the place, e.g. FOB Ningbo.", example: "FOB Ningbo", ...textField("incoterms") },
 ];
 
 // ---- Product settings ----
@@ -869,6 +890,8 @@ export function issueText(issue: ImportIssue, t: T, supplierText: (code: Supplie
       return t("Use variant or product.");
     case "paymentTerms":
       return t("Use order, ship, arrival or after_arrival.");
+    case "language":
+      return t("Use en, es, fr, de, it, pt, nl or pl.");
     case "codeLong":
       return t("Use up to 64 characters.");
     case "supplier":

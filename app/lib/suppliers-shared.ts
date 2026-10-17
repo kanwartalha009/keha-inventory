@@ -6,6 +6,8 @@
 
 import { readMinOrderScope, type MinOrderScope } from "./supplier-shared";
 import { LANDED_PCT_MAX, isBalanceDue, type BalanceDue } from "./cash-shared";
+import { DEFAULT_PO_LANGUAGE, readIncoterms, readPoLanguage } from "./po-document-shared";
+import type { Locale } from "./i18n";
 
 /** "order" = everything paid when ordering (no terms), else when the balance is paid. */
 export type BalanceChoice = "order" | BalanceDue;
@@ -43,6 +45,10 @@ export type SupplierForm = {
   balanceDays: string;
   /** Freight + duty, % of the goods cost. Empty = none. */
   landedCostPercent: string;
+  /** The language of this supplier's purchase orders (email, PDF, CSV, supplier page). */
+  poLanguage: Locale;
+  /** Delivery terms on the order, e.g. "FOB Ningbo". Empty = none. */
+  incoterms: string;
 };
 
 /** A validated supplier, ready to store (the email is still plain text here). */
@@ -67,6 +73,9 @@ export type SupplierInput = {
   depositPercent?: number | null;
   balanceDays?: number | null;
   landedCostPercent?: number | null;
+  /** Absent: left as stored. */
+  poLanguage?: Locale;
+  incoterms?: string | null;
 };
 
 export type SupplierErrorCode =
@@ -81,7 +90,8 @@ export type SupplierErrorCode =
   | "transit"
   | "money"
   | "rate"
-  | "percent";
+  | "percent"
+  | "incoterms";
 export type SupplierErrors = Partial<Record<keyof SupplierForm, SupplierErrorCode>>;
 
 export const SUPPLIER_BOUNDS = {
@@ -124,6 +134,8 @@ export const EMPTY_SUPPLIER_FORM: SupplierForm = {
   depositPercent: "",
   balanceDays: "",
   landedCostPercent: "",
+  poLanguage: DEFAULT_PO_LANGUAGE,
+  incoterms: "",
 };
 
 /** A new supplier starts with the store's default lead time and currency. */
@@ -150,6 +162,8 @@ export function supplierToForm(s: {
   depositPercent?: number | null;
   balanceDays?: number | null;
   landedCostPercent?: number | null;
+  poLanguage?: string | null;
+  incoterms?: string | null;
 }): SupplierForm {
   const str = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
   return {
@@ -171,6 +185,8 @@ export function supplierToForm(s: {
     depositPercent: str(s.depositPercent),
     balanceDays: str(s.balanceDays),
     landedCostPercent: str(s.landedCostPercent),
+    poLanguage: readPoLanguage(s.poLanguage),
+    incoterms: s.incoterms ?? "",
   };
 }
 
@@ -197,6 +213,8 @@ export function readSupplierForm(raw: unknown): SupplierForm {
     depositPercent: s("depositPercent"),
     balanceDays: s("balanceDays"),
     landedCostPercent: s("landedCostPercent"),
+    poLanguage: readPoLanguage(r.poLanguage),
+    incoterms: s("incoterms"),
   };
 }
 
@@ -300,6 +318,9 @@ export function validateSupplierForm(
     if (landedCostPercent === null) errors.landedCostPercent = "percent";
   }
 
+  const incoterms = readIncoterms(String(form.incoterms ?? ""));
+  if (!incoterms.ok) errors.incoterms = "incoterms";
+
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -323,6 +344,8 @@ export function validateSupplierForm(
       depositPercent: balanceDue ? (depositPercent ?? 0) : null,
       balanceDays,
       landedCostPercent,
+      poLanguage: readPoLanguage(form.poLanguage),
+      incoterms: incoterms.ok ? incoterms.value : null,
     },
   };
 }
@@ -354,6 +377,8 @@ export function supplierErrorText(code: SupplierErrorCode, t: T): string {
       return t("Enter a rate above 0, like 1.08.");
     case "percent":
       return t("Enter a percentage like 12 or 12.5.");
+    case "incoterms":
+      return t("Start with an Incoterm such as FOB, EXW or DDP, then the place if you like (up to 60 characters).");
   }
 }
 

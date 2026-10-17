@@ -183,10 +183,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const view = requested && features.locations
     ? resolveScope(requested, true, await listPlanningLocations(shop))
     : { scope: METRIC_SCOPE, location: null };
-  return (await createOrderFromGroup(shop, body.groupKey, quantities, {
-    scope: view.scope,
-    note: view.location?.name ?? null,
-  })) satisfies ReorderAction;
+  // A location view's order ships to that location (PurchaseOrder.shipToLocationId).
+  return (await createOrderFromGroup(shop, body.groupKey, quantities, { scope: view.scope })) satisfies ReorderAction;
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);

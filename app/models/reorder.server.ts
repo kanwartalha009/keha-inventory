@@ -10,8 +10,8 @@
  * store-level replenishment from that location's metrics and its StockNow,
  * grouped by supplier the same way. Keha orders carry no destination
  * location, so open Keha units are subtracted in every view (never order the
- * same units twice); an order created from a location view records the
- * location's name in its note.
+ * same units twice); an order created from a location view ships to that
+ * location (shipToLocationId; merchant audit 2026-10-18 — it used to be the note).
  *
  * Incoming, and why nothing is counted twice:
  *  - StockNow.incoming is Shopify's own "incoming" (transfers, including the
@@ -36,6 +36,9 @@ import { ORDER_NOW_DAYS } from "../lib/engine/forward-plan-shared";
 import { mergeDraftLines } from "../lib/supplier-order-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
+import { readPaymentTerms, type PaymentTerms } from "../lib/cash-shared";
+import { defaultShipTo, readPoLanguage, readPoNote, readShipTo, type ShipToLocation } from "../lib/po-document-shared";
+import type { Locale } from "../lib/i18n";
 import { computeOrderPlan } from "./order-plan.server";
 import { forgetOrderPlan } from "./plan-cache.server";
 import { refreshLeadStats } from "./suppliers.server";
@@ -445,7 +448,7 @@ export async function createOrderFromGroup(
   shop: string,
   groupKey: string,
   quantities: Record<string, number>,
-  view: { scope: string; note: string | null } = { scope: METRIC_SCOPE, note: null },
+  view: { scope: string; note?: string | null } = { scope: METRIC_SCOPE, note: null },
 ): Promise<CreateOrderResult> {
   const { groups } = await loadReorder(shop, Object.keys(quantities), view.scope);
   const group = groups.find((g) => g.key === groupKey);
@@ -461,9 +464,16 @@ export async function createOrderFromGroup(
     source: "keha",
     lines: lines as unknown as Prisma.InputJsonValue,
     currency: basics.currency,
-    note: view.note,
+    note: view.note ?? null,
+    // The location the plan was for (location view), else the store's main warehouse.
+    shipToLocationId: defaultShipTo(await shipToChoices(shop), view.scope === METRIC_SCOPE ? null : view.scope),
   });
   return { ok: true, ...created };
+}
+
+/** The store's locations a purchase order can ship to (active ones in the list; the default rule needs all). */
+export async function shipToChoices(shop: string): Promise<ShipToLocation[]> {
+  return prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true, role: true, online: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
 }
 
 /**
@@ -508,6 +518,12 @@ export type OrderSupplier = {
   /** In the supplier's currency. */
   minOrderValue: number | null;
   minOrderScope: string;
+  /** The language the supplier's documents are written in (Supplier.poLanguage; English by default). */
+  poLanguage?: Locale;
+  /** Delivery terms on the order ("FOB Ningbo"); null = none. */
+  incoterms?: string | null;
+  /** Payment terms (lib/cash-shared); null = none set. */
+  terms?: PaymentTerms | null;
 };
 
 export type OrderDetail = {
@@ -534,6 +550,10 @@ export type OrderDetail = {
   createdAt: string;
   /** Optimistic check for edits and receipts. */
   updatedAt: string | null;
+  /** Where the goods go (a Location.id); null = the default ship-to. */
+  shipToLocationId?: string | null;
+  /** The merchant's note to the supplier. */
+  note?: string | null;
 };
 
 export async function getOrder(shop: string, id: string): Promise<OrderDetail | null> {
@@ -555,6 +575,11 @@ export async function getOrder(shop: string, id: string): Promise<OrderDetail | 
             minOrderTotal: true,
             minOrderValue: true,
             minOrderScope: true,
+            poLanguage: true,
+            incoterms: true,
+            depositPercent: true,
+            balanceDue: true,
+            balanceDays: true,
           },
         })
       : null,
@@ -573,6 +598,9 @@ export async function getOrder(shop: string, id: string): Promise<OrderDetail | 
         minOrderTotal: s.minOrderTotal ?? null,
         minOrderValue: num(s.minOrderValue),
         minOrderScope: s.minOrderScope ?? "variant",
+        poLanguage: readPoLanguage(s.poLanguage),
+        incoterms: s.incoterms ?? null,
+        terms: readPaymentTerms(s),
       }
     : null;
   return {
@@ -596,6 +624,8 @@ export async function getOrder(shop: string, id: string): Promise<OrderDetail | 
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt ? o.updatedAt.toISOString() : null,
+    shipToLocationId: o.shipToLocationId ?? null,
+    note: o.note ?? null,
   };
 }
 
@@ -674,16 +704,34 @@ const sameVersion = (row: { updatedAt?: Date | null }, version: unknown) =>
  * drafts: a sent order is what the supplier has, so it stays read-only (receive less, or close
  * the rest as short).
  */
-export async function updateDraft(shop: string, id: string, quantities: unknown, version?: unknown): Promise<OrderEditResult> {
+export async function updateDraft(
+  shop: string,
+  id: string,
+  quantities: unknown,
+  version?: unknown,
+  /** Ship-to (an active Location.id) and the note to the supplier (merchant audit 2026-10-18); absent = unchanged. */
+  details?: { shipTo?: unknown; note?: unknown },
+): Promise<OrderEditResult> {
   const o = await prisma.purchaseOrder.findFirst({ where: { id, shop }, select: { status: true, source: true, lines: true, updatedAt: true } });
   if (!o) return { ok: false, error: "notFound" };
   if (o.source !== "keha" || o.status !== "draft") return { ok: false, error: "notAllowed" };
   if (!sameVersion(o, version)) return { ok: false, error: "changed" };
   const r = applyDraftEdit(readPoLines(o.lines), quantities);
   if (!r.ok) return r;
+  const data: Prisma.PurchaseOrderUpdateManyMutationInput = { lines: r.lines as unknown as Prisma.InputJsonValue };
+  if (details && "note" in details) {
+    const note = readPoNote(details.note);
+    if (!note.ok) return { ok: false, error: "invalid" };
+    data.note = note.value;
+  }
+  if (details && "shipTo" in details) {
+    const shipTo = details.shipTo === null || details.shipTo === "" ? null : readShipTo(details.shipTo, await shipToChoices(shop));
+    if (details.shipTo && !shipTo) return { ok: false, error: "invalid" };
+    data.shipToLocationId = shipTo;
+  }
   const u = await prisma.purchaseOrder.updateMany({
     where: { id, shop, source: "keha", status: "draft" },
-    data: { lines: r.lines as unknown as Prisma.InputJsonValue },
+    data,
   });
   if (u.count === 1) forgetOrderPlan(shop);
   return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };

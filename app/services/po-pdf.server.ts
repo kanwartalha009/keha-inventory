@@ -16,6 +16,7 @@ import PDFDocument from "pdfkit";
 import { translate, fill, type Locale } from "../lib/i18n";
 import { lineVariant, supplierTotals, type SupplierLine } from "../lib/purchase-order-shared";
 import { buildPoGrid, type GridLine } from "../lib/po-grid-shared";
+import { poDetailRows, type PoDetails } from "../lib/po-document-shared";
 
 export type PoPdfInput = {
   locale: Locale;
@@ -33,6 +34,8 @@ export type PoPdfInput = {
   /** The same lines with their product grouping and supplier code (size grid); absent = a flat list. */
   gridLines?: GridLine[];
   confirmUrl: string | null;
+  /** Buyer, ship-to, payment terms, Incoterms, ship / arrival dates and the note (lib/po-document-shared). Absent = dates only. */
+  details?: PoDetails;
 };
 
 // Windows-1252 characters above Latin-1's control block (0x80–0x9F).
@@ -100,10 +103,21 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
     [tr("Supplier"), input.supplierName || "—"],
     [tr("Order date"), day(input.orderDate, input.locale)],
   ];
-  if (input.expectedDate) meta.push([tr("Expected arrival"), day(input.expectedDate, input.locale)]);
-  if (input.confirmedShipDate) meta.push([tr("Ship date confirmed by the supplier"), day(input.confirmedShipDate, input.locale)]);
+  if (!input.details) {
+    if (input.expectedDate) meta.push([tr("Expected arrival"), day(input.expectedDate, input.locale)]);
+    if (input.confirmedShipDate) meta.push([tr("Ship date confirmed by the supplier"), day(input.confirmedShipDate, input.locale)]);
+  }
   for (const [k, v] of meta) {
     doc.font("Helvetica-Bold").text(s(`${k}: `), { continued: true }).font("Helvetica").text(s(v));
+  }
+  // Buyer, ship-to, terms, Incoterms, dates, note — the same rows as the CSV and the email.
+  for (const r of input.details ? poDetailRows(input.details, tr, (d) => day(d, input.locale)) : []) {
+    if (r.lines.length === 1) {
+      doc.font("Helvetica-Bold").text(s(`${r.label}: `), { continued: true }).font("Helvetica").text(s(r.lines[0]!));
+    } else {
+      doc.moveDown(0.3).font("Helvetica-Bold").text(s(r.label));
+      for (const l of r.lines) doc.font("Helvetica").text(s(l));
+    }
   }
   doc.moveDown(1);
 

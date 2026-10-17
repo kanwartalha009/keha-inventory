@@ -1,7 +1,8 @@
 /**
  * Purchase order CSV (/app/reorder/:id/csv) — spec §5.3, Growth (`poExport`).
- * Headers in the store's language; no unit costs when the supplier sees no
- * prices. Free gets the upgrade JSON (403). One line per variant; with
+ * Headers in the supplier's PO language (English by default); no unit costs
+ * when the supplier sees no prices. Above the table: buyer, ship-to, payment
+ * terms, Incoterms, ship / arrival dates (YYYY-MM-DD) and the note. Free gets the upgrade JSON (403). One line per variant; with
  * `?layout=grid` the size grid (lib/po-grid-shared: one row per style and
  * colour, sizes as columns, style code, totals). Never freight & duty.
  */
@@ -12,6 +13,7 @@ import { poDocument } from "../services/po-document.server";
 import { translate } from "../lib/i18n";
 import { poCsv, poFileName } from "../lib/purchase-order-shared";
 import { buildPoGrid, poGridCsv } from "../lib/po-grid-shared";
+import { poDetailRows, withDetailRows } from "../lib/po-document-shared";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { shop } = await authenticateApp(request);
@@ -22,9 +24,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { pdf } = doc;
   const tr = (s: string) => translate(pdf.locale, s);
   const grid = new URL(request.url).searchParams.get("layout") === "grid";
-  const csv = grid
+  const table = grid
     ? poGridCsv(buildPoGrid(pdf.gridLines ?? pdf.lines.map((l, i) => ({ ...l, group: `l${i}` })), pdf.hidePrices), tr, { hidePrices: pdf.hidePrices, currency: pdf.currency })
     : poCsv(pdf.lines, tr, { hidePrices: pdf.hidePrices, currency: pdf.currency });
+  const csv = withDetailRows(table, pdf.details ? poDetailRows(pdf.details, tr, (d) => d) : []);
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

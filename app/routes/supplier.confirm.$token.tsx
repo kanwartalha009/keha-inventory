@@ -3,7 +3,8 @@
  * §14). Public: no Shopify auth, no login. Shows only that order's lines (no
  * prices when the merchant hides them — the loader doesn't even send them,
  * see ConfirmView) and a date picker; confirming sets
- * the ship date and moves the order to Confirmed. In the store's language.
+ * the ship date and moves the order to Confirmed. In the supplier's PO language
+ * (Settings → Suppliers; English by default).
  *
  * The link works only for a sent / confirmed order, until 60 days after it
  * was sent. Every other case — unknown token, expired, draft, cancelled,

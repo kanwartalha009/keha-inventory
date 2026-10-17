@@ -29,6 +29,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { addToSupplierDraft, createSupplierDraft, loadSupplierOrder, type SupplierOrderResult } from "../models/supplier-order.server";
+import { PoDetailsFields, type ShipToChoice } from "../components/po-details";
 import { AppPage, EmptyState, FormCard, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import { DueLabel, WhyPopover } from "../components/order-plan";
 import { planTag } from "../components/plan";
@@ -64,7 +65,13 @@ import {
 import type { BuilderProductsData } from "./app.reorder_.build_.products";
 
 export type BuilderPageData =
-  | { enabled: true; view: SupplierOrderView | null; today: string }
+  | {
+      enabled: true;
+      view: SupplierOrderView | null;
+      today: string;
+      /** Where the order can ship to (active locations) and the default pick (merchant audit 2026-10-18). */
+      shipTo?: { choices: ShipToChoice[]; default: string | null };
+    }
   | { enabled: false; teaser: BuilderTeaser | null };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderPageData> => {
@@ -74,7 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderPa
   const load = link ? await loadSupplierOrder(shop, link.supplierKey, link.range) : null;
   // Free: the lock teaches with this supplier's own numbers; no line, product or price is sent.
   if (!features.reorderPlan) return { enabled: false, teaser: load && load.view.lines.length ? builderTeaser(load.view) : null };
-  return { enabled: true, view: load?.view ?? null, today: load?.today ?? new Date().toISOString().slice(0, 10) };
+  return { enabled: true, view: load?.view ?? null, today: load?.today ?? new Date().toISOString().slice(0, 10), shipTo: load?.shipTo };
 };
 
 export type BuilderAction = SupplierOrderResult;
@@ -92,7 +99,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const key = typeof body.supplier === "string" && /^(supplier|vendor):/.test(body.supplier) && body.supplier.length <= 300 ? body.supplier : null;
   if (!key) throw new Response("Bad request", { status: 400 });
   const quantities = readBuilderQuantities(body.quantities);
-  if (body.intent === "create") return (await createSupplierDraft(shop, key, quantities)) satisfies BuilderAction;
+  if (body.intent === "create") return (await createSupplierDraft(shop, key, quantities, { shipTo: body.shipTo, note: body.note })) satisfies BuilderAction;
   if (body.intent === "add" && typeof body.draftId === "string" && body.draftId.length <= 100) {
     return (await addToSupplierDraft(shop, key, body.draftId, quantities, body.version)) satisfies BuilderAction;
   }
@@ -126,7 +133,7 @@ export default function SupplierOrderBuilder() {
       </AppPage>
     );
   }
-  return <Builder view={data.view} today={data.today} />;
+  return <Builder view={data.view} today={data.today} shipTo={data.shipTo ?? { choices: [], default: null }} />;
 }
 
 /** The plan lock: what the builder does, the supplier's own numbers, and the way to the plans (I-6). */
@@ -165,7 +172,7 @@ function money(store: number | null, supplier: number | null, view: Pick<Supplie
   return `${a} · ${formatPrice(supplier, view.currency, locale)}`;
 }
 
-function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
+function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: string; shipTo: { choices: ShipToChoice[]; default: string | null } }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const navigate = useNavigate();
@@ -183,6 +190,9 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
   const [off, setOff] = useState<Record<string, boolean>>({});
   const [confirm, setConfirm] = useState<"create" | "add" | null>(null);
   const [q, setQ] = useState("");
+  // Ship-to and the note go onto a new draft (an existing one keeps its own).
+  const [shipToId, setShipToId] = useState(shipTo.default ?? "");
+  const [note, setNote] = useState("");
   useEffect(() => {
     setQty(initial);
     setOff({});
@@ -202,7 +212,12 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
   const quantities = () => Object.fromEntries(qtyLines.filter((l) => l.qty > 0).map((l) => [l.variantId, l.qty]));
   const submit = (intent: "create" | "add") =>
     fetcher.submit(
-      { intent, supplier: view.key, quantities: quantities(), ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt } : {}) } as never,
+      {
+        intent,
+        supplier: view.key,
+        quantities: quantities(),
+        ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt } : { shipTo: shipToId || null, note }),
+      } as never,
       { method: "post", encType: "application/json" },
     );
   const topUp = () => {
@@ -336,6 +351,7 @@ function Builder({ view, today }: { view: SupplierOrderView; today: string }) {
             {payText && (view.terms || pay.landed) && <s-text color="subdued">{fill(t("If you order today: {payments}."), { payments: payText })}</s-text>}
           </s-stack>
           <MinimumBox view={view} title={title} status={status} minimumsText={minimumsText as string[]} empty={totals.units === 0} onTopUp={topUp} />
+          <PoDetailsFields choices={shipTo.choices} shipTo={shipToId} onShipTo={setShipToId} note={note} onNote={setNote} />
         </s-stack>
       </FormCard>
 

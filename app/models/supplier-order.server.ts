@@ -28,7 +28,8 @@ import {
   type SupplierOrderView,
 } from "../lib/supplier-order-shared";
 import { computeOrderPlan, planSuppliers, supplierInfoOf, type PlanSupplierRow } from "./order-plan.server";
-import { addDraftLines, draftLines, insertWithNumber, shopBasics, type OrderEditResult, type ShopBasics } from "./reorder.server";
+import { addDraftLines, draftLines, insertWithNumber, shipToChoices, shopBasics, type OrderEditResult, type ShopBasics } from "./reorder.server";
+import { defaultShipTo, readPoNote, readShipTo } from "../lib/po-document-shared";
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
@@ -116,7 +117,12 @@ async function freshDraft(shop: string, info: PlanSupplierInfo, now: Date): Prom
   };
 }
 
-export type SupplierOrderLoad = { view: SupplierOrderView; today: string } | null;
+export type SupplierOrderLoad = {
+  view: SupplierOrderView;
+  today: string;
+  /** Where the order can ship to (active locations) and the default pick (merchant audit 2026-10-18). */
+  shipTo?: { choices: { id: string; name: string }[]; default: string | null };
+} | null;
 
 /**
  * The builder for one supplier (`key` = "supplier:<id>" or "vendor:<name>"; `range`: a Next 13
@@ -133,8 +139,12 @@ export async function loadSupplierOrder(
   if (!info) return null;
   // A supplier deleted since the plan was read: nothing to order from.
   if (info.kind === "supplier" && !supplierOfKey(key, suppliers)) return null;
-  const draft = await freshDraft(shop, info, now);
-  return { view: buildSupplierOrder({ plan, supplierKey: key, info, storeCycleDays: basics.cycleDays, range, draft }), today: plan.today };
+  const [draft, locations] = await Promise.all([freshDraft(shop, info, now), shipToChoices(shop)]);
+  return {
+    view: buildSupplierOrder({ plan, supplierKey: key, info, storeCycleDays: basics.cycleDays, range, draft }),
+    today: plan.today,
+    shipTo: { choices: locations.filter((l) => l.active).map((l) => ({ id: l.id, name: l.name })), default: defaultShipTo(locations) },
+  };
 }
 
 const SEARCH_LIMIT = 25;
@@ -222,13 +232,22 @@ export type SupplierOrderResult =
   | { ok: false; error: "gone" | "empty" | "notFound" | "notAllowed" | "changed" | "invalid" | "nothing" };
 
 /** "Create draft order": ONE Keha draft for the supplier with every line (quantities re-checked here). */
-export async function createSupplierDraft(shop: string, key: string, quantities: Record<string, number>): Promise<SupplierOrderResult> {
+export async function createSupplierDraft(
+  shop: string,
+  key: string,
+  quantities: Record<string, number>,
+  /** Ship-to (an active Location.id; else the default) and the note to the supplier (merchant audit 2026-10-18). */
+  details: { shipTo?: unknown; note?: unknown } = {},
+): Promise<SupplierOrderResult> {
   const [suppliers, basics] = await Promise.all([planSuppliers(shop), shopBasics(shop)]);
   const s = supplierOfKey(key, suppliers);
   if (key.startsWith("supplier:") && !s) return { ok: false, error: "gone" };
   if (!key.startsWith("supplier:") && !key.startsWith("vendor:")) return { ok: false, error: "gone" };
   const picked = await ownedLines(shop, key, quantities, suppliers);
   if (!picked.length) return { ok: false, error: "empty" };
+  const note = readPoNote(details.note);
+  if (!note.ok) return { ok: false, error: "invalid" };
+  const locations = await shipToChoices(shop);
   const name = s ? s.name : ((await vendorName(shop, key, suppliers)) ?? "");
   const lines = await draftLines(shop, picked, basics.currency);
   const created = await insertWithNumber(shop, {
@@ -238,7 +257,8 @@ export async function createSupplierDraft(shop: string, key: string, quantities:
     source: "keha",
     lines: lines as unknown as Prisma.InputJsonValue,
     currency: basics.currency,
-    note: null,
+    note: note.value,
+    shipToLocationId: readShipTo(details.shipTo, locations) ?? defaultShipTo(locations),
   });
   return { ok: true, ...created };
 }

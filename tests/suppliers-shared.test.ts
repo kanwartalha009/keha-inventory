@@ -53,6 +53,9 @@ describe("validateSupplierForm", () => {
         depositPercent: null,
         balanceDays: null,
         landedCostPercent: null,
+        // Merchant audit 2026-10-18: purchase orders in English by default, no Incoterms.
+        poLanguage: "en",
+        incoterms: null,
       },
     });
   });
@@ -158,6 +161,8 @@ describe("validateSupplierForm", () => {
       depositPercent: 30,
       balanceDays: null,
       landedCostPercent: 12.5,
+      poLanguage: "pl" as const,
+      incoterms: "EXW Istanbul",
     };
     const r = validateSupplierForm(supplierToForm(stored));
     expect(r.ok && r.input).toEqual(stored);
@@ -170,7 +175,7 @@ describe("validateSupplierForm", () => {
   });
 
   it("has text for every error code", () => {
-    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors", "transit", "money", "rate", "percent"];
+    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors", "transit", "money", "rate", "percent", "incoterms"];
     for (const c of codes) expect(supplierErrorText(c, (s) => s).length).toBeGreaterThan(5);
   });
 

@@ -14,6 +14,8 @@ import { supplierToForm, type SupplierForm, type SupplierInput } from "../lib/su
 import { deliveryOf, leadStats, readLeadStats, statsChanged, supplierOfOrder, type Delivery, type LeadStats } from "../lib/lead-time-shared";
 import { readLandedPct, readPaymentTerms, type PaymentTerms } from "../lib/cash-shared";
 import { localDate } from "../lib/sync/store-time-shared";
+import { readPoLanguage } from "../lib/po-document-shared";
+import type { Locale } from "../lib/i18n";
 
 export type SupplierListRow = {
   id: string;
@@ -40,6 +42,9 @@ export type SupplierListRow = {
   landedPct?: number | null;
   /** Measured lead time from received orders; null = none yet. */
   leadStats?: LeadStats | null;
+  /** The language of its purchase orders, and its delivery terms. */
+  poLanguage?: Locale;
+  incoterms?: string | null;
 };
 
 const LIST_SELECT = {
@@ -68,6 +73,8 @@ const LIST_SELECT = {
   leadDelayDays: true,
   leadSigmaDays: true,
   leadOnTimeShare: true,
+  poLanguage: true,
+  incoterms: true,
 } as const;
 
 /** Decimal columns (Prisma.Decimal) → plain numbers; a column a row does not carry reads as none. */
@@ -119,6 +126,8 @@ export async function listSuppliers(shop: string): Promise<SupplierListRow[]> {
       terms: readPaymentTerms(p),
       landedPct: readLandedPct(p.landedCostPercent),
       leadStats: readLeadStats(p),
+      poLanguage: readPoLanguage(p.poLanguage),
+      incoterms: p.incoterms ?? null,
     };
   });
 }
@@ -156,6 +165,8 @@ function data(input: SupplierInput) {
     balanceDue: input.balanceDue,
     balanceDays: input.balanceDays,
     landedCostPercent: input.landedCostPercent,
+    ...(input.poLanguage !== undefined ? { poLanguage: input.poLanguage } : {}),
+    ...(input.incoterms !== undefined ? { incoterms: input.incoterms } : {}),
   };
 }
 

@@ -3,8 +3,9 @@
  * (`suppliers`). List, add, edit and delete suppliers: name, email (stored
  * encrypted), lead time, minimum per item, minimum order total, case pack,
  * vendor match — order cycle ("Order every … days", 2026-10-17), minimum scope, money
- * minimum, currency, exchange rate and "hide prices" under More options (8 visible fields,
- * spec ≤ 8).
+ * minimum, currency, exchange rate, payment terms, freight & duty, the purchase orders' language
+ * and Incoterms (merchant audit 2026-10-18) and "hide prices" under More options (8 visible
+ * fields, spec ≤ 8).
  *
  * Assignment: by vendor (vendor match), or by product through the admin's own
  * product picker (App Bridge resourcePicker), which sets the supplier on every
@@ -37,7 +38,7 @@ import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
 import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
 import { formatAmount, formatCount, formatPercent } from "../lib/dashboard-shared";
 import { landedText, termsText } from "../lib/cash-shared";
 import { MIN_SAMPLES, reliabilityDetail, reliabilityText } from "../lib/lead-time-shared";
@@ -299,6 +300,9 @@ function SupplierRow({
           <s-text fontWeight="medium">{s.name}</s-text>
           <s-text color="subdued">{s.hasEmail ? t("Email saved") : t("No email")}</s-text>
           {(s.terms || s.landedPct) && <s-text color="subdued">{[termsText(s.terms, t), landedText(s.landedPct, t, locale)].filter(Boolean).join(" ")}</s-text>}
+          <s-text color="subdued">
+            {[fill(t("Order language: {language}"), { language: LOCALE_NAMES[s.poLanguage ?? "en"] }), s.incoterms].filter(Boolean).join(" · ")}
+          </s-text>
         </s-stack>
       </s-table-cell>
       <s-table-cell>
@@ -382,7 +386,8 @@ function SupplierEditor({
     errors.currency ||
     errors.depositPercent ||
     errors.balanceDays ||
-    errors.landedCostPercent
+    errors.landedCostPercent ||
+    errors.incoterms
   );
   const [more, setMore] = useState(false);
   useEffect(() => {
@@ -547,6 +552,21 @@ function SupplierEditor({
               step={0.1}
               error={err("landedCostPercent")}
               onInput={(e) => set("landedCostPercent", val(e))}
+            />
+            <SelectField<Locale>
+              label={t("Purchase order language")}
+              value={form.poLanguage}
+              options={LOCALES.map((l) => ({ value: l, label: LOCALE_NAMES[l] }))}
+              onChange={(v) => set("poLanguage", v)}
+              details={t("The email, PDF, CSV and confirmation page for this supplier are written in this language.")}
+            />
+            <s-text-field
+              label={t("Delivery terms (Incoterms)")}
+              details={t("Optional. Printed on the order, for example FOB Ningbo, EXW or DDP Madrid.")}
+              value={form.incoterms}
+              maxLength={60}
+              error={err("incoterms")}
+              onInput={(e) => set("incoterms", val(e))}
             />
             <s-checkbox
               label={t("Hide prices from the supplier")}

@@ -115,15 +115,16 @@ describe("server: ?location", () => {
     expect(g.location).toBeNull();
   });
 
-  it("Create order from a location view: the store's group, its name in the note; Growth ignores the location", async () => {
+  it("Create order from a location view: the store's group, shipped to that location; Growth ignores the location", async () => {
     const post = (body: unknown) =>
       reorderAction(args("https://app.test/app/reorder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
     const body = { intent: "create", groupKey: "vendor:acme", quantities: { "gid://shopify/ProductVariant/1": 12 }, location: "2" };
     await post(body);
-    expect(m.createOrderFromGroup.mock.calls[0]![3]).toEqual({ scope: STORE.id, note: "Barcelona" });
+    // Merchant audit 2026-10-18: the location is the order's ship-to (the model sets it from the scope), not its note.
+    expect(m.createOrderFromGroup.mock.calls[0]![3]).toEqual({ scope: STORE.id });
     m.locations = false;
     await post(body);
-    expect(m.createOrderFromGroup.mock.calls[1]![3]).toEqual({ scope: "online", note: null });
+    expect(m.createOrderFromGroup.mock.calls[1]![3]).toEqual({ scope: "online" });
   });
 
   it("Order now's links are resolved on the server: a supplier + date range, a Season plan scenario", async () => {

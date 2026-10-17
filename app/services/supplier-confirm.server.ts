@@ -6,7 +6,8 @@
  * cancelled or received order all look the same from outside.
  */
 import prisma from "../db.server";
-import { toSupportedLocale, type Locale } from "../lib/i18n";
+import type { Locale } from "../lib/i18n";
+import { readPoLanguage } from "../lib/po-document-shared";
 import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import { clientIp, createRateLimiter } from "../lib/rate-limit-shared";
 import { confirmLinkOpen, supplierLines, supplierTotals, validShipDate, type SupplierLine } from "../lib/purchase-order-shared";
@@ -65,7 +66,7 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
   if (!row || !confirmLinkOpen(row, now)) return { ok: false };
   const [order, shopRow, contact] = await Promise.all([
     getOrder(row.shop, row.id),
-    prisma.shop.findUnique({ where: { domain: row.shop }, select: { locale: true, timezone: true, uninstalledAt: true } }),
+    prisma.shop.findUnique({ where: { domain: row.shop }, select: { timezone: true, uninstalledAt: true } }),
     getShopContact(row.shop),
   ]);
   if (!order || !shopRow || shopRow.uninstalledAt) return { ok: false };
@@ -78,7 +79,8 @@ export async function lookupConfirm(token: string, now: Date = new Date()): Prom
   const max = new Date(new Date(`${today}T00:00:00Z`).getTime() + 366 * 86_400_000).toISOString().slice(0, 10);
   return {
     ok: true,
-    locale: toSupportedLocale(shopRow.locale),
+    // The supplier's PO language (Settings → Suppliers; English by default), as its email and PDF.
+    locale: readPoLanguage(order.supplier?.poLanguage),
     shop: row.shop,
     order,
     view: {

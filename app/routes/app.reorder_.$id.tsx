@@ -33,11 +33,14 @@ import {
   hidePricesFor,
   receiveOrder,
   reopenOrder,
+  shipToChoices,
   shopBasics,
   transitionOrder,
   updateDraft,
   type OrderDetail,
 } from "../models/reorder.server";
+import { PoDetailsFields, type ShipToChoice } from "../components/po-details";
+import { defaultShipTo, type ShipToLocation } from "../lib/po-document-shared";
 import { emailSupplier, type EmailSupplierResult } from "../services/po-email.server";
 import { AppPage, FormCard, FormSaveBar, KvRow, sameValues } from "../components/ui";
 import { LockedPage } from "../components/plan";
@@ -91,6 +94,8 @@ export type OrderPageView = {
   stale?: boolean;
   /** The status re-opening goes back to, while it's possible (30 days); else null. */
   reopenTo?: PoStatus | null;
+  /** Ship-to choices (active locations) and the one the order goes to (its own, else the default). */
+  shipTo?: { choices: ShipToChoice[]; current: string | null };
 };
 
 const DAY_MS = 86_400_000;
@@ -115,8 +120,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<O
     today: todayIn((await shopBasics(shop)).timezone, now),
     stale: order.source === "keha" && order.status === "draft" && !poCountsAsOrdered({ status: "draft", createdAt: new Date(order.createdAt) }, now),
     reopenTo: reopenTarget(order, now),
+    shipTo: shipToOf(await shipToChoices(shop), order.shipToLocationId ?? null),
   };
 };
+
+/** The active locations, and the order's ship-to: its own while it is a known location, else the default. */
+function shipToOf(locations: ShipToLocation[], own: string | null): { choices: ShipToChoice[]; current: string | null } {
+  const choices = locations.filter((l) => l.active || l.id === own).map((l) => ({ id: l.id, name: l.name }));
+  return { choices, current: own && choices.some((c) => c.id === own) ? own : defaultShipTo(locations) };
+}
 
 export type OrderAction =
   | { ok: true; intent: "transition"; to: PoStatus }
@@ -152,7 +164,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return (r.ok ? { ok: true, intent: "email", markedSent: r.markedSent } : { ok: false, error: r.error }) satisfies OrderAction;
     }
     case "edit": {
-      const r = await updateDraft(shop, id, body.quantities, body.version);
+      const r = await updateDraft(shop, id, body.quantities, body.version, { shipTo: body.shipTo, note: body.note });
       return (r.ok ? { ok: true, intent: "edit" } : { ok: false, error: r.error }) satisfies OrderAction;
     }
     case "delete": {
@@ -215,14 +227,21 @@ function OrderView({ data }: { data: OrderPageView }) {
   const [qty, setQty] = useState<string[]>(savedQty);
   useEffect(() => setQty(JSON.parse(savedKey) as string[]), [savedKey]);
   const parsed = qty.map(wholeOrNull);
-  const dirty = draft && !sameValues(qty, savedQty);
+  // Ship-to and the note (merchant audit 2026-10-18): saved with the quantities.
+  const savedShipTo = data.shipTo?.current ?? "";
+  const savedNote = order.note ?? "";
+  const [shipTo, setShipTo] = useState(savedShipTo);
+  const [note, setNote] = useState(savedNote);
+  useEffect(() => setShipTo(savedShipTo), [savedShipTo]);
+  useEffect(() => setNote(savedNote), [savedNote]);
+  const dirty = draft && (!sameValues(qty, savedQty) || shipTo !== savedShipTo || note !== savedNote);
   const allRemoved = draft && parsed.every((n) => n === 0);
   const invalid = parsed.some((n) => n === null);
   const saving = busy && submitted === "edit";
   const liveLines = order.lines.map((l, i) => (draft ? { ...l, qty: parsed[i] ?? 0 } : l));
   const saveDraft = () => {
     if (invalid || allRemoved) return;
-    fetcher.submit({ intent: "edit", quantities: parsed, version: order.updatedAt } as never, { method: "post", encType: "application/json" });
+    fetcher.submit({ intent: "edit", quantities: parsed, version: order.updatedAt, shipTo: shipTo || null, note } as never, { method: "post", encType: "application/json" });
   };
 
   // ── Receiving ──
@@ -495,7 +514,14 @@ function OrderView({ data }: { data: OrderPageView }) {
           <KvRow label={t("Delivery")} value={delivery} />
           {order.receivedAt && <KvRow label={t("Received")} value={formatDay(order.receivedAt.slice(0, 10), locale)} />}
           {order.cancelledAt && <KvRow label={t("Cancelled")} value={formatDay(order.cancelledAt.slice(0, 10), locale)} />}
+          {keha && !draft && <KvRow label={t("Ship to")} value={data.shipTo?.choices.find((c) => c.id === data.shipTo?.current)?.name ?? "—"} />}
+          {keha && !draft && order.note && <KvRow label={t("Note to the supplier")} value={order.note} />}
         </div>
+        {draft && (
+          <s-box paddingBlockStart="base">
+            <PoDetailsFields choices={data.shipTo?.choices ?? []} shipTo={shipTo} onShipTo={setShipTo} note={note} onNote={setNote} />
+          </s-box>
+        )}
       </FormCard>
 
       {keha && link && (
@@ -640,7 +666,19 @@ function OrderView({ data }: { data: OrderPageView }) {
         </s-box>
       </FormCard>
 
-      {draft && <FormSaveBar id="keha-po-draft" dirty={dirty} saving={saving} onSave={saveDraft} onDiscard={() => setQty(savedQty)} />}
+      {draft && (
+        <FormSaveBar
+          id="keha-po-draft"
+          dirty={dirty}
+          saving={saving}
+          onSave={saveDraft}
+          onDiscard={() => {
+            setQty(savedQty);
+            setShipTo(savedShipTo);
+            setNote(savedNote);
+          }}
+        />
+      )}
 
       {canReceive && (
         <Modal

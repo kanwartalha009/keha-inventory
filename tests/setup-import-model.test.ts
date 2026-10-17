@@ -165,8 +165,9 @@ describe("suppliers", () => {
     const s1 = fake.tables.supplier.find((s) => s.id === "s1")!;
     Object.assign(s1, { balanceDue: "arrival", depositPercent: 20, landedCostPercent: 8 });
     const out = await exportSuppliersCsv(S);
-    expect(out.split("\r\n")[0]).toBe("\uFEFFname,email,lead_time_days,transit_days,order_every_days,min_per_item,min_per_item_applies_to,min_order_units,min_order_value,case_pack,currency,exchange_rate,vendors,hide_prices,payment_terms,deposit_percent,rest_days_after_arrival,freight_duty_percent");
-    expect(out).toContain("Acme Textiles,,30,,,,variant,,,6,,,Acme,no,arrival,20,,8");
+    expect(out.split("\r\n")[0]).toBe("\uFEFFname,email,lead_time_days,transit_days,order_every_days,min_per_item,min_per_item_applies_to,min_order_units,min_order_value,case_pack,currency,exchange_rate,vendors,hide_prices,payment_terms,deposit_percent,rest_days_after_arrival,freight_duty_percent,po_language,incoterms");
+    // Merchant audit 2026-10-18: the order language (English by default) and Incoterms follow.
+    expect(out).toContain("Acme Textiles,,30,,,,variant,,,6,,,Acme,no,arrival,20,,8,en,");
     // Re-importing the export changes nothing.
     expect((await planImport(S, "suppliers", out, bytes(out))).preview).toMatchObject({ changed: 0, unchanged: 1 });
     const file = "name,payment_terms,freight_duty_percent\r\nAcme Textiles,ship,\r\nNew One,later,\r\n";
