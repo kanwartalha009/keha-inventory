@@ -171,10 +171,12 @@ async function startedSellOuts(shop: string, timezone: string, catalog: Map<stri
   const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const pool = poolLocationIds(locations);
   if (!pool.length) return new Map();
-  const stock = await prisma.stockNow.findMany({ where: { shop, locationId: { in: pool } }, select: { variantId: true, onHand: true } });
-  const onHand = new Map<string, number>();
-  for (const s of stock) onHand.set(s.variantId, (onHand.get(s.variantId) ?? 0) + s.onHand);
-  const outNow = new Map([...onHand].map(([v, n]) => [v, n <= 0] as const));
+  // Out now = nothing left to sell: Σ Shopify available over the pool ≤ 0 (the planning position
+  // compute's "Out" uses; on hand that is all committed to orders can't be sold either).
+  const stock = await prisma.stockNow.findMany({ where: { shop, locationId: { in: pool } }, select: { variantId: true, available: true } });
+  const available = new Map<string, number>();
+  for (const s of stock) available.set(s.variantId, (available.get(s.variantId) ?? 0) + s.available);
+  const outNow = new Map([...available].map(([v, n]) => [v, n <= 0] as const));
   const candidates = [...catalog].filter(([, p]) => fullyOut(p.variantIds, outNow));
   if (!candidates.length) return new Map();
 

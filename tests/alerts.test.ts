@@ -68,9 +68,9 @@ function seed() {
   db.tables.variantMetric = [metric(1, { role: "A", status: "running_low", daysLeft: 5 }), metric(2, { status: "out", daysLeft: 0 }), metric(3)];
   db.tables.location = [{ id: L1, shop: S, active: true, online: true }];
   db.tables.stockNow = [
-    { shop: S, variantId: V(1), locationId: L1, onHand: 10 },
-    { shop: S, variantId: V(2), locationId: L1, onHand: 0 },
-    { shop: S, variantId: V(3), locationId: L1, onHand: 80 },
+    { shop: S, variantId: V(1), locationId: L1, onHand: 10, available: 10 },
+    { shop: S, variantId: V(2), locationId: L1, onHand: 0, available: 0 },
+    { shop: S, variantId: V(3), locationId: L1, onHand: 80, available: 80 },
   ];
   db.tables.stockDaily = [
     { shop: S, day: d("2026-10-15"), variantId: V(2), locationId: L1, endUnits: 3, outOfStock: false },
@@ -128,6 +128,17 @@ describe("instant alerts", () => {
     expect(email.text).toContain(`Darse de baja: ${link}`);
     expect(email.html).toContain(`href="${link}"`);
     expect(email.headers).toEqual({ "List-Unsubscribe": `<${link}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+  });
+
+  it("sold out = nothing available to sell: on hand that is all committed to orders counts as out", async () => {
+    Object.assign(db.tables.stockNow[1], { onHand: 6, available: 0 });
+    await runAlertsForShop(shopRow(), NOW);
+    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall)[1].text).toContain("Recién agotado: Cap");
+    Object.assign(db.tables.stockNow[1], { onHand: 0, available: 2 });
+    db.tables.alertLog = [];
+    sendOwnerEmailOnce.mockClear();
+    await runAlertsForShop(shopRow(), new Date(NOW.getTime() + 2 * HOUR));
+    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall | undefined)?.[1].text ?? "").not.toContain("Cap");
   });
 
   it("at most once per product per 7 days", async () => {
@@ -225,7 +236,7 @@ describe("instant alerts", () => {
 
   it("nothing to say: no email", async () => {
     db.tables.variantMetric = [metric(1), metric(2), metric(3)];
-    db.tables.stockNow[1].onHand = 4;
+    Object.assign(db.tables.stockNow[1], { onHand: 4, available: 4 });
     expect(await runAlertsForShop(shopRow(), NOW)).toMatchObject({ instant: "nothing" });
     expect(sendOwnerEmailOnce).not.toHaveBeenCalled();
   });
