@@ -67,7 +67,7 @@ function toRows(csv: string): Record<string, unknown>[] {
  * sharing one sandbox server never create or drop each other's databases.
  */
 const SUFFIX = (process.env.KEHA_TEST_DB_SUFFIX ?? "").replace(/[^a-z0-9_]/gi, "");
-const real = (db: string) => (db === "postgres" ? db : `${db}${SUFFIX}`);
+export const real = (db: string) => (db === "postgres" ? db : `${db}${SUFFIX}`);
 
 const args = (db: string) => ["-X", "-q", "--csv", "-v", "ON_ERROR_STOP=1", `${PG_CONN} dbname=${real(db)}`];
 

@@ -4,7 +4,7 @@
  * script goes through stdin (no argument-length limit), row counts come from psql's command tags.
  */
 import { execFileSync } from "node:child_process";
-import { PG_CONN } from "./pg";
+import { PG_CONN, real } from "./pg";
 import type { SqlRunner, Statement } from "../../app/services/db/sql.server";
 
 const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -45,7 +45,7 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-const base = (db: string) => ["-X", "-v", "ON_ERROR_STOP=1", `${PG_CONN} dbname=${db}`];
+const base = (db: string) => ["-X", "-v", "ON_ERROR_STOP=1", `${PG_CONN} dbname=${real(db)}`];
 
 function run(db: string, args: string[], script: string): string {
   return execFileSync("psql", [...base(db), ...args, "-f", "-"], { input: script, encoding: "utf8", maxBuffer: 1 << 30, stdio: ["pipe", "pipe", "pipe"] });
