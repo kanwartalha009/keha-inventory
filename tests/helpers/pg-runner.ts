@@ -58,8 +58,10 @@ const tagCount = (line: string) => {
   return Number(parts[parts.length - 1]);
 };
 
-export function psqlRunner(db: string): SqlRunner & { queries: string[] } {
-  const queries: string[] = [];
+/** `keep: false` keeps no statement text (whole-store loads write hundreds of MB of SQL). */
+export function psqlRunner(db: string, opts: { keep?: boolean } = {}): SqlRunner & { queries: string[] } {
+  const all: string[] = [];
+  const queries = opts.keep === false ? ({ push: () => 0 } as unknown as string[]) : all;
   return {
     queries,
     async query(sql, params) {

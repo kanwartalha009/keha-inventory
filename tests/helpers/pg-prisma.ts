@@ -19,7 +19,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { PG_CONN } from "./pg";
+import { PG_CONN, real } from "./pg";
 
 type Field = {
   name: string;
@@ -334,7 +334,7 @@ export type PsqlRunner = (sql: string, opts: { transaction: boolean }) => Promis
 export function psqlRunner(db: string): PsqlRunner {
   return (sql, { transaction }) =>
     new Promise((resolve, reject) => {
-      const args = ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", ...(transaction ? ["-1"] : []), `${PG_CONN} dbname=${db}`, "-f", "-"];
+      const args = ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", ...(transaction ? ["-1"] : []), `${PG_CONN} dbname=${real(db)}`, "-f", "-"];
       const p = spawn("psql", args, { stdio: ["pipe", "pipe", "pipe"] });
       const out: Buffer[] = [];
       const err: Buffer[] = [];
@@ -365,7 +365,7 @@ export function psqlSession(db: string): PsqlRunner & { close: () => Promise<voi
   let waiter: (() => void) | null = null;
   let queue: Promise<unknown> = Promise.resolve();
   const start = () => {
-    const p = spawn("psql", ["-X", "-q", "-A", "-t", `${PG_CONN} dbname=${db}`], { stdio: ["pipe", "pipe", "pipe"] });
+    const p = spawn("psql", ["-X", "-q", "-A", "-t", `${PG_CONN} dbname=${real(db)}`], { stdio: ["pipe", "pipe", "pipe"] });
     p.stdout!.on("data", (b: Buffer) => {
       out += b.toString("utf8");
       waiter?.();

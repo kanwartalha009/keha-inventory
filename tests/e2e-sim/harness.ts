@@ -32,6 +32,11 @@ import { DRAFT_EXPIRY_DAYS } from "../../app/lib/supplier-shared";
 import { addDays } from "../../app/lib/engine/dates-shared";
 import type { PlanCode } from "../../app/lib/plan-shared";
 import { state } from "./mocks";
+import { facts } from "../../app/services/facts-store.server";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere } from "../../app/lib/compute-shared";
+import { SEASON } from "../../app/lib/engine/season-shared";
+import { readSettings } from "../../app/lib/settings-shared";
+import { dayDate } from "../../app/lib/sync/facts-shared";
 
 import * as Home from "../../app/routes/app._index";
 import * as Reorder from "../../app/routes/app.reorder";
@@ -46,6 +51,7 @@ import * as Settings from "../../app/routes/app.settings";
 import * as Suppliers from "../../app/routes/app.settings_.suppliers";
 import * as Locations from "../../app/routes/app.settings_.locations";
 import * as Alerts from "../../app/routes/app.settings_.alerts";
+import * as Import from "../../app/routes/app.settings_.import";
 
 /** Monday 09:00 in Madrid: the Monday email is due, every screen reads the same day. */
 export const E2E_NOW = new Date("2026-10-19T07:00:00.000Z");
@@ -125,6 +131,9 @@ export async function collectScreens(key: string, store: SimStore, plan: PlanCod
   await add("settings-suppliers", Suppliers as RouteModule, "/app/settings/suppliers", "/app/settings/suppliers");
   await add("settings-locations", Locations as RouteModule, "/app/settings/locations", "/app/settings/locations");
   await add("settings-alerts", Alerts as RouteModule, "/app/settings/alerts", "/app/settings/alerts");
+  // Settings → Import & export (R5): the counts of what each template holds, read under the same key.
+  const imp = (await add("settings-import", Import as RouteModule, "/app/settings/import", "/app/settings/import")) as { enabled: boolean; counts: { suppliers: number; variants: number } };
+  expect(imp.counts.variants).toBe(await prisma.variant.count({ where: { shop: key } }));
 
   const products = await allProducts(key, { status: null, collection: null, vendor: null, q: null } as never, true, "online", E2E_NOW);
   const monday = await mondayOrders(key, plan, "en", E2E_NOW);
@@ -308,16 +317,24 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
   counts.batches = batches;
 
   // ── Seasonal items out of season are never Dead / Too much ──
+  // What compute reads for it (M3): units each variant sold over the coming deadDays days LAST
+  // YEAR, pool demand. Read here as compute reads it (the stored inputs no longer carry it, R1).
+  const shopRow = await prisma.shop.findUnique({ where: { domain: key }, select: { settings: true } });
+  const aheadFrom = addDays(today, -SEASON.yearShiftDays);
+  const aheadTo = addDays(aheadFrom, readSettings(shopRow?.settings).deadDays - 1);
+  const demand = demandWhere(demandScope(await prisma.location.findMany({ where: { shop: key }, select: POOL_LOCATION_SELECT })));
+  const aheadG = await facts.salesDaily.groupBy({ by: ["variantId"], where: { shop: key, ...demand, day: { gte: dayDate(aheadFrom), lte: dayDate(aheadTo) } }, _sum: { sold: true } });
+  const soldAhead = new Map(aheadG.map((g) => [g.variantId, Number(g._sum.sold ?? 0)]));
   let offSeason = 0;
   for (const m of metrics) {
-    const ahead = inputsOf(m.variantId).soldLastYearAhead;
+    const ahead = soldAhead.get(m.variantId);
     if (typeof ahead === "number" && ahead > 0) {
       offSeason++;
       expect(["dead", "too_much"].includes(m.status), `${m.variantId} off season but ${m.status}`).toBe(false);
     }
   }
   const summer = store.variants.filter((v) => v.product.season === "summer" && v.product.status === "ACTIVE" && v.product.tracked && !v.product.isBundle);
-  expect(summer.filter((v) => (inputsOf(v.id).soldLastYearAhead as number) > 0).length).toBeGreaterThan(0);
+  expect(summer.filter((v) => (soldAhead.get(v.id) ?? 0) > 0).length).toBeGreaterThan(0);
   counts.offSeason = offSeason;
 
   // ── Backorders vs lost sales ──

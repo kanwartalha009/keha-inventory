@@ -20,6 +20,9 @@ vi.mock("../../app/services/email.server", async (orig) => ({ ...(await orig<obj
 vi.mock("../../app/services/keha-preorder.server", async (orig) => ({ ...(await orig<object>()), kehaPreorderInstalled: async () => false }));
 
 import prisma from "../../app/db.server";
+import { pgFactsStore, setFactsStore } from "../../app/services/facts-store.server";
+import { pgCatalogWriter, setCatalogWriter } from "../../app/services/sync/catalog-writes.server";
+import { psqlRunner } from "../helpers/pg-runner";
 import { E2E_NOW, checkInvariants, collectScreens, expectTranslated, loadSimStore, renderScreens } from "./harness";
 
 process.env.SHOPIFY_APP_URL = "https://keha.test";
@@ -28,6 +31,10 @@ process.env.SHOPIFY_API_SECRET = "e2e-sim-secret";
 describe.skipIf(!PG_AVAILABLE)("simulated stores on real Postgres", () => {
   beforeAll(() => {
     freshDb(DB);
+    // The compact facts and the catalog's bulk upserts run their own SQL (R1) on the same database.
+    const runner = psqlRunner(DB, { keep: false });
+    setFactsStore(pgFactsStore(runner));
+    setCatalogWriter(pgCatalogWriter(runner));
     vi.useFakeTimers({ now: E2E_NOW, toFake: ["Date"], shouldAdvanceTime: true });
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -35,6 +42,8 @@ describe.skipIf(!PG_AVAILABLE)("simulated stores on real Postgres", () => {
   afterAll(async () => {
     vi.useRealTimers();
     await (prisma as unknown as { $close: () => Promise<void> }).$close();
+    setFactsStore(null);
+    setCatalogWriter(null);
     dropDb(DB);
   });
 

@@ -93,8 +93,9 @@ describe("Dashboard: Explore Keha with sample data", () => {
         "Load sample data",
       ])
         expect(has(html, locale, k), k).toBe(true);
-      // Still the store's own progress: the card comes first, the reading carries on.
-      expect(has(html, locale, "Reading your store…")).toBe(true);
+      // Still the store's own progress: the first-sync screen leads, the card offers sample data meanwhile.
+      expect(has(html, locale, "Setting up your order plan")).toBe(true);
+      expect(html.indexOf(esc(translate(locale, "Setting up your order plan")))).toBeLessThan(html.indexOf(esc(translate(locale, "Explore Keha with sample data"))));
     });
   }
 

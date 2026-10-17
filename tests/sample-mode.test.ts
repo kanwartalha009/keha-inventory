@@ -52,6 +52,7 @@ vi.mock("../app/services/po-email.server", async (orig) => ({ ...(await orig<obj
 vi.mock("../app/services/slack.server", async (orig) => ({ ...(await orig<object>()), deliverSlack: vi.fn(async () => ({ ok: true })) }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { loadSampleData, removeSampleData } from "../app/services/sample-data.server";
 import { dataScope } from "../app/services/data-scope.server";
 import { getEntitlements } from "../app/services/entitlements.server";
@@ -74,6 +75,8 @@ import { loader as sidekickLoader } from "../app/routes/api.sidekick.$tool";
 import { loader as layoutLoader } from "../app/routes/app";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+// The compact facts and the catalog's bulk writes over the in-memory tables (R1's facts store API).
+useFakeFacts(db);
 const REAL = "real.myshopify.com";
 const KEY = `${REAL}#sample`;
 const NOW = new Date("2026-10-19T07:00:00Z");

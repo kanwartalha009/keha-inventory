@@ -70,8 +70,8 @@ const LIST_SELECT = {
   leadOnTimeShare: true,
 } as const;
 
-/** Decimal columns (Prisma.Decimal) → plain numbers for the page. */
-const dec = (v: { toString(): string } | null): number | null => (v === null ? null : Number(v.toString()));
+/** Decimal columns (Prisma.Decimal) → plain numbers; a column a row does not carry reads as none. */
+const dec = (v: { toString(): string } | null | undefined): number | null => (v == null ? null : Number(v.toString()));
 
 function plain<
   T extends {

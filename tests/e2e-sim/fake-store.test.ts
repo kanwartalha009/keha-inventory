@@ -33,6 +33,11 @@ vi.mock("../../app/services/email.server", async (orig) => ({ ...(await orig<obj
 vi.mock("../../app/services/keha-preorder.server", async (orig) => ({ ...(await orig<object>()), kehaPreorderInstalled: async () => false }));
 
 import { E2E_NOW, checkInvariants, collectScreens, expectTranslated, loadSimStore, renderScreens, type Loaded, type Screens } from "./harness";
+import * as dbModule from "../../app/db.server";
+import { useFakeFacts } from "../helpers/fake-facts";
+
+// The compact facts and the catalog's bulk writes over the in-memory tables (R1's facts store API).
+useFakeFacts((dbModule as unknown as { __fake: FakeDb }).__fake);
 
 process.env.SHOPIFY_APP_URL = "https://keha.test";
 process.env.SHOPIFY_API_SECRET = "e2e-sim-secret";

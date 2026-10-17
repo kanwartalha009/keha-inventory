@@ -171,6 +171,9 @@ if (!args.pipeline) {
 console.log("");
 const origLog = console.log;
 console.log = () => {};
+// The compact facts and the catalog's bulk writes over the in-memory tables (R1's facts store API).
+const { useFakeFacts } = await import("../tests/helpers/fake-facts");
+useFakeFacts(db);
 const { writeSimStore } = await import("../app/services/sample-data.server");
 const { computeShop } = await import("../app/services/compute.server");
 const { loadOrderPlan } = await import("../app/models/order-plan.server");

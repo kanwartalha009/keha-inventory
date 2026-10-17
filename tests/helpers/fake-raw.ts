@@ -12,19 +12,22 @@ const at = (params: unknown[], ref: string) => params[Number(ref.replace("$", ""
 
 function productTypeSeries(db: FakeDb, sql: string, params: unknown[]): Record<string, unknown>[] {
   const shop = params[0];
-  const channel = /s\."locationKey" = (\$\d+)/.exec(sql);
-  const location = /s\."channel" = (\$\d+) AND s\."locationKey" NOT IN \(([^)]*)\)/.exec(sql);
+  // The compact SalesFact (R1): the channel view is locNum = 0 ("all"); the pool view is
+  // channelNum = 0 AND locNum <> 0, minus the FactKey keys listed (left-out locations).
+  const channel = sql.includes(`s."locNum" = 0`);
+  const location = sql.includes(`s."channelNum" = 0 AND s."locNum" <> 0`);
+  const excluded = /k\."key" IN \(([^)]*)\)/.exec(sql);
   const types = new Set((/v\."productType" IN \(([^)]*)\)/.exec(sql)?.[1] ?? "").split(",").map((x) => at(params, x.trim())));
   const windows = [...sql.matchAll(/\(s\."day" >= (\$\d+)::date AND s\."day" <= (\$\d+)::date\)/g)].map((m) => [String(at(params, m[1]!)), String(at(params, m[2]!))] as const);
   const planned = sql.includes(`v."tracked" = true`);
   const variants = new Map<string, Row>();
   for (const v of db.tables.variant ?? []) if (v.shop === shop) variants.set(v.id as string, v);
-  const exclude = location ? new Set(location[2]!.split(",").map((x) => at(params, x.trim()))) : null;
+  const exclude = new Set(["all", ...(excluded ? excluded[1]!.split(",").map((x) => at(params, x.trim())) : [])]);
   const sums = new Map<string, number>();
   for (const s of db.tables.salesDaily ?? []) {
     if (s.shop !== shop) continue;
-    if (channel && s.locationKey !== at(params, channel[1]!)) continue;
-    if (location && (s.channel !== at(params, location[1]!) || exclude!.has(s.locationKey))) continue;
+    if (channel && s.locationKey !== "all") continue;
+    if (location && (s.channel !== "all" || exclude.has(s.locationKey as string))) continue;
     const d = day(s.day);
     if (!windows.some(([a, b]) => d >= a && d <= b)) continue;
     const v = variants.get(s.variantId as string);
@@ -43,7 +46,7 @@ function collections(db: FakeDb, shop: unknown): Record<string, unknown>[] {
 }
 
 function run(db: FakeDb, sql: string, params: unknown[]): Record<string, unknown>[] {
-  if (sql.includes(`FROM "SalesDaily" s`) && sql.includes(`v."productType" IN`)) return productTypeSeries(db, sql, params);
+  if (sql.includes(`FROM "SalesFact" s`) && sql.includes(`v."productType" IN`)) return productTypeSeries(db, sql, params);
   if (sql.includes(`unnest("collections")`)) return collections(db, params[0]);
   throw new Error(`fake-raw: statement not emulated: ${sql.slice(0, 120)}`);
 }
