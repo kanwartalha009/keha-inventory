@@ -58,10 +58,23 @@ async function poolIds(shop: string): Promise<string[]> {
 export const CSV_MAX_ROWS = 20_000;
 
 /**
+ * Most ids one Prisma `in` list may carry (DB scale #5). Postgres takes at most 32,767 bind
+ * parameters per statement; a status filter or a location view on a large store can match more
+ * variants than that. Above this the restriction is applied in memory instead (VariantQuery).
+ */
+export const MAX_IN_IDS = 10_000;
+
+/**
+ * The filtered variants: a Prisma where, plus `only` — the ids a status filter / location view
+ * allows when there are too many for an `in` list (null = `where` says it all).
+ */
+type VariantQuery = { where: Prisma.VariantWhereInput; only: Set<string> | null };
+
+/**
  * Variants the table lists: tracked, non-bundle (the engine's population —
  * bundles are never planned and untracked variants have no stock).
  */
-async function variantWhere(shop: string, f: ProductFilters, scope: string): Promise<Prisma.VariantWhereInput> {
+async function variantWhere(shop: string, f: ProductFilters, scope: string): Promise<VariantQuery> {
   const where: Prisma.VariantWhereInput = { shop, tracked: true, isBundle: false };
   if (f.vendor) where.vendor = f.vendor;
   if (f.collection) where.collections = { has: f.collection };
@@ -78,9 +91,39 @@ async function variantWhere(shop: string, f: ProductFilters, scope: string): Pro
       where: { shop, scope, ...(f.status ? { status: f.status } : {}) },
       select: { variantId: true },
     });
+    if (ids.length > MAX_IN_IDS) return { where, only: new Set(ids.map((r) => r.variantId)) };
     where.id = { in: ids.map((r) => r.variantId) };
   }
-  return where;
+  return { where, only: null };
+}
+
+/**
+ * The query's variant ids in table order (ORDER), `take` at most. With `only` the ids are read
+ * without the id list (one narrow query, ids only) and filtered here, so no statement ever
+ * carries more than MAX_IN_IDS ids.
+ */
+async function matchingIds(q: VariantQuery, take: number): Promise<string[]> {
+  if (!q.only) {
+    const rows = await prisma.variant.findMany({ where: q.where, select: { id: true }, orderBy: ORDER, take });
+    return rows.map((r) => r.id);
+  }
+  const rows = await prisma.variant.findMany({ where: q.where, select: { id: true }, orderBy: ORDER });
+  const out: string[] = [];
+  for (const r of rows) {
+    if (!q.only.has(r.id)) continue;
+    out.push(r.id);
+    if (out.length >= take) break;
+  }
+  return out;
+}
+
+/** Rows for ids, `in` lists of at most MAX_IN_IDS (results in no particular order). */
+async function variantsByIds<S extends Prisma.VariantSelect>(shop: string, ids: string[], select: S) {
+  const out: Prisma.VariantGetPayload<{ select: S }>[] = [];
+  for (let i = 0; i < ids.length; i += MAX_IN_IDS) {
+    out.push(...((await prisma.variant.findMany({ where: { shop, id: { in: ids.slice(i, i + MAX_IN_IDS) } }, select })) as Prisma.VariantGetPayload<{ select: S }>[]));
+  }
+  return out;
 }
 
 const VARIANT_SELECT = {
@@ -140,13 +183,19 @@ function supplierValue(v: { supplierId: string | null; vendor: string | null }, 
  */
 async function orderedIds(
   shop: string,
-  where: Prisma.VariantWhereInput,
+  q: VariantQuery,
   f: ProductFilters,
   scope: string,
   view: PlanView | null,
 ): Promise<string[]> {
+  const select = { id: true, supplierId: true, vendor: true, noReorder: true } as const;
   const [rows, suppliers] = await Promise.all([
-    prisma.variant.findMany({ where, select: { id: true, supplierId: true, vendor: true, noReorder: true }, orderBy: ORDER, take: CSV_MAX_ROWS }),
+    q.only
+      ? matchingIds(q, CSV_MAX_ROWS).then(async (ids) => {
+          const pos = new Map(ids.map((id, i) => [id, i]));
+          return (await variantsByIds(shop, ids, select)).sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
+        })
+      : prisma.variant.findMany({ where: q.where, select, orderBy: ORDER, take: CSV_MAX_ROWS }),
     f.supplier ? planSuppliers(shop) : Promise.resolve([]),
   ]);
   const list = f.supplier ? rows.filter((r) => supplierValue(r, suppliers) === f.supplier) : rows;
@@ -207,7 +256,7 @@ export async function listProducts(
   scope: string = METRIC_SCOPE,
   now: Date = new Date(),
 ): Promise<ProductPage> {
-  const where = await variantWhere(shop, filters, scope);
+  const q = await variantWhere(shop, filters, scope);
   const view = forecast ? await planView(shop, scope, now) : null;
   // By order-by date (the default with the forecast) or a supplier filter: ordered in memory.
   const inMemory = (!!view && filters.sort !== "title") || !!filters.supplier;
@@ -215,17 +264,25 @@ export async function listProducts(
   let info: PageInfo;
   let variants: { id: string; productId: string; productTitle: string; variantTitle: string; sku: string | null; vendor: string | null; image: string | null; noReorder: boolean }[];
   if (inMemory) {
-    const ids = await orderedIds(shop, where, filters, scope, view);
+    const ids = await orderedIds(shop, q, filters, scope, view);
     total = ids.length;
     info = pageInfo(total, page);
     const pageIds = ids.slice(info.skip, info.skip + info.take);
     const rows = pageIds.length ? await prisma.variant.findMany({ where: { shop, id: { in: pageIds } }, select: VARIANT_SELECT }) : [];
     const pos = new Map(pageIds.map((id, i) => [id, i]));
     variants = rows.sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
-  } else {
-    total = await prisma.variant.count({ where });
+  } else if (q.only) {
+    // Too many allowed ids for an `in` list: page over the ordered ids in memory.
+    const ids = await matchingIds(q, Number.MAX_SAFE_INTEGER);
+    total = ids.length;
     info = pageInfo(total, page);
-    variants = total === 0 ? [] : await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, skip: info.skip, take: info.take });
+    const pageIds = ids.slice(info.skip, info.skip + info.take);
+    const pos = new Map(pageIds.map((id, i) => [id, i]));
+    variants = (await variantsByIds(shop, pageIds, VARIANT_SELECT)).sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
+  } else {
+    total = await prisma.variant.count({ where: q.where });
+    info = pageInfo(total, page);
+    variants = total === 0 ? [] : await prisma.variant.findMany({ where: q.where, select: VARIANT_SELECT, orderBy: ORDER, skip: info.skip, take: info.take });
   }
   const { metrics, stock, onOrder } = await joinFor(
     shop,
@@ -247,9 +304,9 @@ export async function allProducts(
   scope: string = METRIC_SCOPE,
   now: Date = new Date(),
 ): Promise<ProductRow[]> {
-  const where = await variantWhere(shop, filters, scope);
+  const q = await variantWhere(shop, filters, scope);
   const view = forecast ? await planView(shop, scope, now) : null;
-  const ids = await orderedIds(shop, where, filters, scope, view);
+  const ids = await orderedIds(shop, q, filters, scope, view);
   const out: ProductRow[] = [];
   // Join in slices so each IN list stays small.
   for (let i = 0; i < ids.length; i += 1000) {

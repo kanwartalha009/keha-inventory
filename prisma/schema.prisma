@@ -30,6 +30,9 @@ model Session {
   emailVerified Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+
+  /// The scheduler and every job list installed shops by session (DB scale #5).
+  @@index([shop])
 }
 
 model NovaReferral {
