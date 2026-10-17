@@ -70,6 +70,8 @@ describe("shopify.extension.toml", () => {
     const d = tomlString(toml, "description") ?? "";
     expect(d.length).toBeGreaterThan(100);
     expect(tokens(d)).toBeLessThanOrEqual(256);
+    // `shopify app deploy` (2026-10-17): "Description must be at most 500 characters long".
+    expect(d.length).toBeLessThanOrEqual(500);
     for (const w of ["reorder", "supplier", "order-by", "purchase orders", "dead"]) expect(d.toLowerCase()).toContain(w);
   });
 
@@ -177,6 +179,7 @@ describe("instructions and the app summary", () => {
     expect(p && p.length).toBeGreaterThan(60);
     expect(summaryOf(dev)).toBe(p);
     expect(tokens(p!)).toBeLessThanOrEqual(256);
+    expect(p!.length).toBeLessThanOrEqual(500);
   });
 });
 

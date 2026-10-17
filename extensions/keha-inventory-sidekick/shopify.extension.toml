@@ -9,7 +9,7 @@
 # tells Sidekick how they fit together (≤ 2,048 tokens). The tools fetch
 # /api/sidekick/<tool> on the app's own domain (app/routes/api.sidekick.$tool.tsx),
 # so Shopify adds the session token itself. The extension `description` below
-# (≤ 256 tokens) is how Sidekick decides when the app is relevant; the app-level
+# (≤ 500 characters — deploy rejects longer; ≤ 256 tokens) is how Sidekick decides when the app is relevant; the app-level
 # summary is [sidekick] extensions_summary in shopify.app.toml (deploy fails
 # without it). tests/sidekick-extension.test.ts holds every limit and the
 # content policy (no selling, no plan or upgrade talk, no urgency words).
@@ -24,7 +24,7 @@ name = "Keha Inventory for Sidekick"
 handle = "keha-inventory-sidekick"
 uid = "09a5f0cf-5f3b-54eb-a8a6-ff76d7fe43f006799907"
 type = "ui_extension"
-description = "Answers questions about this store's stock from Keha Inventory Intelligence: the order plan for the next 90 days (what to reorder, from which supplier, by which order-by date, suggested quantities and the cash needed per week); when a product runs out (days of stock left, stock on hand, incoming, sales per day); open purchase orders and expected arrivals; this week's stock actions (reorder, preorder gap, promote, fix, clear); money at stake (sales at risk, cash stuck in too much or dead stock); forecast accuracy."
+description = "Answers stock questions from Keha Inventory Intelligence: what to reorder, from which supplier, by which order-by date and the cash needed over the next 90 days; when a product runs out; open purchase orders and arrivals; this week's stock actions; money at stake in low, too much and dead stock; forecast accuracy."
 
 [[extensions.targeting]]
 target = "admin.app.tools.data"
