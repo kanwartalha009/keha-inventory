@@ -617,20 +617,23 @@
    Layout rules (2026-10-17 design-consistency pass) — docs/DESIGN-RULES.md
    ========================================================================== */
 
-/* Page toolbar (ui.tsx <Toolbar>): search grows on the left, filters and
-   selects sit on the right, all vertically centred. When the filters don't
-   fit beside a usable search box (240px) the filter group moves to its own
-   row, still right-aligned; below 600px every control takes a full row.
-   Filters get a fixed width so their size never depends on the label. */
-.keha-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); width: 100%; min-width: 0; }
-.keha-toolbar__search { flex: 1 1 240px; min-width: 0; }
+/* Page toolbar (ui.tsx <Toolbar>): search grows on the left; the filters are
+   ONE group that never shrinks (flex: none), so it either sits beside the
+   search (all in one row) or moves as a whole to its own row below it, with
+   the search taking the full row. Inside the group the controls stay in one
+   horizontal row, right-aligned; they wrap only when the toolbar itself is
+   narrower than the group (truly narrow). Before 2026-10-17 the group could
+   shrink beside the search and its three selects stacked into a column at
+   the admin's ~880px width. Filters have a fixed width (never the label's). */
+.keha-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); flex: 1 1 100%; width: 100%; min-width: 0; }
+.keha-toolbar__search { flex: 1 1 240px; min-width: min(100%, 240px); }
 .keha-toolbar__filters {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
-  gap: var(--keha-space-200); flex: 0 1 auto; min-width: 0; margin-inline-start: auto;
+  gap: var(--keha-space-200); flex: none; max-width: 100%; min-width: 0; margin-inline-start: auto;
 }
-.keha-toolbar__filters > * { flex: 0 1 auto; width: 180px; max-width: 100%; min-width: 0; }
-.keha-toolbar__filters > .keha-switcher { width: 220px; max-width: 100%; }
-.keha-toolbar__filters > .keha-switcher--link { width: auto; }
+.keha-toolbar__filters > * { flex: 0 0 180px; width: 180px; max-width: 100%; min-width: 0; }
+.keha-toolbar__filters > .keha-switcher { flex-basis: 220px; width: 220px; }
+.keha-toolbar__filters > .keha-switcher--link { flex: 0 0 auto; width: auto; }
 @media (max-width: 600px) {
   .keha-toolbar__search, .keha-toolbar__filters { flex: 1 1 100%; }
   .keha-toolbar__filters { justify-content: stretch; margin-inline-start: 0; }

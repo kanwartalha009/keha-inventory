@@ -31,10 +31,13 @@ Set in the 2026-10-17 design-consistency pass. Every screen follows these; the h
 ## Toolbars and tables
 
 8. **One toolbar: `<Toolbar search filters slot?>`** (`.keha-toolbar`). Search grows on the
-   left; filters and selects sit on the right with a fixed width (180px), all vertically
-   centred. When they don't fit beside a 240px search they move to their own row, still
-   right-aligned; below 600px each control takes a full row. In an `s-table` pass
-   `slot="filters"`.
+   left; filters and selects sit on the right with a fixed width (180px; the location select
+   220px), all vertically centred. The filter group never shrinks: it fits beside a search of
+   at least 240px (everything in one row) or moves **as one horizontal row** below the search,
+   which then takes the full row, still right-aligned. The filters wrap among themselves only
+   when the toolbar is narrower than the whole group; below 600px each control takes a full
+   row. Never let the filters stack into a column beside the search (the 2026-10-17
+   Products bug at the admin's ~880px). In an `s-table` pass `slot="filters"`.
 9. **Column headers never wrap.** Short label in the header, long form in a tooltip:
    `<HeaderLabel id label hint badge>` ("Sales/day" → "Sales per day while in stock").
    A plan lock in a header is a compact badge with the plan name (lock icon + "Growth").
