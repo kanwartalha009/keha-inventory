@@ -21,6 +21,10 @@ import {
   seasonFacts,
   seasonCurve,
   seasonalIndex,
+  realisedFactor,
+  shrinkIndex,
+  shrinkRaw,
+  shrinkWeight,
   shiftYears,
   spanStats,
   trendFactor,
@@ -59,25 +63,39 @@ describe("calendar helpers", () => {
 describe("seasonal index", () => {
   // TODAY 2026-10-16 (a Friday). Year 1 = 364 days back: span from 2025-10-17 (a Friday);
   // base windows end 2025-10-16: 28 d from 2025-09-19, 56 d from 2025-08-22, 90 d from 2025-07-19
-  // (77 of 90 days covered by FULL → kept). Year 2 (2024) is not covered → one year → weight 0.5.
+  // (77 of 90 days covered by FULL → kept). Year 2 (2024) is not covered → one year → soft threshold.
   it("H5: weekdays aligned (364 days back), like the trend", () => {
     const r = seasonalIndex(series(() => 10), TODAY, 28);
     expect(r.span).toMatchObject({ from: "2025-10-17", to: "2025-11-13", days: 28, coveredDays: 28 });
     expect(new Date(`${r.span.from}T00:00:00Z`).getUTCDay()).toBe(new Date(`${TODAY}T00:00:00Z`).getUTCDay());
     expect(r.base).toMatchObject({ from: "2025-09-19", to: "2025-10-16", days: 28, unitsPerDay: 10, blendedPerDay: 10 });
-    expect(r).toMatchObject({ applied: true, reason: "ok", value: 1, raw: 1, years: 1, weight: 0.5 });
+    expect(r).toMatchObject({ applied: true, reason: "ok", value: 1, raw: 1, years: 1, weight: 1 });
   });
 
-  it("H5: one spike week is smoothed over 3 weeks and, with one year, shrunk halfway to 1", () => {
+  it("H5: one spike week is smoothed over 3 weeks and, with one year, soft-thresholded toward 1", () => {
     // Audit 2026-10-17: an Easter / promo week copied straight from last year gave ×1.38 and hurt
     // accuracy. A 7-day span at 40/day in a 10/day year: unsmoothed 4 → 3-week average
-    // (7 × 40 + 14 × 10) ÷ 21 = 20 → raw 2 → one year: 1 + 0.5 × (2 − 1) = 1.5.
+    // (7 × 40 + 14 × 10) ÷ 21 = 20 → raw 2 → one year: exp(ln 2 − 0.2) = 1.6375 (forecast
+    // quality 2026-10-17; before: 1 + 0.5 × (2 − 1) = 1.5).
     const s = series((d) => (d >= "2025-10-17" && d <= "2025-10-23" ? 40 : 10));
     const r = seasonalIndex(s, TODAY, 7);
     expect(r.span.unitsPerDay).toBe(40);
     expect(r.span.smoothedPerDay).toBeCloseTo(20, 12);
     expect(r.raw).toBeCloseTo(2, 12);
-    expect(r.value).toBeCloseTo(1.5, 12);
+    expect(r.value).toBeCloseTo(Math.exp(Math.log(2) - 0.2), 12);
+    expect(r.weight).toBeCloseTo(0.637, 3);
+  });
+
+  it("one year: a change within −18 % … +22 % is noise (index 1); a big season keeps all but that", () => {
+    expect(shrinkRaw(1.2, 1)).toBe(1);
+    expect(shrinkRaw(0.85, 1)).toBe(1);
+    // Swimwear in winter at a quarter of its base: 0.31 (the old linear shrink gave 0.625).
+    expect(shrinkRaw(0.25, 1)).toBeCloseTo(Math.exp(Math.log(0.25) + 0.2), 12);
+    expect(shrinkRaw(0.25, 1)).toBeLessThan(0.31);
+    expect(shrinkRaw(3, 1)).toBeCloseTo(Math.exp(Math.log(3) - 0.2), 12);
+    // Two years: unshrunk.
+    expect(shrinkRaw(0.25, 2)).toBe(0.25);
+    expect(shrinkWeight(1, 1)).toBe(1);
   });
 
   it("H5: two years of history → both years averaged, full weight", () => {
@@ -103,7 +121,9 @@ describe("seasonal index", () => {
     const blend = 0.5 * 20 + 0.3 * w56 + 0.2 * w90;
     expect(r.base.blendedPerDay).toBeCloseTo(blend, 12);
     expect(r.raw).toBeCloseTo(20 / blend, 12);
-    expect(r.value).toBeCloseTo(1 + 0.5 * (20 / blend - 1), 12);
+    // raw ≈ 1.16: within the noise band (|ln| ≤ 0.2) → 1.
+    expect(r.value).toBeCloseTo(shrinkIndex(20 / blend, 1), 12);
+    expect(r.value).toBe(1);
   });
 
   it("refuses fewer than 13 months of history", () => {
@@ -152,7 +172,7 @@ describe("seasonal index", () => {
     const high = seasonalIndex(series((d) => (d >= "2025-10-17" ? 200 : 10)), TODAY, 28);
     expect(high.raw!).toBeGreaterThan(9);
     expect(high.value).toBe(5);
-    // One year can't go below 0.5 (shrunk); two years at ×0.1 clamp to 0.2.
+    // Two years at ×0.1 clamp to 0.2; one year now too (the soft threshold keeps a real off-season).
     const two: Coverage = { from: "2024-06-01", to: "2026-10-15" };
     const lowDays = (d: string) => (d >= "2025-10-17" && d <= "2025-11-30") || (d >= "2024-10-18" && d <= "2024-12-01");
     const low = seasonalIndex(series((d) => (lowDays(d) ? 0 : 10), two, "2024-06-01"), TODAY, 28);
@@ -160,8 +180,7 @@ describe("seasonal index", () => {
     expect(low.raw!).toBeLessThan(0.2);
     expect(low.value).toBe(0.2);
     const oneYearLow = seasonalIndex(series((d) => (d >= "2025-10-17" ? 0 : 10)), TODAY, 28);
-    expect(oneYearLow.value).toBeCloseTo(1 + 0.5 * (oneYearLow.raw! - 1), 12);
-    expect(oneYearLow.value).toBeGreaterThanOrEqual(0.5);
+    expect(oneYearLow.value).toBe(0.2);
   });
 
   it("1.0 when the base sold nothing", () => {
@@ -175,9 +194,9 @@ describe("seasonal index", () => {
 
   it("the weekly curve uses the same years, base, 3-week smoothing and shrinkage", () => {
     // Week 0 of the curve (2025-10-17…23) spikes at 40/day in a 10/day year: centred 3 weeks
-    // = (7 × 40 + 14 × 10) ÷ 21 = 20 → ratio 2 → 1.5; week 1 sees the spike as its previous week.
+    // = (7 × 40 + 14 × 10) ÷ 21 = 20 → ratio 2 → 1.637; week 1 sees the spike as its previous week.
     const c = seasonCurve(series((d) => (d >= "2025-10-17" && d <= "2025-10-23" ? 40 : 10)), TODAY, 4)!;
-    expect(c).toEqual([1.5, 1.5, 1, 1]);
+    expect(c).toEqual([1.637, 1.637, 1, 1]);
     expect(seasonCurve(series(() => 0), TODAY, 4)).toBeNull();
   });
 });

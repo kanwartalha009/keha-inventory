@@ -125,6 +125,18 @@ describe("season source by group (loader)", () => {
     expect([...read]).toEqual(["5"]);
   });
 
+  it("a group's series covers every day through yesterday (forecast quality: no unread gap read as zero sales)", async () => {
+    const ctx = await loadSeasonContext(SHOP, input(), vi.fn(emulate));
+    // Outer (collection) and Jackets (type) sell every day: the 90-day levels have every day, and
+    // the realised season factor of the 28 days from a past day is known (season-shared realisedFactor).
+    const outer = ctx.forVariant(seasonGroupsOf(variants[2]!), 60);
+    const jackets = ctx.forVariant(seasonGroupsOf(variants[0]!), 60);
+    expect(ctx.levelsFor(outer, 90)!.size).toBe(90);
+    expect(ctx.levelsFor(jackets, 90)!.size).toBe(90);
+    const [o] = ctx.originsFor(outer, [addDays(TODAY, -28)], 28);
+    expect(o!.multiplier).toBeGreaterThan(0);
+  });
+
   it("no qualifying type → no statement", async () => {
     const raw = vi.fn(emulate);
     const small = input();

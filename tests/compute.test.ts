@@ -432,12 +432,13 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     await computeShop(S, { now: () => NOW });
     const a = metric(A);
     const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
-    // LY horizon 4/day (3-week smoothed at its end) ÷ LY base (the rate-window blend, ≈ 2/day) → raw ≈ 1.77; one year → shrunk halfway to 1.
-    // seasonalRaw is not stored (it moves every day): one year of weight 0.5 → raw = 2 × seasonal − 1.
-    const raw = 2 * inputs.seasonal - 1;
+    // LY horizon 4/day (3-week smoothed at its end) ÷ LY base (the rate-window blend, ≈ 2/day) → raw ≈ 1.77; one year → the
+    // soft threshold exp(ln raw − 0.2). seasonalRaw is not stored (it moves every day): raw = exp(ln seasonal + 0.2).
+    const raw = Math.exp(Math.log(inputs.seasonal) + 0.2);
     expect(raw).toBeGreaterThan(1.7);
-    expect((inputs.season as { seasonalWeight: number }).seasonalWeight).toBe(0.5);
-    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, seasonalWeight: 0.5, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
+    // The share of last year's change kept: (index − 1) ÷ (raw − 1).
+    expect((inputs.season as { seasonalWeight: number }).seasonalWeight).toBeCloseTo((inputs.seasonal - 1) / (raw - 1), 3);
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
     // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2: measured, not applied.
     expect((inputs.season as { trendMeasured: number }).trendMeasured).toBe(2);
     expect(inputs.trend).toBe(1);

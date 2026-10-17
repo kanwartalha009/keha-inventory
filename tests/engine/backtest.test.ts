@@ -244,11 +244,11 @@ describe("backtest: seasonality", () => {
 
   it("a store with ≥ 13 months applies last year's August ÷ July shape", () => {
     // Last year: 2/day in July, 4/day in August → raw ≈ 1.83 (3-week smoothing at the edges,
-    // the rate-window base blend); one year of history → shrunk halfway to 1: ≈ 1.41.
+    // the rate-window base blend); one year of history → soft threshold exp(ln 1.83 − 0.2) ≈ 1.50.
     const sold = (d: string) => (d < "2025-08-01" ? 2 : d <= "2025-08-31" ? 4 : 3);
     const r = backtestMonth(store([{ id: "a", sold }], "2025-06-01", "2026-08-31"), M);
     expect(r.season.seasonalApplied).toBe(true);
-    expect(r.season.seasonal).toBeCloseTo(1.41358, 4);
+    expect(r.season.seasonal).toBeCloseTo(1.49596, 4);
     expect(r.store?.predicted).toBeCloseTo(3 * r.season.seasonal * r.season.trend * 31, 9);
   });
 

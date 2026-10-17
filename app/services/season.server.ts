@@ -56,9 +56,6 @@ export async function loadSeasonContext(
   // 3-week smoothing margin, or the LY trend window (season-shared seasonalIndex / trendFactor).
   const longestBase = Math.max(...SEASON.baseWindows.map((w) => w.days));
   const from = addDays(today, -(SEASON.yearShiftDays * SEASON.maxYears + longestBase + SEASON.smoothRadiusDays + 7));
-  const horizon = Math.min(SEASON.maxHorizonDays, Math.max(1, input.maxHorizonDays));
-  // Newest last-year day a span (or the weekly curve) reads, smoothing margin included.
-  const lyTo = addDays(today, -SEASON.yearShiftDays + horizon + SEASON.smoothRadiusDays + 7);
   const pool = { shop, ...demandWhere(input.demand) };
 
   const [storeG, units12G] = await Promise.all([
@@ -79,13 +76,11 @@ export async function loadSeasonContext(
   const { groups, members } = buildSeasonGroups(input.variants, variantUnits12);
   const qualifying = [...groups.values()].filter((g) => g.qualifies);
   const groupSeries = new Map<string, UnitsSeries>();
-  // Day-level reads over the last-year windows (both years, bases and smoothing: [from … lyTo])
-  // and the last 28 days.
-  const lyEnd = lyTo < yesterday ? lyTo : yesterday;
-  const dayWindows = [
-    { from, to: lyEnd },
-    ...(lyTo < addDays(today, -SEASON.trendDays) ? [{ from: addDays(today, -SEASON.trendDays), to: yesterday }] : []),
-  ];
+  // One continuous span through yesterday (forecast quality 2026-10-17): the index and its shape read
+  // last year's weeks, the trend the last 28 days, and the daily levels (σ on de-seasonalised sales,
+  // level-shift detection, the forecast-error backtest) every day of the last months. Before, the
+  // days between last year's horizon and the last 28 days were not loaded and read as zero sales.
+  const dayWindows = [{ from, to: yesterday }];
   // One day-level query per qualifying collection (its members' units summed in SQL).
   for (const g of qualifying.filter((x) => x.kind === "collection")) {
     const ids = members.get(g.id) ?? [];

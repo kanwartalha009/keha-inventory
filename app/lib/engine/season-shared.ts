@@ -23,8 +23,15 @@
  *                   the weights renormalised (as the rate drops windows), so "now" (the rate) and
  *                   "then" (the base) are the same blend of the same weeks a year apart;
  *        raw_y      = span_y ÷ base_y; raw = the mean over the usable years;
- *        index      = 1 + w × (raw − 1), SHRUNK toward 1: w = 0.5 with one usable year (one year
- *                   is one sample: half of a copied spike is noise), 1 with two; clamped 0.2–5.0.
+ *        index      = SHRUNK toward 1 in log space by a soft threshold with one usable year:
+ *                   exp(sign(ln raw) × max(0, |ln raw| − 0.2)) — a change between −18 % and +22 % of
+ *                   the base (|ln| ≤ 0.2) is treated as noise (→ 1), a larger one keeps the rest
+ *                   (raw 0.25 → 0.31, raw 3 → 2.46); unshrunk with two years (forecast quality
+ *                   2026-10-17: the old linear 1 + 0.5 × (raw − 1) halved every season, so swimwear
+ *                   in winter was planned at ~60 % of its summer base instead of ~30 %; on a real
+ *                   store's backtest the soft threshold lowered WAPE at both horizons and on the
+ *                   held-out cutoffs, docs/ACCURACY.md); clamped 0.2–5.0.
+ *                   (Before: 1 + w × (raw − 1), w = 0.5 with one usable year.)
  *    Requirements: the history starts on or before today − 13 calendar months; year 1's span and
  *    its 28-day base window have ≥ 80 % covered days; the base sold > 0. Otherwise 1.0, labelled
  *    "No seasonal data yet". H is capped at 364 days so the LY span is always in the past.
@@ -56,7 +63,8 @@ export const SEASON = Object.freeze({
   /** Centred moving average around each day: ± this many days (21 days = 3 weeks). */
   smoothRadiusDays: 10,
   /** Weight of (index − 1) with only one usable year; two years → 1. */
-  oneYearWeight: 0.5,
+  /** One usable year: soft threshold on |ln raw| (see the header). Two years: no shrinking. */
+  oneYearShrinkLog: 0.2,
   /** The LY base blend: the sales rate's own windows and weights (types-shared ENGINE_DEFAULTS). */
   baseWindows: Object.freeze([
     { days: 28, weight: 0.5 },
@@ -164,7 +172,7 @@ export interface SeasonalResult {
   span: SpanStats & { smoothedPerDay: number | null };
   /** Year 1's 28-day base window (`blendedPerDay` = the rate-window blend actually used). */
   base: SpanStats & { blendedPerDay: number | null };
-  /** Usable years (0–2) and the shrink weight used (0.5 for one year, 1 for two). */
+  /** Usable years (0–2) and the share of last year's change kept (shrinkWeight; 1 with two years). */
   years: number;
   weight: number;
 }
@@ -236,9 +244,21 @@ function yearRatio(s: UnitsSeries, t: DayKey, H: number, y: number) {
 }
 
 /** 1 + w × (raw − 1), clamped to 0.2 … 5. */
+/** The one-year shrinkage (see the header): soft threshold in log space; two years: unchanged. */
+export function shrinkRaw(raw: number, years: number): number {
+  if (years >= 2) return raw;
+  const l = Math.log(Math.max(raw, 1e-3));
+  return Math.exp(Math.sign(l) * Math.max(0, Math.abs(l) - SEASON.oneYearShrinkLog));
+}
+
+/** The share of last year's change kept: (index − 1) ÷ (raw − 1); 1 when raw is 1. */
+export function shrinkWeight(raw: number, years: number): number {
+  if (years >= 2 || Math.abs(raw - 1) < 1e-12) return 1;
+  return (shrinkRaw(raw, years) - 1) / (raw - 1);
+}
+
 export function shrinkIndex(raw: number, years: number): number {
-  const w = years >= 2 ? 1 : SEASON.oneYearWeight;
-  return clamp(1 + w * (raw - 1), SEASON.seasonalMin, SEASON.seasonalMax);
+  return clamp(shrinkRaw(raw, years), SEASON.seasonalMin, SEASON.seasonalMax);
 }
 
 /** Seasonal index for the H days starting today (see the module header). */
@@ -259,7 +279,7 @@ export function seasonalIndex(s: UnitsSeries, today: DayKey, horizonDays: number
     span: { ...y1.span, smoothedPerDay: y1.smoothed },
     base: { ...y1.base.first, blendedPerDay: y1.base.perDay },
     years: reason === "ok" ? usable.length : 0,
-    weight: reason === "ok" ? (usable.length >= 2 ? 1 : SEASON.oneYearWeight) : 0,
+    weight: reason === "ok" && raw !== null ? Math.round(shrinkWeight(raw, usable.length) * 1000) / 1000 : 0,
   });
   const from = s.coverage.from;
   if (!from || from > monthsEarlier(t, SEASON.minHistoryMonths)) return out("short_history");
@@ -326,7 +346,7 @@ export const CURVE_MAX_WEEKS = 50;
  * Weekly seasonal shape for the forward order plan and the status / money projections: for week
  * k starting today (days 7k … 7k+6), per usable year (as seasonalIndex: weekdays aligned, 364·y
  * days back) the centred 3-week units/day around that week ÷ that year's blended base, averaged
- * over the years and shrunk toward 1 like the index (0.5 with one year). Unclamped (the users
+ * over the years and shrunk toward 1 like the index (shrinkRaw). Unclamped (the users
  * clamp), rounded to 3 decimals; a week with < 80 % covered days is null. Null when year 1's
  * base is unusable. Only used when the seasonal index was applied, with the same source (store
  * or collection) as the index, so it never introduces data the index didn't use.
@@ -360,10 +380,25 @@ export function seasonCurve(s: UnitsSeries, today: DayKey, weeks: number): (numb
       continue;
     }
     const raw = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-    const w = ratios.length >= 2 ? 1 : SEASON.oneYearWeight;
-    out.push(Math.round(Math.max(0, 1 + w * (raw - 1)) * 1000) / 1000);
+    out.push(Math.round(Math.max(0, shrinkRaw(raw, ratios.length)) * 1000) / 1000);
   }
   return out;
+}
+
+/**
+ * The season multiplier the P days from a PAST day `from` really had (forecast-error backtest,
+ * error-shared): the source's units/day over [from, from + P) ÷ its rate-window blend of the days
+ * before `from` — the seasonal index that day would have needed. With 14 months of history the
+ * index itself can't be computed for a day months back (it needs a year before it), so the
+ * backtest measures the product's own error given its group's season, not the index's. Null when
+ * the days aren't covered or the base sold nothing.
+ */
+export function realisedFactor(s: UnitsSeries, from: DayKey, days: number): number | null {
+  const n = Math.max(1, Math.round(days));
+  const span = spanStats(s, from, addDays(from, n - 1));
+  if (span.coverage < SEASON.minCoverage || span.unitsPerDay === null) return null;
+  const base = blendedBase(s, addDays(from, -1)).perDay;
+  return base !== null && base > 0 ? span.unitsPerDay / base : null;
 }
 
 /**
@@ -587,6 +622,7 @@ export function createSeasonContext(input: {
   };
   const curveMemo = new Map<string, (number | null)[] | null>();
   const levelMemo = new Map<string, Map<DayKey, number>>();
+  const originMemo = new Map<string, number>();
   return {
     /**
      * The past daily levels (dailyLevels) of the source `season` came from, for σ on
@@ -602,6 +638,20 @@ export function createSeasonContext(input: {
         levelMemo.set(key, (m = s ? dailyLevels(s, input.today, days) : new Map()));
       }
       return m.size ? m : null;
+    },
+    /**
+     * The backtest origins' season multipliers (realisedFactor of the same source as `season`;
+     * applied trend × it). 1 for every origin when the seasonal index isn't applied (the forecast
+     * then has no season either).
+     */
+    originsFor(season: VariantSeason, days: readonly DayKey[], P: number): { day: DayKey; multiplier: number }[] {
+      const s = season.seasonalResult.applied ? seriesOf(groupIdOf(season)) : null;
+      return days.map((day) => {
+        const key = `${groupIdOf(season) ?? ""}|${day}|${P}`;
+        let f = s ? originMemo.get(key) : 1;
+        if (f === undefined) originMemo.set(key, (f = realisedFactor(s!, day, P) ?? 1));
+        return { day, multiplier: f * season.trend };
+      });
     },
     /** The weekly seasonal shape from the same source as `season` (seasonCurve); null when its index wasn't applied. */
     curveFor(season: VariantSeason, weeks: number): (number | null)[] | null {
