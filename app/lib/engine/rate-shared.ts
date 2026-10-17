@@ -167,3 +167,42 @@ export function earliestDataDay(index: SeriesIndex): DayKey | null {
   for (const i of index.keys()) if (best === null || i < best) best = i;
   return best === null ? null : fromDayIndex(best);
 }
+
+/** How far back the in-stock pace fallback reaches: the 14 months of history the app stores. */
+export const PACE_LOOKBACK_DAYS = 427;
+/** In-stock days the fallback pace is measured over (as the shortest rate window). */
+export const PACE_TARGET_DAYS = 28;
+
+export interface InStockPace {
+  /** Units per in-stock day over the days used (clamped at 0). */
+  rate: number;
+  /** σ_daily over the same days (negative return days left out, as sigmaDaily). */
+  sigma: number;
+  inStockDays: number;
+  /** The earliest day used ("based on in-stock days since {month}"). */
+  from: DayKey;
+}
+
+/**
+ * Data audit 2026-10-17 #2: a best seller out of stock most of the last 90 days has fewer than
+ * `minInStockDays` in-stock days there and would drop out of the plan ("can't be planned yet").
+ * Its pace comes from the most recent in-stock days instead, reaching back before the 90 days
+ * (up to PACE_LOOKBACK_DAYS): walking back from yesterday, the first PACE_TARGET_DAYS in-stock
+ * days (sold-out days skipped, missing days skipped). Null when fewer than `minInStockDays` exist.
+ */
+export function inStockPace(index: SeriesIndex, today: DayKey, settings: EngineSettings = ENGINE_DEFAULTS): InStockPace | null {
+  const t = dayIndex(today);
+  const target = Math.max(settings.minInStockDays, PACE_TARGET_DAYS);
+  const used: { i: number; sold: number }[] = [];
+  for (let i = t - 1; i >= t - PACE_LOOKBACK_DAYS && used.length < target; i--) {
+    const row = index.get(i);
+    if (!row || soldOutDay(row)) continue;
+    used.push({ i, sold: row.sold });
+  }
+  if (used.length < settings.minInStockDays) return null;
+  const sold = used.reduce((a, d) => a + d.sold, 0);
+  const xs = used.filter((d) => d.sold >= 0).map((d) => d.sold);
+  const mean = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+  const sigma = xs.length ? Math.sqrt(xs.reduce((a, x) => a + (x - mean) * (x - mean), 0) / xs.length) : 0;
+  return { rate: Math.max(0, sold / used.length), sigma, inStockDays: used.length, from: fromDayIndex(used[used.length - 1]!.i) };
+}

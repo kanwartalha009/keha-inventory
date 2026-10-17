@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { computeVariant } from "../../app/lib/engine/index-shared";
+import { forwardInputFromMetric, planVariant } from "../../app/lib/engine/forward-plan-shared";
 import { TODAY, ago, buildSeries, variantInput } from "./fixtures";
 
 /** Alternating 1, 3 → rate 2 in every window, population σ 1. */
@@ -282,5 +283,57 @@ describe("computeVariant", () => {
     const none = computeVariant(variantInput())!;
     expect(none).toMatchObject({ price: null, cost: null });
     expect(none.inputs).toMatchObject({ priceSource: null, costSource: null });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Long-out best sellers keep a pace (data audit 2026-10-17 #2)
+// ---------------------------------------------------------------------------
+
+describe("a best seller out of stock most of the last 90 days still gets a pace from older in-stock days", () => {
+  // Out 77 of the last 90 days (nothing sold), in stock on the 13 days before that at 4/day.
+  const recent = buildSeries({ days: 90, sold: (k) => (k > 77 ? 4 : 0), oos: (k) => k <= 77, endStock: (k) => (k > 77 ? 20 : 0) });
+  // Older history (days 91–400 back): in stock, 5/day.
+  const older = buildSeries({ days: 400, sold: 5 }).filter((r) => r.day < ago(90));
+
+  it("without older history: can't be planned yet (as before)", () => {
+    const r = computeVariant(variantInput({ series: recent, onHand: 0 }))!;
+    expect(r.inputs.enoughData).toBe(false);
+    expect(r.inputs.orderNeed).toBeNull();
+    expect(r.inputs.pace).toBeNull();
+  });
+
+  it("with it: the pace of the most recent in-stock days (28), reaching back before the 90 days", () => {
+    const r = computeVariant(variantInput({ series: recent, olderSeries: older, onHand: 0 }))!;
+    // 13 recent days at 4 + the 15 most recent older days at 5 = 127 over 28 in-stock days.
+    expect(r.rate).toBeCloseTo(127 / 28, 9);
+    expect(r.inputs.pace).toEqual({ from: ago(105), inStockDays: 28 });
+    expect(r.status).toBe("out");
+    expect(r.inputs.orderNeed).not.toBeNull();
+    expect(r.safety).not.toBeNull();
+    // The plan can order it, and Why this quantity says where the pace comes from.
+    const metric = { status: r.status, rate: r.rate, sigma: r.sigma, orderQty: r.orderQty, inputs: { ...r.inputs, safety: r.safety } };
+    const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: null, moq: null, notCounted: 0, days: 91 }));
+    expect(fwd.skip).toBeNull();
+    expect(fwd.orders[0]!.why).toMatchObject({ paceFrom: ago(105) });
+  });
+
+  it("enough in-stock days in the 90 days: the usual pace, no fallback", () => {
+    const r = computeVariant(variantInput({ olderSeries: older }))!;
+    expect(r.rate).toBe(2);
+    expect(r.inputs.pace).toBeNull();
+  });
+
+  it("older history with fewer than 14 in-stock days in all: still can't be planned", () => {
+    const thin = buildSeries({ days: 120, sold: 0, oos: true, endStock: 0 }).filter((r) => r.day < ago(90));
+    const r = computeVariant(variantInput({ series: recent, olderSeries: thin, onHand: 0 }))!;
+    expect(r.inputs.pace).toBeNull();
+    expect(r.inputs.orderNeed).toBeNull();
+  });
+
+  it("never reaches back more than 14 months", () => {
+    const ancient = buildSeries({ days: 500, sold: 5 }).filter((r) => r.day < ago(430));
+    const r = computeVariant(variantInput({ series: recent, olderSeries: ancient, onHand: 0 }))!;
+    expect(r.inputs.pace).toBeNull();
   });
 });

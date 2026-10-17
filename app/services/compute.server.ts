@@ -84,6 +84,7 @@ import {
 import { generateActions, type RuleProduct, type RuleVariant } from "../lib/engine/actions-rules-shared";
 import { resolveLeadTime } from "../lib/engine/order-shared";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
+import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
 import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
 import { OPEN_PO_STATUSES, casePackFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
@@ -120,6 +121,34 @@ export type ComputeOptions = { now?: () => number; plan?: (shop: string) => Prom
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const numOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+
+/**
+ * Daily series before the 90-day window (back to `from`) for the given variants only — the in-stock
+ * pace fallback of variants out of stock most of the window (data audit #2). Same rules as the
+ * main series (compute-shared buildSeries): a day exists only with pool stock data.
+ */
+async function loadOlderSeries(
+  shop: string,
+  x: { ids: string[]; from: string; before: string; pool: string[]; demandFilter: ReturnType<typeof demandWhere> },
+): Promise<Map<string, DailyRow[]>> {
+  if (!x.ids.length || !x.pool.length) return new Map();
+  const range = { gte: dayDate(x.from), lt: dayDate(x.before) };
+  const sales: SalesDay[] = [];
+  const stock: PooledStockDay[] = [];
+  for (let i = 0; i < x.ids.length; i += 500) {
+    const ids = x.ids.slice(i, i + 500);
+    const [salesG, stockG, outG] = await Promise.all([
+      prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...x.demandFilter, variantId: { in: ids }, day: range }, _sum: { sold: true } }),
+      prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range }, _sum: { endUnits: true }, _count: { _all: true } }),
+      prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range, outOfStock: true }, _count: { _all: true } }),
+    ]);
+    const out = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
+    for (const g of salesG) sales.push({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 });
+    for (const g of stockG)
+      stock.push({ variantId: g.variantId, day: dayKey(g.day), endUnits: num(g._sum.endUnits), reported: g._count._all, outReported: out.get(`${g.variantId}|${dayKey(g.day)}`) ?? 0 });
+  }
+  return buildSeries(sales, stock);
+}
 
 export async function computeShop(shop: string, opts: ComputeOptions = {}): Promise<ComputeResult> {
   const now = opts.now ?? Date.now;
@@ -255,6 +284,17 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const revenue = revenueOf(channelSales);
   const dataSince = new Map(dataSinceG.map((g) => [g.variantId, g._min.day ? dayKey(g._min.day) : null]));
   const lastSale = new Map(lastSaleG.map((g) => [g.variantId, g._max.day ? dayKey(g._max.day) : null]));
+  const olderSeries = await loadOlderSeries(shop, {
+    // Data audit #2: too few in-stock days in the 90 days but sales before them — out of stock
+    // most of the window. Their pace comes from older in-stock days (engine inStockPace).
+    ids: considered
+      .filter((v) => lastSale.get(v.id) && (series.get(v.id) ?? []).filter((r) => !soldOutDay(r)).length < settings.minInStockDays)
+      .map((v) => v.id),
+    from: addDays(today, -PACE_LOOKBACK_DAYS),
+    before: from,
+    pool,
+    demandFilter,
+  });
   // onHand: physical units (Shopify on_hand) — auto-receive / landed estimates compare it with
   // history. available: the PLANNING POSITION (Shopify available = on_hand − committed − reserved
   // − damaged − safety_stock − quality_control); negative when oversold (audit 2026-10-17 C2).
@@ -357,6 +397,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       id: v.id,
       isBundle: false,
       series: series.get(v.id) ?? [],
+      olderSeries: olderSeries.get(v.id) ?? null,
       today,
       onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
       incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),

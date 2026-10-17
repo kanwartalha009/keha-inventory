@@ -110,6 +110,8 @@ export interface ForwardVariantInput {
    * owed (a backlog). False / absent: missed sales are lost. A negative on hand counts as true.
    */
   sellsWhenOut?: boolean | null;
+  /** Data audit #2: the pace comes from in-stock days since this day (inputs.pace.from); null = the usual windows. */
+  paceFrom?: DayKey | null;
 }
 
 /**
@@ -138,6 +140,8 @@ export interface OrderWhy {
   missed?: number;
   /** It keeps selling when out of stock: the backlog is owed and ordered back. */
   sellsWhenOut?: boolean;
+  /** The sales pace comes from in-stock days since this day (out of stock most of the last 90 days). */
+  paceFrom?: DayKey | null;
   /** demand + safety − onHand − onOrder − missed. */
   need: number;
   /** After the case pack and the per-variant minimum. */
@@ -421,6 +425,7 @@ export class VariantProjection {
         onOrder,
         missed,
         sellsWhenOut: this.sellsWhenOut,
+        paceFrom: this.input.paceFrom ?? null,
         need,
         rounded: 0,
         pack: this.pack,
@@ -493,6 +498,12 @@ export interface StoredMetric {
 }
 
 const numIn = (o: Record<string, unknown>, k: string): number | null => (finite(o[k]) ? (o[k] as number) : null);
+
+/** inputs.pace.from (data audit #2), or null. */
+function paceFromInputs(p: unknown): DayKey | null {
+  const from = p && typeof p === "object" ? (p as Record<string, unknown>).from : null;
+  return typeof from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
+}
 
 /**
  * Take units out of the stored incoming (H2: Keha units closed short / cancelled / deleted since
@@ -584,6 +595,7 @@ export function forwardInputFromMetric(
     days: x.days,
     outSince: typeof inputs.outSince === "string" ? inputs.outSince : null,
     sellsWhenOut: inputs.sellsWhenOut === true,
+    paceFrom: paceFromInputs(inputs.pace),
   };
 }
 

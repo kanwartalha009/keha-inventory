@@ -339,6 +339,16 @@ function nf(v: number, locale: string, digits = 1): string {
   }
 }
 
+/** "July 2026" in the admin language (a store-local day key). */
+export function monthYear(day: DayKey, locale: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  try {
+    return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+  } catch {
+    return day.slice(0, 7);
+  }
+}
+
 /**
  * "Why this quantity": the terms the plan used for one order (never recomputed): the forecast,
  * safety stock, stock and stock on order, the need, then the rounding and any top-up.
@@ -372,6 +382,8 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
     ),
   ];
   if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while sold out is owed, so it is ordered back."));
+  // Data audit #2: out of stock most of the last 90 days — the pace comes from older in-stock days.
+  if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));
   if (Math.abs(why.growth - 1) > 1e-9) out.push(fill(t("Growth assumption ×{growth} included in the forecast."), { growth: nf(why.growth, locale, 2) }));
   const r = { qty: nf(why.rounded, locale, 0), pack: nf(why.pack ?? 0, locale, 0), moq: nf(why.moq ?? 0, locale, 0) };
   out.push(

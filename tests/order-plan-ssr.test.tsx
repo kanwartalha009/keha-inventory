@@ -165,6 +165,14 @@ describe("order-plan-shared", () => {
     expect(whyLines(lost, (x) => translate("fr", x), "fr")[0]).toContain("ventes manquées en rupture 600");
   });
 
+  it("Why this quantity: a pace from older in-stock days says since when (out of stock most of the last 90 days)", () => {
+    const t = (x: string) => x;
+    const why = { day: 0, days: 28, demand: 84, rate: 3, season: 1, growth: 1, safety: 5, onHand: 0, onOrder: 0, need: 89, rounded: 89, pack: null, moq: null, topUp: 0, paceFrom: "2026-07-03" };
+    expect(whyLines(why, t, "en")).toContain("Sales per day based on in-stock days since July 2026.");
+    expect(whyLines(why, (x) => translate("de", x), "de")).toContain("Verkäufe pro Tag aus den Tagen mit Bestand seit Juli 2026.");
+    expect(whyLines({ ...why, paceFrom: null }, t, "en").some((l) => l.includes("since"))).toBe(false);
+  });
+
   it("last year's same weeks: the number, or — without history; a warning above 1.5×", () => {
     const t = (x: string) => x;
     expect(lastYearLine(40, t, "en")).toBe("Sold in the same weeks last year: 40");

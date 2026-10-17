@@ -236,6 +236,29 @@ describe("computeShop", () => {
     expect((metric(C).inputs as { noSaleDays: number }).noSaleDays).toBe(200);
   });
 
+  it("data audit #2: a best seller out of stock 77 of the 90 days keeps a pace from older in-stock days", async () => {
+    const LONG = "gid://shopify/ProductVariant/8";
+    db.tables.variant.push({ ...db.tables.variant[0], id: LONG, productId: "PH", handle: "best" });
+    db.tables.stockNow.push({ shop: S, variantId: LONG, locationId: L1, onHand: 0, available: 0, incoming: 0 });
+    // In stock at 3 a day from 1 Jun to 30 Jul (60 days, 47 of them before the 90-day window), then out.
+    for (const day of daysBetween("2026-06-01", "2026-10-15")) {
+      const inStock = day <= "2026-07-30";
+      if (inStock) db.tables.salesDaily.push({ shop: S, day: d(day), variantId: LONG, locationKey: "online", channel: "all", sold: 3, returned: 0, gross: 0 });
+      db.tables.stockDaily.push({ shop: S, day: d(day), variantId: LONG, locationId: L1, endUnits: inStock ? 30 : 0, outOfStock: !inStock });
+    }
+    await computeShop(S, { now: () => NOW });
+    const m = metric(LONG);
+    const inputs = m.inputs as { enoughData: boolean; inStockDays: number; pace: { from: string; inStockDays: number } | null; orderNeed: number | null };
+    expect(inputs.enoughData).toBe(false);
+    expect(inputs.inStockDays).toBe(13);
+    // The 28 most recent in-stock days: 30 Jul back to 3 Jul.
+    expect(inputs.pace).toEqual({ from: "2026-07-03", inStockDays: 28 });
+    expect(m.rate).toBe(3);
+    expect(m.status).toBe("out");
+    expect(inputs.orderNeed).not.toBeNull();
+    expect(m.orderQty).toBeGreaterThan(0);
+  });
+
   it("marks the sold-out variant out and the never-selling one dead with neverRunsOut", async () => {
     await computeShop(S, { now: () => NOW });
     expect(metric(B).status).toBe("out");

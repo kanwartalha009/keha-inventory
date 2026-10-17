@@ -71,6 +71,15 @@ export const ORDERING_TR: Record<string, Tr> = {
     nl: "Verkoopt ook zonder voorraad: wat zonder voorraad verkocht is, staat open en wordt mee besteld.",
     pl: "Sprzedaje się bez stanu: to, co sprzedano bez stanu, czeka na wysyłkę, więc zamawiamy to ponownie.",
   },
+  "Sales per day based on in-stock days since {month}.": {
+    es: "Ventas al día según los días con stock desde {month}.",
+    fr: "Ventes par jour calculées sur les jours en stock depuis {month}.",
+    de: "Verkäufe pro Tag aus den Tagen mit Bestand seit {month}.",
+    it: "Vendite al giorno basate sui giorni con stock da {month}.",
+    pt: "Vendas por dia com base nos dias com stock desde {month}.",
+    nl: "Verkopen per dag op basis van de dagen met voorraad sinds {month}.",
+    pl: "Sprzedaż dziennie na podstawie dni ze stanem od {month}.",
+  },
   "Growth assumption ×{growth} included in the forecast.": {
     es: "Incluye la hipótesis de crecimiento ×{growth}.",
     fr: "L'hypothèse de croissance ×{growth} est incluse dans la prévision.",

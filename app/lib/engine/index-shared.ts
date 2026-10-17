@@ -16,7 +16,9 @@ import {
   zForRole,
 } from "./order-shared";
 import {
+  PACE_LOOKBACK_DAYS,
   earliestDataDay,
+  inStockPace,
   indexSeries,
   lastSaleDay,
   salesRate,
@@ -49,6 +51,12 @@ export interface VariantInput {
   isBundle?: boolean;
   /** Daily facts for this scope; missing days are simply absent. */
   series: readonly DailyRow[];
+  /**
+   * Older daily facts (before the `historyDays` window, up to 14 months back), for the in-stock
+   * pace fallback only (data audit #2): a variant with too few in-stock days in the window. Rows
+   * inside the window are ignored here.
+   */
+  olderSeries?: readonly DailyRow[] | null;
   today: DayKey;
   /** Units on hand now (may be negative when oversold). */
   onHand: number;
@@ -159,6 +167,12 @@ export interface VariantInputs {
   /** Sells when out of stock (inventoryPolicy CONTINUE, or a negative on hand): backlog is owed. */
   sellsWhenOut: boolean;
   /**
+   * Data audit #2: too few in-stock days in the window (out of stock most of it), so the pace is
+   * the most recent in-stock days reaching back before it (rate-shared inStockPace): `from` the
+   * earliest day used. null = the usual windows.
+   */
+  pace: { from: DayKey; inStockDays: number } | null;
+  /**
    * M3: the first day of the out-of-stock spell the variant is in now (sales history: every day
    * from it through yesterday ended at ≤ 0 units; a day without data ends the search); null when
    * yesterday wasn't out. The forward plan's "Overdue since" date for a variant already out.
@@ -256,7 +270,21 @@ export function computeVariant(input: VariantInput): VariantResult | null {
 
   // §7.2 rate and σ.
   const r = salesRate(index, today, settings);
-  const sigma = sigmaDaily(index, today, settings.historyDays);
+  // Data audit #2: out of stock most of the window → the pace of the most recent in-stock days,
+  // older history included (up to 14 months), before "can't be planned yet".
+  let pace: ReturnType<typeof inStockPace> = null;
+  if (!r.enoughData && input.olderSeries?.length) {
+    const start = dayIndex(today) - settings.historyDays;
+    const oldest = dayIndex(today) - PACE_LOOKBACK_DAYS;
+    const all = new Map(index);
+    for (const row of input.olderSeries) {
+      const i = dayIndex(row.day);
+      if (i < start && i >= oldest && Number.isFinite(row.sold) && !all.has(i)) all.set(i, row);
+    }
+    pace = inStockPace(all, today, settings);
+  }
+  const rate = pace ? pace.rate : r.rate;
+  const sigma = pace ? pace.sigma : sigmaDaily(index, today, settings.historyDays);
 
   // §7.4 ordering.
   const lead = resolveLeadTime(input.supplierLeadTimeDays, settings);
@@ -266,8 +294,8 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       : settings.cycleDays;
   const z = zForRole(input.role, settings);
   const m = { seasonal, trend, plan };
-  const fRate = r.rate === null ? null : forecastRate(r.rate, m);
-  const advice = r.enoughData && r.rate !== null && sigma !== null;
+  const fRate = rate === null ? null : forecastRate(rate, m);
+  const advice = (r.enoughData || pace !== null) && rate !== null && sigma !== null;
 
   // H4 (audit 2026-10-17): periodic review — the stock must cover demand uncertainty until the
   // NEXT order lands, i.e. over lead time + order cycle (the protection period), not lead only.
@@ -278,10 +306,10 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   // H6: day-by-day projection with the seasonal shape over the days in question (status, days
   // left, cash stuck, sales at risk), not one rate for the next lead time + cycle.
   const projection =
-    r.rate === null
+    rate === null
       ? null
       : demandProjection({
-          rate: r.rate,
+          rate,
           trend,
           seasonal,
           curve: input.seasonCurve ?? null,
@@ -336,7 +364,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const status = variantStatus(
     {
       onHand,
-      inStockDays: r.inStockDays,
+      inStockDays: pace ? Math.max(r.inStockDays, pace.inStockDays) : r.inStockDays,
       noSaleDays,
       productAgeDays,
       daysLeft: left,
@@ -355,7 +383,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   let orderNeed: number | null = null;
   const sellsWhenOut = input.sellsWhenOut === true || onHand < 0;
   if (advice && !input.noReorder) {
-    const need = demand(r.rate!, m, lead.days + cycle);
+    const need = demand(rate!, m, lead.days + cycle);
     // Sells when out (or a negative on hand, a backlog): the order covers what is owed. Otherwise
     // the sales missed before today's order lands are lost — not ordered back (data audit #1).
     const missed = sellsWhenOut
@@ -384,7 +412,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     id: input.id,
     status,
     role: input.role,
-    rate: r.rate,
+    rate,
     forecastRate: fRate,
     sigma,
     daysLeft: left,
@@ -424,6 +452,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       minOrder: input.minOrder ?? null,
       orderNeed,
       sellsWhenOut,
+      pace: pace ? { from: pace.from, inStockDays: pace.inStockDays } : null,
       outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,
