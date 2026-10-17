@@ -25,7 +25,9 @@ const res = (rows: SalesRow[], missing: string[]): ParseResult<SalesRow> => ({ r
 function client(acceptReturns: boolean) {
   const seen: (BuildOptions | undefined)[] = [];
   const ql = {
-    salesDailyByLocation: async () => res([], ["sales_channel", "gross_sales", "quantity_returned"]),
+    salesDailyByLocation: async () =>
+      res([{ day: "2026-10-14", variantId: V, locationKey: "online", channel: "unknown", sold: 8, gross: 0, returned: 0 }], ["sales_channel", "gross_sales", "quantity_returned"]),
+    salesTotalsDaily: async () => ({ rows: [{ day: "2026-10-14", sold: 8 }], skipped: 0, missingColumns: [] }),
     salesDailyByChannel: async (_r: DayRange, _t: string, o?: BuildOptions) => {
       seen.push(o);
       if (o?.returns && !acceptReturns) throw new ShopifyqlParseError(["Invalid column: quantity_returned"], "q");
@@ -49,6 +51,7 @@ describe("storeSales returns", () => {
     await storeSales(S, ql, RANGE, "2026-10-16", []);
     expect(seen).toEqual([{ returns: true }]);
     expect(db.tables.salesDaily).toEqual([
+      expect.objectContaining({ variantId: V, locationKey: "online", channel: "all", sold: 8 }),
       expect.objectContaining({ variantId: V, locationKey: "all", channel: "Online Store", sold: 8, returned: -2, gross: 200 }),
     ]);
   });
@@ -57,7 +60,7 @@ describe("storeSales returns", () => {
     const { ql, seen } = client(false);
     await storeSales(S, ql, RANGE, "2026-10-16", []);
     expect(seen).toEqual([{ returns: true }, undefined]);
-    expect(db.tables.salesDaily[0]).toMatchObject({ sold: 8, returned: 0 });
+    expect(db.tables.salesDaily.find((r) => r.channel === "Online Store")).toMatchObject({ sold: 8, returned: 0 });
     expect(console.warn).toHaveBeenCalled();
   });
 });

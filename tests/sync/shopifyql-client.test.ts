@@ -81,7 +81,8 @@ describe("happy path", () => {
     expect(calls[0].query).toContain("shopifyqlQuery(query: $q)");
     expect(calls[0].query).toContain("parseErrors");
     expect(calls[0].variables).toEqual({
-      q: "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, pos_location_name, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30",
+      // Always paged with the full row key (audit 2026-10-17 C1): no LIMIT = only 1,000 rows.
+      q: "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, pos_location_name, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30 ORDER BY day ASC, product_variant_id ASC, pos_location_name ASC, sales_channel ASC LIMIT 5000 OFFSET 0",
     });
     expect(res.rows).toHaveLength(3);
     expect(res.skipped).toBe(3);
@@ -122,11 +123,19 @@ describe("errors", () => {
     expect(time.waits).toEqual([]);
   });
 
-  it("RESPONSE_TOO_LARGE → ShopifyqlTooLargeError, not retried", async () => {
-    const { admin, calls } = fakeAdmin([{ body: tooLargeFixture }, { body: salesFixture }]);
+  it("RESPONSE_TOO_LARGE → the page shrinks (5000 → 2500 → 1250 → 1000), then ShopifyqlTooLargeError", async () => {
+    const { admin, calls } = fakeAdmin([{ body: tooLargeFixture }]);
     const err = await createShopifyqlClient(admin, fakeTime()).salesDaily(SEPT, TODAY).catch((e) => e);
     expect(err).toBeInstanceOf(ShopifyqlTooLargeError);
-    expect(calls).toHaveLength(1);
+    expect(calls.map((c) => /LIMIT (\d+) OFFSET 0$/.exec(String(c.variables?.q))?.[1])).toEqual(["5000", "2500", "1250", "1000"]);
+  });
+
+  it("a smaller page that fits is used for the rest of the read", async () => {
+    const { admin, calls } = fakeAdmin([{ body: tooLargeFixture }, { body: salesFixture }]);
+    const res = await createShopifyqlClient(admin, fakeTime()).salesDaily(SEPT, TODAY);
+    expect(res.rows).toHaveLength(3);
+    expect(calls).toHaveLength(2);
+    expect(String(calls[1].variables?.q)).toMatch(/LIMIT 2500 OFFSET 0$/);
   });
 
   it("RESPONSE_TOO_LARGE thrown by the real library (GraphqlQueryError shape) is recognised", async () => {
@@ -230,6 +239,8 @@ describe("runChunked with the client", () => {
       { since: "2026-09-01", until: "2026-09-07" },
     ]);
     expect(out.every((c) => c.result.rows.length === 3)).toBe(true);
-    expect(ranges).toHaveLength(7);
+    // 7 date ranges tried; the 3 too-large ones each tried at 4 page sizes first.
+    expect(new Set(ranges.map((r) => `${r.since}..${r.until}`)).size).toBe(7);
+    expect(ranges).toHaveLength(3 * 4 + 4);
   });
 });

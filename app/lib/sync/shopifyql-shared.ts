@@ -9,6 +9,13 @@
  *    `columns` metadata (never by position);
  *  - date-range helpers: day arithmetic, monthly chunks newest first (§6.2 backfill strategy),
  *    and `runChunked`, which halves a range on RESPONSE_TOO_LARGE;
+ *  - `fetchAllPages`: EVERY dataset query is paged with a unique, total ORDER BY and
+ *    LIMIT / OFFSET (audit 2026-10-17 C1: without LIMIT ShopifyQL silently returns only the
+ *    first 1,000 rows), rows are de-duplicated by their key (M10: never summed twice), and a
+ *    page loop that cannot prove it reached the end fails (retryable) instead of storing a
+ *    partial result;
+ *  - `reconcileDailyUnits`: per-day units of a grouped sales result vs the store-level daily
+ *    total, so a truncated or overlapping read fails the chunk instead of being stored;
  *  - error classes and classification of both HTTP responses and the errors the Shopify
  *    library throws.
  *
@@ -25,7 +32,9 @@ export type ShopifyqlErrorCode =
   | "PARSE_ERROR"
   | "RESPONSE_TOO_LARGE"
   | "THROTTLED"
-  | "REQUEST_FAILED";
+  | "REQUEST_FAILED"
+  | "TRUNCATED"
+  | "RECONCILE_MISMATCH";
 
 /** Base class for every error this layer raises. `retryable` tells the caller whether the same query can succeed later. */
 export class ShopifyqlError extends Error {
@@ -81,6 +90,41 @@ export class ShopifyqlRequestError extends ShopifyqlError {
     super("REQUEST_FAILED", message, false);
     this.name = "ShopifyqlRequestError";
     this.status = status;
+  }
+}
+
+/**
+ * A paged read could not prove it holds every row (row cap hit, OFFSET ignored, columns changed
+ * between pages, key columns missing). Retryable: the chunk is NOT stored and is tried again on
+ * the next run (the backfill skips the month, marked degraded, after MAX_STEP_ATTEMPTS).
+ */
+export class ShopifyqlTruncatedError extends ShopifyqlError {
+  readonly rows: number;
+  constructor(message: string, rows: number) {
+    super("TRUNCATED", `ShopifyQL result incomplete: ${message}`, true);
+    this.name = "ShopifyqlTruncatedError";
+    this.rows = rows;
+  }
+}
+
+export type DayMismatch = { day: string; expected: number; got: number };
+
+/**
+ * The per-day units of a grouped read do not add up to the store-level daily total (audit C1:
+ * truncation; M10: overlapping pages). Retryable; the chunk is NOT stored.
+ */
+export class ShopifyqlReconcileError extends ShopifyqlError {
+  readonly label: string;
+  readonly mismatches: DayMismatch[];
+  constructor(label: string, mismatches: DayMismatch[]) {
+    const shown = mismatches
+      .slice(0, 5)
+      .map((m) => `${m.day} expected ${m.expected} got ${m.got}`)
+      .join("; ");
+    super("RECONCILE_MISMATCH", `${label}: daily units do not match the store total on ${mismatches.length} day(s): ${shown}`, true);
+    this.name = "ShopifyqlReconcileError";
+    this.label = label;
+    this.mismatches = mismatches;
   }
 }
 
@@ -210,56 +254,6 @@ export async function runChunked<T>(
   }
 }
 
-/** Rows per page for the single-day RESPONSE_TOO_LARGE fallback. */
-export const PAGE_LIMIT = 5000;
-/** Safety stop: a page loop that never ends (OFFSET ignored) must not run forever. */
-export const MAX_PAGES = 200;
-
-/**
- * Pages one query with `ORDER BY <orderBy> LIMIT <limit> OFFSET k`, k = 0, limit, 2·limit …,
- * until a page returns fewer than `limit` raw rows (rows + skipped). Results are merged.
- * TO VERIFY on a dev store: OFFSET paging semantics in ShopifyQL.
- */
-export async function runPaged<T>(
-  fetchPage: (paging: Paging) => Promise<ParseResult<T>>,
-  orderBy: string,
-  limit: number = PAGE_LIMIT,
-  maxPages: number = MAX_PAGES,
-): Promise<ParseResult<T>> {
-  const rows: T[] = [];
-  let skipped = 0;
-  let missingColumns: string[] | null = null;
-  for (let page = 0; ; page++) {
-    if (page >= maxPages) throw new ShopifyqlRequestError(`ShopifyQL paging did not end after ${maxPages} pages`, null);
-    const r = await fetchPage({ orderBy, limit, offset: page * limit });
-    rows.push(...r.rows);
-    skipped += r.skipped;
-    missingColumns ??= r.missingColumns;
-    if (r.rows.length + r.skipped < limit) break;
-  }
-  return { rows, skipped, missingColumns: missingColumns ?? [] };
-}
-
-/**
- * runChunked with a last resort: a SINGLE day that is still RESPONSE_TOO_LARGE is paged
- * (runPaged) instead of failing. Results come back newest first, like runChunked.
- */
-export async function runChunkedPaged<T>(
-  range: DayRange,
-  fetch: (range: DayRange, opts?: BuildOptions) => Promise<ParseResult<T>>,
-  orderBy: string,
-  limit: number = PAGE_LIMIT,
-): Promise<Array<{ range: DayRange; result: ParseResult<T> }>> {
-  return runChunked(range, async (r) => {
-    try {
-      return await fetch(r);
-    } catch (err) {
-      if (!isTooLargeError(err) || dayCount(r) > 1) throw err;
-      return runPaged((paging) => fetch(r, { paging }), orderBy, limit);
-    }
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Query builders (§6.1 — dataset and column names exactly as verified live)
 // ---------------------------------------------------------------------------
@@ -275,33 +269,38 @@ export const SHOPIFYQL_GRAPHQL = `#graphql
 
 export type Paging = {
   /**
-   * `ORDER BY <column>` before LIMIT / OFFSET so pages are stable.
-   * TO VERIFY on a dev store: ORDER BY together with TIMESERIES and LIMIT / OFFSET.
+   * `ORDER BY c1 ASC, c2 ASC …` before LIMIT / OFFSET. Must be the full row key of the query
+   * (time dimension + every GROUP BY dimension, see the *_KEY constants) so the order is total
+   * and pages never overlap or skip rows. With TIMESERIES the time dimension stays the primary
+   * order and the listed columns break ties (shopify.dev ShopifyQL 2026-10 ORDER BY).
+   * Verified live 2026-10-17: ORDER BY … LIMIT n OFFSET k works together with TIMESERIES day.
    */
-  orderBy?: string;
-  /** `LIMIT n` — ShopifyQL supports it. */
+  orderBy?: readonly string[];
+  /** `LIMIT n` (verified live: LIMIT 5000 is accepted). */
   limit?: number;
-  /** `OFFSET n` — to verify on a dev store before relying on it for paging. */
+  /** `OFFSET n` (verified live with LIMIT). */
   offset?: number;
 };
 
 export type BuildOptions = {
   paging?: Paging;
   /**
-   * Channel sales query only: also SHOW quantity_returned (spec §6.1 verified it live with
-   * GROUP BY product_id; with product_variant_id + sales_channel it is TO VERIFY on a dev
-   * store). storeSales falls back to the query without it on a parse error.
+   * Channel sales query only: also SHOW quantity_returned. Verified live 2026-10-17 with
+   * GROUP BY product_variant_id, sales_channel TIMESERIES day (audit L6). storeSales still falls
+   * back to the query without it on a parse error, as a safety net.
    */
   returns?: boolean;
 };
+
+const IDENT_RE = /^[a-z_][a-z0-9_]*$/;
 
 function pagingClause(paging: Paging | undefined): string {
   if (!paging) return "";
   const parts: string[] = [];
   if (paging.orderBy !== undefined) {
-    if (!/^[a-z_][a-z0-9_]*$/.test(paging.orderBy)) throw new RangeError(`bad ORDER BY column ${paging.orderBy}`);
-    // TO VERIFY on a dev store: ORDER BY placement with TIMESERIES day.
-    parts.push(`ORDER BY ${paging.orderBy}`);
+    if (!paging.orderBy.length) throw new RangeError("ORDER BY needs at least one column");
+    for (const c of paging.orderBy) if (!IDENT_RE.test(c)) throw new RangeError(`bad ORDER BY column ${c}`);
+    parts.push(`ORDER BY ${paging.orderBy.map((c) => `${c} ASC`).join(", ")}`);
   }
   if (paging.limit !== undefined) {
     if (!Number.isSafeInteger(paging.limit) || paging.limit < 1) {
@@ -313,7 +312,7 @@ function pagingClause(paging: Paging | undefined): string {
     if (!Number.isSafeInteger(paging.offset) || paging.offset < 0) {
       throw new RangeError(`offset must be a non-negative integer, got ${paging.offset}`);
     }
-    // OFFSET: to verify on a dev store (syntax and whether it needs LIMIT alongside it).
+    if (paging.limit === undefined) throw new RangeError("OFFSET needs LIMIT");
     parts.push(`OFFSET ${paging.offset}`);
   }
   return parts.length ? ` ${parts.join(" ")}` : "";
@@ -324,14 +323,26 @@ function dateClause(range: DayRange, today: string): string {
   return `SINCE ${range.since} UNTIL ${range.until}`;
 }
 
+/*
+ * Row keys: the time dimension plus every GROUP BY dimension, i.e. exactly what makes a result
+ * row unique. Used as the ORDER BY of every page (total order → stable, non-overlapping pages)
+ * and as the de-duplication key when pages are merged (M10: a row seen twice replaces, never
+ * adds). tests/sync/shopifyql-paging.test.ts checks each key covers its query's dimensions.
+ */
+export const SALES_KEY = ["day", "product_variant_id", "pos_location_name", "sales_channel"] as const;
+export const SALES_BY_LOCATION_KEY = ["day", "product_variant_id", "pos_location_name"] as const;
+export const SALES_BY_CHANNEL_KEY = ["day", "product_variant_id", "sales_channel"] as const;
+export const STOCK_KEY = ["day", "product_variant_id", "inventory_location_name"] as const;
+export const SESSIONS_KEY = ["day", "landing_page_path", "referrer_source"] as const;
+export const SHOP_TOTALS_KEY = ["day"] as const;
+export const SALES_TOTALS_KEY = ["day"] as const;
+
 /**
- * Query 1 — daily sales per variant, split by POS location AND channel.
- * UNVERIFIED combination: each metric and each 2-dimension grouping was verified live, but
- * `pos_location_name` + `sales_channel` together (with `quantity_returned`) was not. If it
- * fails, fall back to `buildDailySalesByLocationQuery` + `buildDailySalesByChannelQuery`.
+ * Query 1 — daily sales per variant, split by POS location AND channel, with returns.
+ * Verified live 2026-10-17 (audit L6). Not used by the sync yet: SalesDaily still stores the
+ * two 2-dimension views (facts-shared), which compute reads; switching is a data-model change.
  */
 export function buildDailySalesQuery(range: DayRange, today: string, opts: BuildOptions = {}): string {
-  // UNVERIFIED combination: pos_location_name + sales_channel in one GROUP BY — verify on a dev store.
   return (
     "FROM sales SHOW net_items_sold, gross_sales, quantity_returned " +
     "GROUP BY product_variant_id, pos_location_name, sales_channel TIMESERIES day " +
@@ -340,7 +351,11 @@ export function buildDailySalesQuery(range: DayRange, today: string, opts: Build
   );
 }
 
-/** Verified fallback A: units sold per variant per POS location (columns day, product_variant_id, pos_location_name, net_items_sold). */
+/**
+ * Verified: units sold per variant per POS location (columns day, product_variant_id,
+ * pos_location_name, net_items_sold). Online sales come back with an EMPTY pos_location_name
+ * (verified live) → locationKey "online".
+ */
 export function buildDailySalesByLocationQuery(
   range: DayRange,
   today: string,
@@ -354,7 +369,7 @@ export function buildDailySalesByLocationQuery(
   );
 }
 
-/** Verified fallback B: units sold and gross sales (+ units returned with `returns`) per variant per sales channel. */
+/** Verified: units sold and gross sales (+ units returned with `returns`, verified live) per variant per sales channel. */
 export function buildDailySalesByChannelQuery(
   range: DayRange,
   today: string,
@@ -368,7 +383,19 @@ export function buildDailySalesByChannelQuery(
   );
 }
 
-/** Query 2 — daily ending stock and out-of-stock days per variant per inventory location. */
+/**
+ * Reconciliation: store-level units sold per day (one row per day, no grouping). The grouped
+ * sales reads must add up to this per day, else the chunk failed (truncated / overlapping).
+ */
+export function buildDailySalesTotalsQuery(range: DayRange, today: string, opts: BuildOptions = {}): string {
+  return "FROM sales SHOW net_items_sold TIMESERIES day " + dateClause(range, today) + pagingClause(opts.paging);
+}
+
+/**
+ * Query 2 — daily ending stock and out-of-stock days per variant per inventory location.
+ * Verified live: a row EVERY day for EVERY location the variant is stocked at, including zero
+ * and negative ending stock — this is the largest dataset by far (variants × locations × days).
+ */
 export function buildDailyStockQuery(range: DayRange, today: string, opts: BuildOptions = {}): string {
   return (
     "FROM inventory_by_location SHOW ending_inventory_units_at_location, days_out_of_stock_at_location " +
@@ -399,6 +426,198 @@ export function buildDailyShopTotalsQuery(range: DayRange, today: string, opts: 
     dateClause(range, today) +
     pagingClause(opts.paging)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Paging (audit 2026-10-17 C1 / M10)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rows asked for per page. 5000 is the largest LIMIT verified live; a page that is
+ * RESPONSE_TOO_LARGE is retried at the same OFFSET with half the size, down to MIN_PAGE_SIZE.
+ */
+export const PAGE_SIZE = 5000;
+export const MIN_PAGE_SIZE = 1000;
+/** What ShopifyQL silently returns without LIMIT (verified live). A page of exactly this many rows is never trusted as the last one. */
+export const IMPLICIT_ROW_CAP = 1000;
+/**
+ * Hard cap per query (one dataset × date range): beyond it the read fails (retryable) rather
+ * than holding millions of rows in memory. 1,000,000 stock rows ≈ 32,000 variant-locations for
+ * a 31-day month.
+ */
+export const MAX_ROWS_PER_QUERY = 1_000_000;
+/** Safety stop for the page loop (MAX_ROWS_PER_QUERY / MIN_PAGE_SIZE). */
+export const MAX_PAGES = 1000;
+
+export type PageOptions = {
+  pageSize?: number;
+  minPageSize?: number;
+  maxRows?: number;
+  maxPages?: number;
+};
+
+export type PagedTable = {
+  /** Every page merged; rows are objects keyed by column name, one per distinct key, in first-seen order. */
+  table: ShopifyqlTableData;
+  pages: number;
+  /** Rows received over all pages (duplicates included). */
+  rawRows: number;
+  /** Rows whose key was already seen on an earlier page (replaced, never added — M10). */
+  duplicates: number;
+  /** The page size the read ended with (smaller than PAGE_SIZE after RESPONSE_TOO_LARGE). */
+  pageSize: number;
+};
+
+/** A table's rows as objects keyed by column name (positional rows are mapped through `columns`). */
+export function rowObjects(table: ShopifyqlTableData): Record<string, unknown>[] {
+  const { rows } = makeReader(table);
+  const names = (table.columns ?? []).map((c) => (c && typeof c.name === "string" ? c.name : ""));
+  const out: Record<string, unknown>[] = [];
+  for (const r of rows) {
+    if (Array.isArray(r)) {
+      const o: Record<string, unknown> = {};
+      names.forEach((n, i) => {
+        if (n) o[n] = r[i];
+      });
+      out.push(o);
+    } else if (r && typeof r === "object") out.push(r as Record<string, unknown>);
+    else out.push({});
+  }
+  return out;
+}
+
+function keyOf(row: Record<string, unknown>, key: readonly string[]): string {
+  return JSON.stringify(key.map((k) => (row[k] === undefined ? null : row[k])));
+}
+
+/**
+ * Reads EVERY row of one query, page by page:
+ * `ORDER BY <key> LIMIT <size> OFFSET <k>`, k = rows received so far.
+ *
+ *  - The loop ends only on a short page (fewer rows than asked) that is not exactly
+ *    IMPLICIT_ROW_CAP rows, or on an empty page. A full page — or a page of exactly 1,000 rows
+ *    when more were asked (a silent cap) — always fetches the next page (truncation guard).
+ *  - Rows are de-duplicated by `key` (replace, never add): overlapping pages cannot double
+ *    count (M10). A page that brings no new key (OFFSET ignored) fails the read.
+ *  - RESPONSE_TOO_LARGE halves the page size (same OFFSET) down to `minPageSize`, then is
+ *    rethrown so the caller can split the date range.
+ *  - More than `maxRows` rows or `maxPages` pages, columns that change between pages, or key
+ *    columns missing from a non-empty page → ShopifyqlTruncatedError (retryable): the caller
+ *    must not store anything for that range.
+ */
+export async function fetchAllPages(
+  runPage: (paging: Paging) => Promise<ShopifyqlTableData>,
+  key: readonly string[],
+  opts: PageOptions = {},
+): Promise<PagedTable> {
+  if (!key.length) throw new RangeError("fetchAllPages needs a row key");
+  let size = opts.pageSize ?? PAGE_SIZE;
+  const minSize = Math.min(size, opts.minPageSize ?? MIN_PAGE_SIZE);
+  const maxRows = opts.maxRows ?? MAX_ROWS_PER_QUERY;
+  const maxPages = opts.maxPages ?? MAX_PAGES;
+  const merged = new Map<string, Record<string, unknown>>();
+  let columns: ShopifyqlColumn[] | null = null;
+  let columnSig = "";
+  let offset = 0;
+  let pages = 0;
+  let duplicates = 0;
+
+  for (;;) {
+    if (pages >= maxPages) throw new ShopifyqlTruncatedError(`paging did not end after ${maxPages} pages`, offset);
+    let table: ShopifyqlTableData;
+    try {
+      table = await runPage({ orderBy: key, limit: size, offset });
+    } catch (err) {
+      if (isTooLargeError(err) && size > minSize) {
+        size = Math.max(minSize, Math.floor(size / 2));
+        continue;
+      }
+      throw err;
+    }
+    pages++;
+    const rows = rowObjects(table);
+    const n = rows.length;
+    if (n > 0) {
+      const sig = (table.columns ?? []).map((c) => c?.name).join("|");
+      if (columns === null) {
+        columns = table.columns;
+        columnSig = sig;
+        const absent = key.filter((k) => !(table.columns ?? []).some((c) => c?.name === k));
+        if (absent.length) throw new ShopifyqlTruncatedError(`key column(s) ${absent.join(", ")} missing, rows cannot be de-duplicated`, offset);
+      } else if (sig !== columnSig) {
+        throw new ShopifyqlTruncatedError("columns changed between pages", offset);
+      }
+    } else if (columns === null && Array.isArray(table.columns)) {
+      columns = table.columns;
+    }
+    let fresh = 0;
+    for (const r of rows) {
+      const k = keyOf(r, key);
+      if (merged.has(k)) duplicates++;
+      else fresh++;
+      merged.set(k, r);
+    }
+    offset += n;
+    if (merged.size > maxRows) throw new ShopifyqlTruncatedError(`more than ${maxRows} rows`, offset);
+    if (n === 0) break;
+    if (fresh === 0) throw new ShopifyqlTruncatedError(`page at OFFSET ${offset - n} brought no new rows (OFFSET ignored?)`, offset);
+    if (n < size && n !== IMPLICIT_ROW_CAP) break;
+  }
+  return {
+    table: { columns: columns ?? [], rows: [...merged.values()] },
+    pages,
+    rawRows: offset,
+    duplicates,
+    pageSize: size,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation (audit 2026-10-17 C1)
+// ---------------------------------------------------------------------------
+
+/** Units sold per day: the parsed rows plus the units on rows dropped for a missing variant (custom items, gap rows). */
+export function unitsByDay(result: { rows: readonly SalesRow[]; unattributed?: Record<string, number> }): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of result.rows) out.set(r.day, (out.get(r.day) ?? 0) + r.sold);
+  for (const [day, units] of Object.entries(result.unattributed ?? {})) out.set(day, (out.get(day) ?? 0) + units);
+  return out;
+}
+
+/** Rounding slack per day: net_items_sold is a whole number, so anything ≥ 0.5 apart is a real difference. */
+export const RECONCILE_TOLERANCE = 0.5;
+
+/**
+ * Days in `range` where `got` and `expected` differ by RECONCILE_TOLERANCE or more (a day absent
+ * from one side counts as 0 there). Days outside the range are ignored.
+ */
+export function reconcileDailyUnits(
+  got: ReadonlyMap<string, number>,
+  expected: ReadonlyMap<string, number>,
+  range: DayRange,
+): DayMismatch[] {
+  const days = new Set<string>();
+  for (const d of got.keys()) days.add(d);
+  for (const d of expected.keys()) days.add(d);
+  const out: DayMismatch[] = [];
+  for (const day of [...days].sort()) {
+    if (day < range.since || day > range.until) continue;
+    const g = got.get(day) ?? 0;
+    const e = expected.get(day) ?? 0;
+    if (Math.abs(g - e) >= RECONCILE_TOLERANCE) out.push({ day, expected: e, got: g });
+  }
+  return out;
+}
+
+/** Throws ShopifyqlReconcileError when `reconcileDailyUnits` finds any mismatching day. */
+export function assertReconciled(
+  label: string,
+  got: ReadonlyMap<string, number>,
+  expected: ReadonlyMap<string, number>,
+  range: DayRange,
+): void {
+  const mismatches = reconcileDailyUnits(got, expected, range);
+  if (mismatches.length) throw new ShopifyqlReconcileError(label, mismatches);
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +852,15 @@ export type ParseResult<T> = {
    * (0 / "unknown"). The caller should treat those metrics as NOT measured (invariant I-5).
    */
   missingColumns: string[];
+  /**
+   * Sales parsers only: units (net_items_sold) per day on rows dropped because the variant id is
+   * empty (custom items, TIMESERIES gap rows). Not stored, but counted when reconciling a chunk
+   * against the store's daily total.
+   */
+  unattributed?: Record<string, number>;
+  /** Set by the paged client methods: pages read and rows de-duplicated across pages. */
+  pages?: number;
+  duplicates?: number;
 };
 
 type Reader = {
@@ -674,7 +902,11 @@ function missing(reader: Reader, names: string[]): string[] {
 export type SalesRow = {
   day: string;
   variantId: string;
-  /** "online" when pos_location_name is null/empty; the POS location NAME otherwise (caller maps to ids); "unknown" when the column is absent. */
+  /**
+   * "online" when pos_location_name is null/empty (verified live: online sales come back with an
+   * empty location name); the POS location NAME otherwise (caller maps to ids); "unknown" when the
+   * column is absent.
+   */
   locationKey: string;
   /** sales_channel; "unknown" when absent. */
   channel: string;
@@ -683,18 +915,25 @@ export type SalesRow = {
   returned: number;
 };
 
-/** Parses query 1 or either verified fallback (missing dimension/metric columns are defaulted and reported). */
+/**
+ * Parses query 1 or either 2-dimension query (missing dimension/metric columns are defaulted and
+ * reported). Rows with an empty product_variant_id (verified live: they appear) are skipped;
+ * their units are kept per day in `unattributed` for reconciliation.
+ */
 export function parseSalesRows(table: ShopifyqlTableData): ParseResult<SalesRow> {
   const { reader, rows } = makeReader(table);
   const hasLocation = reader.has("pos_location_name");
   const hasChannel = reader.has("sales_channel");
   const out: SalesRow[] = [];
+  const unattributed: Record<string, number> = {};
   let skipped = 0;
   for (const r of rows) {
     const day = normaliseDay(reader.get(r, "day"));
     const variantId = normaliseVariantId(reader.get(r, "product_variant_id"));
     if (!day || !variantId) {
       skipped++;
+      const units = toNumber(reader.get(r, "net_items_sold"));
+      if (day && units) unattributed[day] = (unattributed[day] ?? 0) + units;
       continue;
     }
     out.push({
@@ -717,13 +956,33 @@ export function parseSalesRows(table: ShopifyqlTableData): ParseResult<SalesRow>
       "gross_sales",
       "quantity_returned",
     ]),
+    unattributed,
   };
+}
+
+export type SalesTotalRow = { day: string; sold: number };
+
+/** Parses the reconciliation query (store-level units per day). */
+export function parseSalesTotalsRows(table: ShopifyqlTableData): ParseResult<SalesTotalRow> {
+  const { reader, rows } = makeReader(table);
+  const out: SalesTotalRow[] = [];
+  let skipped = 0;
+  for (const r of rows) {
+    const day = normaliseDay(reader.get(r, "day"));
+    if (!day) {
+      skipped++;
+      continue;
+    }
+    out.push({ day, sold: toNumber(reader.get(r, "net_items_sold")) ?? 0 });
+  }
+  return { rows: out, skipped, missingColumns: missing(reader, ["net_items_sold"]) };
 }
 
 export type StockRow = {
   day: string;
   variantId: string;
   locationName: string;
+  /** ending_inventory_units_at_location: may be 0 or NEGATIVE (verified live); never clamped. */
   endUnits: number;
   /** days_out_of_stock_at_location > 0 for that single day. */
   outOfStock: boolean;

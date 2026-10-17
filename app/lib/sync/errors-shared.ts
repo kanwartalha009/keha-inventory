@@ -6,6 +6,8 @@
 export const SYNC_ERROR_CODES = [
   "throttled",
   "too_large",
+  "truncated",
+  "reconcile_mismatch",
   "shopifyql_parse",
   "shopifyql_shape",
   "shopifyql_error",
@@ -20,6 +22,10 @@ const BY_NAME: Record<string, SyncErrorCode> = {
   ThrottleBudgetError: "throttled",
   AdminThrottledError: "throttled",
   ShopifyqlTooLargeError: "too_large",
+  /** A paged read could not prove it holds every row (audit C1): retried, never stored. */
+  ShopifyqlTruncatedError: "truncated",
+  /** Daily units ≠ the store total (audit C1 / M10): retried, never stored. */
+  ShopifyqlReconcileError: "reconcile_mismatch",
   ShopifyqlParseError: "shopifyql_parse",
   ShopifyqlShapeError: "shopifyql_shape",
   ShopifyqlRequestError: "shopifyql_error",

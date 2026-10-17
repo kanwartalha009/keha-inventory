@@ -4,16 +4,31 @@
  *
  * Idempotent: each range is written as "delete the shop's rows in [since, until], insert
  * the fresh rows" in one transaction, so re-running a month yields identical rows and a
- * correction from Shopify replaces the old figure. RESPONSE_TOO_LARGE halves the range
- * (runChunked); a single day that is still too large is paged with ORDER BY / LIMIT /
- * OFFSET (runChunkedPaged, syntax TO VERIFY on a dev store). Throttling surfaces as
+ * correction from Shopify replaces the old figure.
+ *
+ * Complete or nothing (audit 2026-10-17 C1 / M10): every client read pages through ALL rows
+ * (unique ORDER BY key + LIMIT / OFFSET, de-duplicated); RESPONSE_TOO_LARGE first shrinks the
+ * page, then halves the date range (runChunked). Sales are reconciled per day against the
+ * store's daily units total before anything is written; a truncated read
+ * (ShopifyqlTruncatedError) or a mismatch (ShopifyqlReconcileError) throws, the transaction
+ * never runs, and the caller records a retryable failure. Throttling surfaces as
  * ShopifyqlThrottledError (or ThrottleBudgetError) for the caller to stop on.
  * Only whole past days are written (builders refuse `until >= today`, and every row outside
  * the range is dropped — invariant I-12).
  */
 import prisma from "../../db.server";
 import type { ShopifyqlClient } from "./shopifyql.server";
-import { ShopifyqlParseError, runChunkedPaged, type BuildOptions, type DayRange, type ParseResult } from "../../lib/sync/shopifyql-shared";
+import {
+  ShopifyqlParseError,
+  ShopifyqlReconcileError,
+  assertReconciled,
+  runChunked,
+  unitsByDay,
+  type BuildOptions,
+  type DayRange,
+  type ParseResult,
+  type SalesRow,
+} from "../../lib/sync/shopifyql-shared";
 import {
   dayDate,
   locationNameIndex,
@@ -48,17 +63,21 @@ async function chunked<T>(
   run: (r: DayRange, opts?: BuildOptions) => Promise<ParseResult<T>>,
   label: string,
   required: string[],
-  orderBy: string,
 ) {
-  const parts = await runChunkedPaged(range, run, orderBy);
+  const parts = await runChunked(range, (r) => run(r));
   const rows: T[] = [];
+  const unattributed: Record<string, number> = {};
   let skipped = 0;
+  let duplicates = 0;
   for (const p of parts) {
     assertColumns(label, p.result, required);
     rows.push(...p.result.rows);
     skipped += p.result.skipped;
+    duplicates += p.result.duplicates ?? 0;
+    for (const [day, u] of Object.entries(p.result.unattributed ?? {})) unattributed[day] = (unattributed[day] ?? 0) + u;
   }
-  return { rows, skipped };
+  if (duplicates) console.warn(`[sync/facts] ${label} ${range.since}..${range.until}: ${duplicates} duplicate row(s) across pages replaced, not added`);
+  return { rows, skipped, unattributed };
 }
 
 function batches<T>(rows: T[]): T[][] {
@@ -91,7 +110,6 @@ export async function storeStock(
     (r, o) => ql.stockDaily(r, today, o),
     "stock",
     ["ending_inventory_units_at_location", "days_out_of_stock_at_location"],
-    "product_variant_id",
   );
   const { facts, unmapped } = stockFacts(rows, range, locationNameIndex(locations));
   await prisma.$transaction([
@@ -104,8 +122,11 @@ export async function storeStock(
 }
 
 /**
- * Sales history: the location view and the channel view (see facts-shared).
- * TODO(task 1.4 verification): one 3-dimension query (buildDailySalesQuery) once verified.
+ * Sales history: the location view and the channel view (see facts-shared). Both are
+ * reconciled per day against the store's units total (one cheap query per range) before the
+ * write; a mismatch throws ShopifyqlReconcileError and nothing is stored for the range.
+ * TODO: one 3-dimension query (buildDailySalesQuery, verified live 2026-10-17) once
+ * SalesDaily drops the two views.
  */
 export async function storeSales(
   shop: string,
@@ -119,18 +140,16 @@ export async function storeSales(
     (r, o) => ql.salesDailyByLocation(r, today, o),
     "sales by location",
     ["pos_location_name", "net_items_sold"],
-    "product_variant_id",
   );
-  // Returns (task 2.4, fix_returns): ask for quantity_returned too. TO VERIFY on a dev store; if
-  // ShopifyQL rejects the column with this grouping, fall back to the verified query (returned = 0,
-  // and the engine then produces no returns actions).
+  // Returns (task 2.4, fix_returns): ask for quantity_returned too — verified live 2026-10-17 with
+  // this grouping (audit L6). The parse-error fallback (returned = 0, no returns actions) stays as
+  // a safety net should Shopify ever reject the column.
   const channelQuery = (returns: boolean) =>
     chunked(
       range,
       (r, o) => ql.salesDailyByChannel(r, today, returns ? { ...o, returns: true } : o),
       "sales by channel",
       ["sales_channel", "net_items_sold", "gross_sales"],
-      "product_variant_id",
     );
   let byChannel: Awaited<ReturnType<typeof channelQuery>>;
   try {
@@ -140,6 +159,11 @@ export async function storeSales(
     console.warn(`[sync/sales] ${shop}: quantity_returned rejected (${e.messages.join("; ")}); storing sales without returns`);
     byChannel = await channelQuery(false);
   }
+  const totals = await chunked(range, (r) => ql.salesTotalsDaily(r, today), "sales totals", ["net_items_sold"]);
+  const expected = new Map<string, number>();
+  for (const t of totals.rows) expected.set(t.day, (expected.get(t.day) ?? 0) + t.sold);
+  reconcileSales(shop, "sales by location", byLocation, expected, range);
+  reconcileSales(shop, "sales by channel", byChannel, expected, range);
   const loc = salesByLocationFacts(byLocation.rows, range, locationNameIndex(locations));
   const facts = [...loc.facts, ...salesByChannelFacts(byChannel.rows, range)];
   await prisma.$transaction([
@@ -151,9 +175,27 @@ export async function storeSales(
   return { rows: facts.length, skipped: byLocation.skipped + byChannel.skipped, unmapped: loc.unmapped };
 }
 
+/** Throws (and logs) when a sales view's units per day differ from the store total. */
+function reconcileSales(
+  shop: string,
+  label: string,
+  view: { rows: SalesRow[]; unattributed: Record<string, number> },
+  expected: ReadonlyMap<string, number>,
+  range: DayRange,
+): void {
+  try {
+    assertReconciled(label, unitsByDay(view), expected, range);
+  } catch (e) {
+    if (e instanceof ShopifyqlReconcileError) {
+      console.error(`[sync/sales] ${shop} ${range.since}..${range.until}: ${e.message} — nothing stored for this range`);
+    }
+    throw e;
+  }
+}
+
 /** Store totals (orders, gross) per day, for AOV. Its own dataset: never blocks sales. */
 export async function storeTotals(shop: string, ql: ShopifyqlClient, range: DayRange, today: string): Promise<StoreResult> {
-  const totals = await chunked(range, (r, o) => ql.shopDaily(r, today, o), "shop totals", ["orders", "gross_sales"], "day");
+  const totals = await chunked(range, (r, o) => ql.shopDaily(r, today, o), "shop totals", ["orders", "gross_sales"]);
   const shopDays = shopDayFacts(totals.rows, range);
   await prisma.$transaction([
     prisma.shopDaily.deleteMany({ where: dayWhere(shop, range) }),
@@ -169,7 +211,6 @@ export async function storeVisits(shop: string, ql: ShopifyqlClient, range: DayR
     (r, o) => ql.sessionsDaily(r, today, o),
     "sessions",
     ["landing_page_path", "sessions", "sessions_that_completed_checkout"],
-    "landing_page_path",
   );
   const facts = sessionsFacts(rows, range);
   await prisma.$transaction([

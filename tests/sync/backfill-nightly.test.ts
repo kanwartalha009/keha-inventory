@@ -105,6 +105,11 @@ function fakeQl(opts: { throttleOnCall?: number } = {}) {
       guard("shopDaily", r, t);
       return res(days(r).map((day) => ({ day, orders: 4, gross: 200 })), []);
     },
+    // Reconciliation total: 3 units a day (online 2 + Madrid 1 = channel view 3).
+    salesTotalsDaily: async (r, t) => {
+      assertPastRange(r, t);
+      return res(days(r).map((day) => ({ day, sold: 3 })), []);
+    },
   };
   return { ql, calls };
 }
@@ -203,6 +208,23 @@ describe("runBackfill", () => {
     expect(cat.syncCatalog).toHaveBeenCalledTimes(2); // once per full backfill, not again on resume
     for (const t of Object.keys(want)) expect(snapshot(t), t).toEqual(want[t]);
     expect(state().datasets?.visits?.lastError).toBeNull();
+  });
+
+  it("audit C1: a sales month that does not reconcile is not stored, counts as a failed attempt, and the others go on", async () => {
+    const { ql } = fakeQl();
+    const short: ShopifyqlClient = {
+      ...ql,
+      // The store sold 4 a day but the grouped reads only hold 3 (truncated read).
+      salesTotalsDaily: async (r) => ({ rows: days(r).map((day) => ({ day, sold: 4 })), skipped: 0, missingColumns: [] }),
+    };
+    expect(await runBackfill(S, deps(short))).toBe("error");
+    const s = state();
+    expect(s.datasets?.sales).toMatchObject({ done: 0, attempts: 1, lastErrorCode: "reconcile_mismatch" });
+    expect(s.datasets?.sales?.lastError).toContain("expected 4 got 3");
+    expect(db.tables.salesDaily ?? []).toHaveLength(0); // nothing partial stored
+    expect(s.datasets?.stock?.done).toBe(14);
+    expect(s.first90Ready).toBeUndefined(); // sales are not there yet: no numbers built on a partial month
+    expect(s.finishedAt).toBeUndefined();
   });
 
   it("review H3: a failing dataset never blocks the others; its month is skipped after 5 runs", async () => {

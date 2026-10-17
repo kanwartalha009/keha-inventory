@@ -68,12 +68,12 @@ describe("query builders (exact strings)", () => {
     );
   });
 
-  it("channel query with returns (task 2.4; TO VERIFY on a dev store) keeps paging last", () => {
+  it("channel query with returns (task 2.4; verified live 2026-10-17) keeps paging last", () => {
     expect(buildDailySalesByChannelQuery(SEPT, TODAY, { returns: true })).toBe(
       "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30",
     );
-    expect(buildDailySalesByChannelQuery(SEPT, TODAY, { returns: true, paging: { orderBy: "product_variant_id", limit: 10, offset: 20 } })).toBe(
-      "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30 ORDER BY product_variant_id LIMIT 10 OFFSET 20",
+    expect(buildDailySalesByChannelQuery(SEPT, TODAY, { returns: true, paging: { orderBy: ["day", "product_variant_id", "sales_channel"], limit: 10, offset: 20 } })).toBe(
+      "FROM sales SHOW net_items_sold, gross_sales, quantity_returned GROUP BY product_variant_id, sales_channel TIMESERIES day SINCE 2026-09-01 UNTIL 2026-09-30 ORDER BY day ASC, product_variant_id ASC, sales_channel ASC LIMIT 10 OFFSET 20",
     );
   });
 
