@@ -625,19 +625,14 @@
    narrower than the group (truly narrow). Before 2026-10-17 the group could
    shrink beside the search and its three selects stacked into a column at
    the admin's ~880px width. Filters have a fixed width (never the label's). */
-.keha-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); flex: 1 1 100%; width: 100%; min-width: 0; }
-.keha-toolbar__search { flex: 1 1 240px; min-width: min(100%, 240px); }
-.keha-toolbar__filters {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
-  gap: var(--keha-space-200); flex: none; max-width: 100%; min-width: 0; margin-inline-start: auto;
-}
-.keha-toolbar__filters > * { flex: 0 0 180px; width: 180px; max-width: 100%; min-width: 0; }
-.keha-toolbar__filters > .keha-switcher { flex-basis: 220px; width: 220px; }
-.keha-toolbar__filters > .keha-switcher--link { flex: 0 0 auto; width: auto; }
+.keha-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: var(--keha-space-200); width: 100%; min-width: 0; }
+.keha-toolbar__search { width: 100%; min-width: 0; }
+.keha-toolbar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); width: 100%; min-width: 0; }
+.keha-toolbar__filters > * { flex: 1 1 180px; min-width: 160px; max-width: 320px; }
+.keha-toolbar__filters > .keha-switcher { flex-basis: 220px; }
+.keha-toolbar__filters > .keha-switcher--link { flex: 0 0 auto; max-width: none; }
 @media (max-width: 600px) {
-  .keha-toolbar__search, .keha-toolbar__filters { flex: 1 1 100%; }
-  .keha-toolbar__filters { justify-content: stretch; margin-inline-start: 0; }
-  .keha-toolbar__filters > *, .keha-toolbar__filters > .keha-switcher { flex: 1 1 140px; width: auto; }
+  .keha-toolbar__filters > *, .keha-toolbar__filters > .keha-switcher { flex: 1 1 100%; max-width: none; }
 }
 
 /* Location switcher (components/location-switcher.tsx): a compact select, or

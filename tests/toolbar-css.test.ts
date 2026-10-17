@@ -29,35 +29,30 @@ const px = (v: string) => Number(/(\d+)px/.exec(v)?.[1] ?? NaN);
 const GAP = 8; // --keha-space-200
 
 describe(".keha-toolbar", () => {
-  it("the filter group never shrinks and keeps its controls in one row", () => {
+  it("two rows: the search on its own row, the filters as one shared row below it", () => {
     const bar = rule(".keha-toolbar");
-    expect(bar["flex-wrap"]).toBe("wrap");
-    expect(bar["align-items"]).toBe("center");
+    expect(bar.display).toBe("flex");
+    expect(bar["flex-direction"]).toBe("column");
+    expect(rule(".keha-toolbar__search").width).toBe("100%");
     const group = rule(".keha-toolbar__filters");
-    expect(group.flex).toBe("none");
-    expect(group["max-width"]).toBe("100%");
-    expect(group["margin-inline-start"]).toBe("auto");
+    expect(group["flex-wrap"]).toBe("wrap");
+    expect(group.width).toBe("100%");
     const item = rule(".keha-toolbar__filters > *");
-    expect(item.flex).toBe("0 0 180px");
-    const search = rule(".keha-toolbar__search");
-    expect(search.flex).toBe("1 1 240px");
+    expect(item.flex).toBe("1 1 180px");
+    expect(item["min-width"]).toBe("160px");
   });
 
-  it("at the admin's content widths: one row at ~880px; at 600px the filters take their own single row", () => {
-    const search = px(rule(".keha-toolbar__search").flex);
-    const select = px(rule(".keha-toolbar__filters > *").flex);
-    // Products: status, vendor, sort (the location select only on Pro with two locations).
-    const group = 3 * select + 2 * GAP;
-    const layout = (width: number) => (width >= search + GAP + group ? "one row" : width >= group ? "filters below, one row" : "filters wrap");
-    // ~880px content minus the table card's padding.
-    expect(layout(880 - 32)).toBe("one row");
-    expect(layout(640)).toBe("filters below, one row");
-    expect(layout(500)).toBe("filters wrap");
+  it("three filters fit one row at the admin's widths (with or without the Sidekick panel)", () => {
+    const min = px(rule(".keha-toolbar__filters > *")["min-width"]);
+    const fits = (width: number, n: number) => n * min + (n - 1) * GAP <= width;
+    expect(fits(880 - 32, 3)).toBe(true); // full admin width
+    expect(fits(560 - 32, 3)).toBe(true); // Sidekick panel open
+    expect(fits(880 - 32, 4)).toBe(true); // + location select on Pro
   });
 
   it("DESIGN-RULES says the same", () => {
     const rules = readFileSync(join(__dirname, "../docs/DESIGN-RULES.md"), "utf8");
-    expect(rules).toContain("**as one horizontal row** below the search");
+    expect(rules).toContain("**as one horizontal row** below it");
     expect(rules).toContain("Never let the filters stack into a column beside the search");
   });
 });
