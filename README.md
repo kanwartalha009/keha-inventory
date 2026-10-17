@@ -32,6 +32,7 @@ Built from the Encore (Keha Preorder) app kit (playbook §2): React Router 7, Po
 | Shopify Sidekick | App data extension (`extensions/keha-inventory-sidekick`, target `admin.app.tools.data`): six read-only tools — the 13-week order plan by supplier and week (the same forward plan as Order now and Next 13 weeks), product stock, this week's actions, money at stake, open purchase orders, forecast accuracy — answered from the database by `/api/sidekick/:tool`; `[sidekick] extensions_summary` in both tomls | What each plan's screens show (Free: the read-only order-plan preview of the 10 most urgent products; no purchase orders or accuracy; no forecast fields; top 10 actions) |
 | Accuracy | Monthly forecast snapshot and grading of last month (top 20 variants + store total); in the Monday email and the Season plan's scorecard | Growth |
 | Privacy | No shopper data stored; GDPR webhooks; 48 h purge after uninstall; access log | All |
+| Sample data (`POST /app/sample`) | While the store isn't ready, the Dashboard offers "Explore Keha with sample data": a simulated clothing store (`app/lib/sim`, 60 products, 14 months) under its own data key `<shop>#sample` — every screen reads it (`services/data-scope.server`), a banner on every page says so, store-changing actions (discounts, transfers, emailing / sending POs, Slack, Monday email, Flow, alerts, the review ask) are off; "Switch to my store" deletes it (as do shop/redact and the uninstall purge); Sidekick always answers from the real store | Shows at least Growth on every plan |
 
 Every plan-card line in `PLAN_POINTS` is built; `tests/listing.test.ts` fails if the listing
 ever marks one "Not built yet". Spec phase 4: the Sidekick data tools are built; ad-stock control,
@@ -48,6 +49,20 @@ month M, forecasts M+1 with the real engine, and prints the top-20 and store-tot
 errors plus the 4 money numbers as of the end of M. Read-only; writes
 `backtest-<shop>-<date>.json` in the current directory (gitignored: it holds store data). The
 store must have installed the app with its consent. Maths: `app/lib/engine/backtest-shared.ts`.
+
+## Store simulator (end-to-end simulation)
+
+```bash
+npm run sim:check                     # S store (60 products) through the app: counts, totals, plan
+npm run sim:check -- --size M         # M store (600 products), report only (add --pipeline)
+```
+
+`app/lib/sim` simulates an apparel store for 14 months (seasons, Black Friday, suppliers with
+minimums and case packs, stock-outs, backorders, returns, wholesale, open purchase orders) and
+answers the sync's ShopifyQL reads; `services/sample-data.server` writes it through the sync's own
+writers. `tests/e2e-sim` runs the real compute and every screen's loader on it and checks the
+business invariants (one order-by date per variant, Order now = Dashboard = Monday email =
+Sidekick, minimums met, …) on the in-memory database and — when reachable — real Postgres (S and M).
 
 ## App Store listing
 

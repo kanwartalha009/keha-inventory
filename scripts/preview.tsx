@@ -40,6 +40,7 @@ import type { PlanningLocation } from "../app/lib/locations-shared";
 import type { PoLine } from "../app/lib/supplier-shared";
 import type { PlannerVariant } from "../app/lib/planner-shared";
 import type { PlanMetric } from "../app/lib/transfers-shared";
+import type { SampleView } from "../app/components/sample";
 
 // ── 1. Stub every server module before anything from app/ is imported ─────────────────────
 // Exports are read from the source (functions, consts, classes, `export { … }`); each becomes a
@@ -94,6 +95,7 @@ const { DEFAULT_SETTINGS, alertsToForm, settingsToForm } = await import("../app/
 const { homeRaw, actionList } = await import("../tests/home-fixtures");
 const { orderPlanFixture, orderNowFixture, PLAN_TODAY } = await import("../tests/order-plan-fixtures");
 const { buildSupplierOrder, builderTeaser } = await import("../app/lib/supplier-order-shared");
+const { SampleProvider } = await import("../app/components/sample");
 
 const { default: Home } = await import("../app/routes/app._index");
 const { default: Reorder } = await import("../app/routes/app.reorder");
@@ -548,6 +550,8 @@ const confirm = (locale: Locale): ConfirmPageData => ({
   },
 });
 
+const SAMPLE_ON: SampleView = { on: true, loadedAt: "2026-10-16T09:00:00.000Z", realReady: false, planLifted: true };
+
 // ── 4. Screens × states ─────────────────────────────────────────────────────────────────────
 type Nav = "dashboard" | "orderplan" | "products" | "settings" | "plans" | "public";
 const NAV: { id: Exclude<Nav, "public">; label: string }[] = [
@@ -573,6 +577,8 @@ type Screen = {
   data: (locale: Locale) => unknown;
   /** English keys (translated per locale) or fixture text expected in the HTML. */
   expect: string[];
+  /** Sample data mode (components/sample): the banner and the store-changing actions off. */
+  sample?: SampleView;
 };
 
 const S = (s: Screen) => s;
@@ -616,6 +622,16 @@ const screens: Screen[] = [
   S({ slug: "purchase-order--draft", screen: "Purchase order", state: "Draft", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order()), expect: ["PO-0001", "Email supplier", "Download PDF"] }),
   S({ slug: "purchase-order--sent", screen: "Purchase order", state: "Sent, supplier link", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), { link: "https://inventory.keha.io/supplier/confirm/abc", hidePrices: true }), expect: ["PO-0001", "Supplier link", "Receive items"] }),
 
+  // Sample data mode (owner 2026-10-17): the offer while the store is read, the banner on every page,
+  // the store-changing actions off with a note.
+  S({ slug: "dashboard--sample-offer", screen: "Sample data", state: "Store still syncing: the offer card", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => ({ ...dashboard("free", { syncing: true }), sampleOffer: true }), expect: ["Explore Keha with sample data", "Explore with sample data", "Reading your store…"] }),
+  S({ slug: "dashboard--sample-data", screen: "Sample data", state: "Dashboard on sample data (Free store: Growth shown)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), sample: SAMPLE_ON, expect: ["You're viewing sample data — nothing here is from your store.", "Switch to my store", "Sample data shows every Growth feature, whatever your plan.", "Order this week"] }),
+  S({ slug: "dashboard--sample-store-ready", screen: "Sample data", state: "The store's own data is ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), sample: { ...SAMPLE_ON, realReady: true, planLifted: false }, expect: ["Your store is ready — your own order plan is waiting.", "Switch to my store"] }),
+  S({ slug: "products--sample-data", screen: "Sample data", state: "Products on sample data", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), sample: SAMPLE_ON, expect: ["You're viewing sample data — nothing here is from your store.", "Linen shirt"] }),
+  S({ slug: "order-now--sample-transfers-off", screen: "Sample data", state: "Order now (Pro): transfers off", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), sample: SAMPLE_ON, expect: ["Transfers are off in sample data — nothing is created in your store.", "Create transfer in Shopify"] }),
+  S({ slug: "purchase-order--sample-draft", screen: "Sample data", state: "Purchase order: drafting only", nav: "orderplan", url: "/app/reorder/po1", pattern: "/app/reorder/:id", plan: "growth", Component: OrderPage, data: () => orderPage(order()), sample: SAMPLE_ON, expect: ["In sample data you can draft orders, but nothing is emailed, sent or received.", "Delete draft"] }),
+  S({ slug: "settings-alerts--sample-data", screen: "Sample data", state: "Settings → Alerts: the store's own, not changed", nav: "settings", url: "/app/settings/alerts", plan: "growth", Component: Alerts, data: () => alerts, sample: SAMPLE_ON, expect: ["Alerts, Slack and the Monday email always use your own store. Switch to your store to change them."] }),
+
   S({ slug: "supplier-confirm", screen: "Supplier confirm (public)", state: "Open, prices shown", nav: "public", url: `/supplier/confirm/${TOKEN}`, pattern: "/supplier/confirm/:token", plan: "growth", Component: SupplierConfirm, data: (l) => confirm(l), expect: ["PO-0001", "Linen shirt", "Acme Textiles"] }),
 ];
 
@@ -633,7 +649,9 @@ function renderScreen(s: Screen, locale: Locale): string {
     const locked = lockedPageFeature(pathname, s.plan);
     return (
       <LocaleProvider defaultLocale={locale}>
-        <div className="keha-content">{locked ? <LockedPage feature={locked} /> : <Outlet />}</div>
+        <SampleProvider value={s.sample ?? { on: false }}>
+          <div className="keha-content">{locked ? <LockedPage feature={locked} /> : <Outlet />}</div>
+        </SampleProvider>
       </LocaleProvider>
     );
   }

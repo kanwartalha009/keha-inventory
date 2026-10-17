@@ -36,6 +36,18 @@ Monday email. It has no storefront part and stores no shopper data.
 **Demo store with history:** `<demo-store>.myshopify.com` — collaborator access request or
 staff login: **[Kanwar to provide]**. Storefront password (if asked): **[Kanwar to provide]**.
 
+**No sales history? Explore with sample data.** On a new test store the Dashboard shows a card
+**Explore Keha with sample data** while it reads the store. **Explore with sample data** →
+confirm **Load sample data** (about a minute): every screen then shows a simulated clothing store
+(60 products, 14 months of sales, 5 suppliers, purchase orders), with a banner on every page:
+"You're viewing sample data — nothing here is from your store." Sample data shows every Growth
+feature whatever the plan (the banner says so). Nothing is read from or written to the Shopify
+store: discounts, transfers, emailing / sending / receiving purchase orders, Slack, the Monday
+email, Flow and alerts are switched off with a note (purchase orders can still be drafted, inside
+the sample data). **Switch to my store** (in the banner) deletes the sample data and every screen
+shows the store's own data again; once the store's own data is ready the banner offers it.
+Sidekick always answers from the store's own data, never from sample data.
+
 **Plans.** Pricing is Shopify App Pricing. After install, Shopify's plan page opens: pick
 **Growth** (or **Pro**) — on a development / test store there is no charge. Free works too and
 shows locked features with an explanation and an **Upgrade** button (nothing is hidden). To
@@ -226,3 +238,24 @@ The app requests no `read_orders`, `read_customers` or `read_all_orders`, subscr
       store with stock, one Season plan scenario; access details in part A.
 - [ ] Screencast recorded last (`SCREENCAST.md`), screenshots (`SCREENSHOTS.md`).
 - [ ] Every listing claim checked once on the demo store (playbook mistake #18).
+
+---
+
+## C. Sample data mode and the App Store requirements (checked 2026-10-17)
+
+Sample data ("Explore with sample data") exists so a merchant — and the reviewer — can see the
+whole product before a new store has 14 days of sales. Checked against the
+[App Store requirements](https://shopify.dev/docs/apps/launch/shopify-app-store/app-store-requirements):
+
+| Requirement | How sample data meets it |
+|---|---|
+| 1.1.4 *Use only factual information* — apps must not falsify data to deceive merchants or buyers. | Sample data is never presented as the store's: a banner on every screen says "You're viewing sample data — nothing here is from your store.", it lives under its own data key (`<shop>#sample`), never mixes with the store's rows, and is never shown to buyers (no storefront part). Sidekick, emails, Slack, Flow and alerts never use it. |
+| 1.3 *Honest review practices* — no fake or incentivised reviews. | Shopify's review prompt is never shown while sample data is on (and a sample "success moment" can't trigger it). No reviews or testimonials are generated. |
+| 2 / 2.1.1 *Deliver the listed features without errors.* | Every screen runs on the sample store through the same code as a real store (the end-to-end simulation tests render each screen in English and German). |
+| 4.5.4 / 4.5.5 *Testing instructions with working access to the full feature set.* | Part A says how to load it; it shows Growth's features on any plan, so a reviewer on Free still sees the whole product. A demo store with real history stays the primary path. |
+| 4.3.3 / 4.3.4 *No stats or data in the listing or its images.* | Listing screenshots must not use sample-data numbers as claims; if a screenshot shows a sample-data screen, the banner stays visible. |
+| 4.4.4 *Images show the app's actual UI.* | The sample-data screens are the real UI on simulated data. |
+
+Uninstall and shop/redact delete the sample data with the store's own (`purgeShopData` purges
+`<shop>#sample` too); "Switch to my store" deletes it at once.
+
