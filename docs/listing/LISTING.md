@@ -39,7 +39,7 @@ Order best sellers before they sell out, and see the cash each order needs, week
 ## App details
 
 ```text
-Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash each week needs over the next 13 weeks. Sales per day count only the days a product was in stock, and every forecast shows how it was built. Send one purchase order per supplier per cycle as PDF, CSV or email; suppliers confirm the ship date from a link. Every Monday you get a ranked list of what to reorder, promote, fix or clear, with the money at stake.
+Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash needed each week for 13 weeks. Sales per day count only in-stock days, and every forecast shows how it was built. Send one purchase order per supplier per cycle as PDF, CSV or email; suppliers confirm the ship date by link. Every Monday: a ranked list of what to reorder, promote, fix or clear, with the money at stake. It also answers in Shopify Sidekick.
 ```
 
 ## Feature list
@@ -73,6 +73,7 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 | Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Plan each warehouse and POS store, draft transfers | `app/routes/app.settings_.locations.tsx` (roles), location switcher, `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
 | Season plan: order list, order-by dates, cash per week | Order plan → Season plan, `app/routes/app.reorder_.season.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
+| It also answers in Shopify Sidekick (details text) | `extensions/keha-inventory-sidekick` (six read-only tools: order plan, products, actions, money at stake, open orders, forecast accuracy), `app/routes/api.sidekick.$tool.tsx`; nothing changes the store from Sidekick |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks

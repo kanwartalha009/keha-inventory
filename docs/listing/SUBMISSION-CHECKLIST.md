@@ -92,8 +92,8 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | Admin extensions feature-complete | 2.2.5 | — | No admin UI extensions (only Flow triggers in `extensions/keha-inventory-flow`) | — |
 | No promotions in admin extensions | 2.2.6 | ✅ | None; and the in-app preorder bridge never names another app unless the merchant has it (`app/lib/action-list-shared.ts:14-16`) | — |
 | Max modal only after merchant interaction | 2.2.7 | — | No max modal (`s-modal` only, `app/components/wc.tsx:89`) | — |
-| Sidekick extension matches functionality | 2.2.8 | ⚠️ | Not in this branch (another builder owns it) | When it lands: every Sidekick tool must do only what the listing says; no tool may change the store without the same confirm the admin has (I-1); listing text must mention it |
-| No promotions / cross-selling in Sidekick | 2.2.9 | ⚠️ | Same | Sidekick answers must not mention Keha Preorder or other apps, nor ask for reviews |
+| Sidekick extension matches functionality | 2.2.8 | ✅ | `extensions/keha-inventory-sidekick`: six read-only tools (order plan, product stock, actions, money at stake, open purchase orders, forecast accuracy) — the same numbers as the admin (`tests/sidekick-endpoint.test.ts`); no tool changes the store (no mutation in `app/services/sidekick.server.ts`, I-1). The listing details say "It also answers in Shopify Sidekick" and `LISTING.md` maps it to the code (`tests/listing.test.ts`); Sidekick is not an Integration (it is part of the app) | — |
+| No promotions / cross-selling in Sidekick | 2.2.9 | ✅ | `tests/sidekick-extension.test.ts` "no text Sidekick reads sells, urges or steers": the description, app summary, instructions, every tool and answer text pass the content-policy lint (no plan upsell, no other app, no competitor, no review ask) | — |
 | Install only from Shopify surfaces (no shop-domain form) | 2.3.1 | ✅ | `/` and `/auth/login` never ask for a shop; they forward to the public page (`app/routes/_index/route.tsx`, `app/routes/auth.login/route.tsx`); `/install?ref=` forwards to the listing (`app/routes/install.tsx`) | — |
 | OAuth immediately after install | 2.3.2 | ⚠️ | Shopify managed installation: scopes in `shopify.app.toml [access_scopes]`, no legacy install flow | Live: install from the listing on a fresh dev store |
 | Redirect to the app UI after OAuth | 2.3.3 | ⚠️ | `application_url` + `/app`; `afterAuth` hook never throws (`app/shopify.server.ts:30-46`) | Live |
@@ -188,14 +188,14 @@ None of these blocks App Store approval; all are Built for Shopify items.
 2. `app/routes/app.settings_.alerts.tsx`, `app/routes/app.settings_.suppliers.tsx`, `app/routes/app.settings_.locations.tsx` —
    App Bridge contextual save bar (`<form data-save-bar …>`) on the settings forms (BFS 4.1.5).
 3. `app/root.tsx` + `app/routes/app.tsx` — App Bridge script as the first element of `<head>` (BFS 3.1.1).
-4. Sidekick extension (when it merges) — 2.2.8 / 2.2.9 rows above.
+4. ~~Sidekick extension — 2.2.8 / 2.2.9 rows above~~ — met 2026-10-18 (listing details mention it; tools are read-only and pass the content-policy lint).
 5. ~~`tests/listing.test.ts` — also ban `the first` / `the only`~~ — done 2026-10-17 (4.3.3).
 
 ## Summary
 
 Each row counted once, by its first status.
 
-- **App Store requirements (83 rows):** ✅ met 34 · ⚠️ live check 9 · ❌ gap 0 · 🧑 owner 17 · — not applicable 23.
+- **App Store requirements (83 rows):** ✅ met 36 · ⚠️ live check 7 · ❌ gap 0 · 🧑 owner 17 · — not applicable 23.
 - **Built for Shopify reference (10 rows):** ✅ 3 · ⚠️ 3 · ❌ 3 · 🧑 1.
 
 Blocking before submit: owner actions 1–2 (deploy + accept `read_locales`; Partner API credentials for the plan

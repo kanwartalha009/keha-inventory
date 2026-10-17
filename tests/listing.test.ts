@@ -84,6 +84,15 @@ describe("listing text", () => {
     expect(integrations).toEqual(["Slack", "Shopify Flow"]);
   });
 
+  it("mentions Shopify Sidekick in the details (rule 2.2.8) and maps every Sidekick tool to the code", () => {
+    expect(details).toContain("Shopify Sidekick");
+    const tools = (JSON.parse(read("extensions/keha-inventory-sidekick/tools.json")) as { name: string }[]).map((t) => t.name);
+    expect(tools.length).toBeGreaterThan(0);
+    expect(listing).toContain("| It also answers in Shopify Sidekick (details text) |");
+    expect(listing).toMatch(/`extensions\/keha-inventory-sidekick` \(six read-only tools/);
+    expect(tools).toHaveLength(6);
+  });
+
   it("lists the 8 admin languages (rule 4.3.2) and has a structured-features section", () => {
     expect(languages).toEqual(["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Polish"]);
     expect(listing).toContain("\n## Structured features\n");
