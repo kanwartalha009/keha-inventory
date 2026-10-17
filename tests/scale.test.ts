@@ -8,6 +8,10 @@
  *    they need) or as single-variant index lookups (findFirst) — never a variant's whole history.
  *    Equality with the facts-based results: tests/scale-compute-golden.test.ts; the sync keeping
  *    the days equal to a fresh scan: tests/fact-days.test.ts.
+ *  - #4 compute in chunks: per-day facts are read for one chunk of variants at a time (whole
+ *    products, COMPUTE_CHUNK = 2,000 variants), at most COMPUTE_QUERY_CONCURRENCY reads in flight,
+ *    and the event loop runs between chunks. Same rows written for every chunk size:
+ *    tests/scale-compute-golden.test.ts.
  *  - #5 connections: an explicit Prisma pool; no `in` list past Postgres's 32,767 bind
  *    parameters on Products.
  */
@@ -28,7 +32,7 @@ import { storeSales } from "../app/services/sync/facts.server";
 import { addDays, type DayRange } from "../app/lib/sync/shopifyql-shared";
 import type { ShopifyqlClient } from "../app/services/sync/shopifyql.server";
 import { ShopifyqlRowCapError } from "../app/lib/sync/shopifyql-shared";
-import { computeShop } from "../app/services/compute.server";
+import { COMPUTE_QUERY_CONCURRENCY, computeShop, productChunks } from "../app/services/compute.server";
 import { matches, type Row } from "./helpers/fake-prisma";
 import { FX_NOW, FX_SHOP, seedScaleFixture } from "./fixtures/scale-compute-fixture";
 
@@ -118,6 +122,67 @@ describe("#3 compute never reads a variant's whole history once the stored days 
     expect(after.walked).toBe(0);
     expect(before.walked).toBeGreaterThan(50_000);
     console.info(`[scale] compute on the 30-variant fixture: before ${before.unbounded} whole-history reads walking ${before.walked} fact rows; after ${after.unbounded} walking ${after.walked} (${after.reads} fact reads in all, ${lookups} single-variant index lookups)`);
+  }, 60_000);
+});
+
+describe("#4 compute in chunks", () => {
+  it("chunks hold whole products, in catalogue order, at most the chunk size (a bigger product alone)", () => {
+    const plans = ["A", "B", "A", "C", "C", "C", "D", "B"].map((productId, i) => ({ v: { productId, id: String(i) } }));
+    expect(productChunks(plans, 3).map((c) => c.map((p) => `${p.v.productId}${p.v.id}`))).toEqual([["A0", "A2"], ["B1", "B7"], ["C3", "C4", "C5"], ["D6"]]);
+    expect(productChunks(plans, 2).map((c) => c.length)).toEqual([2, 2, 3, 1]);
+    expect(productChunks(plans, 100)).toHaveLength(1);
+  });
+
+  it("per-day reads cover one chunk at a time, few in flight, and the event loop runs between chunks", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    seedScaleFixture(db, {});
+    const client = db.client as Record<string, Record<string, (...a: unknown[]) => Promise<unknown>>>;
+    const perDay: number[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const reals: Record<string, (...a: unknown[]) => Promise<unknown>> = {};
+    for (const table of ["salesDaily", "stockDaily"]) {
+      const real = (reals[table] = client[table].groupBy);
+      client[table].groupBy = async (args: unknown) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 1)); // a real query takes time: lets reads overlap
+        const rows = (await real(args)) as unknown[];
+        inFlight--;
+        if ((args as { by: string[] }).by.includes("day") && (args as { where: { variantId?: unknown } }).where.variantId) perDay.push(rows.length);
+        return rows;
+      };
+    }
+    const chunkSize = 6;
+    const run = await computeShop(FX_SHOP, { now: () => FX_NOW, chunkSize, buildDays: false });
+    for (const table of ["salesDaily", "stockDaily"]) client[table].groupBy = reals[table];
+    expect(run.variants).toBe(30);
+    // Each per-day read holds at most one chunk: ≤ chunkSize + a product's other variants, × 90 days × channels.
+    expect(Math.max(...perDay)).toBeLessThanOrEqual((chunkSize + 2) * 90 * 2);
+    // The chunk's reads are capped; a read may itself run two (poolDays' facts fallback).
+    expect(maxInFlight).toBeLessThanOrEqual(COMPUTE_QUERY_CONCURRENCY + 1);
+    console.info(`[scale] compute in chunks of ${chunkSize}: ${perDay.length} per-day reads, largest ${Math.max(...perDay)} rows; ${maxInFlight} reads in flight at most`);
+  }, 60_000);
+
+  it("the event loop gets a turn between chunks (other requests are not blocked for the whole run)", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const turnsFor = async (chunkSize: number) => {
+      seedScaleFixture(db, {});
+      let turns = 0;
+      let live = true;
+      const tick = () => {
+        turns++;
+        if (live) setImmediate(tick);
+      };
+      setImmediate(tick);
+      await computeShop(FX_SHOP, { now: () => FX_NOW, chunkSize, buildDays: false });
+      live = false;
+      return turns;
+    };
+    // The in-memory fake answers without I/O, so every turn comes from compute yielding.
+    const one = await turnsFor(2000);
+    const many = await turnsFor(3);
+    expect(many - one).toBeGreaterThanOrEqual(Math.ceil(30 / 3) - 1);
   }, 60_000);
 });
 

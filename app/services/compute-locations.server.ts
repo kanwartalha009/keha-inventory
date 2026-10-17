@@ -90,19 +90,38 @@ const seriesSold = (rows: readonly DailyRow[] | undefined) => !!rows?.some((r) =
 
 export type LocationComputeResult = { locations: number; metrics: number };
 
-/** The one entry point compute calls. `enabled` = the plan includes `locations` (fail-open upstream). */
-export async function syncLocationMetrics(shop: string, enabled: boolean, input: LocationComputeInput): Promise<LocationComputeResult> {
+/** The planning locations of one compute run (prepareLocationMetrics), shared by its variant chunks. */
+export type LocationRun = {
+  planning: { id: string; role: string; source: DemandSource }[];
+  /** Warehouses that count in supplier orders: one pool, each with its share of the online demand (H7). */
+  poolWh: string[];
+};
+
+/**
+ * Before the variant chunks (DB scale #4): the planning locations, and the rows of locations no
+ * longer planned removed. Without the `locations` feature every location-scope row is removed and
+ * null comes back (nothing to compute).
+ */
+export async function prepareLocationMetrics(shop: string, enabled: boolean): Promise<LocationRun | null> {
   if (!enabled) {
     await prisma.variantMetric.deleteMany({ where: { shop, scope: { not: SCOPE_ONLINE } } });
-    return { locations: 0, metrics: 0 };
+    return null;
   }
   const rows = await prisma.location.findMany({ where: { shop }, select: { ...POOL_LOCATION_SELECT, name: true, role: true } });
   const planning = planningLocations(rows);
   const byId = new Map(rows.map((r) => [r.id, r]));
   await prisma.variantMetric.deleteMany({ where: { shop, scope: { notIn: keptScopes(planning.map((l) => l.id)) } } });
-  // H7: warehouses that count in supplier orders are planned as one pool — each gets its share
-  // (by stock on hand) of the online demand: location view keys "online" + their own POS sales.
-  const poolWh = planning.filter((l) => l.role === "warehouse" && countsForOnline(byId.get(l.id)!)).map((l) => l.id);
+  return {
+    planning: planning.map((l) => ({ id: l.id, role: l.role, source: demandSourceFor(l.role, countsForOnline(byId.get(l.id)!)) })),
+    // H7: warehouses that count in supplier orders are planned as one pool — each gets its share
+    // (by stock on hand) of the online demand: location view keys "online" + their own POS sales.
+    poolWh: planning.filter((l) => l.role === "warehouse" && countsForOnline(byId.get(l.id)!)).map((l) => l.id),
+  };
+}
+
+/** One chunk of planned variants (input.plans), every planning location. Returns the rows written. */
+export async function locationMetricsChunk(shop: string, run: LocationRun, input: LocationComputeInput): Promise<number> {
+  const { poolWh } = run;
   const ids = input.plans.map((p) => p.v.id);
   const onlineSold = new Map<string, Map<string, number>>();
   const shares = new Map<string, Map<string, number>>();
@@ -115,7 +134,9 @@ export async function syncLocationMetrics(shop: string, enabled: boolean, input:
           _sum: { sold: true },
         }),
       ),
-      prisma.stockNow.findMany({ where: { shop, locationId: { in: poolWh } }, select: { variantId: true, locationId: true, onHand: true } }),
+      chunked(ids, (chunk) =>
+        prisma.stockNow.findMany({ where: { shop, locationId: { in: poolWh }, variantId: { in: chunk } }, select: { variantId: true, locationId: true, onHand: true } }),
+      ),
     ]);
     for (const g of salesG) {
       const m = onlineSold.get(g.variantId) ?? onlineSold.set(g.variantId, new Map()).get(g.variantId)!;
@@ -129,11 +150,22 @@ export async function syncLocationMetrics(shop: string, enabled: boolean, input:
   // Stored first / last days per variant × location (DB scale #3), read once for every location.
   const days = input.daysReady ? await locationDays(shop, ids) : null;
   let metrics = 0;
-  for (const l of planning) {
-    const source = demandSourceFor(l.role, countsForOnline(byId.get(l.id)!));
-    metrics += await computeLocation(shop, l.id, l.role, source, input, { onlineSold, shares, days });
-  }
-  return { locations: planning.length, metrics };
+  for (const l of run.planning) metrics += await computeLocation(shop, l.id, l.role, l.source, input, { onlineSold, shares, days });
+  return metrics;
+}
+
+/** After every chunk: rows of variants no longer carried (or no longer planned) at a location go. */
+export async function finishLocationMetrics(shop: string, run: LocationRun, startedAt: Date): Promise<void> {
+  for (const l of run.planning) await prisma.variantMetric.deleteMany({ where: { shop, scope: l.id, computedAt: { lt: startedAt } } });
+}
+
+/** All planned variants at once (prepare → one chunk → finish). `enabled` = the plan includes `locations` (fail-open upstream). */
+export async function syncLocationMetrics(shop: string, enabled: boolean, input: LocationComputeInput): Promise<LocationComputeResult> {
+  const run = await prepareLocationMetrics(shop, enabled);
+  if (!run) return { locations: 0, metrics: 0 };
+  const metrics = await locationMetricsChunk(shop, run, input);
+  await finishLocationMetrics(shop, run, input.startedAt);
+  return { locations: run.planning.length, metrics };
 }
 
 /**
@@ -191,7 +223,9 @@ async function computeLocation(
     ),
     // Last sale here before the window, first stock day here: stored days (DB scale #3), else the facts.
     pooled.days ? Promise.resolve(fromStored(pooled.days, ids, locationId, x.from)) : legacyDays(shop, ids, { from: x.from, view, locations: [locationId] }),
-    prisma.stockNow.findMany({ where: { shop, locationId }, select: { variantId: true, onHand: true, available: true, incoming: true } }),
+    chunked(ids, (chunk) =>
+      prisma.stockNow.findMany({ where: { shop, locationId, variantId: { in: chunk } }, select: { variantId: true, onHand: true, available: true, incoming: true } }),
+    ),
   ]);
 
   const sales: SalesDay[] = salesG.map((g) => ({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 }));
@@ -280,7 +314,7 @@ async function computeLocation(
       };
     }),
   );
-  // Variants no longer carried here (or no longer planned) lose their row for this location.
-  await prisma.variantMetric.deleteMany({ where: { shop, scope: locationId, computedAt: { lt: x.startedAt } } });
+  // Variants no longer carried here (or no longer planned) lose their row in finishLocationMetrics,
+  // once every chunk is written.
   return results.length;
 }

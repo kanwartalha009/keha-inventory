@@ -55,6 +55,15 @@ describe("compute on the scale fixture equals the recorded output", () => {
       expect(output).toEqual(want.output);
     }, 60_000);
 
+    for (const chunkSize of [1, 7, 2000]) {
+      it(`${name}: the same in chunks of ${chunkSize} variant(s) (DB scale #4)`, async () => {
+        if (process.env.KEHA_WRITE_GOLDEN === "1") return;
+        const { result, output } = await run(opts, () => computeShop(FX_SHOP, { now: () => FX_NOW, chunkSize }));
+        expect(result).toEqual((golden[name] as { result: unknown }).result);
+        expect(output).toEqual((golden[name] as { output: unknown }).output);
+      }, 60_000);
+    }
+
     it(`${name}: the same with the stored days not built (reads the facts, DB scale #3)`, async () => {
       if (process.env.KEHA_WRITE_GOLDEN === "1") return;
       const { output } = await run(opts, () => computeShop(FX_SHOP, { now: () => FX_NOW, buildDays: false }));

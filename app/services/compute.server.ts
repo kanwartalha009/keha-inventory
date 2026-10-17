@@ -69,7 +69,7 @@ import {
   poolLocationIds,
   productHandleFromPath,
   productTraffic,
-  revenueOf,
+
   salesCoverage,
   sessionsByHandle,
   soldOver,
@@ -97,7 +97,8 @@ import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
-import { syncLocationMetrics } from "./compute-locations.server";
+import { finishLocationMetrics, locationMetricsChunk, prepareLocationMetrics } from "./compute-locations.server";
+import { allLimit, yieldToEventLoop } from "../lib/concurrency-shared";
 import { writeVariantMetrics } from "./metric-writes.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
@@ -105,6 +106,14 @@ import { legacyDays, lastSaleBefore, locationDays, type SalesViewWhere } from ".
 import { buildFactDays, fillVariantDays } from "./sync/fact-days.server";
 
 const HISTORY_DAYS = 90;
+/**
+ * Variants per compute chunk (DB scale #4): per-day facts are read and held for one chunk at a
+ * time (≈ 2,000 × 90 days × a few rows) instead of the whole catalogue (2.7 M objects on a large
+ * store). Chunks hold whole products.
+ */
+export const COMPUTE_CHUNK = 2000;
+/** A chunk's fact reads in flight at once (each holds a pool connection; DB_CONNECTION_LIMIT is 10). */
+export const COMPUTE_QUERY_CONCURRENCY = 3;
 const TRAFFIC_DAYS = 30;
 const WRITE_BATCH = 200;
 
@@ -127,7 +136,50 @@ export type ComputeOptions = {
    * scale #3). false keeps reading the facts — the equality tests compare both.
    */
   buildDays?: boolean;
+  /** Variants per chunk (default COMPUTE_CHUNK); the equality tests run several sizes. */
+  chunkSize?: number;
 };
+
+/**
+ * The plans in chunks of at most `size` variants that never split a product (a product larger
+ * than `size` is one chunk), products in catalogue order (first appearance).
+ */
+export function productChunks<P extends { v: { productId: string } }>(plans: readonly P[], size: number): P[][] {
+  const byProduct = new Map<string, P[]>();
+  for (const p of plans) (byProduct.get(p.v.productId) ?? byProduct.set(p.v.productId, []).get(p.v.productId)!).push(p);
+  const out: P[][] = [];
+  let cur: P[] = [];
+  for (const group of byProduct.values()) {
+    if (cur.length && cur.length + group.length > size) {
+      out.push(cur);
+      cur = [];
+    }
+    cur.push(...group);
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/** Stock now over the pool for `ids`, summed per variant (onHand: physical; available: the planning position). */
+async function poolStockNow(shop: string, pool: string[], ids: readonly string[]): Promise<Map<string, { onHand: number; available: number; incoming: number }>> {
+  const out = new Map<string, { onHand: number; available: number; incoming: number }>();
+  if (!pool.length || !ids.length) return out;
+  // onHand: physical units (Shopify on_hand) — auto-receive / landed estimates compare it with
+  // history. available: the PLANNING POSITION (Shopify available = on_hand − committed − reserved
+  // − damaged − safety_stock − quality_control); negative when oversold (audit 2026-10-17 C2).
+  const rows = await prisma.stockNow.findMany({
+    where: { shop, locationId: { in: pool }, variantId: { in: [...ids] } },
+    select: { variantId: true, onHand: true, available: true, incoming: true },
+  });
+  for (const s of rows) {
+    const cur = out.get(s.variantId) ?? { onHand: 0, available: 0, incoming: 0 };
+    cur.onHand += s.onHand;
+    cur.available += s.available;
+    cur.incoming += s.incoming;
+    out.set(s.variantId, cur);
+  }
+  return out;
+}
 
 /** A variant's stored days as compute selects them (Variant columns). */
 type StoredVariantDays = { id: string; firstStockDay: Date | null; firstSaleDay: Date | null; lastSaleDay: Date | null };
@@ -281,103 +333,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const demand = demandScope(locations);
   const demandFilter = demandWhere(demand);
 
-  // ---- facts (grouped in SQL) ----
-  const [channelG, poolSalesG, stockG, outG, days, stockNow] = await Promise.all([
-    // Channel view: revenue (ABC), unit price and returns only.
-    prisma.salesDaily.groupBy({
-      by: ["variantId", "day"],
-      where: { shop, locationKey: ALL, day: range },
-      _sum: { sold: true, gross: true, returned: true },
-    }),
-    // Pool demand (one SalesDaily view): units sold for the supplier-order pool.
-    prisma.salesDaily.groupBy({
-      by: ["variantId", "day"],
-      where: { shop, ...demandFilter, day: range },
-      _sum: { sold: true },
-    }),
-    pool.length
-      ? prisma.stockDaily.groupBy({
-          by: ["variantId", "day"],
-          where: { shop, locationId: { in: pool }, day: range },
-          _sum: { endUnits: true },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    pool.length
-      ? prisma.stockDaily.groupBy({
-          by: ["variantId", "day"],
-          where: { shop, locationId: { in: pool }, day: range, outOfStock: true },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    // Last sale before the window, oldest pool stock day (start of the no-sale period for
-    // never-sold variants): stored days, never the whole history (DB scale #3).
-    poolDays(shop, considered, { ready: daysReady, from, pool, demand, view: demandFilter }),
-    pool.length
-      ? prisma.stockNow.findMany({
-          where: { shop, locationId: { in: pool } },
-          select: { variantId: true, onHand: true, available: true, incoming: true },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const channelSales: SalesDay[] = channelG.map((g) => ({
-    variantId: g.variantId,
-    day: dayKey(g.day),
-    sold: num(g._sum.sold),
-    gross: num(g._sum.gross),
-  }));
-  // Returns over the 90 days (channel view). quantity_returned's sign is unverified: use |x|.
-  const returnsByVariant = new Map<string, { sold: number; returned: number }>();
-  for (const g of channelG) {
-    const cur = returnsByVariant.get(g.variantId) ?? { sold: 0, returned: 0 };
-    cur.sold += num(g._sum.sold);
-    cur.returned += Math.abs(num(g._sum.returned));
-    returnsByVariant.set(g.variantId, cur);
-  }
-  const poolSales: SalesDay[] = poolSalesG.map((g) => ({
-    variantId: g.variantId,
-    day: dayKey(g.day),
-    sold: num(g._sum.sold),
-    gross: 0,
-  }));
-  const outCount = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
-  const stock: PooledStockDay[] = stockG.map((g) => ({
-    variantId: g.variantId,
-    day: dayKey(g.day),
-    endUnits: num(g._sum.endUnits),
-    reported: g._count._all,
-    outReported: outCount.get(`${g.variantId}|${dayKey(g.day)}`) ?? 0,
-  }));
-  const series = buildSeries(poolSales, stock, channelSales);
-  const revenue = revenueOf(channelSales);
-  const { dataSince, lastSale } = days;
-  const fewInStock = (id: string) => (series.get(id) ?? []).filter((r) => !soldOutDay(r)).length < settings.minInStockDays;
-  // The last sale before the window, where the series cannot stand in for it (no sale in the
-  // series) or the older-series rule below asks whether there is one: exact, per variant.
-  await resolveLastSale(shop, lastSale, considered.filter((v) => !seriesSold(series.get(v.id)) || fewInStock(v.id)).map((v) => v.id), from, demandFilter);
-  const olderSeries = await loadOlderSeries(shop, {
-    // Data audit #2: too few in-stock days in the 90 days but sales before them — out of stock
-    // most of the window. Their pace comes from older in-stock days (engine inStockPace).
-    ids: considered
-      .filter((v) => lastSale.get(v.id) && fewInStock(v.id))
-      .map((v) => v.id),
-    from: addDays(today, -PACE_LOOKBACK_DAYS),
-    before: from,
-    pool,
-    demandFilter,
+  // ---- shop-wide inputs (one read each, no per-day rows) ----
+  // ABC roles need every variant's 90-day revenue (channel view) before any chunk is planned.
+  const revenueG = await prisma.salesDaily.groupBy({
+    by: ["variantId"],
+    where: { shop, locationKey: ALL, day: range },
+    _sum: { gross: true },
   });
-  // onHand: physical units (Shopify on_hand) — auto-receive / landed estimates compare it with
-  // history. available: the PLANNING POSITION (Shopify available = on_hand − committed − reserved
-  // − damaged − safety_stock − quality_control); negative when oversold (audit 2026-10-17 C2).
-  const onHand = new Map<string, { onHand: number; available: number; incoming: number }>();
-  for (const s of stockNow) {
-    const cur = onHand.get(s.variantId) ?? { onHand: 0, available: 0, incoming: 0 };
-    cur.onHand += s.onHand;
-    cur.available += s.available;
-    cur.incoming += s.incoming;
-    onHand.set(s.variantId, cur);
-  }
+  const revenue = new Map(revenueG.map((g) => [g.variantId, num(g._sum.gross)]));
 
   // Open purchase orders (sent / confirmed; Keha and Shopify). Keha orders are not in Shopify's
   // incoming (see kehaOpenUnits): their open units are added, minus the units estimated to have
@@ -400,7 +363,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }));
   const isKeha = (po: OpenPo) => po.source === "keha";
   const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
-  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, demandFilter, to, onHand));
+  // landedFacts reads on-hand now only for the variants on open Keha orders.
+  const kehaIds = [...new Set(rawPos.filter(isKeha).flatMap((po) => po.lines.map((l) => l.variantId)))];
+  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, demandFilter, to, await poolStockNow(shop, pool, kehaIds)));
   const kehaOpen = kehaOpenUnits(openPos.filter(isKeha));
   // Each Keha order's share of the incoming (inputs.kehaOrders): the order plan takes the units of
   // an order closed short / cancelled after this run out at once (H2).
@@ -449,173 +414,299 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     : [];
   const soldAhead = new Map(aheadG.map((g) => [g.variantId, num(g._sum.sold)]));
 
-  // ---- engine ----
   const roles = abcRoles(
     considered.map((v) => ({ id: v.id, revenue90: revenue.get(v.id) ?? 0 })),
     settings,
   );
-  const results: VariantResult[] = [];
-  const seasonOf = new Map<string, VariantSeason>();
-  const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
-  for (const { v, supplier, horizon } of plans) {
-    const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
-    const season = seasonCtx.forVariant(v.collections ?? [], horizon);
-    seasonOf.set(v.id, season);
-    // The weekly seasonal shape (only when the index was applied): the forward plan's 13 weeks and
-    // the status / money projection up to the Too-much threshold (H6).
-    const curve = seasonCtx.curveFor(season, Math.ceil(Math.max(FORWARD_CURVE_DAYS + horizon, settings.tooMuchDays + 1, settings.cashStuckCoverDays) / 7));
-    const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
-    const r = computeVariant({
-      id: v.id,
-      isBundle: false,
-      series: series.get(v.id) ?? [],
-      olderSeries: olderSeries.get(v.id) ?? null,
-      today,
-      onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
-      incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
-      role: roles.get(v.id) ?? "C",
-      // L1: the store-local day the product was created, not the UTC one.
-      productCreatedAt: v.productCreatedAt ? localDate(v.productCreatedAt, tz) : null,
-      lastSaleDay: lastSale.get(v.id) ?? null,
-      dataSinceDay: dataSince.get(v.id) ?? null,
-      supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
-      caseQty: casePackFor(v.caseQty, supplier),
-      minOrder: supplier?.minOrder ?? null,
-      seasonal: season.seasonal,
-      trend: season.trend,
-      plan: 1,
-      seasonCurve: curve,
-      arrivals,
-      soldLastYearAhead: aheadCovered ? (soldAhead.get(v.id) ?? 0) : null,
-      noReorder: v.noReorder,
-      // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
-      sellsWhenOut: v.inventoryPolicy === "CONTINUE",
-      price: numOrNull(v.price),
-      cost: numOrNull(v.cost),
-      settings: overrides,
+
+  // Money cards (and the action list) are due on this run? Read before the chunks: the sold-out
+  // page figure is built per chunk from that chunk's series.
+  const refresh = MONEY_REFRESH[plan];
+  const last = await prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" }, select: { day: true } });
+  const moneyIsDue = moneyDue(refresh, last ? dayKey(last.day) : null, today);
+  const trafficFrom = addDays(today, -TRAFFIC_DAYS);
+  const trafficRange = { gte: dayDate(trafficFrom), lte: dayDate(to) };
+  const totals = { sessions: 0, checkouts: 0, orders: 0, gross: 0 };
+  let landing: { landingPath: string; day: string; sessions: number; checkouts: number }[] = [];
+  if (moneyIsDue) {
+    const [sessionsG, shopDays] = await Promise.all([
+      prisma.sessionsDaily.groupBy({
+        by: ["landingPath", "day"],
+        where: { shop, day: trafficRange },
+        _sum: { sessions: true, checkouts: true },
+      }),
+      prisma.shopDaily.findMany({ where: { shop, day: trafficRange }, select: { orders: true, gross: true } }),
+    ]);
+    landing = sessionsG.map((g) => {
+      totals.sessions += num(g._sum.sessions);
+      totals.checkouts += num(g._sum.checkouts);
+      return { landingPath: g.landingPath, day: dayKey(g.day), sessions: num(g._sum.sessions), checkouts: num(g._sum.checkouts) };
     });
-    if (r) {
-      // Order-by date from the forward plan (engine/forward-plan-shared): the same function the
-      // Order now screen, the 90-day calendar and the Dashboard use, so there is one date per
-      // variant. It adds dated incoming and last year's seasonal shape to the flat formula.
-      const fwd = planVariant({
-        today,
-        status: r.status,
-        rate: r.rate,
-        seasonal: r.seasonal,
-        trend: r.trend,
-        plan: r.plan,
-        curve,
-        safety: r.safety,
-        leadTimeDays: r.inputs.leadTimeDays,
-        cycleDays: r.inputs.cycleDays,
-        onHand: r.onHand,
-        incoming: r.incoming,
-        arrivals,
-        need: r.inputs.orderNeed,
-        orderQty: r.orderQty,
-        notCounted: 0,
-        pack: r.inputs.caseQty,
-        moq: r.inputs.minOrder,
-        days: 0,
-        outSince: r.inputs.outSince,
-        sellsWhenOut: r.inputs.sellsWhenOut,
-      });
-      // "Don't reorder" variants get no order-by date (no order advice at all).
-      r.orderBy = r.inputs.noReorder ? null : fwd.deadline;
-      forwardOf.set(v.id, { seasonCurve: curve, arrivals });
-      results.push(r);
+    for (const d of shopDays) {
+      totals.orders += d.orders;
+      totals.gross += num(d.gross);
     }
   }
+  const landingByHandle = moneyIsDue ? sessionsByHandle(landing) : new Map<string, Map<string, number>>();
 
+  // ---- engine, a chunk of variants at a time (DB scale #4) ----
+  // Per-day facts are read and kept for one chunk only (≈ COMPUTE_CHUNK variants × 90 days);
+  // what later steps need from them is kept per variant (results, 28-day units and revenue,
+  // returns, the sold-out page figure per product). Chunks hold whole products, in catalogue
+  // order, so the per-product figures and every sum come out in the same order as one pass.
+  const order = new Map(plans.map((p, i) => [p.v.id, i]));
+  const results: VariantResult[] = [];
+  const seasonOf = new Map<string, VariantSeason>();
+  const sold28 = new Map<string, number | null>();
+  const revenue28 = new Map<string, number>();
+  const returnsByVariant = new Map<string, { sold: number; returned: number }>();
+  const traffic: ReturnType<typeof productTraffic> = [];
+  const from28 = addDays(today, -ACTION_WINDOW);
   const supplierIdOf = new Map(plans.map((p) => [p.v.id, p.supplier?.id ?? null]));
-  await writeVariantMetrics(
-    shop,
-    SCOPE_ONLINE,
-    results.map((r) => {
-      const season = seasonOf.get(r.id);
-      const m = metricRow(r, {
-        season: season ? seasonFacts(season) : null,
-        safetyLevel: shopSettings.safetyLevel,
-        serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
-        supplierId: supplierIdOf.get(r.id) ?? null,
-        kehaOnOrder: kehaRaw.get(r.id) ?? 0,
-        kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
-        kehaOrders: kehaShares.get(r.id) ?? [],
-        // Forward order plan inputs (forward-plan-shared forwardInputFromMetric).
-        safety: r.safety,
-        seasonCurve: forwardOf.get(r.id)?.seasonCurve ?? null,
-        arrivals: forwardOf.get(r.id)?.arrivals ?? [],
+  const locationRun = await prepareLocationMetrics(shop, hasFeature(plan, "locations"));
+  let locationMetrics = 0;
+
+  for (const chunk of productChunks(plans, opts.chunkSize ?? COMPUTE_CHUNK)) {
+    const ids = chunk.map((p) => p.v.id);
+    const inChunk = { in: ids };
+    const [channelG, poolSalesG, stockG, outG, days, stockNow] = await allLimit(COMPUTE_QUERY_CONCURRENCY, [
+      // Channel view: unit price, returns, 28-day revenue.
+      () =>
+        prisma.salesDaily.groupBy({
+          by: ["variantId", "day"],
+          where: { shop, locationKey: ALL, variantId: inChunk, day: range },
+          _sum: { sold: true, gross: true, returned: true },
+        }),
+      // Pool demand (one SalesDaily view): units sold for the supplier-order pool.
+      () =>
+        prisma.salesDaily.groupBy({
+          by: ["variantId", "day"],
+          where: { shop, ...demandFilter, variantId: inChunk, day: range },
+          _sum: { sold: true },
+        }),
+      () =>
+        pool.length
+          ? prisma.stockDaily.groupBy({
+              by: ["variantId", "day"],
+              where: { shop, locationId: { in: pool }, variantId: inChunk, day: range },
+              _sum: { endUnits: true },
+              _count: { _all: true },
+            })
+          : Promise.resolve([]),
+      () =>
+        pool.length
+          ? prisma.stockDaily.groupBy({
+              by: ["variantId", "day"],
+              where: { shop, locationId: { in: pool }, variantId: inChunk, day: range, outOfStock: true },
+              _count: { _all: true },
+            })
+          : Promise.resolve([]),
+      // Last sale before the window, oldest pool stock day (start of the no-sale period for
+      // never-sold variants): stored days, never the whole history (DB scale #3).
+      () => poolDays(shop, chunk.map((p) => p.v), { ready: daysReady, from, pool, demand, view: demandFilter }),
+      () => poolStockNow(shop, pool, ids),
+    ] as const);
+
+    const channelSales: SalesDay[] = channelG.map((g) => ({
+      variantId: g.variantId,
+      day: dayKey(g.day),
+      sold: num(g._sum.sold),
+      gross: num(g._sum.gross),
+    }));
+    // Returns over the 90 days (channel view). quantity_returned's sign is unverified: use |x|.
+    for (const g of channelG) {
+      const cur = returnsByVariant.get(g.variantId) ?? { sold: 0, returned: 0 };
+      cur.sold += num(g._sum.sold);
+      cur.returned += Math.abs(num(g._sum.returned));
+      returnsByVariant.set(g.variantId, cur);
+    }
+    for (const s of channelSales) if (s.day >= from28) revenue28.set(s.variantId, (revenue28.get(s.variantId) ?? 0) + s.gross);
+    const poolSales: SalesDay[] = poolSalesG.map((g) => ({
+      variantId: g.variantId,
+      day: dayKey(g.day),
+      sold: num(g._sum.sold),
+      gross: 0,
+    }));
+    const outCount = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
+    const stock: PooledStockDay[] = stockG.map((g) => ({
+      variantId: g.variantId,
+      day: dayKey(g.day),
+      endUnits: num(g._sum.endUnits),
+      reported: g._count._all,
+      outReported: outCount.get(`${g.variantId}|${dayKey(g.day)}`) ?? 0,
+    }));
+    const series = buildSeries(poolSales, stock, channelSales);
+    const { dataSince, lastSale } = days;
+    const fewInStock = (id: string) => (series.get(id) ?? []).filter((r) => !soldOutDay(r)).length < settings.minInStockDays;
+    // The last sale before the window, where the series cannot stand in for it (no sale in the
+    // series) or the older-series rule below asks whether there is one: exact, per variant.
+    await resolveLastSale(shop, lastSale, ids.filter((id) => !seriesSold(series.get(id)) || fewInStock(id)), from, demandFilter);
+    const olderSeries = await loadOlderSeries(shop, {
+      // Data audit #2: too few in-stock days in the 90 days but sales before them — out of stock
+      // most of the window. Their pace comes from older in-stock days (engine inStockPace).
+      ids: ids.filter((id) => lastSale.get(id) && fewInStock(id)),
+      from: addDays(today, -PACE_LOOKBACK_DAYS),
+      before: from,
+      pool,
+      demandFilter,
+    });
+    const onHand = stockNow;
+
+    const chunkResults: VariantResult[] = [];
+    const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
+    for (const { v, supplier, horizon } of chunk) {
+      const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
+      const season = seasonCtx.forVariant(v.collections ?? [], horizon);
+      seasonOf.set(v.id, season);
+      // The weekly seasonal shape (only when the index was applied): the forward plan's 13 weeks and
+      // the status / money projection up to the Too-much threshold (H6).
+      const curve = seasonCtx.curveFor(season, Math.ceil(Math.max(FORWARD_CURVE_DAYS + horizon, settings.tooMuchDays + 1, settings.cashStuckCoverDays) / 7));
+      const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
+      const r = computeVariant({
+        id: v.id,
+        isBundle: false,
+        series: series.get(v.id) ?? [],
+        olderSeries: olderSeries.get(v.id) ?? null,
+        today,
+        onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
+        incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
+        role: roles.get(v.id) ?? "C",
+        // L1: the store-local day the product was created, not the UTC one.
+        productCreatedAt: v.productCreatedAt ? localDate(v.productCreatedAt, tz) : null,
+        lastSaleDay: lastSale.get(v.id) ?? null,
+        dataSinceDay: dataSince.get(v.id) ?? null,
+        supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
+        caseQty: casePackFor(v.caseQty, supplier),
+        minOrder: supplier?.minOrder ?? null,
+        seasonal: season.seasonal,
+        trend: season.trend,
+        plan: 1,
+        seasonCurve: curve,
+        arrivals,
+        soldLastYearAhead: aheadCovered ? (soldAhead.get(v.id) ?? 0) : null,
+        noReorder: v.noReorder,
+        // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
+        sellsWhenOut: v.inventoryPolicy === "CONTINUE",
+        price: numOrNull(v.price),
+        cost: numOrNull(v.cost),
+        settings: overrides,
       });
-      return {
-        variantId: r.id,
-        rate: m.rate,
-        sigma: m.sigma,
-        daysLeft: m.daysLeft,
-        neverRunsOut: m.neverRunsOut,
-        status: m.status,
-        role: m.role,
-        orderQty: m.orderQty,
-        orderBy: m.orderBy ? dayDate(m.orderBy) : null,
-        computedAt: startedAt,
-        inputs: m.inputs as Prisma.InputJsonValue,
-      };
-    }),
-  );
+      if (r) {
+        // Order-by date from the forward plan (engine/forward-plan-shared): the same function the
+        // Order now screen, the 90-day calendar and the Dashboard use, so there is one date per
+        // variant. It adds dated incoming and last year's seasonal shape to the flat formula.
+        const fwd = planVariant({
+          today,
+          status: r.status,
+          rate: r.rate,
+          seasonal: r.seasonal,
+          trend: r.trend,
+          plan: r.plan,
+          curve,
+          safety: r.safety,
+          leadTimeDays: r.inputs.leadTimeDays,
+          cycleDays: r.inputs.cycleDays,
+          onHand: r.onHand,
+          incoming: r.incoming,
+          arrivals,
+          need: r.inputs.orderNeed,
+          orderQty: r.orderQty,
+          notCounted: 0,
+          pack: r.inputs.caseQty,
+          moq: r.inputs.minOrder,
+          days: 0,
+          outSince: r.inputs.outSince,
+          sellsWhenOut: r.inputs.sellsWhenOut,
+        });
+        // "Don't reorder" variants get no order-by date (no order advice at all).
+        r.orderBy = r.inputs.noReorder ? null : fwd.deadline;
+        forwardOf.set(v.id, { seasonCurve: curve, arrivals });
+        chunkResults.push(r);
+      }
+      // What the action list needs from the series, kept per variant.
+      sold28.set(v.id, soldOver(series.get(v.id), today, ACTION_WINDOW));
+    }
+
+    await writeVariantMetrics(
+      shop,
+      SCOPE_ONLINE,
+      chunkResults.map((r) => {
+        const season = seasonOf.get(r.id);
+        const m = metricRow(r, {
+          season: season ? seasonFacts(season) : null,
+          safetyLevel: shopSettings.safetyLevel,
+          serviceLevel: serviceLevelFor(shopSettings.safetyLevel, r.role),
+          supplierId: supplierIdOf.get(r.id) ?? null,
+          kehaOnOrder: kehaRaw.get(r.id) ?? 0,
+          kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
+          kehaOrders: kehaShares.get(r.id) ?? [],
+          // Forward order plan inputs (forward-plan-shared forwardInputFromMetric).
+          safety: r.safety,
+          seasonCurve: forwardOf.get(r.id)?.seasonCurve ?? null,
+          arrivals: forwardOf.get(r.id)?.arrivals ?? [],
+        });
+        return {
+          variantId: r.id,
+          rate: m.rate,
+          sigma: m.sigma,
+          daysLeft: m.daysLeft,
+          neverRunsOut: m.neverRunsOut,
+          status: m.status,
+          role: m.role,
+          orderQty: m.orderQty,
+          orderBy: m.orderBy ? dayDate(m.orderBy) : null,
+          computedAt: startedAt,
+          inputs: m.inputs as Prisma.InputJsonValue,
+        };
+      }),
+    );
+
+    // ---- per location (Pro): warehouses and stores, metrics only — this chunk ----
+    if (locationRun) {
+      locationMetrics += await locationMetricsChunk(shop, locationRun, {
+        startedAt,
+        today,
+        from,
+        range,
+        overrides,
+        safetyLevel: shopSettings.safetyLevel,
+        plans: chunk,
+        roles,
+        seasonOf,
+        curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
+        pool: { series, lastSale, dataSince, resolveLastSale: (unknown: readonly string[]) => resolveLastSale(shop, lastSale, unknown, from, demandFilter) },
+        daysReady,
+      });
+    }
+
+    // Sold-out product page visits (money cards): this chunk's products, from its series.
+    if (moneyIsDue) {
+      const products = new Map<string, TrafficProduct>();
+      for (const { v } of chunk) {
+        const p = products.get(v.productId) ?? { productId: v.productId, handle: v.handle, variantIds: [] };
+        p.variantIds.push(v.id);
+        products.set(v.productId, p);
+      }
+      traffic.push(...productTraffic([...products.values()], series, landingByHandle, trafficFrom, to));
+    }
+    results.push(...chunkResults);
+    // Let requests and timers run between chunks (the web process shares this event loop).
+    await yieldToEventLoop();
+  }
+  // Same order as one pass over the catalogue (sums below add up in the same order).
+  results.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
   // Variants no longer tracked / no longer in the catalog lose their metric.
   await prisma.variantMetric.deleteMany({ where: { shop, scope: SCOPE_ONLINE, computedAt: { lt: startedAt } } });
-
-  // ---- per location (Pro): warehouses and stores, metrics only ----
-  const perLocation = await syncLocationMetrics(shop, hasFeature(plan, "locations"), {
-    startedAt,
-    today,
-    from,
-    range,
-    overrides,
-    safetyLevel: shopSettings.safetyLevel,
-    plans,
-    roles,
-    seasonOf,
-    curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
-    pool: { series, lastSale, dataSince, resolveLastSale: (ids: readonly string[]) => resolveLastSale(shop, lastSale, ids, from, demandFilter) },
-    daysReady,
-  });
+  if (locationRun) await finishLocationMetrics(shop, locationRun, startedAt);
+  const perLocation = { metrics: locationMetrics };
   // Every metric row of this run is written (online pool and locations): plans cached from the
   // run while it was being written are dropped (L2; the fingerprint also sees the new rows).
   forgetOrderPlan(shop);
 
   // ---- money at stake ----
-  const refresh = MONEY_REFRESH[plan];
-  const last = await prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" }, select: { day: true } });
-  if (!moneyDue(refresh, last ? dayKey(last.day) : null, today)) {
+  if (!moneyIsDue) {
     return { status: "computed", today, variants: results.length, locationMetrics: perLocation.metrics, money: "not_due" };
-  }
-
-  const trafficFrom = addDays(today, -TRAFFIC_DAYS);
-  const trafficRange = { gte: dayDate(trafficFrom), lte: dayDate(to) };
-  const [sessionsG, shopDays] = await Promise.all([
-    prisma.sessionsDaily.groupBy({
-      by: ["landingPath", "day"],
-      where: { shop, day: trafficRange },
-      _sum: { sessions: true, checkouts: true },
-    }),
-    prisma.shopDaily.findMany({ where: { shop, day: trafficRange }, select: { orders: true, gross: true } }),
-  ]);
-  const totals = { sessions: 0, checkouts: 0, orders: 0, gross: 0 };
-  const landing = sessionsG.map((g) => {
-    totals.sessions += num(g._sum.sessions);
-    totals.checkouts += num(g._sum.checkouts);
-    return { landingPath: g.landingPath, day: dayKey(g.day), sessions: num(g._sum.sessions), checkouts: num(g._sum.checkouts) };
-  });
-  for (const d of shopDays) {
-    totals.orders += d.orders;
-    totals.gross += num(d.gross);
-  }
-  const products = new Map<string, TrafficProduct>();
-  for (const v of considered) {
-    const p = products.get(v.productId) ?? { productId: v.productId, handle: v.handle, variantIds: [] };
-    p.variantIds.push(v.id);
-    products.set(v.productId, p);
   }
 
   const ctx = { today, currency: shopRow.currency, settings };
@@ -625,11 +716,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   );
   const lost90 = salesLostToSellOuts(results, ctx);
   const stuck = cashStuck(results, ctx);
-  const traffic = soldOutPageTraffic(
-    productTraffic([...products.values()], series, sessionsByHandle(landing), trafficFrom, to),
-    storeConversion(totals),
-    ctx,
-  );
+  const trafficCard = soldOutPageTraffic(traffic, storeConversion(totals), ctx);
   const basis: MoneyBasisJson = {
     computedAt: startedAt.toISOString(),
     currency: shopRow.currency,
@@ -637,13 +724,13 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     atRisk: atRisk.basis,
     lost90: lost90.basis,
     cashStuck: stuck.basis,
-    soldOutTraffic: traffic.basis,
+    soldOutTraffic: trafficCard.basis,
   };
   const money = {
     atRisk: atRisk.amount,
     lost90: lost90.amount,
     cashStuck: stuck.amount,
-    soldOutTraffic: traffic.amount,
+    soldOutTraffic: trafficCard.amount,
     basis: basis as unknown as Prisma.InputJsonValue,
   };
   await prisma.moneyAtStake.upsert({
@@ -660,8 +747,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     coverage,
     results,
     considered,
-    series,
-    channelSales,
+    sold28,
+    revenue28,
     returnsByVariant,
     landing,
     store: storeConversion(totals),
@@ -684,8 +771,10 @@ async function writeActions(
     coverage: Coverage;
     results: VariantResult[];
     considered: { id: string; productId: string; handle: string }[];
-    series: Map<string, DailyRow[]>;
-    channelSales: SalesDay[];
+    /** Units sold over the last 28 days with data, per variant (compute-shared soldOver). */
+    sold28: ReadonlyMap<string, number | null>;
+    /** Channel-view revenue over the last 28 days, per variant. */
+    revenue28: ReadonlyMap<string, number>;
     returnsByVariant: Map<string, { sold: number; returned: number }>;
     landing: { landingPath: string; day: string; sessions: number; checkouts: number }[];
     store: StoreConversion;
@@ -710,8 +799,7 @@ async function writeActions(
       })
     : [];
   const lyRevenue = new Map(lyG.map((g) => [g.variantId, num(g._sum.gross)]));
-  const tyRevenue = new Map<string, number>();
-  for (const s of x.channelSales) if (s.day >= from28) tyRevenue.set(s.variantId, (tyRevenue.get(s.variantId) ?? 0) + s.gross);
+  const tyRevenue = x.revenue28;
   const arrivals = poArrivals(x.openPos);
   const landingBy = new Map<string, { sessions: number; checkouts: number }>();
   for (const l of x.landing) {
@@ -751,7 +839,7 @@ async function writeActions(
       leadTimeDays: r.inputs.leadTimeDays,
       price: r.price,
       cost: r.cost,
-      sold28: soldOver(x.series.get(v.id), today, ACTION_WINDOW),
+      sold28: x.sold28.get(v.id) ?? null,
       noSaleDays: r.inputs.noSaleDays,
       arrival: arr?.arrival ?? null,
       incomingDated: arr?.units ?? 0,
