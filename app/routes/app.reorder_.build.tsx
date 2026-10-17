@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { addToSupplierDraft, createSupplierDraft, loadSupplierOrder, type SupplierOrderResult } from "../models/supplier-order.server";
 import { AppPage, EmptyState, FormCard, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
@@ -68,10 +68,10 @@ export type BuilderPageData =
   | { enabled: false; teaser: BuilderTeaser | null };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   const link = readBuilderLink(new URL(request.url).searchParams);
-  const load = link ? await loadSupplierOrder(session.shop, link.supplierKey, link.range) : null;
+  const load = link ? await loadSupplierOrder(shop, link.supplierKey, link.range) : null;
   // Free: the lock teaches with this supplier's own numbers; no line, product or price is sent.
   if (!features.reorderPlan) return { enabled: false, teaser: load && load.view.lines.length ? builderTeaser(load.view) : null };
   return { enabled: true, view: load?.view ?? null, today: load?.today ?? new Date().toISOString().slice(0, 10) };
@@ -80,8 +80,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderPa
 export type BuilderAction = SupplierOrderResult;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.reorderPlan) return upgradeResponse("reorderPlan", "The order plan is on the Growth plan.");
   let body: Record<string, unknown>;
   try {
@@ -92,9 +92,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const key = typeof body.supplier === "string" && /^(supplier|vendor):/.test(body.supplier) && body.supplier.length <= 300 ? body.supplier : null;
   if (!key) throw new Response("Bad request", { status: 400 });
   const quantities = readBuilderQuantities(body.quantities);
-  if (body.intent === "create") return (await createSupplierDraft(session.shop, key, quantities)) satisfies BuilderAction;
+  if (body.intent === "create") return (await createSupplierDraft(shop, key, quantities)) satisfies BuilderAction;
   if (body.intent === "add" && typeof body.draftId === "string" && body.draftId.length <= 100) {
-    return (await addToSupplierDraft(session.shop, key, body.draftId, quantities, body.version)) satisfies BuilderAction;
+    return (await addToSupplierDraft(shop, key, body.draftId, quantities, body.version)) satisfies BuilderAction;
   }
   throw new Response("Bad request", { status: 400 });
 };

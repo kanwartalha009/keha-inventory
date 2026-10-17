@@ -20,6 +20,7 @@
  * "monday_slack"), independent of the email being on.
  */
 import prisma from "../db.server";
+import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale, translate } from "../lib/i18n";
 import {
@@ -321,7 +322,8 @@ export async function runMondayEmails(shop: string, now: Date = new Date()): Pro
 export async function runMondayEmailsAllShops(
   now: Date = new Date(),
 ): Promise<{ sent: number; failed: number; skipped: number }> {
-  const rows = (await prisma.shop.findMany({ where: { uninstalledAt: null } })) as ShopRow[];
+  // Sample data (`<shop>#sample`) never gets an email.
+  const rows = (await prisma.shop.findMany({ where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } } })) as ShopRow[];
   const out = { sent: 0, failed: 0, skipped: 0 };
   for (const row of rows) {
     try {

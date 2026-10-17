@@ -6,6 +6,7 @@
  * go to POST /app/actions.
  */
 import { useEffect, useMemo, useState } from "react";
+import { SampleOffNote, useSample } from "./sample";
 import { useFetcher, useSearchParams } from "react-router";
 import { fill, useLocale } from "../lib/i18n";
 import { ACTION_REASONS, ACTION_TABS, rowsForTab, type ActionTab } from "../lib/actions-shared";
@@ -419,7 +420,7 @@ function clearErrorText(key: ClearFormError, t: T): string {
   }
 }
 
-function ClearDialog({
+export function ClearDialog({
   row,
   timezone,
   onClose,
@@ -443,11 +444,12 @@ function ClearDialog({
   }, [created]);
 
   const busy = fetcher.state !== "idle";
+  const sample = useSample().on;
   const errors = result && !result.ok && result.error === "invalid" ? result.errors : {};
   const err = (k: ClearFormError) => (errors[k] ? clearErrorText(k, t) : undefined);
   const set = (k: keyof ClearForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const submit = () => {
-    if (!row || busy) return; // one request at a time (the server also claims the action atomically)
+    if (!row || busy || sample) return; // one request at a time (the server also claims the action atomically)
     fetcher.submit({ op: "clear", id: row.id, ...form }, { method: "post", action: ENDPOINT, encType: "application/json" });
   };
 
@@ -457,7 +459,7 @@ function ClearDialog({
       onClose={onClose}
       heading={t("Create a discount")}
       primaryAction={
-        <s-button variant="primary" onClick={submit} loading={flag(busy)} disabled={flag(!row || busy)}>
+        <s-button variant="primary" onClick={submit} loading={flag(busy)} disabled={flag(!row || busy || sample)}>
           {t("Create discount")}
         </s-button>
       }
@@ -465,6 +467,7 @@ function ClearDialog({
     >
       {row && (
         <s-stack direction="block" gap="base">
+          <SampleOffNote>{t("Discounts are off in sample data — nothing is created in your store.")}</SampleOffNote>
           {result && !result.ok && result.error === "shopify" && (
             <s-banner tone="critical" heading={t("Shopify couldn't create the discount")}>
               {result.userErrors.length > 0 ? (
@@ -483,6 +486,7 @@ function ClearDialog({
               <s-paragraph>{t("Please try again in a minute.")}</s-paragraph>
             </s-banner>
           )}
+          {result && !result.ok && result.error === "sample" && <SampleOffNote />}
           {result && !result.ok && result.error === "upgrade" && (
             <s-banner tone="info" heading={t("Clear dead stock")}>
               <s-paragraph>{planTag("clearance", t)}</s-paragraph>

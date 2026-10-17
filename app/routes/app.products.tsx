@@ -15,7 +15,7 @@ import { useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { listProducts, productFilterOptions, supplierFilterOptions } from "../models/products.server";
 import { setNoReorder } from "../models/reorder.server";
@@ -44,21 +44,21 @@ import {
 import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
   // Location view (Pro): ?location is ignored below Pro and for anything but a warehouse / store.
   // The store's location count decides whether the switcher shows at all (one location: no).
   const [locations, active] = await Promise.all([
-    features.locations ? listPlanningLocations(session.shop) : Promise.resolve([]),
-    activeLocations(session.shop),
+    features.locations ? listPlanningLocations(shop) : Promise.resolve([]),
+    activeLocations(shop),
   ]);
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
   const [page, options, suppliers] = await Promise.all([
-    listProducts(session.shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
-    productFilterOptions(session.shop),
-    supplierFilterOptions(session.shop),
+    listProducts(shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
+    productFilterOptions(shop),
+    supplierFilterOptions(shop),
   ]);
   return {
     ...page,
@@ -80,7 +80,7 @@ export type ProductsAction = { ok: true; count: number } | { ok: false };
 
 /** "Don't reorder" / "Reorder again" for a variant or its whole product (confirmed in the UI; our database only). */
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { shop } = await authenticateApp(request);
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -95,7 +95,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ? { variantId: body.variantId }
         : null;
   if (!target) throw new Response("Bad request", { status: 400 });
-  return (await setNoReorder(session.shop, target, body.value !== false)) satisfies ProductsAction;
+  return (await setNoReorder(shop, target, body.value !== false)) satisfies ProductsAction;
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);

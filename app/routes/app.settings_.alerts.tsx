@@ -11,6 +11,8 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "re
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
+import { SampleOffNote, useSample } from "../components/sample";
 import { AppPage, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -52,11 +54,13 @@ type Intent = "save" | "test" | "disconnect";
 
 export type AlertsActionData =
   | { ok: true; intent: Intent; form?: AlertsForm }
-  | { ok: false; errors?: AlertsErrors; notReady?: boolean; upgrade?: boolean; slackFailed?: { code: string; permanent: boolean } };
+  | { ok: false; errors?: AlertsErrors; notReady?: boolean; upgrade?: boolean; slackFailed?: { code: string; permanent: boolean }; sample?: boolean };
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<AlertsActionData> => {
-  const { session } = await authenticate.admin(request);
+  // Always the store's own settings (never the sample data's); nothing changes while sample data is on.
+  const { session, sample } = await authenticateApp(request);
   const shop = session.shop;
+  if (sample) return { ok: false, sample: true };
   let body: Partial<AlertsForm> & { intent?: string };
   try {
     body = (await request.json()) as Partial<AlertsForm> & { intent?: string };
@@ -125,11 +129,15 @@ export default function AlertsSettings() {
   useEffect(() => {
     if (slack.connected) setForm((f) => ({ ...f, slackWebhook: "" }));
   }, [slack.connected]);
-  const dirty = !sameValues(form, saved);
+  // Sample data: these are the store's own alerts — shown, not changed (components/sample).
+  const sample = useSample().on;
+  const dirty = !sample && !sameValues(form, saved);
 
   const set = <K extends keyof AlertsForm>(key: K, value: AlertsForm[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const submit = (intent: Intent) =>
+  const submit = (intent: Intent) => {
+    if (sample) return;
     fetcher.submit(intent === "save" ? { ...form, intent } : { intent }, { method: "post", encType: "application/json" });
+  };
   const err = (key: keyof AlertsForm) => (errors[key] ? t(errors[key] as string) : undefined);
 
   const slackMessage = (code: string) => {
@@ -155,6 +163,7 @@ export default function AlertsSettings() {
         onDiscard={() => setForm(saved)}
       />
       <SettingsTabs current="alerts" />
+      <SampleOffNote>{t("Alerts, Slack and the Monday email always use your own store. Switch to your store to change them.")}</SampleOffNote>
       {result?.ok && result.intent === "save" && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result?.ok && result.intent === "test" && (
         <s-banner tone="success">{t("Test message sent. Check your Slack channel.")}</s-banner>
@@ -208,12 +217,12 @@ export default function AlertsSettings() {
               <s-badge tone={slack.error ? "critical" : "success"}>{slack.error ? t("Not working") : t("Connected")}</s-badge>
               <s-button
                 onClick={() => submit("test")}
-                disabled={flag(!canSlack)}
+                disabled={flag(!canSlack || sample)}
                 loading={flag(busy && pending === "test")}
               >
                 {t("Send a test message")}
               </s-button>
-              <s-button tone="critical" variant="tertiary" onClick={() => submit("disconnect")} loading={flag(busy && pending === "disconnect")}>
+              <s-button tone="critical" variant="tertiary" onClick={() => submit("disconnect")} disabled={flag(sample)} loading={flag(busy && pending === "disconnect")}>
                 {t("Disconnect")}
               </s-button>
             </s-stack>

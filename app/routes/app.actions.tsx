@@ -3,15 +3,15 @@
  *   { op: "snooze" | "dismiss" | "done" | "undo", id }
  *   { op: "clear", id, kind, percent, endsOn, code }   (Growth: clearance)
  * Every write checks the action belongs to the session's shop. "clear" runs
- * only from the confirm dialog (invariant I-1) and checks the plan on the
- * server. No GET: this is a resource route.
+ * only from the confirm dialog (invariant I-1), checks the plan on the
+ * server, and never runs on sample data (services/data-scope). No GET: this is a resource route.
  *
  * Handled outcomes answer 200 with `ok: false` and a reason (as the Settings
  * action does): a non-2xx Response returned to a fetcher becomes a route
  * error in React Router, and the dialog must show the message instead.
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { can } from "../services/entitlements.server";
 import { createClearanceDiscount } from "../services/clearance.server";
 import { claimClearAction, getClearTarget, recordClearance, releaseClearAction, updateActionState } from "../models/actions.server";
@@ -26,7 +26,9 @@ export type ActionsResult =
   | { ok: false; error: "bad_request" | "not_found" | "failed" }
   | { ok: false; error: "invalid"; errors: Partial<Record<ClearFormError, true>> }
   | { ok: false; error: "shopify"; userErrors: string[] }
-  | { ok: false; error: "upgrade"; upgrade: { feature: "clearance"; plan: string } };
+  | { ok: false; error: "upgrade"; upgrade: { feature: "clearance"; plan: string } }
+  /** Sample data mode: no discount is created in the store (I-1). */
+  | { ok: false; error: "sample" };
 
 export const loader = async (_args: LoaderFunctionArgs) => {
   throw new Response("Method not allowed", { status: 405 });
@@ -36,8 +38,7 @@ const reply = (body: ActionsResult) => Response.json(body);
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") throw new Response("Method not allowed", { status: 405 });
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
+  const { admin, shop, sample } = await authenticateApp(request);
   let body: Record<string, unknown>;
   try {
     const parsed = (await request.json()) as unknown;
@@ -57,6 +58,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (body.op !== "clear") return reply({ ok: false, error: "bad_request" });
+  // Sample data never reaches the store: no discount is created.
+  if (sample) return reply({ ok: false, error: "sample" });
 
   if (!(await can(shop, "clearance"))) {
     return reply({ ok: false, error: "upgrade", upgrade: { feature: "clearance", plan: requiredPlan("clearance") } });

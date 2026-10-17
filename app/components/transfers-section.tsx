@@ -16,6 +16,7 @@ import { readQty } from "../lib/reorder-shared";
 import { transferAdminHref, type RecentTransfer, type TransferGroup, type TransferLine } from "../lib/transfers-shared";
 import type { TransfersResult } from "../routes/app.transfers";
 import ConfirmModal from "./ConfirmModal";
+import { SampleOffNote, useSample } from "./sample";
 import { featureCopy, planTag } from "./plan";
 import { EmptyState, FormCard, HeaderLabel, ProductThumb } from "./ui";
 import { flag, useLinkProps, val } from "./wc";
@@ -86,6 +87,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
   const initial = useMemo(() => Object.fromEntries(group.lines.map((l) => [l.variantId, String(l.qty)])), [resetKey]);
   const [qty, setQty] = useState<Record<string, string>>(initial);
   const [confirm, setConfirm] = useState(false);
+  const sample = useSample().on;
   useEffect(() => setQty(initial), [initial]);
   const q = (id: string) => readQty(qty[id]);
   const units = group.lines.reduce((a, l) => a + q(l.variantId), 0);
@@ -133,6 +135,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
         {result && !result.ok && result.error === "upgrade" && (
           <s-banner tone="info">{featureCopy("transfers", t).body}</s-banner>
         )}
+        <SampleOffNote>{t("Transfers are off in sample data — nothing is created in your store.")}</SampleOffNote>
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
@@ -151,7 +154,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
         </s-table>
         <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
           <s-text fontWeight="medium">{fill(t("Units: {n}"), { n: formatCount(units, locale) })}</s-text>
-          <s-button variant="primary" disabled={flag(units === 0)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
+          <s-button variant="primary" disabled={flag(units === 0 || sample)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
             {t("Create transfer in Shopify")}
           </s-button>
         </s-stack>

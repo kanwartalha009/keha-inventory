@@ -24,6 +24,7 @@
  * aggregates scan every shop, so they are cached for 60 s.
  */
 import prisma from "../db.server";
+import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
 import { shopifyqlBudget } from "../services/sync/shopifyql.server";
@@ -51,7 +52,7 @@ type SyncHealth = {
 async function syncHealth(): Promise<SyncHealth> {
   try {
     const shops = await prisma.shop.findMany({
-      where: { uninstalledAt: null },
+      where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } },
       select: { lastNightlyAt: true, backfillState: true },
     });
     let lastNightly: Date | null = null;

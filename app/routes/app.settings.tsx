@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { ChoiceListField, SelectField, val } from "../components/wc";
@@ -29,15 +29,15 @@ import { getShopSettings, saveShopSettings } from "../models/settings.server";
 import { storeCurrency } from "../models/suppliers.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const [settings, currency] = await Promise.all([getShopSettings(session.shop), storeCurrency(session.shop)]);
+  const { shop } = await authenticateApp(request);
+  const [settings, currency] = await Promise.all([getShopSettings(shop), storeCurrency(shop)]);
   return { form: settingsToForm(settings), currency };
 };
 
 type ActionData = { ok: true; form: SettingsForm } | { ok: false; errors?: SettingsErrors; notReady?: boolean };
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<ActionData> => {
-  const { session } = await authenticate.admin(request);
+  const { shop } = await authenticateApp(request);
   let body: Partial<SettingsForm>;
   try {
     body = (await request.json()) as Partial<SettingsForm>;
@@ -54,10 +54,10 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     // Absent (an older page): the budget stays as saved.
     ...(body.monthlyBudget !== undefined ? { monthlyBudget: String(body.monthlyBudget ?? "") } : {}),
   };
-  const current = await getShopSettings(session.shop);
+  const current = await getShopSettings(shop);
   const r = applySettingsForm(current, form, new Date());
   if (!r.ok) return { ok: false, errors: r.errors };
-  const saved = await saveShopSettings(session.shop, r.settings);
+  const saved = await saveShopSettings(shop, r.settings);
   if (!saved) return { ok: false, notReady: true };
   return { ok: true, form: settingsToForm(saved) };
 };

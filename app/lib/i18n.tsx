@@ -39,6 +39,7 @@ import { READINESS_TR } from "./i18n-readiness";
 import { BUILDER_TR } from "./i18n-builder";
 import { SETUP_TR } from "./i18n-setup";
 import { CASH_TR } from "./i18n-cash";
+import { SAMPLE_TR } from "./i18n-sample";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -99,6 +100,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   builder: BUILDER_TR,
   setup: SETUP_TR,
   cash: CASH_TR,
+  sample: SAMPLE_TR,
 };
 
 for (const area of Object.values(AREAS)) {

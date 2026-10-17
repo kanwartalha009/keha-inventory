@@ -5,6 +5,7 @@
  * one line on what they do (progressive disclosure, nothing hidden).
  */
 import { useSearchParams } from "react-router";
+import { SampleBanner } from "./sample";
 import { useLocale } from "../lib/i18n";
 import { useLinkProps } from "./wc";
 import { FEATURE_PLAN, PLAN_LABEL, requiredPlan, type Feature, type PlanCode } from "../lib/plan-shared";
@@ -111,6 +112,7 @@ export function LockedPage({ feature }: { feature: Feature }) {
   const copy = featureCopy(feature, t);
   return (
     <s-page heading={copy.title}>
+      <SampleBanner />
       <s-section>
         <s-empty-state heading={`${copy.title} · ${planTag(feature, t)}`}>
           <s-paragraph slot="subheading">{copy.body}</s-paragraph>

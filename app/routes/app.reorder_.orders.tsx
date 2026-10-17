@@ -14,7 +14,7 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { openOrderList } from "../models/reorder.server";
 import { AppPage, EmptyState, FormCard, HeaderLabel } from "../components/ui";
@@ -29,10 +29,10 @@ import { formatPrice, poStatusLabel, poStatusTone, type OpenOrderListRow } from 
 export type OpenOrdersPageData = { enabled: boolean; orders: OpenOrderListRow[]; today?: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<OpenOrdersPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.reorderPlan) return { enabled: false, orders: [] };
-  const { rows, today } = await openOrderList(session.shop);
+  const { rows, today } = await openOrderList(shop);
   return { enabled: true, orders: rows, today };
 };
 

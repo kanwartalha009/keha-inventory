@@ -8,6 +8,7 @@ import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, us
 import { SaveBar } from "@shopify/app-bridge-react";
 import { useLinkProps } from "./wc";
 import { UpgradeFromQuery } from "./plan";
+import { SampleBanner } from "./sample";
 import { useLocale } from "../lib/i18n";
 import { formatCount, formatPercent } from "../lib/dashboard-shared";
 import { daysLeftView } from "../lib/products-shared";
@@ -484,6 +485,8 @@ export function AppPage({
             {intro && <span>{intro}</span>}
           </div>
         )}
+        {/* Sample data mode: on every page, above everything else (components/sample). */}
+        <SampleBanner />
         <UpgradeFromQuery />
         {children}
       </div>

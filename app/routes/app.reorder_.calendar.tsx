@@ -19,7 +19,7 @@ import { useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { loadOrderPlan } from "../models/order-plan.server";
 import { readiness } from "../models/dashboard.server";
@@ -63,14 +63,14 @@ export type CalendarPageData = {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<CalendarPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.orderCalendar) {
     // The lock teaches with the merchant's own totals; no order or product is sent.
-    const plan = await loadOrderPlan(session.shop);
+    const plan = await loadOrderPlan(shop);
     return { enabled: false, plan: EMPTY_ORDER_PLAN("", plan.currency, plan.timezone), teaser: lockTeaser(plan) };
   }
-  const [plan, ready] = await Promise.all([loadOrderPlan(session.shop, new Date(), { lastYear: true }), readiness(session.shop)]);
+  const [plan, ready] = await Promise.all([loadOrderPlan(shop, new Date(), { lastYear: true }), readiness(shop)]);
   return { enabled: true, plan, readiness: ready };
 };
 

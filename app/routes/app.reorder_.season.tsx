@@ -17,7 +17,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import {
   createScenario,
@@ -89,12 +89,12 @@ const LOCKED: PlannerData = {
 const planOf = (p: PlanCode | "none"): PlanCode => (p === "none" ? "free" : p);
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<PlannerData> => {
-  const { session } = await authenticate.admin(request);
-  const { plan, features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { plan, features } = await getEntitlements(shop);
   // Locked page (app.tsx shows the plan page): send nothing.
   if (!features.planner) return { ...LOCKED, plan: planOf(plan) };
   const url = new URL(request.url);
-  return loadPlanner(session.shop, {
+  return loadPlanner(shop, {
     plan: planOf(plan),
     features: { collectionGoals: features.collectionGoals, accuracy: features.accuracy },
     selectedId: url.searchParams.get("scenario"),
@@ -107,8 +107,8 @@ export type PlannerAction =
   | { ok: false; errors?: ScenarioErrors; error?: "limit" | "notFound" | GoalErrorCode };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { plan, features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { plan, features } = await getEntitlements(shop);
   if (!features.planner) return upgradeResponse("planner", "The planner is on the Growth plan.");
   let body: Record<string, unknown>;
   try {
@@ -116,7 +116,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } catch {
     throw new Response("Bad request", { status: 400 });
   }
-  const shop = session.shop;
   const id = typeof body.id === "string" && body.id ? body.id : null;
   switch (body.intent) {
     case "save": {

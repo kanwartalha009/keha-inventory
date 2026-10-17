@@ -13,6 +13,10 @@ import { forgetEntitlements, getEntitlements } from "../services/entitlements.se
 import { readShopLocale } from "../services/shop-locale.server";
 import { lockedPageFeature, type PlanCode } from "../lib/plan-shared";
 import { LockedPage } from "../components/plan";
+import { SampleProvider, type SampleView } from "../components/sample";
+import { dataScope } from "../services/data-scope.server";
+import { sampleIsStale } from "../lib/sample-mode-shared";
+import { readiness } from "../models/dashboard.server";
 import {
   LocaleProvider,
   toSupportedLocale,
@@ -70,12 +74,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     localeCache.set(session.shop, { locale: storeLocale, at: Date.now() });
   }
 
+  // Sample data mode (components/sample): every screen reads the sample store; its plan is at
+  // least Growth. While it's on, the banner offers to switch once the store's own data is ready.
+  const scope = await dataScope(session.shop);
+
   // Plan (Free / Growth / Pro): pages a plan doesn't include show what they do
   // and an Upgrade button instead (Content below).
-  const { plan } = await getEntitlements(session.shop);
+  const { plan } = await getEntitlements(scope.shop);
+  let sample: SampleView = { on: false };
+  if (scope.sample) {
+    const [real, own] = await Promise.all([readiness(session.shop).catch(() => ({ ready: false })), getEntitlements(session.shop).catch(() => null)]);
+    sample = {
+      on: true,
+      loadedAt: scope.state.loadedAt,
+      realReady: real.ready,
+      planLifted: !!own && own.plan !== "growth" && own.plan !== "pro",
+      stale: sampleIsStale(scope.state, new Date()),
+    };
+  }
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", storeLocale, plan };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", storeLocale, plan, sample };
 };
 
 /**
@@ -134,13 +153,15 @@ function AppNav() {
 }
 
 export default function App() {
-  const { apiKey, storeLocale, plan } = useLoaderData<typeof loader>();
+  const { apiKey, storeLocale, plan, sample } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider apiKey={apiKey} polarisUrl={POLARIS_URL}>
       <LocaleProvider defaultLocale={storeLocale}>
-        <AppNav />
-        <Content plan={plan} />
+        <SampleProvider value={sample}>
+          <AppNav />
+          <Content plan={plan} />
+        </SampleProvider>
       </LocaleProvider>
     </AppProvider>
   );

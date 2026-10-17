@@ -5,7 +5,7 @@
  * Growth (`reorderPlan`); below it nothing is sent.
  */
 import type { LoaderFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { searchSupplierProducts } from "../models/supplier-order.server";
 import type { AddableProduct } from "../lib/supplier-order-shared";
@@ -13,12 +13,12 @@ import type { AddableProduct } from "../lib/supplier-order-shared";
 export type BuilderProductsData = { ok: true; products: AddableProduct[] } | { ok: false };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderProductsData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.reorderPlan) return { ok: false };
   const url = new URL(request.url);
   const key = url.searchParams.get("supplier") ?? "";
   if (!/^(supplier|vendor):/.test(key) || key.length > 300) return { ok: false };
   const q = (url.searchParams.get("q") ?? "").slice(0, 200);
-  return { ok: true, products: await searchSupplierProducts(session.shop, key, q) };
+  return { ok: true, products: await searchSupplierProducts(shop, key, q) };
 };

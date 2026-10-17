@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { activeLocations, listLocationSettings, saveLocationSettings } from "../models/locations.server";
 import { AppPage, EmptyState, FormCard, FormSaveBar, HeaderLabel, sameValues } from "../components/ui";
@@ -39,16 +39,16 @@ import {
 export type LocationsData = { locations: LocationSettingsRow[]; enabled: boolean };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<LocationsData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
-  return { locations: await listLocationSettings(session.shop), enabled: features.locations };
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
+  return { locations: await listLocationSettings(shop), enabled: features.locations };
 };
 
 export type LocationsAction = { ok: true; saved: number } | { ok: false; error: LocationsFormError };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -56,10 +56,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     throw new Response("Bad request", { status: 400 });
   }
   if (body.intent !== "save") throw new Response("Bad request", { status: 400 });
-  const v = validateLocationsForm(body.locations, await activeLocations(session.shop), { rolesAllowed: features.locations });
+  const v = validateLocationsForm(body.locations, await activeLocations(shop), { rolesAllowed: features.locations });
   if (!v.ok && v.error === "rolesLocked") return upgradeResponse("locations", "Locations and stores are on the Pro plan.");
   if (!v.ok) return { ok: false, error: v.error } satisfies LocationsAction;
-  return { ok: true, saved: await saveLocationSettings(session.shop, v.updates) } satisfies LocationsAction;
+  return { ok: true, saved: await saveLocationSettings(shop, v.updates) } satisfies LocationsAction;
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);

@@ -24,7 +24,7 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRev
 import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { planFor } from "../services/entitlements.server";
 import { getHomeData, reviewAskDue } from "../models/dashboard.server";
 import { recordReviewAsk } from "../models/settings.server";
@@ -48,6 +48,8 @@ import {
 import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
+import { SampleOfferCard } from "../components/sample";
+import { offerSample } from "../lib/sample-mode-shared";
 import type { ActionListView } from "../lib/action-list-shared";
 import { AppPage, FormCard, HeaderLabel } from "../components/ui";
 import { ReadyNotice, SyncProgress } from "../components/sync-progress";
@@ -81,30 +83,36 @@ export type HomeLoaderData = HomeData & {
   renderedAt?: string;
   /** Ask for an App Store review on this open (after a success moment; lib/review-ask-shared). */
   reviewAsk?: ReviewMoment | null;
+  /** The store isn't ready yet: offer "Explore Keha with sample data" (components/sample). */
+  sampleOffer?: boolean;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
-  const { admin, session } = await authenticate.admin(request);
-  const plan = await planFor(session.shop);
+  const { admin, shop, sample } = await authenticateApp(request);
+  const plan = await planFor(shop);
   const now = new Date();
-  const home = await getHomeData(session.shop, plan, now);
+  const home = await getHomeData(shop, plan, now);
+  // Sample data (components/sample): never "late" (it has no nightly run), never a review ask,
+  // and no Shopify call for the preorder app.
+  if (sample) home.dataLate = false;
   const ready = home.state === "ready";
   const [actions, forward, reviewAsk] = await Promise.all([
-    ready ? getActionList(session.shop, plan, now, { preorderInstalled: () => kehaPreorderInstalled(admin, session.shop) }) : null,
-    ready ? loadOrderPlan(session.shop, now) : null,
-    ready ? reviewAskDue(session.shop, now).catch(() => null) : null,
+    ready ? getActionList(shop, plan, now, { preorderInstalled: sample ? async () => false : () => kehaPreorderInstalled(admin, shop) }) : null,
+    ready ? loadOrderPlan(shop, now) : null,
+    ready && !sample ? reviewAskDue(shop, now).catch(() => null) : null,
   ]);
   const orderPlan: DashboardOrderPlan | null = forward
     ? hasFeature(plan, "reorderPlan")
       ? { kind: "full", plan: forward }
       : { kind: "preview", rows: previewRows(forward), teaser: lockTeaser(forward), currency: forward.currency, cantPlan: forward.cantPlan }
     : null;
-  return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk };
+  return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk, sampleOffer: !sample && offerSample(home.state) };
 };
 
 /** POST { intent: "reviewAsked", code }: remember Shopify's answer so we never ask twice. */
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { shop, sample } = await authenticateApp(request);
+  if (sample) return { ok: false };
   let body: Record<string, unknown> = {};
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -112,7 +120,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: false };
   }
   if (body.intent !== "reviewAsked" || !isFinalReviewCode(body.code)) return { ok: false };
-  return { ok: await recordReviewAsk(session.shop, String(body.code), new Date()) };
+  return { ok: await recordReviewAsk(shop, String(body.code), new Date()) };
 };
 
 /** Recording the review answer never reloads the Dashboard. */
@@ -150,6 +158,10 @@ export default function Home() {
           }}
         />
       )}
+
+      {/* Not ready yet: try the app on a simulated store meanwhile (owner 2026-10-17). */}
+      {data.sampleOffer && <SampleOfferCard />}
+
       {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
 
       <OrderThisWeek data={data} />

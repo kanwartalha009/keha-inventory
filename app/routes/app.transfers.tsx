@@ -9,7 +9,7 @@
  * dialog can show the message instead of a route error.
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { can } from "../services/entitlements.server";
 import { createTransfer, type CreateTransferResult } from "../services/transfers.server";
 import { readQty } from "../lib/reorder-shared";
@@ -18,7 +18,9 @@ import { requiredPlan } from "../lib/plan-shared";
 export type TransfersResult =
   | CreateTransferResult
   | { ok: false; error: "bad_request" }
-  | { ok: false; error: "upgrade"; upgrade: { feature: "transfers"; plan: string } };
+  | { ok: false; error: "upgrade"; upgrade: { feature: "transfers"; plan: string } }
+  /** Sample data mode: nothing is created in Shopify (I-1). */
+  | { ok: false; error: "sample" };
 
 export const loader = async (_args: LoaderFunctionArgs) => {
   throw new Response("Method not allowed", { status: 405 });
@@ -30,8 +32,9 @@ const VARIANT_GID = /^gid:\/\/shopify\/ProductVariant\/\d{1,20}$/;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") throw new Response("Method not allowed", { status: 405 });
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
+  const { admin, shop, sample } = await authenticateApp(request);
+  // Sample data never reaches the store: no transfer is created.
+  if (sample) return reply({ ok: false, error: "sample" });
   if (!(await can(shop, "transfers"))) {
     return reply({ ok: false, error: "upgrade", upgrade: { feature: "transfers", plan: requiredPlan("transfers") } });
   }

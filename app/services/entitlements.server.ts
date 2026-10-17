@@ -15,6 +15,7 @@ import {
   type Feature,
   type PlanCode,
 } from "../lib/plan-shared";
+import { isSampleKey, realShopOf, samplePlan } from "../lib/sample-mode-shared";
 
 export type Entitlements = {
   /** "none" = must pick a plan on Shopify's page; features follow Free. */
@@ -29,6 +30,13 @@ export type Entitlements = {
 // plan change made by app-pricing.server applies at once). Nova's comp
 // override is only needed when there is no paid plan, and is cached there.
 export async function getEntitlements(shop: string): Promise<Entitlements> {
+  // Sample data (`<shop>#sample`): the store's own plan, at least Growth, so the merchant sees
+  // the whole product (lib/sample-mode-shared samplePlan).
+  if (isSampleKey(shop)) {
+    const real = await getEntitlements(realShopOf(shop));
+    const plan = samplePlan(real.plan);
+    return { ...real, plan, features: featureMap(plan) };
+  }
   const bs = await getBillingState(shop);
   const paying = bs?.status === "ACTIVE" || bs?.status === "TRIAL";
   const comped = paying ? false : (await getPlanOverride(shop)).type === "FREE";

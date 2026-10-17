@@ -37,7 +37,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { createOrderFromGroup, loadReorder, scenarioPlanned, setNoReorder, type ReorderData } from "../models/reorder.server";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
@@ -89,11 +89,11 @@ export function showTransfers(input: { transfersEnabled: boolean; planningLocati
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   // Free: the read-only preview of the forward order plan and its totals, nothing else.
   if (!features.reorderPlan) {
-    const [plan, ready] = await Promise.all([loadOrderPlan(session.shop), readiness(session.shop)]);
+    const [plan, ready] = await Promise.all([loadOrderPlan(shop), readiness(shop)]);
     return {
       ...EMPTY_REORDER,
       currency: plan.currency,
@@ -108,19 +108,19 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   // `?variants=id,id` (an action's "Add to order") or `id:qty,…` (older links).
   const { ids: selected, planned: fromUrl } = parseVariantsWithQty(url.searchParams.get("variants"));
   const scenario = url.searchParams.get("scenario");
-  const fromScenario = scenario ? await scenarioPlanned(session.shop, scenario, url.searchParams.get("group")) : null;
+  const fromScenario = scenario ? await scenarioPlanned(shop, scenario, url.searchParams.get("group")) : null;
   const planned = new Map([...fromUrl, ...(fromScenario ?? [])]);
   const link = readOrderLink(url.searchParams);
   const supplierKey = url.searchParams.get("supplier");
-  const locations = features.locations ? await listPlanningLocations(session.shop) : [];
+  const locations = features.locations ? await listPlanningLocations(shop) : [];
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
   // Active locations: the switcher hides itself in a one-location store; transfers need two.
-  const active = await activeLocationCount(session.shop);
+  const active = await activeLocationCount(shop);
   const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
   const [reorder, transfers, ready] = await Promise.all([
-    loadReorder(session.shop, selected, view.scope, planned, new Date(), link),
-    features.transfers && transfersShown ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
-    readiness(session.shop),
+    loadReorder(shop, selected, view.scope, planned, new Date(), link),
+    features.transfers && transfersShown ? loadTransfers(shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
+    readiness(shop),
   ]);
   const only = supplierKey ? reorder.groups.find((g) => g.key === supplierKey) : undefined;
   return {
@@ -152,8 +152,8 @@ const VARIANT_GID = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
 const PRODUCT_GID = /^gid:\/\/shopify\/Product\/\d+$/;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.reorderPlan) return upgradeResponse("reorderPlan", "The order plan is on the Growth plan.");
   let body: Record<string, unknown>;
   try {
@@ -171,7 +171,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           ? { variantId: body.variantId }
           : null;
     if (!target) throw new Response("Bad request", { status: 400 });
-    const r = await setNoReorder(session.shop, target, value);
+    const r = await setNoReorder(shop, target, value);
     return (r.ok ? { ok: true, intent: "noReorder", count: r.count } : { ok: false, intent: "noReorder", error: "notFound" }) satisfies ReorderAction;
   }
   if (body.intent !== "create" || typeof body.groupKey !== "string") throw new Response("Bad request", { status: 400 });
@@ -181,9 +181,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Location view (Pro only; ignored otherwise): the same group, from that location's numbers.
   const requested = parseLocationParam(typeof body.location === "string" ? body.location : null);
   const view = requested && features.locations
-    ? resolveScope(requested, true, await listPlanningLocations(session.shop))
+    ? resolveScope(requested, true, await listPlanningLocations(shop))
     : { scope: METRIC_SCOPE, location: null };
-  return (await createOrderFromGroup(session.shop, body.groupKey, quantities, {
+  return (await createOrderFromGroup(shop, body.groupKey, quantities, {
     scope: view.scope,
     note: view.location?.name ?? null,
   })) satisfies ReorderAction;

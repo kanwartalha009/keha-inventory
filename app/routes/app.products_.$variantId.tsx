@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { getVariantDetail, setProductCaseSize, setProductSupplierCode } from "../models/products.server";
 import { SUPPLIER_CODE_MAX, readSupplierCode } from "../lib/po-grid-shared";
@@ -46,11 +46,11 @@ import {
 } from "../lib/products-shared";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { shop } = await authenticateApp(request);
   const gid = variantGid(params.variantId ?? "");
   if (!gid) throw new Response("Not found", { status: 404 });
-  const { features } = await getEntitlements(session.shop);
-  const detail = await getVariantDetail(session.shop, gid, features.forecast);
+  const { features } = await getEntitlements(shop);
+  const detail = await getVariantDetail(shop, gid, features.forecast);
   if (!detail) throw new Response("Not found", { status: 404 });
   const series = dailySeries(detail.sales, detail.stock, detail.today);
   const inputs = readForecastInputs(detail.inputs, detail.sigma);
@@ -78,7 +78,7 @@ export type VariantDetailAction = { ok: true; count: number } | { ok: false; err
 
 /** "Don't reorder" (product or variant) and the product's case size — confirmed in the UI; our database only. */
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { shop } = await authenticateApp(request);
   const gid = variantGid(params.variantId ?? "");
   if (!gid) throw new Response("Not found", { status: 404 });
   let body: Record<string, unknown>;
@@ -87,12 +87,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   } catch {
     throw new Response("Bad request", { status: 400 });
   }
-  const { features } = await getEntitlements(session.shop);
-  const detail = await getVariantDetail(session.shop, gid, features.forecast);
+  const { features } = await getEntitlements(shop);
+  const detail = await getVariantDetail(shop, gid, features.forecast);
   if (!detail) throw new Response("Not found", { status: 404 });
   if (body.intent === "noReorder") {
     const target = body.scope === "product" ? { productId: detail.variant.productId } : { variantId: gid };
-    return (await setNoReorder(session.shop, target, body.value !== false)) satisfies VariantDetailAction;
+    return (await setNoReorder(shop, target, body.value !== false)) satisfies VariantDetailAction;
   }
   if (body.intent === "supplierCode") {
     const code = readSupplierCode(body.supplierCode);
@@ -110,7 +110,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const n = raw === null || raw === "" ? null : Number(raw);
     if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 10_000)) return { ok: false, error: "caseQty" } satisfies VariantDetailAction;
     // 1 = no case size (single units): stored as none, so the supplier's case pack applies again.
-    return (await setProductCaseSize(session.shop, detail.variant.productId, n === null || n <= 1 ? null : n)) satisfies VariantDetailAction;
+    return (await setProductCaseSize(shop, detail.variant.productId, n === null || n <= 1 ? null : n)) satisfies VariantDetailAction;
   }
   throw new Response("Bad request", { status: 400 });
 };

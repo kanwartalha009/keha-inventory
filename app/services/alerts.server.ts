@@ -24,6 +24,7 @@
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
 import { latestMetricRun } from "./metric-writes.server";
+import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import { enqueueJob } from "./jobs/queue.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
@@ -448,7 +449,8 @@ export async function runAlertsForShop(row: AlertsShopRow, now: Date = new Date(
 
 /** Every installed store; one store's failure never stops the others. */
 export async function runAlertsAllShops(now: Date = new Date()): Promise<Record<string, number>> {
-  const rows = (await prisma.shop.findMany({ where: { uninstalledAt: null } })) as AlertsShopRow[];
+  // Sample data (`<shop>#sample`) never alerts, emails, posts to Slack or triggers Flow.
+  const rows = (await prisma.shop.findMany({ where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } } })) as AlertsShopRow[];
   const counts: Record<string, number> = {};
   for (const row of rows) {
     try {
@@ -473,7 +475,7 @@ export async function alertsTick(): Promise<void> {
   if (alertsRunning) return;
   alertsRunning = true;
   try {
-    const rows = await prisma.shop.findMany({ where: { uninstalledAt: null }, select: { domain: true } });
+    const rows = await prisma.shop.findMany({ where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } }, select: { domain: true } });
     let queued = 0;
     for (const row of rows) if (await enqueueJob(row.domain, "alerts")) queued++;
     if (queued) console.log(`[scheduler/alerts] queued ${queued} store(s)`);

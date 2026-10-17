@@ -17,7 +17,7 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "re
 import { useFetcher, useLoaderData, useNavigate, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import {
   assignProducts,
@@ -68,14 +68,14 @@ export type SuppliersData = {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<SuppliersData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
-  const [suppliers, ctx] = await Promise.all([listSuppliers(session.shop), supplierContext(session.shop)]);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
+  const [suppliers, ctx] = await Promise.all([listSuppliers(shop), supplierContext(shop)]);
   const edit = new URL(request.url).searchParams.get("edit");
   let editing: SuppliersData["editing"] = null;
   if (features.suppliers && edit === "new") editing = { id: null, form: newSupplierForm(ctx.leadTimeDays, ctx.currency) };
   else if (features.suppliers && edit) {
-    const form = await supplierForm(session.shop, edit);
+    const form = await supplierForm(shop, edit);
     if (form) editing = { id: edit, form };
   }
   return { suppliers, vendors: ctx.vendors, currency: ctx.currency, cycleDays: ctx.cycleDays, enabled: features.suppliers, editing };
@@ -86,8 +86,8 @@ export type SuppliersAction =
   | { ok: false; errors?: SupplierErrors; error?: "notFound" };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.suppliers) return upgradeResponse("suppliers", "Suppliers are on the Growth plan.");
   let body: Record<string, unknown>;
   try {
@@ -95,7 +95,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } catch {
     throw new Response("Bad request", { status: 400 });
   }
-  const shop = session.shop;
   const id = typeof body.id === "string" && body.id ? body.id : null;
   switch (body.intent) {
     case "save": {

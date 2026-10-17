@@ -23,6 +23,7 @@
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
 import { latestMetricRun } from "./metric-writes.server";
+import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import {
   INSTOCK_PREFIX,
   STORE_ROW,
@@ -282,7 +283,7 @@ export async function runAccuracyAllShops(now: Date = new Date()): Promise<Recor
   if (running) return { overlap: 1 };
   running = true;
   try {
-    const shops = await prisma.shop.findMany({ where: { uninstalledAt: null }, select: { domain: true } });
+    const shops = await prisma.shop.findMany({ where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } }, select: { domain: true } });
     for (const { domain } of shops) {
       try {
         const r = await runAccuracy(domain, now);

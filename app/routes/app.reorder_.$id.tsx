@@ -25,7 +25,7 @@ import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import {
   deleteDraft,
@@ -41,6 +41,7 @@ import {
 import { emailSupplier, type EmailSupplierResult } from "../services/po-email.server";
 import { AppPage, FormCard, FormSaveBar, KvRow, sameValues } from "../components/ui";
 import { LockedPage } from "../components/plan";
+import { SampleOffNote, useSample } from "../components/sample";
 import ConfirmModal from "../components/ConfirmModal";
 import { DownloadButton } from "../components/download-button";
 import { Modal, flag, isChecked, val } from "../components/wc";
@@ -95,11 +96,11 @@ export type OrderPageView = {
 const DAY_MS = 86_400_000;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<OrderPageData> => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   // Locked page (app.tsx shows the plan page): send nothing, like /app/reorder.
   if (!features.reorderPlan) return { enabled: false };
-  const order = await getOrder(session.shop, params.id ?? "");
+  const order = await getOrder(shop, params.id ?? "");
   if (!order) throw new Response("Not found", { status: 404 });
   const appUrl = process.env.SHOPIFY_APP_URL || "";
   const now = new Date();
@@ -111,7 +112,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<O
     link: open && appUrl && features.supplierConfirm ? confirmUrl(appUrl, order.confirmToken) : null,
     hidePrices: hidePricesFor(order),
     features: { poExport: features.poExport, supplierConfirm: features.supplierConfirm },
-    today: todayIn((await shopBasics(session.shop)).timezone, now),
+    today: todayIn((await shopBasics(shop)).timezone, now),
     stale: order.source === "keha" && order.status === "draft" && !poCountsAsOrdered({ status: "draft", createdAt: new Date(order.createdAt) }, now),
     reopenTo: reopenTarget(order, now),
   };
@@ -127,8 +128,8 @@ export type OrderAction =
   | { ok: false; error: string };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { features } = await getEntitlements(session.shop);
+  const { shop, sample } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
   if (!features.reorderPlan) return upgradeResponse("reorderPlan", "The order plan is on the Growth plan.");
   let body: Record<string, unknown>;
   try {
@@ -136,8 +137,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   } catch {
     throw new Response("Bad request", { status: 400 });
   }
-  const shop = session.shop;
   const id = params.id ?? "";
+  // Sample data: orders can be drafted (edit, delete), never emailed, sent, received or re-opened.
+  if (sample && body.intent !== "edit" && body.intent !== "delete") return { ok: false, error: "sample" } satisfies OrderAction;
   switch (body.intent) {
     case "transition": {
       if (!isPoStatus(body.to)) break;
@@ -264,13 +266,15 @@ function OrderView({ data }: { data: OrderPageView }) {
       { method: "post", encType: "application/json" },
     );
 
+  // Sample data: only drafting (edit, delete) — nothing is emailed, sent or received.
+  const sample = useSample().on;
   const button = (p: Pending | (() => void), label: string, primary = false, critical = false, disabled = false) => (
     <s-button
       key={label}
       variant={primary ? "primary" : undefined}
       tone={critical ? "critical" : undefined}
       loading={flag(busy && primary)}
-      disabled={flag(busy || disabled)}
+      disabled={flag(busy || disabled || (sample && (typeof p === "function" || p.kind !== "delete")))}
       onClick={() => (typeof p === "function" ? p() : setPending(p))}
     >
       {label}
@@ -412,6 +416,7 @@ function OrderView({ data }: { data: OrderPageView }) {
       primaryAction={primary}
       secondaryActions={secondary}
     >
+      <SampleOffNote>{t("In sample data you can draft orders, but nothing is emailed, sent or received.")}</SampleOffNote>
       {!keha && (
         <s-banner tone="info">{t("This order comes from Shopify. Change it in Shopify; we read it again every night.")}</s-banner>
       )}
@@ -733,6 +738,8 @@ function orderError(code: string, t: (s: string) => string): string {
       return t("Enter what arrived, or close the order.");
     case "invalid":
       return t("Use a whole number, 0 or more.");
+    case "sample":
+      return t("In sample data you can draft orders, but nothing is emailed, sent or received.");
     default:
       return t("This order doesn't exist any more.");
   }
