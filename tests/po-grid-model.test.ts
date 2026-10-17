@@ -103,7 +103,9 @@ describe("the size-grid document", () => {
     expect(grid.headers.get("Content-Disposition")).toContain("PO-0001-grid.csv");
     const all = (await grid.text()).replace(/^﻿/, "").split("\r\n");
     // Merchant audit 2026-10-18: the order's details (dates, ship-to, …) come first, then a blank line.
-    expect(all.slice(0, 2)).toEqual(["Expected ship date,2026-11-16", "Expected arrival,2026-11-16"]);
+    // A draft's dates are "as if sent today" (the real clock here): only their shape is checked.
+    expect(all[0]).toMatch(/^Expected ship date,\d{4}-\d{2}-\d{2}$/);
+    expect(all[1]).toMatch(/^Expected arrival,\d{4}-\d{2}-\d{2}$/);
     const rows = all.slice(all.indexOf("") + 1);
     expect(rows.slice(0, 3)).toEqual(["Style code,Product,Variant,S,M,Total units,Line total,Currency", "ART-9,Tee,Black,4,6,10,100,EUR", "Totals,,,4,6,10,100,EUR"]);
     expect(rows).toContain(",TOTE-1,Tote,,3,10,30,EUR");
