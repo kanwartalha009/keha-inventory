@@ -92,7 +92,7 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               <s-table-cell>{days}</s-table-cell>
               <s-table-cell>
                 <span className="keha-inline">
-                  <span>{formatDay(r.orderBy, locale)}</span>
+                  {(r.orderBy || !r.overdue) && <span>{formatDay(r.orderBy, locale)}</span>}
                   {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
                 </span>
               </s-table-cell>
@@ -256,11 +256,11 @@ export function AboveLastYearBadge({ qty, lastYear }: { qty: number; lastYear: n
   return <s-badge tone="warning">{t("Above last year")}</s-badge>;
 }
 
-/** A line's real deadline: "Due 27 Oct", "Due today", or "Overdue since 12 Oct" (critical). */
-export function DueLabel({ deadline, today }: { deadline: string | null | undefined; today: string }) {
+/** A line's real deadline: "Due 27 Oct", "Due today", "Overdue since 12 Oct" or "Overdue" (critical). */
+export function DueLabel({ deadline, today, overdue = false }: { deadline: string | null | undefined; today: string; overdue?: boolean }) {
   const { t, locale } = useLocale();
-  const text = dueText(deadline, today, t, locale);
-  if (deadline && deadline < today) return <s-badge tone="critical">{text}</s-badge>;
+  const text = dueText(deadline, today, t, locale, overdue);
+  if ((deadline && deadline < today) || (!deadline && overdue)) return <s-badge tone="critical">{text}</s-badge>;
   return <span className="keha-nowrap">{text}</span>;
 }
 

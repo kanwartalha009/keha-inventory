@@ -206,7 +206,8 @@ export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale,
     return {
       kind: "preview",
       today: data.today,
-      rows: rows.map((r) => ({ title: r.productTitle, variant: r.variantTitle, qty: r.qty, orderBy: r.orderBy, overdue: r.overdue })),
+      // An overdue row reads "order now" (its date is never printed); one with no date (M3) sorts as today.
+      rows: rows.map((r) => ({ title: r.productTitle, variant: r.variantTitle, qty: r.qty, orderBy: r.orderBy ?? data.today, overdue: r.overdue })),
       products: new Set(rows.map((r) => data.variants[r.variantId]?.productId ?? r.variantId)).size,
       link: adminAppUrl(shop, "/app"),
       plansLink: adminAppUrl(shop, "/app/plans"),

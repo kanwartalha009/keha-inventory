@@ -27,7 +27,9 @@
  *    s + lead (other arrivals of that day included, the new order not). Projection is unclamped.
  *  - Order-by date (deadline) = the last day s with stock at arrival ≥ safety stock: waiting one
  *    more day would let it fall below. Already below today → the date it was (overdue), found by
- *    running today's demand backwards. With a flat forecast and nothing incoming this is the
+ *    running today's demand backwards while there is stock (at most lead time + the stock's
+ *    days); already out or oversold → the day it ran out per sales history (`outSince`), else no
+ *    date (M3: never one made up from a backlog). With a flat forecast and nothing incoming this is the
  *    nightly formula today + ⌊daysLeft − lead − safety ÷ forecast rate⌋. Compute stores it as
  *    VariantMetric.orderBy.
  *  - An order is placed on day t exactly when t is an order-by date: ordering on t + 1 would be
@@ -93,6 +95,8 @@ export interface ForwardVariantInput {
   moq: number | null;
   /** Orders are planned on days 0 … days − 1 (0 = only the order-by date). */
   days: number;
+  /** M3: the day the current out-of-stock spell began (sales history; inputs.outSince); null unknown. */
+  outSince?: DayKey | null;
 }
 
 /**
@@ -149,6 +153,8 @@ export interface ForwardVariantPlan {
   deadline: DayKey | null;
   /** Today's stored need after open Keha orders; null when not plannable. */
   needNow: number | null;
+  /** Already late today (see VariantProjection.overdue); with deadline null: out, run-out day unknown. */
+  overdue: boolean;
   orders: ForwardOrder[];
 }
 
@@ -212,8 +218,13 @@ export class VariantProjection {
   readonly moq: number | null;
   /** False: no sales rate or no safety stock (legacy rows) — only today's stored need. */
   readonly projected: boolean;
-  /** Order-by date before any planned order. */
+  /**
+   * Order-by date before any planned order. null with `overdue`: already out of stock (or
+   * oversold) and the day it ran out is unknown — no date is made up (M3).
+   */
   readonly deadline: DayKey | null;
+  /** Today's order is late: its stock at arrival is below safety stock. */
+  readonly overdue: boolean;
   private readonly input: ForwardVariantInput;
   private readonly base: number;
   private readonly safety: number;
@@ -248,6 +259,7 @@ export class VariantProjection {
     this.T = 0;
     if (!this.projected) {
       this.deadline = null;
+      this.overdue = false;
       return;
     }
     const L = this.L;
@@ -276,8 +288,19 @@ export class VariantProjection {
     for (let d = 0; d < T; d++) this.O[d + 1] = this.O[d]! - this.c[d]! + this.arr[d + 1]!;
     this.onOrderTotal = this.arr.reduce((a, b) => a + b, 0);
 
-    if (!this.safeAt(0)) {
-      this.deadline = addDays(today, Math.min(0, Math.floor((this.O[Math.min(T, L)]! - this.safety) / this.c[0]! + EPS)));
+    this.overdue = !this.safeAt(0);
+    if (this.overdue) {
+      if (this.O[0]! <= EPS) {
+        // M3: already out (or oversold: a negative available is a backlog, not past sales).
+        // Running today's demand backwards would invent a date (−200 units at 0.5/day = "428 days
+        // ago"); the date is the day it ran out per sales history, else none.
+        const out = input.outSince && /^\d{4}-\d{2}-\d{2}$/.test(input.outSince) && input.outSince < today ? input.outSince : null;
+        this.deadline = out;
+      } else {
+        // Still in stock, below safety at arrival: the date it was, running today's demand back
+        // over at most lead time + the days of stock left above safety (bounded: stock > 0).
+        this.deadline = addDays(today, Math.min(-1, Math.floor((this.O[Math.min(T, L)]! - this.safety) / this.c[0]! + EPS)));
+      }
     } else {
       let found: number | null = null;
       for (let s = 0; s < DEADLINE_SCAN_DAYS; s++) {
@@ -376,7 +399,7 @@ export class VariantProjection {
       arrives: addDays(this.today, t + this.L),
       qty,
       need,
-      overdue: t === 0 && deadline !== null && deadline < this.today,
+      overdue: t === 0 && this.overdue,
       deadline,
       why,
     };
@@ -387,7 +410,7 @@ export class VariantProjection {
 export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
   const sim = new VariantProjection(input);
   const orders: ForwardOrder[] = [];
-  if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, orders };
+  if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, overdue: false, orders };
   let t = 0;
   for (let d = sim.nextOrderDay(t); d !== null; d = sim.nextOrderDay(t)) {
     const { need, why } = sim.needAt(d);
@@ -398,7 +421,7 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
     }
     t = d + 1;
   }
-  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, orders };
+  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, overdue: sim.overdue, orders };
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +527,7 @@ export function forwardInputFromMetric(
     pack: x.pack,
     moq: x.moq,
     days: x.days,
+    outSince: typeof inputs.outSince === "string" ? inputs.outSince : null,
   };
 }
 
@@ -744,7 +768,7 @@ export interface StorePlan {
   events: PlanEvent[];
   batches: PlanBatch[];
   /** Per variant: why it can't be planned, its order-by date before any order. */
-  variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null }>;
+  variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean }>;
 }
 
 type Ev = { spec: number; day: number; qty: number; need: number; why: OrderWhy | null };
@@ -755,8 +779,8 @@ type Ev = { spec: number; day: number; qty: number; need: number; why: OrderWhy 
  */
 export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Record<string, PlanSupplierRules>>, today: DayKey): StorePlan {
   const sims = specs.map((s) => new VariantProjection(s.input));
-  const variants = new Map<string, { skip: PlanSkip | null; deadline: DayKey | null }>();
-  sims.forEach((sim, i) => variants.set(specs[i]!.variantId, { skip: sim.skip, deadline: sim.deadline }));
+  const variants = new Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean }>();
+  sims.forEach((sim, i) => variants.set(specs[i]!.variantId, { skip: sim.skip, deadline: sim.deadline, projected: sim.projected, overdue: sim.overdue }));
   const bySupplier = new Map<string, number[]>();
   specs.forEach((s, i) => (bySupplier.get(s.supplierKey) ?? bySupplier.set(s.supplierKey, []).get(s.supplierKey)!).push(i));
   const days = specs.reduce((a, s) => Math.max(a, Math.floor(s.input.days)), 0);
@@ -935,6 +959,15 @@ export function byWeek(events: readonly PlanEvent[], today: DayKey, weeks: numbe
       overdue: list.some((e) => e.overdue),
     };
   });
+}
+
+/**
+ * The day one order is due: its order-by date (`deadline`; an overdue order's is in the past) —
+ * null when it is overdue and already out of stock with the day it ran out unknown ("Overdue"
+ * without a date, M3). A day-0 order of a row the plan can't project keeps compute's date.
+ */
+export function dueDay(e: Pick<PlanEvent, "orderBy" | "overdue" | "deadline">): DayKey | null {
+  return e.overdue ? e.deadline : (e.deadline ?? e.orderBy);
 }
 
 /** Events placed within the next `days` days (today included; overdue day-0 orders too). */

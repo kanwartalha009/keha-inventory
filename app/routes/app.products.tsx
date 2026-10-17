@@ -372,7 +372,8 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
           ""
         ) : (
           <span className="keha-inline">
-            <span>{formatDay(r.orderBy, locale)}</span>
+            {/* Overdue with no date (already out, run-out day unknown): the badge alone. */}
+            {(r.orderBy || !r.overdue) && <span>{formatDay(r.orderBy, locale)}</span>}
             {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
           </span>
         )}

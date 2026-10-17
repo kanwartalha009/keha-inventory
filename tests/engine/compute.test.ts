@@ -9,6 +9,17 @@ import { TODAY, ago, buildSeries, variantInput } from "./fixtures";
 const alternating = buildSeries({ days: 90, sold: (k) => (k % 2 ? 1 : 3), price: 25 });
 
 describe("computeVariant", () => {
+  it("M3: stores the day the current out-of-stock spell began (outSince), from sales history", () => {
+    // Out (ended at ≤ 0) the last 6 days, in stock before.
+    const series = buildSeries({ days: 90, sold: (k) => (k <= 6 ? 0 : 2), oos: (k) => k <= 6, endStock: (k) => (k <= 6 ? 0 : 10) });
+    expect(computeVariant(variantInput({ series, onHand: -3 }))!.inputs.outSince).toBe(ago(6));
+    // Yesterday in stock: not out (it ran out today or isn't out): no date.
+    expect(computeVariant(variantInput({ series: alternating, onHand: 0 }))!.inputs.outSince).toBeNull();
+    // A day without data ends the search at the earliest known day of the spell.
+    const gap = buildSeries({ days: 90, sold: 0, oos: (k) => k <= 10, missing: (k) => k === 4 });
+    expect(computeVariant(variantInput({ series: gap, onHand: 0 }))!.inputs.outSince).toBe(ago(3));
+  });
+
   it("returns null for bundles", () => {
     expect(computeVariant(variantInput({ isBundle: true }))).toBeNull();
   });

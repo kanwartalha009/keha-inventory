@@ -572,7 +572,7 @@ function JoinList({ lines, group, today, onJoin }: { lines: ReorderLine[]; group
                         </s-stack>
                       </s-table-cell>
                       <s-table-cell>
-                        <DueLabel deadline={l.orderBy} today={today} />
+                        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} />
                       </s-table-cell>
                       <s-table-cell>{formatCount(l.suggested, locale)}</s-table-cell>
                       <s-table-cell>{formatPrice(l.unitCostStore === null ? null : l.unitCostStore * l.suggested, group.storeCurrency, locale)}</s-table-cell>
@@ -645,7 +645,7 @@ function LineRow({
         </div>
       </s-table-cell>
       <s-table-cell>
-        <DueLabel deadline={l.orderBy} today={today} />
+        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} />
       </s-table-cell>
       <s-table-cell>{formatCount(l.onHand, locale)}</s-table-cell>
       <s-table-cell>

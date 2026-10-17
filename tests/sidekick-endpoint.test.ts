@@ -263,8 +263,10 @@ describe("tools on Growth", () => {
     const nowLines = orderNow.groups.flatMap((g) => g.lines.map((l) => [g.name, l.variantId, l.suggested] as const)).sort();
     expect(today.results!.flatMap((g) => (g._meta.lines as Line[]).map((l) => [g.name, l.variant_gid, l.order_qty] as const)).sort()).toEqual(nowLines);
     expect(nowLines.length).toBe(2);
-    // Order-by dates are the forward plan's (overdue: the date that passed), never null.
+    // Order-by dates are the forward plan's (overdue: the date that passed).
     for (const l of today.results![0]!._meta.lines as Line[]) expect(l.order_by).toBe(calendar.plan.variants[l.variant_gid]!.deadline);
+    // M3: V2 is already out and the day it ran out isn't known: overdue with no date, never one made up.
+    expect((today.results![0]!._meta.lines as (Line & { overdue?: boolean })[]).find((l) => l.variant_gid === V(2))).toMatchObject({ order_by: null, overdue: true });
     expect(today.results![0]!._meta).toMatchObject({ overdue: true, url: expect.stringMatching(/^app:\/\/app\/reorder\?supplier=supplier:s1&from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/) });
     expect(today).toMatchObject({ url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
     expect(today.cash_per_week).toBeUndefined();

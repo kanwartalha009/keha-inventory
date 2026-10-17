@@ -168,7 +168,14 @@ export async function planSuppliers(shop: string): Promise<PlanSupplierRow[]> {
 }
 
 /** Per variant, for Products and Order now: the plan's order-by date and why it can't be planned. */
-export type PlanVariantState = { deadline: DayKey | null; skip: PlanSkip | null; supplierKey: string; noReorder: boolean };
+export type PlanVariantState = {
+  deadline: DayKey | null;
+  skip: PlanSkip | null;
+  supplierKey: string;
+  noReorder: boolean;
+  /** Already late (stock at arrival of an order placed today below safety); with deadline null: out, run-out day unknown. */
+  overdue?: boolean;
+};
 
 export type OrderPlanOptions = {
   /** "online" (default) or a Location.id (Pro location views). */
@@ -349,11 +356,14 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   };
   for (const s of specs) {
     const p = plan.variants.get(s.variantId);
-    state.set(s.variantId, { deadline: p?.deadline ?? (p?.skip ? null : storedBy(s.variantId)), skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false });
+    // A projected variant's null date is the plan's answer (never runs low, or already out with
+    // no known run-out day — M3): only rows the plan can't project keep compute's date.
+    const deadline = p?.projected ? p.deadline : (p?.deadline ?? (p?.skip ? null : storedBy(s.variantId)));
+    state.set(s.variantId, { deadline, skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false, overdue: !!p?.overdue });
   }
   const events = plan.events;
   for (const e of events) {
-    if (e.deadline !== null) continue;
+    if (e.deadline !== null || plan.variants.get(e.variantId)?.projected) continue;
     e.deadline = storedBy(e.variantId);
     e.overdue = e.deadline !== null && e.deadline < today && e.orderBy === today;
   }

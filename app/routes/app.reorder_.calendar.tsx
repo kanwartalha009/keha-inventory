@@ -28,7 +28,7 @@ import { useLinkProps } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
-import { cashTotals, type PlanEvent, type PlanSupplierWeek, type PlanWeek } from "../lib/engine/forward-plan-shared";
+import { cashTotals, dueDay, type PlanEvent, type PlanSupplierWeek, type PlanWeek } from "../lib/engine/forward-plan-shared";
 import { toSupplierCurrency } from "../lib/supplier-shared";
 import {
   EMPTY_ORDER_PLAN,
@@ -241,7 +241,7 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
                     </div>
                   </s-table-cell>
                   <s-table-cell>
-                    <DueLabel deadline={e.overdue && e.deadline ? e.deadline : e.orderBy} today={plan.today} />
+                    <DueLabel deadline={dueDay(e)} overdue={e.overdue} today={plan.today} />
                   </s-table-cell>
                   <s-table-cell>{formatDay(e.arrives, locale)}</s-table-cell>
                   <s-table-cell>

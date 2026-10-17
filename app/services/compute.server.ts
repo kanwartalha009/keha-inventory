@@ -402,6 +402,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         pack: r.inputs.caseQty,
         moq: r.inputs.minOrder,
         days: 0,
+        outSince: r.inputs.outSince,
       });
       // "Don't reorder" variants get no order-by date (no order advice at all).
       r.orderBy = r.inputs.noReorder ? null : fwd.deadline;

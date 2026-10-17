@@ -22,7 +22,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import type { PlanEvent } from "../lib/engine/forward-plan-shared";
+import { dueDay, type PlanEvent } from "../lib/engine/forward-plan-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
@@ -114,9 +114,11 @@ export function withPlan(row: ProductRow, view: PlanView | null, noReorder: bool
   if (noReorder) return { ...row, noReorder: true, orderQty: null, orderBy: null, overdue: false };
   if (!view) return { ...row, noReorder: false };
   const e = view.first.get(row.id);
-  if (e) return { ...row, noReorder: false, orderQty: e.qty, orderBy: e.deadline ?? e.orderBy, overdue: e.overdue };
+  // dueDay: an overdue order's passed date; null when it is already out and the day it ran out is
+  // unknown (M3) — never the stored date of a row computed before that rule.
+  if (e) return { ...row, noReorder: false, orderQty: e.qty, orderBy: dueDay(e), overdue: e.overdue };
   const st = view.state.get(row.id);
-  return { ...row, noReorder: false, orderQty: null, orderBy: st ? (st.deadline ?? row.orderBy) : row.orderBy, overdue: false };
+  return { ...row, noReorder: false, orderQty: null, orderBy: st ? st.deadline : row.orderBy, overdue: false };
 }
 
 const ORDER: Prisma.VariantOrderByWithRelationInput[] = [{ productTitle: "asc" }, { variantTitle: "asc" }, { id: "asc" }];
@@ -149,7 +151,10 @@ async function orderedIds(
   const key = (r: { id: string; noReorder: boolean }): [number, string] => {
     if (r.noReorder) return [2, ""];
     const e = view.first.get(r.id);
-    const d = e ? (e.deadline ?? e.orderBy) : (view.state.get(r.id)?.deadline ?? stored.get(r.id) ?? null);
+    // Overdue with no date (already out, run-out day unknown): first.
+    if (e?.overdue && !dueDay(e)) return [0, ""];
+    const st = view.state.get(r.id);
+    const d = e ? dueDay(e) : st ? st.deadline : (stored.get(r.id) ?? null);
     return d ? [0, d] : [1, ""];
   };
   const keyed = list.map((r, i) => ({ id: r.id, i, k: key(r) }));

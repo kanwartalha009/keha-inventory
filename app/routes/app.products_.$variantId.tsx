@@ -178,7 +178,7 @@ export default function VariantDetailPage() {
                   locked
                 ) : (
                   <span className="keha-inline">
-                    <span>{formatDay(row.orderBy, locale)}</span>
+                    {(row.orderBy || !row.overdue) && <span>{formatDay(row.orderBy, locale)}</span>}
                     {row.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
                   </span>
                 )

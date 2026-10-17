@@ -99,6 +99,8 @@ describe("order-plan-shared", () => {
     expect(dueText("2026-10-27", "2026-10-16", t, "en")).toBe("Due Oct 27");
     expect(dueText("2026-10-12", "2026-10-16", t, "en")).toBe("Overdue since Oct 12");
     expect(dueText(null, "2026-10-16", t, "en")).toBe("—");
+    // M3: late with no date (already out, the day it ran out unknown): "Overdue", never a made-up date.
+    expect(dueText(null, "2026-10-16", t, "en", true)).toBe("Overdue");
     expect(dueText("2026-10-27", "2026-10-16", (x) => translate("de", x), "de")).toBe("Bis 27. Okt.");
   });
 
@@ -141,8 +143,8 @@ describe("order-plan-shared", () => {
   it("the Free preview: next order per variant, most urgent first, at most 10", () => {
     const rows = previewRows(plan);
     expect(rows[0]).toMatchObject({ productTitle: "Linen shirt", overdue: true, qty: 61 });
-    expect(rows[0]!.orderBy < PLAN_TODAY).toBe(true); // overdue shows its order-by date
-    for (let i = 1; i < rows.length; i++) expect(rows[i - 1]!.orderBy <= rows[i]!.orderBy).toBe(true);
+    expect(rows[0]!.orderBy! < PLAN_TODAY).toBe(true); // overdue shows its order-by date
+    for (let i = 1; i < rows.length; i++) expect((rows[i - 1]!.orderBy ?? "") <= (rows[i]!.orderBy ?? "")).toBe(true);
     expect(previewRows(plan, 2)).toHaveLength(2);
   });
 

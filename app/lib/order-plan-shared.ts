@@ -11,6 +11,7 @@ import {
   bySupplier,
   byWeek,
   cashTotals,
+  dueDay,
   dueWithin,
   type CashTotals,
   type OrderWhy,
@@ -207,7 +208,8 @@ export type PreviewRow = {
   variantTitle: string;
   daysLeft: number | null;
   neverRunsOut: boolean;
-  orderBy: DayKey;
+  /** dueDay: null = overdue, already out, run-out day unknown. */
+  orderBy: DayKey | null;
   overdue: boolean;
   qty: number;
 };
@@ -224,7 +226,7 @@ export function previewRows(data: Pick<OrderPlanData, "events" | "variants">, li
   }
   const rows = [...first.values()].map((e) => {
     const v = data.variants[e.variantId];
-    const when = e.overdue && e.deadline ? e.deadline : e.orderBy;
+    const when = dueDay(e);
     return {
       row: {
         variantId: e.variantId,
@@ -241,7 +243,9 @@ export function previewRows(data: Pick<OrderPlanData, "events" | "variants">, li
   });
   rows.sort(
     (a, b) =>
-      a.row.orderBy.localeCompare(b.row.orderBy) ||
+      // Overdue first (an overdue order with no date before the dated ones), then by date.
+      Number(b.row.overdue) - Number(a.row.overdue) ||
+      (a.row.orderBy ?? "").localeCompare(b.row.orderBy ?? "") ||
       b.value - a.value ||
       a.row.productTitle.localeCompare(b.row.productTitle) ||
       (a.row.variantId < b.row.variantId ? -1 : 1),
@@ -313,9 +317,12 @@ export function shortDay(day: DayKey, locale: string): string {
   return formatDayRange(day, null, locale);
 }
 
-/** A line's real deadline: "Due today", "Due 27 Oct", "Overdue since 12 Oct" ("—" unknown). */
-export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string): string {
-  if (!deadline) return "—";
+/**
+ * A line's real deadline: "Due today", "Due 27 Oct", "Overdue since 12 Oct"; "Overdue" when it is
+ * late with no date (already out, run-out day unknown — M3); "—" unknown.
+ */
+export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string, overdue = false): string {
+  if (!deadline) return overdue ? t("Overdue") : "—";
   if (deadline < today) return fill(t("Overdue since {date}"), { date: shortDay(deadline, locale) });
   if (deadline === today) return t("Due today");
   return fill(t("Due {date}"), { date: shortDay(deadline, locale) });

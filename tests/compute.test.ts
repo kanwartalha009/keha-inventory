@@ -177,6 +177,15 @@ describe("computeShop", () => {
     expect((metric(A).inputs as { onHand: number }).onHand).toBe(50);
   });
 
+  it("M3: an oversold variant's stored order-by date is the day it ran out, never one run backwards from the backlog", async () => {
+    // B ran out on 6 Oct and is now oversold by 200 (available −200), nothing incoming.
+    db.tables.stockNow = db.tables.stockNow.map((r) => (r.variantId === B ? { ...r, available: -200, incoming: 0 } : r));
+    await computeShop(S, { now: () => NOW });
+    const b = metric(B);
+    expect((b.inputs as { outSince: string | null }).outSince).toBe("2026-10-06");
+    expect((b.orderBy as Date).toISOString().slice(0, 10)).toBe("2026-10-06");
+  });
+
   it("review fix: Keha order units that already landed are not counted as incoming again", async () => {
     // Sent 10 Oct with 30 on hand; now 100 on hand after 12 sold since (2/day × 6 days) → 82 landed ≥ 80.
     db.tables.purchaseOrder = [

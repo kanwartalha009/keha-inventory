@@ -21,7 +21,7 @@
 import type { MoneyCardKey } from "./money-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
-import { byWeek, bySupplier, cashTotals, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
+import { byWeek, bySupplier, cashTotals, dueDay, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
 import {
   orderLink,
   supplierName,
@@ -292,8 +292,9 @@ export function windowEnd(today: DayKey, withinDays: number): DayKey {
 const daysLeftOf = (v: PlanVariantInfo | undefined): number | string | null =>
   !v ? null : v.neverRunsOut ? "never runs out at the current pace" : v.daysLeft === null || !Number.isFinite(v.daysLeft) ? null : Math.max(0, Math.floor(v.daysLeft));
 
-/** An overdue order's date is the order-by date that passed (as the Free preview shows it). */
-const dueDay = (e: Pick<PlanEvent, "orderBy" | "overdue" | "deadline">) => (e.overdue && e.deadline ? e.deadline : e.orderBy);
+/** order_by_label of an overdue order with no date (already out, the day it ran out unknown — M3). */
+const OVERDUE_NO_DATE = "overdue — already out of stock, the day it ran out isn't known";
+const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey) => (day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null);
 
 /**
  * What to order and from whom in the window, grouped by supplier (vendor when no supplier is
@@ -318,12 +319,13 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
   const groups = bySupplier(events);
   const results = groups.map((g) => {
     const shown = g.events.slice(0, MAX_GROUP_LINES);
-    const first = g.events.reduce((d, e) => (dueDay(e) < d ? dueDay(e) : d), dueDay(g.events[0]!));
+    const known = g.events.map(dueDay).filter((d): d is DayKey => !!d).sort();
+    const first = known[0] ?? null;
     const s = data.suppliers[g.supplierKey];
     return link(groupUri(s, g.supplierKey), name(g.supplierKey), MIME.supplierOrder, {
       grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
       order_by: first,
-      order_by_label: dayLabel(first, data.today),
+      order_by_label: dueLabel(first, g.overdue, data.today),
       overdue: g.overdue || undefined,
       orders: g.lines,
       products: g.products,
@@ -373,7 +375,7 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
       link(r.variantId, displayName(r.productTitle || "—", r.variantTitle), MIME.variant, {
         days_left: r.neverRunsOut ? "never runs out at the current pace" : r.daysLeft === null || !Number.isFinite(r.daysLeft) ? null : Math.max(0, Math.floor(r.daysLeft)),
         order_by: r.orderBy,
-        order_by_label: dayLabel(r.orderBy, data.today),
+        order_by_label: dueLabel(r.orderBy, r.overdue, data.today),
         overdue: r.overdue || undefined,
         suggested_order_qty: r.qty,
         sku: data.variants[r.variantId]?.sku ?? undefined,

@@ -16,7 +16,7 @@
  */
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
 import { lineQuantity, netNeed } from "./engine/order-shared";
-import { ORDER_NOW_DAYS, topUpToMinimum, type OrderWhy, type PlanEvent, type TopUpLine } from "./engine/forward-plan-shared";
+import { ORDER_NOW_DAYS, dueDay, topUpToMinimum, type OrderWhy, type PlanEvent, type TopUpLine } from "./engine/forward-plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import type { OrderPlanData } from "./order-plan-shared";
 
@@ -261,7 +261,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       onOrder: Math.max(0, input.onOrder.get(id) ?? 0),
       daysLeft: v?.daysLeft ?? null,
       neverRunsOut: !!v?.neverRunsOut,
-      orderBy: first?.deadline ?? first?.orderBy ?? v?.deadline ?? null,
+      orderBy: first ? dueDay(first) : (v?.deadline ?? null),
       overdue: events.some((e) => e.overdue),
       suggested: Math.max(qty, plannedQty !== undefined ? lineQuantity(plannedQty, pack, moq) : 0),
       pack,

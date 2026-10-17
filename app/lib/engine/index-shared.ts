@@ -4,7 +4,7 @@
  * variant × scope and returns the `inputs` behind every number (the "how we
  * got this" popover, spec §2.4 / §12).
  */
-import { addDays, dayIndex, daysBetween, toDayKey, type DayKey } from "./dates-shared";
+import { addDays, dayIndex, daysBetween, fromDayIndex, toDayKey, type DayKey } from "./dates-shared";
 import {
   demand,
   forecastRate,
@@ -148,6 +148,12 @@ export interface VariantInputs {
    * screen nets open drafts from it before rounding (review fix).
    */
   orderNeed: number | null;
+  /**
+   * M3: the first day of the out-of-stock spell the variant is in now (sales history: every day
+   * from it through yesterday ended at ≤ 0 units; a day without data ends the search); null when
+   * yesterday wasn't out. The forward plan's "Overdue since" date for a variant already out.
+   */
+  outSince: DayKey | null;
   lastSaleDay: DayKey | null;
   /** Start of the no-sale period when the variant never sold (oldest day with data). */
   dataSinceDay: DayKey | null;
@@ -203,6 +209,14 @@ function seriesCost(index: SeriesIndex): number | null {
     if (c !== null && (!latest || i > latest.i)) latest = { i, c };
   }
   return latest ? latest.c : null;
+}
+
+/** The day the current out-of-stock spell began (see VariantInputs.outSince). */
+export function ranOutDay(index: SeriesIndex, today: DayKey): DayKey | null {
+  let i = dayIndex(today) - 1;
+  if (!index.get(i)?.outOfStock) return null;
+  while (index.get(i - 1)?.outOfStock) i--;
+  return fromDayIndex(i);
 }
 
 function earlierDay(a: DayKey | null, b: DayKey | null): DayKey | null {
@@ -394,6 +408,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       caseQty: input.caseQty ?? null,
       minOrder: input.minOrder ?? null,
       orderNeed,
+      outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,
       noSaleDays,

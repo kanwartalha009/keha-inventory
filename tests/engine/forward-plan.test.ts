@@ -75,7 +75,8 @@ describe("planVariant — order-by date", () => {
   });
 
   it("matches orderByDate for any flat forecast with nothing on order", () => {
-    for (const onHand of [0, 3, 17, 40, 100, 333])
+    // (0 on hand: already out — no date from running demand backwards, M3; tested below.)
+    for (const onHand of [3, 17, 40, 100, 333])
       for (const rate of [0.4, 1, 2.5, 7])
         for (const [lead, safety] of [[0, 0], [7, 3.2], [14, 10], [45, 22.5]] as const) {
           const p = planVariant(steady({ onHand, rate, leadTimeDays: lead, safety, days: 0 }));
@@ -105,6 +106,27 @@ describe("planVariant — order-by date", () => {
     expect(p.deadline).toBe(addDays(TODAY, -17));
     expect(p.deadline).toBe(orderByDate(TODAY, 2.5, 14, 5));
     expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, qty: 61, deadline: addDays(TODAY, -17) });
+  });
+
+  it("M3: already out or oversold — never a date made up by running demand backwards", () => {
+    // Reviewer repro: −200 available (a backlog) at 0.5/day gave "Overdue since 14 Aug 2025, 428 days ago".
+    const oversold = { today: TODAY, status: "out", rate: 0.5, seasonal: 1, trend: 1, plan: 1, curve: null, safety: 5, leadTimeDays: 14, cycleDays: 14, onHand: -200, incoming: 0, arrivals: [], need: 14 + 5 + 200, pack: null, moq: null, days: planDays(TODAY) };
+    const p = planVariant(oversold);
+    expect(p.deadline).toBeNull();
+    expect(p.overdue).toBe(true);
+    expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, deadline: null, qty: 219 });
+    // With the day it ran out (sales history): that day.
+    const known = planVariant({ ...oversold, outSince: addDays(TODAY, -6) });
+    expect(known.deadline).toBe(addDays(TODAY, -6));
+    expect(known.orders[0]).toMatchObject({ overdue: true, deadline: addDays(TODAY, -6) });
+    // 0 on hand: the same.
+    expect(planVariant(steady({ onHand: 0 }))).toMatchObject({ deadline: null, overdue: true });
+    // Still in stock but late: bounded by lead time + the stock's days, as the nightly formula.
+    const late = planVariant(steady({ onHand: 1 }));
+    expect(late.deadline! >= addDays(TODAY, -(14 + 5))).toBe(true);
+    // A future run-out day or a malformed one is ignored.
+    expect(planVariant({ ...oversold, outSince: addDays(TODAY, 1) }).deadline).toBeNull();
+    expect(planVariant({ ...oversold, outSince: "14 Aug" }).deadline).toBeNull();
   });
 });
 
@@ -424,7 +446,8 @@ describe("invariant: Order now lists exactly the plan's orders due in the next 7
         const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: 6, moq: null, notCounted: 0, days: 91 }));
         const day0 = fwd.orders.find((o) => o.day === 0);
         // An order today exactly when the order-by date is today or has passed.
-        expect(!!day0, `${onHand}/${incoming}`).toBe(fwd.deadline !== null && fwd.deadline <= TODAY);
+        // (Already out with no known run-out day: overdue without a date, M3.)
+        expect(!!day0, `${onHand}/${incoming}`).toBe(fwd.overdue || (fwd.deadline !== null && fwd.deadline <= TODAY));
         // …at the plan's own need for today (stored need), rounded to the case pack.
         if (day0) expect(day0.qty).toBe(lineQuantity(res.inputs.orderNeed!, 6, null));
       }
