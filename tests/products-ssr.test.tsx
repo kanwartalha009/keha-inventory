@@ -99,7 +99,7 @@ describe("Products page", () => {
     expect(html).toContain("All vendors");
     expect(html).toContain('placeholder="Product, variant or SKU"');
     // Stock now / Incoming say which locations they cover.
-    expect(html).toContain("Online stock pool: active locations that fulfil online orders.");
+    expect(html).toContain("Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.");
     expect(html).toContain('<s-text interestFor="keha-pool-stock">Stock now</s-text><s-tooltip id="keha-pool-stock">');
     // Numbers are right-aligned: numeric columns use the Polaris numeric format.
     expect(count(html, 'format="numeric"')).toBe(5);
@@ -160,7 +160,7 @@ describe("Products layout (2026-10-17 design rules)", () => {
   it("a single-location store gets no location switcher at all", () => {
     const html = render(data(true, { locationCount: 1 }));
     expect(html).not.toContain("keha-switcher");
-    expect(html).not.toContain("Online stock pool</s-option>");
+    expect(html).not.toContain("Stock counted in supplier orders</s-option>");
     expect(html).not.toContain("upgrade=locations");
   });
 

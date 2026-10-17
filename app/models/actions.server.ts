@@ -4,8 +4,8 @@
  * Preorder is installed, is passed in as a cached callback and asked only when
  * a visible Bridge row could use it. Mapping lives in app/lib/action-list-shared.ts.
  *
- * Stock values use the online stock pool (active locations that fulfil online
- * orders), the same pool as compute and the Products screen.
+ * Stock values use the supplier-order pool (every active location unless left out,
+ * compute-shared countsForOnline), the same pool as compute and the Products screen.
  */
 import prisma from "../db.server";
 import { decimalToNumber } from "./dashboard.server";

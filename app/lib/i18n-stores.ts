@@ -112,7 +112,7 @@ export const STORES_TR: Record<string, Tr> = {
   },
 
   // ---- Location switcher (Products, Reorder) ----
-  "Online stock pool": { es: "Stock online", fr: "Stock en ligne", de: "Online-Bestand", it: "Stock online", pt: "Stock online", nl: "Onlinevoorraad", pl: "Stan online" },
+  "Stock counted in supplier orders": { es: "Stock que cuenta para los pedidos a proveedores", fr: "Stock pris en compte pour les commandes fournisseurs", de: "Bestand für Lieferantenbestellungen", it: "Stock conteggiato negli ordini ai fornitori", pt: "Stock contado nas encomendas a fornecedores", nl: "Voorraad voor leveranciersbestellingen", pl: "Stan liczony w zamówieniach u dostawców" },
   "Set up warehouses and stores": {
     es: "Configura almacenes y tiendas físicas",
     fr: "Configurer les entrepôts et les magasins",

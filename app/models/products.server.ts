@@ -1,9 +1,9 @@
 /**
  * Products table and variant detail (spec §5.2). Database reads only; the
  * mapping lives in app/lib/products-shared.ts. Everything here uses the same
- * online stock pool as compute (VariantMetric scope "online"): stock now,
- * incoming and sold-out days come from active locations that fulfil online
- * orders, so a row can't read "Stock now 40 · Out".
+ * supplier-order pool as compute (VariantMetric scope "online"; every active
+ * location unless left out, countsForOnline): stock now, incoming and sold-out
+ * days come from the same locations, so a row can't read "Stock now 40 · Out".
  *
  * SalesDaily holds two views of the same sales (facts-shared): by location
  * (channel "all") and by channel (locationKey "all"). Totals read the channel

@@ -450,7 +450,7 @@ export function productStockResponse(
 export const KIND_WORDS: Record<string, string> = {
   reorder: "Reorder",
   bridge: "Bridge the gap (preorders or back-in-stock sign-ups)",
-  push: "Push (promote it)",
+  push: "Promote (products with healthy stock)",
   fix_falling: "Fix: falling sales",
   fix_sizes: "Fix: missing sizes",
   fix_page: "Fix: product page",

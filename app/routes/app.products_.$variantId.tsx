@@ -138,7 +138,7 @@ export default function VariantDetailPage() {
     >
       {!forecast && <UpgradeBanner feature="forecast" />}
 
-      <FormCard title={t("Stock")} sub={t("Stock counted in supplier orders: the active locations that fulfil online orders.")}>
+      <FormCard title={t("Stock")} sub={t("Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.")}>
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">

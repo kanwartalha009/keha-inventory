@@ -127,10 +127,10 @@ export default function Products() {
   const [params, setParams] = useSearchParams();
   const navigation = useNavigation();
   const { rows, info, total, filters, options, forecast, location } = data;
-  // What "Stock now" / "Incoming" cover: the online stock pool, or the one location shown.
+  // What "Stock now" / "Incoming" cover: the stock counted in supplier orders, or the one location shown.
   const stockScope = location
     ? fill(t("Stock at {location} only."), { location: location.name })
-    : t("Online stock pool: active locations that fulfil online orders.");
+    : t("Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.");
 
   const apply = (patch: Partial<Record<FilterKey, string>>) => {
     const next = new URLSearchParams(params);

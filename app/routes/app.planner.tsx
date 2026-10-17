@@ -1018,7 +1018,7 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
             value={pct(data.storeErrorPct, locale)}
             lines={[
               t("How far our forecast for the store's total units was from what you sold, as a % of what you sold."),
-              t("Based on: our forecast on the 1st of the month vs units sold that month (online stock pool)"),
+              t("Based on: our forecast on the 1st of the month vs units sold that month, all sales channels"),
             ]}
           />
           <SummaryBox
@@ -1027,8 +1027,8 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
             value={pct(data.top20ErrorPct, locale)}
             sub={fill(t("Graded: {n}"), { n: formatCount(data.graded, locale) })}
             lines={[
-              t("The average error over the 20 variants with the most sales that month. Variants that sold nothing can't be graded."),
-              t("Based on: our forecast on the 1st of the month vs units sold that month (online stock pool)"),
+              t("The combined error over the 20 variants that sold the most the month before. Variants that sold nothing are graded too."),
+              t("Based on: our forecast on the 1st of the month vs units sold that month, all sales channels"),
             ]}
           />
         </s-grid>

@@ -369,14 +369,14 @@ export const ORDERING_TR: Record<string, Tr> = {
   },
 
   // ---- Product detail ----
-  "Stock counted in supplier orders: the active locations that fulfil online orders.": {
-    es: "Stock que cuenta para los pedidos a proveedores: las ubicaciones activas que preparan pedidos online.",
-    fr: "Stock pris en compte pour les commandes fournisseurs : les emplacements actifs qui expédient les commandes en ligne.",
-    de: "Bestand, der in Lieferantenbestellungen zählt: die aktiven Standorte, die Online-Bestellungen versenden.",
-    it: "Stock conteggiato negli ordini ai fornitori: le sedi attive che evadono gli ordini online.",
-    pt: "Stock contado nas encomendas a fornecedores: as localizações ativas que preparam encomendas online.",
-    nl: "Voorraad die meetelt voor bestellingen bij leveranciers: de actieve locaties die online bestellingen versturen.",
-    pl: "Stan liczony w zamówieniach u dostawców: aktywne lokalizacje realizujące zamówienia online.",
+  "Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.": {
+    es: "Stock que cuenta para los pedidos a proveedores: todas las ubicaciones activas, salvo las que hayas excluido en Ajustes → Ubicaciones.",
+    fr: "Stock pris en compte pour les commandes fournisseurs : tous les emplacements actifs, sauf ceux exclus dans Paramètres → Emplacements.",
+    de: "Bestand, der in Lieferantenbestellungen zählt: alle aktiven Standorte, außer denen, die du unter Einstellungen → Standorte ausgenommen hast.",
+    it: "Stock conteggiato negli ordini ai fornitori: tutte le sedi attive, tranne quelle escluse in Impostazioni → Sedi.",
+    pt: "Stock contado nas encomendas a fornecedores: todas as localizações ativas, exceto as que excluiu em Definições → Localizações.",
+    nl: "Voorraad die meetelt voor bestellingen bij leveranciers: alle actieve locaties, behalve de locaties die je hebt uitgesloten bij Instellingen → Locaties.",
+    pl: "Stan liczony w zamówieniach u dostawców: wszystkie aktywne lokalizacje, oprócz wyłączonych w Ustawienia → Lokalizacje.",
   },
   "Not applied (growth assumption off)": {
     es: "No se aplica (hipótesis de crecimiento desactivada)",

@@ -129,7 +129,7 @@ export type OrderAction =
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
-  if (!features.reorderPlan) return upgradeResponse("reorderPlan", "The reorder plan is on the Growth plan.");
+  if (!features.reorderPlan) return upgradeResponse("reorderPlan", "The order plan is on the Growth plan.");
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

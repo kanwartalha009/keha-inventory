@@ -272,7 +272,7 @@ function PrimaryButton({ row, onOpen }: { row: ActionRowView; onOpen: (type: Dia
   const b = row.button;
   switch (b.kind) {
     case "reorder":
-      return <s-button {...link(b.href)}>{t("Add to order plan")}</s-button>;
+      return <s-button {...link(b.href)}>{t("Add to order")}</s-button>;
     case "preorder":
       return (
         <s-button href={b.href} target="_top">

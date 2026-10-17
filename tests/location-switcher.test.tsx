@@ -184,7 +184,7 @@ describe("switcherMode: one rule", () => {
 describe("SSR: the switcher", () => {
   it("Pro: the pool and each warehouse / store", () => {
     const html = render("/app/products", "products", Products, products());
-    expect(html).toContain("Online stock pool");
+    expect(html).toContain("Stock counted in supplier orders");
     expect(html).toContain("Main · Warehouse");
     expect(html).toContain("Barcelona · Store");
     expect(html).not.toContain("upgrade=locations");
@@ -209,7 +209,7 @@ describe("SSR: the switcher", () => {
     expect(html).toContain("Plan stock per warehouse and per POS store, each with its own sales.");
     expect(html).toContain('href="/app/plans?upgrade=locations"');
     expect(html).toContain('class="keha-switcher keha-switcher--link"');
-    expect(html).not.toContain("Online stock pool</s-option>");
+    expect(html).not.toContain("Stock counted in supplier orders</s-option>");
     expect(html).not.toMatch(/<s-select[^>]*disabled/);
   });
 

@@ -196,7 +196,8 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(html).toContain("Runs out in 1 days");
     expect(html).toContain("S, M");
     // Buttons per kind (spec §7.7).
-    expect(html).toContain("Add to order plan");
+    expect(html).toContain("Add to order");
+    expect(html).not.toContain("Add to order plan");
     expect(html).toContain(`href="/app/reorder?variants=${encodeURIComponent("gid://shopify/ProductVariant/11,gid://shopify/ProductVariant/12")}"`);
     expect(html).toContain(">Collect back-in-stock sign-ups</s-button>");
     expect(html).toContain("Show how");
