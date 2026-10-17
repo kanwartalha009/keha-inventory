@@ -219,8 +219,11 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const fRate = r.rate === null ? null : forecastRate(r.rate, m);
   const advice = r.enoughData && r.rate !== null && sigma !== null;
 
-  const safety = advice ? safetyStock(z, sigma!, lead.days) : null;
-  const sDays = advice ? safetyDaysOf(safety!, r.rate!) : null;
+  // H4 (audit 2026-10-17): periodic review — the stock must cover demand uncertainty until the
+  // NEXT order lands, i.e. over lead time + order cycle (the protection period), not lead only.
+  const safety = advice ? safetyStock(z, sigma!, lead.days + cycle) : null;
+  // In days of the FORECAST (the same daily demand days left is measured in).
+  const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
   let left: number | null;
   if (onHand <= 0) left = 0;
   else if (advice) left = daysLeftOf(onHand, fRate!);

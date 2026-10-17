@@ -26,15 +26,17 @@ describe("computeVariant", () => {
     )!;
     expect(r.rate).toBeCloseTo(2, 12);
     expect(r.sigma).toBeCloseTo(1, 12);
-    expect(r.safety).toBeCloseTo(1.65 * 1 * 4, 12); // 6.6
-    expect(r.safetyDays).toBeCloseTo(3.3, 12);
+    // H4: safety covers lead time + order cycle (periodic review): 1.65 × σ 1 × √(16 + 14).
+    // The old √lead (16) gave 6.6 — too little for a store that orders every 14 days.
+    expect(r.safety).toBeCloseTo(1.65 * Math.sqrt(30), 12); // 9.04
+    expect(r.safetyDays).toBeCloseTo((1.65 * Math.sqrt(30)) / 2, 12); // ÷ the daily forecast
     expect(r.daysLeft).toBeCloseTo(20, 12);
-    // 20 ≥ 16 + 3.3 → not running low.
-    expect(r.status).toBe("healthy");
-    // ceil(2 × 30 + 6.6 − 50) = 17 → case of 6 → 18.
-    expect(r.orderQty).toBe(18);
-    // floor(20 − 16 − 3.3) = 0 → today.
-    expect(r.orderBy).toBe(TODAY);
+    // 20 < 16 + 4.52 → running low.
+    expect(r.status).toBe("running_low");
+    // ceil(2 × 30 + 9.04 − 50) = 20 → case of 6 → 24.
+    expect(r.orderQty).toBe(24);
+    // floor(20 − 16 − 4.52) = −1 → yesterday (overdue).
+    expect(r.orderBy).toBe(ago(1));
     expect(r.inputs).toMatchObject({
       leadTimeDays: 16,
       leadTimeSource: "supplier",

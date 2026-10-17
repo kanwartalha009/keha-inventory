@@ -67,12 +67,16 @@ export function demand(rate: number, m: ForecastMultipliers, horizonDays: number
   return rate * m.seasonal * m.trend * m.plan * horizonDays;
 }
 
-/** safety = z × σ_daily × √leadTime. */
-export function safetyStock(z: number, sigma: number, leadTimeDays: number): number {
-  return z * sigma * Math.sqrt(Math.max(0, leadTimeDays));
+/**
+ * safety = z × σ_daily × √protectionDays. The engine passes lead time + order cycle (periodic
+ * review, audit H4): between two orders the stock must cover uncertainty until the next order
+ * arrives. σ_daily = daily demand σ on in-stock days without negative return days (rate-shared).
+ */
+export function safetyStock(z: number, sigma: number, protectionDays: number): number {
+  return z * sigma * Math.sqrt(Math.max(0, protectionDays));
 }
 
-/** safetyDays = safety ÷ rate; 0 when the rate is 0. */
+/** safetyDays = safety ÷ daily forecast (the engine passes rate × seasonal × trend); 0 when it is 0. */
 export function safetyDays(safety: number, rate: number): number {
   return rate > 0 ? safety / rate : 0;
 }
