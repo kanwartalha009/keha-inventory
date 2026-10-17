@@ -545,9 +545,15 @@ export type PurchaseOrderIn = {
   source: "keha" | "shopify";
   status: string;
   supplierName: string | null;
+  /** Units ordered. */
   units: number;
+  /** Units still to arrive (ordered − received); `units` when unknown. */
+  remaining?: number;
   cost: number | null;
+  /** Value of the units still to arrive; `cost` when unknown. */
+  remainingCost?: number | null;
   currency: string | null;
+  /** Confirmed ship date + the supplier's transit days, else the lead-time estimate. */
   arrival: string | null;
   createdAt: string;
 };
@@ -568,8 +574,10 @@ export function purchaseOrdersResponse(
       supplier: r.supplierName,
       expected_arrival: r.arrival,
       expected_arrival_label: dayLabel(r.arrival, ctx.today),
-      units: r.units,
-      value: money(r.cost),
+      // What is still to come (a partly received order counts only the rest, as Order now).
+      units: r.remaining ?? r.units,
+      units_ordered: r.remaining !== undefined && r.remaining !== r.units ? r.units : undefined,
+      value: money(r.remaining !== undefined && r.remaining !== r.units ? (r.remainingCost ?? null) : r.cost),
       currency: r.currency || ctx.storeCurrency,
       created: r.createdAt.slice(0, 10),
       url: appUrl(`/app/reorder/${encodeURIComponent(r.id)}`),

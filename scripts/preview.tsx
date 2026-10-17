@@ -132,9 +132,9 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
 }
 
 const OPEN_ORDERS: OpenOrderRow[] = [
-  { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, cost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
-  { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", supplierName: "Lisbon Linen", units: 120, cost: 1440, currency: "EUR", arrival: "2026-11-20", createdAt: "2026-10-08T00:00:00Z" },
-  { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, cost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
+  { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, remaining: 24, cost: 60, remainingCost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
+  { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", supplierName: "Lisbon Linen", units: 120, remaining: 120, cost: 1440, remainingCost: 1440, currency: "EUR", arrival: "2026-11-20", createdAt: "2026-10-08T00:00:00Z" },
+  { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, remaining: 10, cost: null, remainingCost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
 ];
 // The Open orders tab's rows (ships / arrives / remaining / age, merchant audit 2026-10-17).
 const OPEN_ORDER_ROWS: OpenOrdersPageData["orders"] = [

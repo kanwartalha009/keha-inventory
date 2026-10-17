@@ -328,7 +328,21 @@ describe("tools on Growth", () => {
       ["#PO-7", "Ordered", null],
     ]);
     expect(r.results![0]!._meta).toMatchObject({ units: 20, value: 200, currency: "EUR", url: "app://app/reorder/po1" });
+    expect(r.results![0]!._meta.units_ordered).toBeUndefined();
     expect((await body("get_purchase_orders", "status=draft")).message).toBe(MSG.noOrders);
+  });
+
+  it("get_purchase_orders: a partly received order counts what is still to come; arrival = ship date + transit", async () => {
+    db.tables.supplier = (db.tables.supplier ?? []).map((x) => (x.id === "s1" ? { ...x, transitDays: 10 } : x));
+    if (!db.tables.supplier.some((x) => x.id === "s1")) db.tables.supplier.push({ id: "s1", shop: SHOP, name: "Acme Textiles", transitDays: 10 });
+    Object.assign(db.tables.purchaseOrder[0]!, {
+      status: "confirmed",
+      confirmedShipDate: day("2026-10-25"),
+      lines: [{ variantId: V(1), qty: 20, unitCost: 10, received: 8 }],
+    });
+    const r = await body("get_purchase_orders");
+    const po1 = r.results!.find((x) => x.name.startsWith("PO-0001"))!;
+    expect(po1._meta).toMatchObject({ units: 12, units_ordered: 20, value: 120, expected_arrival: "2026-11-04" });
   });
 
   it("get_forecast_accuracy: graded months, newest first", async () => {

@@ -55,8 +55,8 @@ function reorderData(over: { minOrderTotal?: number | null } = {}): ReorderPageD
     missingSelected: 0,
     today: plan.today,
     openOrders: [
-      { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, cost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
-      { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, cost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
+      { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, remaining: 24, cost: 60, remainingCost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
+      { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, remaining: 10, cost: null, remainingCost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
     ],
   };
 }

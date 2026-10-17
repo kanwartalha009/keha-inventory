@@ -154,9 +154,15 @@ export type OpenOrderRow = {
   source: "keha" | "shopify";
   status: PoStatus;
   supplierName: string | null;
+  /** Units ordered. */
   units: number;
+  /** Units still to arrive (ordered − received; partial receiving). */
+  remaining: number;
+  /** Value of the units ordered / still to arrive, order currency; null when a cost is missing. */
   cost: number | null;
+  remainingCost: number | null;
   currency: string | null;
+  /** Confirmed ship date + the supplier's transit days, else the lead-time estimate (poArrival). */
   arrival: string | null;
   createdAt: string;
 };
@@ -173,7 +179,9 @@ function toOpenRow(o: {
   expectedDate: Date | null;
   createdAt: Date;
 }, transitDays?: number | null): OpenOrderRow {
-  const totals = poTotals(readPoLines(o.lines));
+  const lines = readPoLines(o.lines);
+  const totals = poTotals(lines);
+  const left = poTotals(lines.map((l) => ({ ...l, qty: lineRemaining(l) })));
   return {
     id: o.id,
     number: o.number,
@@ -181,7 +189,9 @@ function toOpenRow(o: {
     status: o.status as PoStatus,
     supplierName: o.supplierName,
     units: totals.units,
+    remaining: left.units,
     cost: totals.cost,
+    remainingCost: left.cost,
     currency: o.currency,
     arrival: dayOf(poArrival(o, transitDays)),
     createdAt: o.createdAt.toISOString(),
