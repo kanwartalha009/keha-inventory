@@ -8,6 +8,7 @@ import { addDays } from "../../app/lib/engine/dates-shared";
 import {
   NO_SEASONAL_DATA,
   SEASON,
+  TREND_NOT_APPLIED,
   chooseSeasonSource,
   createSeasonContext,
   isCovered,
@@ -118,18 +119,37 @@ describe("seasonal index", () => {
 });
 
 describe("trend", () => {
-  it("last 28 days ÷ the same 28 days 364 days earlier", () => {
+  it("last 28 days ÷ the same 28 days 364 days earlier (growth assumption on)", () => {
     const s = series((d) => (d >= "2026-09-18" ? 15 : 10));
-    const r = trendFactor(s, TODAY);
+    const r = trendFactor(s, TODAY, "store");
     expect(r.current).toMatchObject({ from: "2026-09-18", to: "2026-10-15" });
     expect(r.lastYear).toMatchObject({ from: "2025-09-19", to: "2025-10-16" });
     expect(r.value).toBeCloseTo(1.5, 12);
     expect(r.applied).toBe(true);
+    expect(r.measured).toBeCloseTo(1.5, 12);
+  });
+
+  it("C4: growth assumption off (the default) → measured, shown, but not applied", () => {
+    // Audit 2026-10-17: rate × season × trend forecast +85 % too high (today's pace already
+    // contains the growth). Off: the multiplier is 1; the measured value stays for the product page.
+    const s = series((d) => (d >= "2026-09-18" ? 15 : 10));
+    for (const r of [trendFactor(s, TODAY), trendFactor(s, TODAY, "off")]) {
+      expect(r).toMatchObject({ value: 1, applied: false, reason: "off", mode: "off" });
+      expect(r.measured).toBeCloseTo(1.5, 12);
+    }
+    const ctx = createSeasonContext({ today: TODAY, store: s, collections: new Map(), units12m: new Map() });
+    const v = ctx.forVariant([], 28);
+    expect(v.trend).toBe(1);
+    expect(seasonFacts(v)).toMatchObject({ trendApplied: false, trendReason: "off", trendMode: "off", trendNote: TREND_NOT_APPLIED });
+    expect(seasonFacts(v).trendMeasured).toBeCloseTo(1.5, 12);
+    const on = createSeasonContext({ today: TODAY, store: s, collections: new Map(), units12m: new Map(), trendMode: "store" }).forVariant([], 28);
+    expect(on.trend).toBeCloseTo(1.5, 12);
+    expect(seasonFacts(on).trendNote).toBeNull();
   });
 
   it("clamps to 0.5 … 2.0", () => {
-    expect(trendFactor(series((d) => (d >= "2026-09-18" ? 50 : 10)), TODAY).value).toBe(2);
-    expect(trendFactor(series((d) => (d >= "2026-09-18" ? 1 : 10)), TODAY).value).toBe(0.5);
+    expect(trendFactor(series((d) => (d >= "2026-09-18" ? 50 : 10)), TODAY, "store").value).toBe(2);
+    expect(trendFactor(series((d) => (d >= "2026-09-18" ? 1 : 10)), TODAY, "store").value).toBe(0.5);
   });
 
   it("1.0 without last year's data", () => {

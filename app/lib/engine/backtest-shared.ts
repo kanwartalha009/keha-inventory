@@ -55,7 +55,7 @@ import {
   type EngineSettings,
   type VariantResult,
 } from "./index-shared";
-import { SEASON, createSeasonContext, spanStats, type Coverage, type UnitsSeries } from "./season-shared";
+import { SEASON, createSeasonContext, spanStats, type Coverage, type TrendMode, type UnitsSeries } from "./season-shared";
 import {
   buildSeries,
   productTraffic,
@@ -95,6 +95,8 @@ export interface BacktestData {
   currency: string;
   /** Shop overrides (engineSettingsFrom(readSettings(shop.settings))). */
   settings?: Partial<EngineSettings> | null;
+  /** Growth assumption (readSettings(shop.settings).trendMode); default "off", as the app. */
+  trendMode?: TrendMode;
   /** Days the sales history covers (salesCoverage of the backfill state). */
   coverage: Coverage;
   variants: readonly BacktestVariant[];
@@ -261,7 +263,7 @@ export function backtestMonth(data: BacktestData, month: string): BacktestMonthR
     for (const id of members.get(c) ?? []) for (const [day, n] of byVariantDay.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + n);
     collections.set(c, { units, coverage });
   }
-  const season = createSeasonContext({ today: asOf, store: { units: storeUnits, coverage }, collections, units12m });
+  const season = createSeasonContext({ today: asOf, store: { units: storeUnits, coverage }, collections, units12m, trendMode: data.trendMode ?? "off" });
   const storeSeason = season.forVariant([], fDays);
 
   // ---- forecast for M+1 (accuracy's snapshot) ----

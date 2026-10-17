@@ -67,7 +67,7 @@ export interface VariantInput {
   cycleDays?: number | null;
   caseQty?: number | null;
   minOrder?: number | null;
-  /** §7.3 multipliers; default 1.0. */
+  /** §7.3 multipliers; default 1.0. `trend` is the APPLIED trend (1 with the growth assumption off). */
   seasonal?: number | null;
   trend?: number | null;
   plan?: number | null;

@@ -11,7 +11,11 @@
  * Task 2.1 / 2.4:
  *  - seasonal × trend (§7.3, season.server + engine/season-shared) per variant, for the horizon
  *    lead time + cycle, at store or collection level; the plan multiplier stays 1 (the planner
- *    applies its own). Everything behind them goes into VariantMetric.inputs.
+ *    applies its own). Everything behind them goes into VariantMetric.inputs. The trend is
+ *    applied only when the shop turned the growth assumption on (settings trendMode "store");
+ *    by default inputs.trend = 1 and inputs.season.trendMeasured / trendNote show the value.
+ *    One applied trend feeds everything downstream: demand, days left, the Too-much gate, the
+ *    money cards, the action list and the forward plan (inputs.trend).
  *  - supplier per variant: supplierFor() (explicit, then vendor match); its lead time and per-line
  *    minimum order; case pack: casePackFor(). The order-total minimum is the Reorder screen's.
  *  - safety level → z per ABC role (engineSettingsFrom).
@@ -285,6 +289,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     coverage,
     // + the forward plan's seasonal shape (seasonCurve) beyond the horizon, for collection series.
     maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1) + FORWARD_CURVE_DAYS + 7,
+    // Growth assumption (audit C4): "off" (default) measures the trend but applies 1.
+    trendMode: shopSettings.trendMode,
   });
 
   // Plan: per-location planning (Pro) and the money cadence. Plan checks fail open (I-6).
@@ -494,6 +500,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     store: storeConversion(totals),
     openPos,
     dated,
+    seasonOf,
   });
   return { status: "computed", today, variants: results.length, locationMetrics: perLocation.metrics, money: "computed", actions };
 }
@@ -519,6 +526,7 @@ async function writeActions(
     openPos: readonly OpenPo[];
     /** Dated incoming per variant (sales at risk counts only what lands within 28 d). */
     dated: ReadonlyMap<string, { arrival: string; units: number }[]>;
+    seasonOf: ReadonlyMap<string, VariantSeason>;
   },
 ): Promise<number> {
   const { today } = x;
@@ -567,6 +575,7 @@ async function writeActions(
       rate: r.rate,
       seasonal: r.seasonal,
       trend: r.trend,
+      trendMeasured: x.seasonOf.get(v.id)?.trendResult.measured ?? null,
       onHand: r.onHand,
       incoming: r.incoming,
       daysLeft: r.daysLeft,

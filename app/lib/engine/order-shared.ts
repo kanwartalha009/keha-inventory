@@ -51,17 +51,17 @@ export function zForRole(role: AbcRole, settings: EngineSettings = ENGINE_DEFAUL
   return settings.z[role];
 }
 
-/** rate × seasonal × trend (the forecast used for days left and cash stuck). */
+/** rate × seasonal × trend (applied trend: 1 when the growth assumption is off). */
 export function forecastRate(rate: number, m: Pick<ForecastMultipliers, "seasonal" | "trend">): number {
   return rate * m.seasonal * m.trend;
 }
 
 /**
- * demand(H) = rate × seasonal × trend × plan × H (spec §7.4, as written).
- * Known effect, reviewed 2026-10-17: the seasonal index already compares this year to last,
- * so trend applies year-on-year growth a second time (a store growing 50%/yr with no
- * seasonality is forecast ~48% high; clamps limit it to ×0.5–×2). Kanwar's decision
- * (2026-10-17): keep the spec formula. Change only with his approval.
+ * demand(H) = rate × seasonal × trend × plan × H (spec §7.4).
+ * `trend` is the APPLIED trend: 1 unless the shop turned the growth assumption on
+ * (settings trendMode "store"; season-shared trendFactor). Audit 2026-10-17 (C4): today's pace
+ * already contains the growth, so multiplying by the year-on-year trend again forecast +85 %
+ * too high on a real store — the default is "off".
  */
 export function demand(rate: number, m: ForecastMultipliers, horizonDays: number): number {
   return rate * m.seasonal * m.trend * m.plan * horizonDays;

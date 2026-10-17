@@ -134,6 +134,7 @@ export async function load(prisma: PrismaClient, shop: string, from: string, to:
   return {
     currency: shopRow.currency,
     settings: engineSettingsFrom(readSettings(shopRow.settings)),
+    trendMode: readSettings(shopRow.settings).trendMode,
     coverage: salesCoverage(readBackfillState(shopRow.backfillState)),
     variants: variants.map((v) => ({
       id: v.id,

@@ -24,6 +24,11 @@
  *  - Trend = units/day(last 28 days) ÷ units/day(the same 28 days 364 days earlier, weekdays
  *    aligned), clamped to 0.5–2.0. Needs ≥ 80 % covered days in both windows and last year's
  *    window sold > 0; otherwise 1.0 (spec: "without last year's data: 1.0").
+ *    Growth assumption (Shop.settings.trendMode, audit 2026-10-17 C4): the trend is always
+ *    MEASURED (`measured`, shown on the product page), but only APPLIED (`value`) when the mode
+ *    is "store". "off" (the default) → value 1, reason "off": today's sales pace already
+ *    contains the growth, and multiplying by the trend again forecast ~85 % too high on a real
+ *    store (WAPE 90 % vs 36 %).
  *  - Plan multiplier: keep pace = 1.0; grow X % = 1 + X/100; revenue target = target ÷ baseline
  *    forecast revenue (null when the baseline is unknown or ≤ 0).
  */
@@ -161,32 +166,51 @@ export function seasonalIndex(s: UnitsSeries, today: DayKey, horizonDays: number
   return out("ok", (span.unitsPerDay ?? 0) / base.unitsPerDay);
 }
 
-export type TrendReason = "ok" | "low_coverage" | "no_last_year_sales";
+export type TrendReason = "ok" | "off" | "low_coverage" | "no_last_year_sales";
+
+/** Growth assumption (settings-shared TrendMode): "off" = never applied, "store" = applied. */
+export type TrendMode = "off" | "store";
+
+/** Shown next to a measured trend that is not applied (growth assumption off). English key. */
+export const TREND_NOT_APPLIED = "Not applied: the growth assumption is off";
 
 export interface TrendResult {
+  /** The multiplier to apply: the clamped trend in "store" mode when computable, else 1. */
   value: number;
   applied: boolean;
   reason: TrendReason;
   raw: number | null;
+  /** The clamped trend whether or not it is applied (null when not computable). */
+  measured: number | null;
+  mode: TrendMode;
   current: SpanStats;
   lastYear: SpanStats;
 }
 
-/** Last 28 days ÷ the same 28 days 364 days earlier, clamped 0.5–2.0; else 1.0. */
-export function trendFactor(s: UnitsSeries, today: DayKey): TrendResult {
+/**
+ * Last 28 days ÷ the same 28 days 364 days earlier, clamped 0.5–2.0 (`measured`). Applied
+ * (`value`) only in "store" mode; otherwise 1.0. Default "off" (settings-shared DEFAULT_SETTINGS).
+ */
+export function trendFactor(s: UnitsSeries, today: DayKey, mode: TrendMode = "off"): TrendResult {
   const t = toDayKey(today);
   const to = addDays(t, -1);
   const from = addDays(t, -SEASON.trendDays);
   const current = spanStats(s, from, to);
   const lastYear = spanStats(s, addDays(from, -SEASON.trendShiftDays), addDays(to, -SEASON.trendShiftDays));
-  const out = (reason: TrendReason, raw: number | null = null): TrendResult => ({
-    value: reason === "ok" && raw !== null ? clamp(raw, SEASON.trendMin, SEASON.trendMax) : 1,
-    applied: reason === "ok",
-    reason,
-    raw,
-    current,
-    lastYear,
-  });
+  const out = (reason: TrendReason, raw: number | null = null): TrendResult => {
+    const measured = raw !== null ? clamp(raw, SEASON.trendMin, SEASON.trendMax) : null;
+    const applied = reason === "ok" && measured !== null && mode === "store";
+    return {
+      value: applied ? measured! : 1,
+      applied,
+      reason: reason === "ok" && !applied ? "off" : reason,
+      raw,
+      measured,
+      mode: mode === "store" ? "store" : "off",
+      current,
+      lastYear,
+    };
+  };
   if (current.coverage < SEASON.minCoverage || lastYear.coverage < SEASON.minCoverage) return out("low_coverage");
   if (!lastYear.unitsPerDay || lastYear.unitsPerDay <= 0) return out("no_last_year_sales");
   return out("ok", (current.unitsPerDay ?? 0) / lastYear.unitsPerDay);
@@ -247,6 +271,7 @@ export function chooseSeasonSource(
 /** The seasonal + trend multipliers one variant gets, with where they came from. */
 export interface VariantSeason {
   seasonal: number;
+  /** The APPLIED trend (1 when the growth assumption is off); trendResult.measured has the value. */
   trend: number;
   level: "store" | "collection";
   collectionId: string | null;
@@ -263,6 +288,8 @@ export function createSeasonContext(input: {
   store: UnitsSeries;
   collections: ReadonlyMap<string, UnitsSeries>;
   units12m: ReadonlyMap<string, number>;
+  /** Growth assumption (settings trendMode); default "off": trend measured, never applied. */
+  trendMode?: TrendMode;
 }) {
   const seasonalMemo = new Map<string, SeasonalResult>();
   const trendMemo = new Map<string, TrendResult>();
@@ -280,7 +307,7 @@ export function createSeasonContext(input: {
     if (!s) return null;
     const key = id ?? "";
     let r = trendMemo.get(key);
-    if (!r) trendMemo.set(key, (r = trendFactor(s, input.today)));
+    if (!r) trendMemo.set(key, (r = trendFactor(s, input.today, input.trendMode ?? "off")));
     return r;
   };
   const curveMemo = new Map<string, (number | null)[] | null>();
@@ -325,6 +352,10 @@ export function seasonFacts(s: VariantSeason) {
     trendApplied: s.trendResult.applied,
     trendReason: s.trendResult.reason,
     trendRaw: s.trendResult.raw,
+    /** The measured trend (clamped), applied or not; the product page shows it with trendNote. */
+    trendMeasured: s.trendResult.measured,
+    trendMode: s.trendResult.mode,
+    trendNote: s.trendResult.reason === "off" ? TREND_NOT_APPLIED : null,
     trendCurrentPerDay: s.trendResult.current.unitsPerDay,
     trendLastYearPerDay: s.trendResult.lastYear.unitsPerDay,
     label: s.seasonalResult.applied ? null : NO_SEASONAL_DATA,

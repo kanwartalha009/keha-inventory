@@ -12,6 +12,7 @@ import {
   createSeasonContext,
   shiftYears,
   type Coverage,
+  type TrendMode,
   type UnitsSeries,
 } from "../lib/engine/season-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
@@ -31,6 +32,8 @@ export async function loadSeasonContext(
     coverage: Coverage;
     /** Longest horizon any variant will ask for (lead time + cycle, or a month). */
     maxHorizonDays: number;
+    /** Growth assumption (Shop.settings.trendMode); default "off" — the trend is measured, not applied. */
+    trendMode?: TrendMode;
   },
 ): Promise<SeasonContext> {
   const { today, poolKeys, coverage } = input;
@@ -93,5 +96,5 @@ export async function loadSeasonContext(
       collections.set(c, { units, coverage });
     }
   }
-  return createSeasonContext({ today, store: { units: storeUnits, coverage }, collections, units12m });
+  return createSeasonContext({ today, store: { units: storeUnits, coverage }, collections, units12m, trendMode: input.trendMode ?? "off" });
 }

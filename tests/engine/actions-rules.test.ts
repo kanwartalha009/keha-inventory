@@ -161,6 +161,14 @@ describe("push", () => {
     expect(of(generateActions([p({}, [v({ role: "B", trend: 1 })])], CTX), "push")?.reason.key).toBe("push_steady");
   });
 
+  it("C4: with the growth assumption off (applied trend 1) the MEASURED trend is the push signal", () => {
+    // Applied trend is 1 (forecast) but sales measured down 20 % on last year: no push.
+    expect(of(generateActions([p({}, [v({ role: "A", trend: 1, trendMeasured: 0.8 })])], CTX), "push")).toBeUndefined();
+    const up = of(generateActions([p({}, [v({ role: "A", trend: 1, trendMeasured: 1.3 })])], CTX), "push")!;
+    expect(up.reason).toMatchObject({ key: "push_up", params: { pct: 30 } });
+    expect(up.reason.facts).toMatchObject({ trend: 1.3 });
+  });
+
   it("trend just below 1, role C, or not healthy: no push", () => {
     expect(of(generateActions([p({}, [v({ role: "A", trend: 0.99 })])], CTX), "push")).toBeUndefined();
     expect(of(generateActions([p({}, [v({ role: "C", trend: 1.2 })])], CTX), "push")).toBeUndefined();

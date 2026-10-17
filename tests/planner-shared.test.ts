@@ -351,10 +351,9 @@ describe("computeScenario", () => {
     expect(r.period).toMatchObject({ effectiveStart: TODAY, days: 5, daysUntilStart: 0 });
     expect(r.season).toMatchObject({ applied: true, value: 2, yearsBack: 1, spanFrom: "2025-10-16", spanTo: "2025-10-20" });
     expect(r.history).toEqual({ enough: true, from: "2025-08-01" });
-    // Trend: last 28 days (1/day) ÷ the same 28 days 364 days earlier (incl. 16 Oct 2025 at 2/day) = 28/29.
-    expect(r.season).toMatchObject({ trendApplied: true });
-    expect(r.season.trend).toBeCloseTo(28 / 29, 6);
-    expect(r.totals.units).toBeCloseTo(2 * 2 * (28 / 29) * 5, 1); // rate × seasonal × trend × 5 days
+    // Trend (28/29 measured) is not applied: the growth assumption is off by default (audit C4).
+    expect(r.season).toMatchObject({ trendApplied: false, trend: 1 });
+    expect(r.totals.units).toBeCloseTo(2 * 2 * 5, 1); // rate × seasonal × 5 days
     expect(r.groups[0]!.lines[0]!.late).toBe(true); // starts today: any lead time is too late
   });
 

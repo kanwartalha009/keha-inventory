@@ -27,7 +27,8 @@ import {
   snapshotDue,
   snapshotRows,
 } from "../lib/engine/accuracy-shared";
-import { spanStats } from "../lib/engine/season-shared";
+import { spanStats, type TrendMode } from "../lib/engine/season-shared";
+import { readSettings } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
@@ -49,16 +50,17 @@ const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 export async function runAccuracy(shop: string, now: Date = new Date()): Promise<AccuracyResult> {
   const row = await prisma.shop.findUnique({
     where: { domain: shop },
-    select: { timezone: true, backfillState: true, uninstalledAt: true },
+    select: { timezone: true, backfillState: true, uninstalledAt: true, settings: true },
   });
   if (!row || row.uninstalledAt) return { status: "skipped" };
+  const trendMode = readSettings(row.settings).trendMode;
   const today = localDate(now, safeTimeZone(row.timezone));
   const coverage = salesCoverage(readBackfillState(row.backfillState));
   const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
   const poolKeys = poolSalesKeys(poolLocationIds(locations));
   return {
     status: "ok",
-    snapshot: await snapshotMonth(shop, today, now, poolKeys, coverage),
+    snapshot: await snapshotMonth(shop, today, now, poolKeys, coverage, trendMode),
     grade: await gradeMonths(shop, today, poolKeys, coverage),
   };
 }
@@ -69,6 +71,7 @@ async function snapshotMonth(
   now: Date,
   poolKeys: string[],
   coverage: ReturnType<typeof salesCoverage>,
+  trendMode: TrendMode,
 ): Promise<AccuracyResult["snapshot"]> {
   const month = monthStart(today);
   if (!snapshotDue(today)) return "not_due";
@@ -90,6 +93,7 @@ async function snapshotMonth(
     variants: variants.map((v) => ({ id: v.id, collections: v.collections ?? [] })),
     coverage,
     maxHorizonDays: days,
+    trendMode,
   });
   const rows = snapshotRows(
     metrics.map((m) => {

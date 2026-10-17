@@ -362,16 +362,29 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: false, seasonalReason: "short_history", label: "No seasonal data yet" });
   });
 
-  it("applies the store's seasonal index and trend to days left, with the inputs for the popover", async () => {
+  it("applies the store's seasonal index to days left; the trend is measured but not applied (growth assumption off)", async () => {
     seedLastYear();
     await computeShop(S, { now: () => NOW });
     const a = metric(A);
     const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
     // Index = 4/day (LY horizon) ÷ 2/day (LY base) = 2.
     expect(inputs.seasonal).toBeCloseTo(2, 10);
-    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, horizonDays: 28, trendApplied: true });
-    // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2.
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
+    // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2: measured, not applied.
+    expect((inputs.season as { trendMeasured: number }).trendMeasured).toBe(2);
+    expect(inputs.trend).toBe(1);
+    // days left = 100 ÷ (2 × 2).
+    expect(a.daysLeft).toBeCloseTo(25, 10);
+  });
+
+  it("C4: trendMode 'store' applies the trend (the old behaviour)", async () => {
+    seedLastYear();
+    db.tables.shop[0].settings = { trendMode: "store" };
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
     expect(inputs.trend).toBe(2);
+    expect(inputs.season).toMatchObject({ trendApplied: true, trendMode: "store", trendNote: null });
     // days left = 100 ÷ (2 × 2 × 2).
     expect(a.daysLeft).toBeCloseTo(12.5, 10);
     expect(a.status).toBe("running_low");

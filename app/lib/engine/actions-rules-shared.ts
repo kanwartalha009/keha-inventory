@@ -63,7 +63,10 @@ export interface RuleVariant {
   /** Sales per day while in stock; null = not enough data. */
   rate: number | null;
   seasonal: number;
+  /** The APPLIED trend (1 when the growth assumption is off). */
   trend: number;
+  /** The measured trend (season-shared TrendResult.measured), applied or not; null = unknown. */
+  trendMeasured?: number | null;
   onHand: number;
   /** StockNow incoming (dated or not). */
   incoming: number;
@@ -310,7 +313,9 @@ export function productYoY(p: Pick<RuleProduct, "revenue28" | "revenue28LastYear
  */
 function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft | null {
   const yoy = productYoY(p);
-  const upOrFlat = (v: RuleVariant) => (yoy !== null ? yoy >= 1 : v.trend >= 1);
+  // The trend here is a growth SIGNAL, not a forecast multiplier: the measured one, applied or not.
+  const trendOf = (v: RuleVariant) => (finite(v.trendMeasured) ? v.trendMeasured : v.trend);
+  const upOrFlat = (v: RuleVariant) => (yoy !== null ? yoy >= 1 : trendOf(v) >= 1);
   const strong = p.variants.filter((v) => (v.role === "A" || v.role === "B") && v.status === "healthy" && upOrFlat(v));
   const conv = conversion(p);
   const converts = conv !== null && storeMedianConv !== null && conv >= storeMedianConv;
@@ -321,7 +326,7 @@ function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft |
   if (!(amount > 0)) return null;
   const facts = {
     variants: hit.length,
-    trend: hit[0].trend,
+    trend: trendOf(hit[0]),
     ...(yoy === null ? {} : { revenue28: round2(Math.max(0, p.revenue28 as number)), revenue28LastYear: round2(p.revenue28LastYear as number) }),
     conversionPct: conv === null ? null : pct(conv),
     storeMedianPct: storeMedianConv === null ? null : pct(storeMedianConv),
@@ -330,7 +335,7 @@ function pushRule(p: RuleProduct, storeMedianConv: number | null): ActionDraft |
     horizonDays: ACTION_RULES.horizonDays,
   };
   if (strong.length) {
-    const tr = yoy ?? Math.max(...strong.map((v) => v.trend));
+    const tr = yoy ?? Math.max(...strong.map(trendOf));
     return Math.round((tr - 1) * 100) > 0
       ? draft("push", p.productId, hit.map((v) => v.id), amount, "push_up", { pct: Math.round((tr - 1) * 100) }, facts)
       : draft("push", p.productId, hit.map((v) => v.id), amount, "push_steady", {}, facts);
