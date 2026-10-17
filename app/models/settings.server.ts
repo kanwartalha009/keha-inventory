@@ -20,3 +20,16 @@ export async function saveShopSettings(shop: string, next: ShopSettings): Promis
   await prisma.shop.update({ where: { domain: shop }, data: { settings: merged } });
   return readSettings(merged);
 }
+
+/**
+ * Remembers that we asked for a review (lib/review-ask-shared): Shop.settings.reviewAsk, a key
+ * outside ShopSettings, merged so every other setting is kept. Only the first answer is kept.
+ */
+export async function recordReviewAsk(shop: string, code: string, now: Date): Promise<boolean> {
+  const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { settings: true } });
+  if (!row) return false;
+  const stored = (row.settings && typeof row.settings === "object" ? row.settings : {}) as Record<string, unknown>;
+  if (stored.reviewAsk) return false;
+  await prisma.shop.update({ where: { domain: shop }, data: { settings: { ...stored, reviewAsk: { askedAt: now.toISOString(), code } } } });
+  return true;
+}

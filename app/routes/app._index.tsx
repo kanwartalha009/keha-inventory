@@ -15,13 +15,16 @@
  * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
  * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
  */
-import type { ReactNode } from "react";
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import { useEffect, type ReactNode } from "react";
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { planFor } from "../services/entitlements.server";
-import { getHomeData } from "../models/dashboard.server";
+import { getHomeData, reviewAskDue } from "../models/dashboard.server";
+import { recordReviewAsk } from "../models/settings.server";
+import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../lib/review-ask-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
 import { CantPlan, CashStrip, PreviewLock, PreviewTable } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
@@ -65,6 +68,8 @@ export type HomeLoaderData = HomeData & {
   orderPlan?: DashboardOrderPlan | null;
   /** Server clock for the "Updated … today" line. */
   renderedAt?: string;
+  /** Ask for an App Store review on this open (after a success moment; lib/review-ask-shared). */
+  reviewAsk?: ReviewMoment | null;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
@@ -73,17 +78,35 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
   const now = new Date();
   const home = await getHomeData(session.shop, plan, now);
   const ready = home.state === "ready";
-  const [actions, forward] = await Promise.all([
+  const [actions, forward, reviewAsk] = await Promise.all([
     ready ? getActionList(session.shop, plan, now, { preorderInstalled: () => kehaPreorderInstalled(admin, session.shop) }) : null,
     ready ? loadOrderPlan(session.shop, now) : null,
+    ready ? reviewAskDue(session.shop, now).catch(() => null) : null,
   ]);
   const orderPlan: DashboardOrderPlan | null = forward
     ? hasFeature(plan, "reorderPlan")
       ? { kind: "full", plan: forward }
       : { kind: "preview", rows: previewRows(forward) }
     : null;
-  return { ...home, actions, orderPlan, renderedAt: now.toISOString() };
+  return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk };
 };
+
+/** POST { intent: "reviewAsked", code }: remember Shopify's answer so we never ask twice. */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return { ok: false };
+  }
+  if (body.intent !== "reviewAsked" || !isFinalReviewCode(body.code)) return { ok: false };
+  return { ok: await recordReviewAsk(session.shop, String(body.code), new Date()) };
+};
+
+/** Recording the review answer never reloads the Dashboard. */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ json, defaultShouldRevalidate }) =>
+  json && typeof json === "object" && (json as Record<string, unknown>).intent === "reviewAsked" ? false : defaultShouldRevalidate;
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
@@ -99,6 +122,7 @@ export default function Home() {
 
   return (
     <AppPage heading={t("Dashboard")} intro={updated}>
+      {data.reviewAsk && <ReviewAsk />}
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 
       {/* Not ready yet: something to do first (setup), then how far the reading is. */}
@@ -141,6 +165,35 @@ export default function Home() {
       {data.state !== "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
     </AppPage>
   );
+}
+
+/**
+ * Shopify's review modal, once, a few seconds after the Dashboard settles — never on a click,
+ * never from Sidekick. Shopify decides whether it shows (24 h after install, 60-day cooldown,
+ * 3 a year); the answer is recorded so we don't ask again.
+ */
+function ReviewAsk() {
+  const shopify = useAppBridge();
+  const fetcher = useFetcher();
+  useEffect(() => {
+    let done = false;
+    const timer = setTimeout(async () => {
+      try {
+        const r = await shopify.reviews.request();
+        if (!done && isFinalReviewCode(r.code))
+          fetcher.submit({ intent: "reviewAsked", code: r.code }, { method: "post", action: "/app?index", encType: "application/json" });
+      } catch {
+        /* App Bridge without the reviews API (old admin, tests): nothing to do */
+      }
+    }, REVIEW_ASK_DELAY_MS);
+    return () => {
+      done = true;
+      clearTimeout(timer);
+    };
+    // Once per page view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 /** The lead block: what to order this week, by supplier, and the cash needed over 12 weeks. */

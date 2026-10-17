@@ -6,6 +6,7 @@
 import prisma from "../db.server";
 import { buildHome, MIN_SALES_DAYS, type HomeData, type HomeRaw } from "../lib/dashboard-shared";
 import type { PlanCode } from "../lib/plan-shared";
+import { readReviewAsk, reviewMoment, shouldAskForReview, type ReviewMoment } from "../lib/review-ask-shared";
 
 type DecimalLike = { toNumber(): number } | number | string | null;
 
@@ -56,4 +57,24 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
 
 export async function getHomeData(shop: string, plan: PlanCode, now: Date = new Date()): Promise<HomeData> {
   return buildHome(await readHomeRaw(shop), plan, now);
+}
+
+/**
+ * Should this Dashboard open ask for an App Store review (lib/review-ask-shared)? Not asked
+ * before, installed 24 h or more, and a success moment happened: a supplier confirmed a ship
+ * date, last month's store-total forecast was within target, or a clearance discount exists.
+ */
+export async function reviewAskDue(shop: string, now: Date = new Date()): Promise<ReviewMoment | null> {
+  const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { installedAt: true, settings: true } });
+  if (!row) return null;
+  const asked = readReviewAsk(row.settings);
+  // Cheap checks first: no success query once we asked, or within the first day.
+  if (!shouldAskForReview({ installedAt: row.installedAt, now, asked, moment: "clearance" })) return null;
+  const [supplierConfirmations, accuracy, clearances] = await Promise.all([
+    prisma.purchaseOrder.count({ where: { shop, source: "keha", confirmedShipDate: { not: null } } }),
+    prisma.accuracyMonth.findFirst({ where: { shop }, orderBy: { month: "desc" }, select: { storeErrorPct: true } }),
+    prisma.clearance.count({ where: { shop } }),
+  ]);
+  const moment = reviewMoment({ supplierConfirmations, lastStoreErrorPct: accuracy?.storeErrorPct ?? null, clearances });
+  return shouldAskForReview({ installedAt: row.installedAt, now, asked, moment }) ? moment : null;
 }

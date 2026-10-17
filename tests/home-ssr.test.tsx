@@ -11,12 +11,13 @@ import { createRoutesStub } from "react-router";
 
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: vi.fn(), getEntitlements: vi.fn() }));
-vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn() }));
+vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn(), reviewAskDue: vi.fn(async () => null) }));
+vi.mock("../app/models/settings.server", () => ({ recordReviewAsk: vi.fn(async () => true) }));
 vi.mock("../app/models/actions.server", () => ({ getActionList: vi.fn() }));
 vi.mock("../app/services/keha-preorder.server", () => ({ kehaPreorderInstalled: vi.fn() }));
 vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: vi.fn() }));
 
-import Home, { loader, type HomeLoaderData } from "../app/routes/app._index";
+import Home, { action, loader, type HomeLoaderData } from "../app/routes/app._index";
 import { orderPlanFixture } from "./order-plan-fixtures";
 import { previewRows } from "../app/lib/order-plan-shared";
 import { buildHome, type HomeRaw } from "../app/lib/dashboard-shared";
@@ -365,5 +366,50 @@ describe("Dashboard loader", () => {
     expect(free.orderPlan).toMatchObject({ kind: "preview" });
     expect((free.orderPlan as { rows: unknown[] }).rows.length).toBeLessThanOrEqual(10);
     expect(JSON.stringify(free)).not.toContain("Lisbon Linen");
+  });
+});
+
+describe("Dashboard: review request after a success moment", () => {
+  const args = (body?: unknown) =>
+    ({
+      request: body
+        ? new Request("https://app.test/app?index", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+        : new Request("https://app.test/app"),
+      params: {},
+      context: {},
+    }) as never;
+
+  it("the loader passes the moment through; the page shows nothing of its own (Shopify's modal only)", async () => {
+    const { authenticate } = await import("../app/shopify.server");
+    const ent = await import("../app/services/entitlements.server");
+    const dash = await import("../app/models/dashboard.server");
+    const acts = await import("../app/models/actions.server");
+    const op = await import("../app/models/order-plan.server");
+    vi.mocked(authenticate.admin).mockResolvedValue({ admin: {}, session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(ent.planFor).mockResolvedValue("growth");
+    vi.mocked(dash.getHomeData).mockResolvedValue(buildHome(homeRaw(), "growth", NOW));
+    vi.mocked(acts.getActionList).mockResolvedValue(null as never);
+    vi.mocked(op.loadOrderPlan).mockResolvedValue(orderPlanFixture());
+    vi.mocked(dash.reviewAskDue).mockResolvedValueOnce("supplier_confirmed");
+    const data = await loader(args());
+    expect(data.reviewAsk).toBe("supplier_confirmed");
+    // A failing check never breaks the Dashboard.
+    vi.mocked(dash.reviewAskDue).mockRejectedValueOnce(new Error("db"));
+    expect((await loader(args())).reviewAsk).toBeNull();
+    const html = render({ ...buildHome(homeRaw(), "growth", NOW), reviewAsk: "accuracy" });
+    expect(html).not.toMatch(/review/i);
+  });
+
+  it("records only final answers (shown, already reviewed, limits), never twice", async () => {
+    const { authenticate } = await import("../app/shopify.server");
+    const settings = await import("../app/models/settings.server");
+    vi.mocked(authenticate.admin).mockResolvedValue({ admin: {}, session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(settings.recordReviewAsk).mockClear();
+    expect(await action(args({ intent: "reviewAsked", code: "success" }))).toEqual({ ok: true });
+    expect(settings.recordReviewAsk).toHaveBeenCalledWith("acme.myshopify.com", "success", expect.any(Date));
+    for (const code of ["mobile-app", "cancelled", "recently-installed", "open-in-progress", "nope"])
+      expect(await action(args({ intent: "reviewAsked", code }))).toEqual({ ok: false });
+    expect(await action(args({ intent: "other", code: "success" }))).toEqual({ ok: false });
+    expect(settings.recordReviewAsk).toHaveBeenCalledTimes(1);
   });
 });
