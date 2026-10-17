@@ -24,7 +24,7 @@ own history, so it must have history before the shots are taken:
 3. **Sales history of at least 90 days** (the sales-rate windows are 28 / 56 / 90 days) placed as
    real test orders over time — ShopifyQL reads the store's own sales, and orders can't be
    back-dated. With fewer than 14 days of sales, the Dashboard shows "Your first order plan needs 14
-   days of sales — we'll show it here on …" instead of numbers. 13 months of history are needed before seasonality shows.
+   days of sales — expected on …" instead of numbers. 13 months of history are needed before seasonality shows.
 4. Store visits on product pages (open product URLs from a few devices over the weeks).
 5. On the day of the shots:
    - 3–5 best sellers running low (days left shorter than the 14-day lead time);

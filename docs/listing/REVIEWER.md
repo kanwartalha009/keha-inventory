@@ -25,7 +25,7 @@ Monday email. It has no storefront part and stores no shopper data.
    stock counts in supplier orders unless it is left out in Settings → Locations).
 2. **Sales history:** the numbers come from Shopify's own analytics (ShopifyQL), so a brand-new
    store with no orders shows the empty state "Your first order plan needs 14 days of sales —
-   we'll show it here on <date>". To see numbers and actions, use our demo store below, or a
+   expected on <date>". To see numbers and actions, use our demo store below, or a
    test store with at least 14 days of orders on tracked products.
 3. Shopify Flow (free app) installed, only to see the two Flow triggers.
 4. For the Pro features: at least two active locations — one with spare stock to act as the

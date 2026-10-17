@@ -151,7 +151,9 @@ describe("reviewer notes match the app (launch re-audit 2026-10-17)", () => {
   });
   it("quote the Dashboard's current empty-state copy, not a retired one", () => {
     expect(checklist).not.toContain("We need at least 14 days of sales to give advice.");
-    expect(checklist).toContain("Your first order plan needs 14 days of sales — we'll show it here on {date}.");
+    expect(checklist).toContain("Your first order plan needs 14 days of sales — expected on {date}.");
+    // One phrasing everywhere (listing audit 2026-10-18): the Dashboard, Order now, Next 13 weeks and the Monday email.
+    expect(checklist).not.toContain("we'll show it here on {date}");
     expect(reviewer).not.toMatch(/preorder bridge/i);
   });
 });

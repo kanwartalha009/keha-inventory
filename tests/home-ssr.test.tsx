@@ -145,7 +145,7 @@ describe("Home", () => {
     raw.salesDays = 9;
     const html = home(raw);
     // 9 of 14 days: 5 more nights of sales from today (16 Oct in Madrid) → 21 Oct.
-    expect(html).toContain("Your first order plan needs 14 days of sales — we&#x27;ll show it here on Oct 21, 2026.");
+    expect(html).toContain("Your first order plan needs 14 days of sales — expected on Oct 21, 2026.");
     expect(html).not.toContain("Sales at risk (next 28 days)");
     // 2026-10-17 click-through (history still loading, setup not done): the not-enough-sales card,
     // then the setup guide, then the sync progress — never the setup guide at the bottom.

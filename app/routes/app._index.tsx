@@ -174,7 +174,7 @@ export default function Home() {
         <s-section heading={t("Not enough sales yet to advise")}>
           <s-paragraph>
             {data.noSalesReadyOn
-              ? fill(t("Your first order plan needs 14 days of sales — we'll show it here on {date}."), {
+              ? fill(t("Your first order plan needs 14 days of sales — expected on {date}."), {
                   date: formatDay(data.noSalesReadyOn, locale),
                 })
               : t("Your first order plan needs 14 days of sales.")}
