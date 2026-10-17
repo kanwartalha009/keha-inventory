@@ -8,7 +8,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
-import { pricingConfigured, syncPlan } from "../services/app-pricing.server";
+import { pricingConfigured, syncPlan, syncPlanOnLoad } from "../services/app-pricing.server";
 import { forgetEntitlements, getEntitlements } from "../services/entitlements.server";
 import { readShopLocale } from "../services/shop-locale.server";
 import { lockedPageFeature, type PlanCode } from "../lib/plan-shared";
@@ -37,13 +37,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Shopify App Pricing: a store without a paid plan is simply on Free, so
   // nobody is bounced to the plan page (that also avoids a loop if Shopify
   // creates no contract for a $0 plan). Coming back from the plan page
-  // (`plan_handle`) re-checks straight away.
+  // (`plan_handle`) re-checks straight away. Any other load checks a shop
+  // never synced (a new install) or synced over 6 hours ago — once, time-boxed,
+  // cached per shop — so a new install is on Free from its first page instead
+  // of failing open to Pro (pricing audit 2026-10-17).
   if (pricingConfigured()) {
     const url = new URL(request.url);
     if (url.searchParams.has("plan_handle")) {
       await syncPlan(admin, session.shop, { force: true });
-      forgetEntitlements(session.shop);
+    } else {
+      await syncPlanOnLoad(admin, session.shop);
     }
+    forgetEntitlements(session.shop);
   }
 
   // Default admin language (a manual choice in Settings still wins):

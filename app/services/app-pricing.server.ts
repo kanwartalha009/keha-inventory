@@ -9,8 +9,11 @@
  *   - Partner API `activeSubscription(appId, shopId)` — Shopify's documented
  *     way for App Pricing (billing.check / currentAppInstallation don't apply,
  *     and App Pricing sends no subscription webhooks),
- *   - on app load (cached), right after the merchant picks a plan (the
- *     welcome link carries `plan_handle`), and every 6 hours for all shops.
+ *   - on app load (syncPlanOnLoad: the first load of a shop never synced, or
+ *     synced longer than LOAD_SYNC_TTL_MS ago — time-boxed, cached per shop;
+ *     pricing audit 2026-10-17: a new install ran as Pro for up to 6 hours),
+ *     right after the merchant picks a plan (the welcome link carries
+ *     `plan_handle`), and every 6 hours for all shops.
  * The result is stored in BillingState (limits keep working as before) and,
  * when it changes, forwarded to the Nova ledger in the same shape as the old
  * app_subscriptions/update webhook, so commissions keep flowing.
@@ -212,10 +215,68 @@ export async function needsPlan(admin: AdminGraphql, shop: string, opts: { force
   return override.type !== "FREE";
 }
 
+// ---- on app load (pricing audit 2026-10-17) ----
+
+/** A plan synced within this long (any path: load, plan page, the 6-hourly run) is trusted. */
+export const LOAD_SYNC_TTL_MS = 6 * 60 * 60 * 1000;
+/** The admin waits at most this long for the check; slower answers land in the background. */
+export const LOAD_SYNC_TIMEOUT_MS = 2500;
+/** shop → when the load check last succeeded (or, after a failure, when to count it fresh from). */
+const loadChecked = new Map<string, number>();
+const loadInflight = new Map<string, Promise<PlanState>>();
+
+/**
+ * The admin layout's plan check. A shop never synced (no BillingState) or synced longer than
+ * LOAD_SYNC_TTL_MS ago is synced once, so a new install is on Free from its first page instead of
+ * failing open to Pro until the 6-hourly run. Time-boxed (`timeoutMs`): a slow Partner API never
+ * holds the admin — it fails open meanwhile and the answer is saved when it comes. A failed check
+ * (API down) fails open and is retried after UNKNOWN_TTL_MS, not on every navigation. Never throws.
+ */
+export async function syncPlanOnLoad(
+  admin: AdminGraphql,
+  shop: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<"off" | "fresh" | "synced" | "timeout" | "failed"> {
+  if (!pricingConfigured()) return "off";
+  const now = Date.now();
+  const at = loadChecked.get(shop);
+  if (at !== undefined && now - at < LOAD_SYNC_TTL_MS) return "fresh";
+  try {
+    const bs = (await getBillingState(shop)) as { updatedAt?: Date | string | null } | null;
+    const last = bs?.updatedAt ? new Date(bs.updatedAt).getTime() : NaN;
+    if (Number.isFinite(last) && now - last < LOAD_SYNC_TTL_MS) {
+      loadChecked.set(shop, last);
+      return "fresh";
+    }
+  } catch {
+    /* no row read: check with the Partner API below */
+  }
+  let p = loadInflight.get(shop);
+  if (!p) {
+    p = syncPlan(admin, shop, { force: true }).finally(() => loadInflight.delete(shop));
+    loadInflight.set(shop, p);
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<"timeout">((r) => {
+    timer = setTimeout(() => r("timeout"), opts.timeoutMs ?? LOAD_SYNC_TIMEOUT_MS);
+  });
+  const result = await Promise.race([p, timedOut]);
+  if (timer) clearTimeout(timer);
+  if (result === "timeout") return "timeout";
+  if (result.state === "unknown") {
+    // Retry after UNKNOWN_TTL_MS (fail open meanwhile), not on every navigation.
+    loadChecked.set(shop, Date.now() - LOAD_SYNC_TTL_MS + UNKNOWN_TTL_MS);
+    return "failed";
+  }
+  loadChecked.set(shop, Date.now());
+  return "synced";
+}
+
 /** Clear the cache for a shop (e.g. after uninstall). */
 export function forgetPlan(shop: string): void {
   stateCache.delete(shop);
   idCache.delete(shop);
+  loadChecked.delete(shop);
 }
 
 /**
