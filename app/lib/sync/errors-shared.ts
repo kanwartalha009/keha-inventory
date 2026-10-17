@@ -24,6 +24,10 @@ const BY_NAME: Record<string, SyncErrorCode> = {
   ShopifyqlTooLargeError: "too_large",
   /** A paged read could not prove it holds every row (audit C1): retried, never stored. */
   ShopifyqlTruncatedError: "truncated",
+  /** Past the row cap: the chunk runners split the range; seen only where nothing splits. */
+  ShopifyqlRowCapError: "truncated",
+  /** One day alone is over the row cap: cannot be split, fails clearly (DB scale #1). */
+  ShopifyqlDayTooLargeError: "truncated",
   /** Daily units ≠ the store total (audit C1 / M10): retried, never stored. */
   ShopifyqlReconcileError: "reconcile_mismatch",
   ShopifyqlParseError: "shopifyql_parse",

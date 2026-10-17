@@ -8,7 +8,9 @@
  *
  * Complete or nothing (audit 2026-10-17 C1 / M10): every client read pages through ALL rows
  * (unique ORDER BY key + LIMIT / OFFSET, de-duplicated); RESPONSE_TOO_LARGE first shrinks the
- * page, then halves the date range (runChunked). Sales are reconciled per day against the
+ * page, then halves the date range (runChunked); the row cap splits the range too (DB scale #1).
+ * Stock is streamed and written a few days at a time (storeStock): each part is complete or
+ * nothing, and the month is never held in memory. Sales are reconciled per day against the
  * store's daily units total before anything is written; a truncated read
  * (ShopifyqlTruncatedError) or a mismatch (ShopifyqlReconcileError) throws, the transaction
  * never runs, and the caller records a retryable failure. Throttling surfaces as
@@ -21,13 +23,19 @@ import type { ShopifyqlClient } from "./shopifyql.server";
 import {
   ShopifyqlParseError,
   ShopifyqlReconcileError,
+  addDays,
   assertReconciled,
+  forEachChunk,
+  isRowCapError,
+  isTooLargeError,
   runChunked,
   unitsByDay,
   type BuildOptions,
+  type ChunkOptions,
   type DayRange,
   type ParseResult,
   type SalesRow,
+  type StockRow,
 } from "../../lib/sync/shopifyql-shared";
 import {
   dayDate,
@@ -43,6 +51,12 @@ import type { HistoryDataset } from "../../lib/sync/backfill-shared";
 import { retentionCutoff } from "../../lib/sync/store-time-shared";
 
 const INSERT_BATCH = 5000;
+/**
+ * Stock rows held before the complete days are written (DB scale #1). A large store's month of
+ * stock (millions of rows: variants × locations × days) is written a few days at a time; memory
+ * stays near this many rows plus one day, whatever the month holds.
+ */
+export const STOCK_CHUNK_ROWS = 250_000;
 
 export class ShopifyqlShapeError extends Error {
   constructor(message: string) {
@@ -63,8 +77,9 @@ async function chunked<T>(
   run: (r: DayRange, opts?: BuildOptions) => Promise<ParseResult<T>>,
   label: string,
   required: string[],
+  opts: ChunkOptions = {},
 ) {
-  const parts = await runChunked(range, (r) => run(r));
+  const parts = await runChunked(range, (r) => run(r), opts);
   const rows: T[] = [];
   const unattributed: Record<string, number> = {};
   let skipped = 0;
@@ -97,7 +112,17 @@ export async function loadLocations(shop: string): Promise<LocationRef[]> {
   return prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true } });
 }
 
-/** Stock history: ending units and out-of-stock flag per variant × location × day. */
+/**
+ * Stock history: ending units and out-of-stock flag per variant × location × day.
+ *
+ * Streamed (DB scale #1): the read hands complete days over every STOCK_CHUNK_ROWS rows and each
+ * part is written at once — its own transaction, "delete the shop's rows in that part's days,
+ * insert the fresh rows" — so the month is never held in memory and a month of 3.7 M rows
+ * finishes. A part is complete in itself (every page of those days read, de-duplicated); a
+ * failure later in the month leaves the earlier parts written, and the retry rewrites them
+ * (idempotent). RESPONSE_TOO_LARGE or the row cap split the date range (forEachChunk); a single
+ * day over the cap fails clearly (ShopifyqlDayTooLargeError).
+ */
 export async function storeStock(
   shop: string,
   ql: ShopifyqlClient,
@@ -105,26 +130,52 @@ export async function storeStock(
   today: string,
   locations: LocationRef[],
 ): Promise<StoreResult> {
-  const { rows, skipped } = await chunked(
+  const index = locationNameIndex(locations);
+  const unmapped = new Set<string>();
+  let rows = 0;
+  let skipped = 0;
+  let duplicates = 0;
+  const write = async (part: DayRange, r: ParseResult<StockRow>) => {
+    assertColumns("stock", r, ["ending_inventory_units_at_location", "days_out_of_stock_at_location"]);
+    const { facts, unmapped: u } = stockFacts(r.rows, part, index);
+    for (const name of u) unmapped.add(name);
+    await prisma.$transaction([
+      prisma.stockDaily.deleteMany({ where: dayWhere(shop, part) }),
+      ...batches(facts).map((b) =>
+        prisma.stockDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
+      ),
+    ]);
+    rows += facts.length;
+    skipped += r.skipped;
+  };
+  await forEachChunk(
     range,
-    (r, o) => ql.stockDaily(r, today, o),
-    "stock",
-    ["ending_inventory_units_at_location", "days_out_of_stock_at_location"],
+    async (sub) => {
+      // Parts of `sub` already written by this read (the last one comes back as the result).
+      let cursor = sub.since;
+      const last = await ql.stockDaily(sub, today, undefined, {
+        rows: STOCK_CHUNK_ROWS,
+        onChunk: async (part, through) => {
+          await write({ since: cursor, until: through }, part);
+          cursor = addDays(through, 1);
+        },
+      });
+      duplicates += last.duplicates ?? 0;
+      return { since: cursor, until: sub.until, last };
+    },
+    (_sub, { since, until, last }) => write({ since, until }, last),
   );
-  const { facts, unmapped } = stockFacts(rows, range, locationNameIndex(locations));
-  await prisma.$transaction([
-    prisma.stockDaily.deleteMany({ where: dayWhere(shop, range) }),
-    ...batches(facts).map((b) =>
-      prisma.stockDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
-    ),
-  ]);
-  return { rows: facts.length, skipped, unmapped };
+  if (duplicates) console.warn(`[sync/facts] stock ${range.since}..${range.until}: ${duplicates} duplicate row(s) across pages replaced, not added`);
+  return { rows, skipped, unmapped: [...unmapped] };
 }
 
 /**
  * Sales history: the location view and the channel view (see facts-shared). Both are
  * reconciled per day against the store's units total (one cheap query per range) before the
  * write; a mismatch throws ShopifyqlReconcileError and nothing is stored for the range.
+ * Past the row cap (DB scale #1) the whole step is split by date (forEachChunk, right after the
+ * capped view's last complete day, else halves): each part is read, reconciled and written on
+ * its own, so memory stays bounded and a part never waits for the rest of the month.
  * TODO: one 3-dimension query (buildDailySalesQuery, verified live 2026-10-17) once
  * SalesDaily drops the two views.
  */
@@ -135,11 +186,37 @@ export async function storeSales(
   today: string,
   locations: LocationRef[],
 ): Promise<StoreResult> {
+  const out: StoreResult = { rows: 0, skipped: 0, unmapped: [] };
+  await forEachChunk(
+    range,
+    (part) => storeSalesRange(shop, ql, part, today, locations),
+    (_part, r) => {
+      out.rows += r.rows;
+      out.skipped += r.skipped;
+      for (const u of r.unmapped) if (!out.unmapped.includes(u)) out.unmapped.push(u);
+    },
+    { splitOn: isRowCapError },
+  );
+  return out;
+}
+
+/** One sales range: read both views and the totals, reconcile, write in one transaction. */
+async function storeSalesRange(
+  shop: string,
+  ql: ShopifyqlClient,
+  range: DayRange,
+  today: string,
+  locations: LocationRef[],
+): Promise<StoreResult> {
+  // The row cap is left to storeSales (it splits the whole step); RESPONSE_TOO_LARGE still
+  // splits each view here, as before.
+  const tooLargeOnly: ChunkOptions = { splitOn: isTooLargeError };
   const byLocation = await chunked(
     range,
     (r, o) => ql.salesDailyByLocation(r, today, o),
     "sales by location",
     ["pos_location_name", "net_items_sold"],
+    tooLargeOnly,
   );
   // Returns (task 2.4, fix_returns): ask for quantity_returned too — verified live 2026-10-17 with
   // this grouping (audit L6). The parse-error fallback (returned = 0, no returns actions) stays as
@@ -150,6 +227,7 @@ export async function storeSales(
       (r, o) => ql.salesDailyByChannel(r, today, returns ? { ...o, returns: true } : o),
       "sales by channel",
       ["sales_channel", "net_items_sold", "gross_sales"],
+      tooLargeOnly,
     );
   let byChannel: Awaited<ReturnType<typeof channelQuery>>;
   try {
@@ -159,7 +237,7 @@ export async function storeSales(
     console.warn(`[sync/sales] ${shop}: quantity_returned rejected (${e.messages.join("; ")}); storing sales without returns`);
     byChannel = await channelQuery(false);
   }
-  const totals = await chunked(range, (r) => ql.salesTotalsDaily(r, today), "sales totals", ["net_items_sold"]);
+  const totals = await chunked(range, (r) => ql.salesTotalsDaily(r, today), "sales totals", ["net_items_sold"], tooLargeOnly);
   const expected = new Map<string, number>();
   for (const t of totals.rows) expected.set(t.day, (expected.get(t.day) ?? 0) + t.sold);
   reconcileSales(shop, "sales by location", byLocation, expected, range);

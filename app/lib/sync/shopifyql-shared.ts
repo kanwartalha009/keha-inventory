@@ -8,12 +8,13 @@
  *  - response parsers that turn `tableData` into typed rows, locating fields through the
  *    `columns` metadata (never by position);
  *  - date-range helpers: day arithmetic, monthly chunks newest first (§6.2 backfill strategy),
- *    and `runChunked`, which halves a range on RESPONSE_TOO_LARGE;
+ *    and `forEachChunk` / `runChunked`, which split a range on RESPONSE_TOO_LARGE or the row cap
+ *    (DB scale #1) and hand each part over as it arrives;
  *  - `fetchAllPages`: EVERY dataset query is paged with a unique, total ORDER BY and
  *    LIMIT / OFFSET (audit 2026-10-17 C1: without LIMIT ShopifyQL silently returns only the
  *    first 1,000 rows), rows are de-duplicated by their key (M10: never summed twice), and a
  *    page loop that cannot prove it reached the end fails (retryable) instead of storing a
- *    partial result;
+ *    partial result; a streamed read (PageFlush) hands complete days over as it goes;
  *  - `reconcileDailyUnits`: per-day units of a grouped sales result vs the store-level daily
  *    total, so a truncated or overlapping read fails the chunk instead of being stored;
  *  - error classes and classification of both HTTP responses and the errors the Shopify
@@ -105,6 +106,54 @@ export class ShopifyqlTruncatedError extends ShopifyqlError {
     this.name = "ShopifyqlTruncatedError";
     this.rows = rows;
   }
+}
+
+/**
+ * A read went past its row cap (MAX_ROWS_PER_QUERY by default). Not a failure of the data: the
+ * range holds more rows than one read may keep in memory, so the caller asks for less —
+ * `runChunked` / `forEachChunk` split the date range exactly as for RESPONSE_TOO_LARGE (audit
+ * 2026-10-17 DB scale #1: a large store's month never finished before). Still a
+ * ShopifyqlTruncatedError, so code that does not split keeps treating it as a retryable read.
+ */
+export class ShopifyqlRowCapError extends ShopifyqlTruncatedError {
+  readonly cap: number;
+  /**
+   * The last day whose rows were ALL read before the cap was hit (rows come ordered by day, the
+   * primary ORDER BY column); null when the order could not be proven. Splitting the range right
+   * after it means the older part is known to fit.
+   */
+  readonly completeThrough: string | null;
+  constructor(cap: number, rows: number, completeThrough: string | null) {
+    super(`more than ${cap} rows`, rows);
+    this.name = "ShopifyqlRowCapError";
+    this.cap = cap;
+    this.completeThrough = completeThrough;
+  }
+}
+
+/**
+ * ONE day holds more rows than a read may keep (variants × locations > the cap). Splitting the
+ * date range cannot help, so this fails clearly instead of looping: the backfill records it
+ * (code "truncated"), retries, then skips the month as degraded (MAX_STEP_ATTEMPTS).
+ */
+export class ShopifyqlDayTooLargeError extends ShopifyqlTruncatedError {
+  readonly day: string | null;
+  readonly cap: number;
+  constructor(day: string | null, cap: number, rows: number) {
+    super(`one day (${day ?? "unknown"}) has more than ${cap} rows; a day cannot be split further`, rows);
+    this.name = "ShopifyqlDayTooLargeError";
+    this.day = day;
+    this.cap = cap;
+  }
+}
+
+export function isRowCapError(err: unknown): err is ShopifyqlRowCapError {
+  return err instanceof ShopifyqlRowCapError || (err instanceof Error && err.name === "ShopifyqlRowCapError");
+}
+
+/** RESPONSE_TOO_LARGE or the row cap: both mean "ask for a shorter range". */
+export function isSplittableError(err: unknown): boolean {
+  return isTooLargeError(err) || isRowCapError(err);
 }
 
 export type DayMismatch = { day: string; expected: number; got: number };
@@ -233,25 +282,81 @@ export function halveRange(range: DayRange): [DayRange, DayRange] {
   ];
 }
 
+export type ChunkOptions = {
+  /**
+   * Which errors split the range. Default: RESPONSE_TOO_LARGE and the row cap
+   * (isSplittableError). A caller that splits at a higher level passes a narrower test so the
+   * error reaches it (facts.server storeSales: the row cap splits the whole sales step).
+   */
+  splitOn?: (err: unknown) => boolean;
+};
+
 /**
- * Runs `run` over `range`. On RESPONSE_TOO_LARGE it halves the range and recurses (newer half
- * first), down to a single day; a single day that is still too large is rethrown so the caller
- * can reduce dimensions or page with LIMIT. Any other error is rethrown unchanged.
- * Results come back newest first, each with the sub-range it covers.
+ * The two parts a range is split into after `err`: right after the row cap's last complete day
+ * when that is inside the range (the older part is known to fit), else halves.
+ */
+function splitAfter(range: DayRange, err: unknown): [DayRange, DayRange] {
+  const through = isRowCapError(err) ? err.completeThrough : null;
+  if (through && through >= range.since && through < range.until) {
+    return [
+      { since: range.since, until: through },
+      { since: addDays(through, 1), until: range.until },
+    ];
+  }
+  return halveRange(range);
+}
+
+/**
+ * Runs `run` over `range` and hands every result to `onChunk` AS SOON AS it arrives, so a
+ * caller can write each part and drop it instead of holding the whole range in memory (DB scale
+ * #1). On a splittable error (RESPONSE_TOO_LARGE or the row cap, see ChunkOptions) the range is
+ * split and each part run in turn, down to a single day. A single day still too large is
+ * rethrown — as ShopifyqlDayTooLargeError for the row cap (it can never fit), unchanged for
+ * RESPONSE_TOO_LARGE so the caller can reduce dimensions. Any other error is rethrown unchanged.
+ * Parts run newer first on a halving, older first after a row-cap split (the older part is the
+ * one known to fit); together they cover the range exactly once.
+ */
+export async function forEachChunk<T>(
+  range: DayRange,
+  run: (range: DayRange) => Promise<T>,
+  onChunk: (range: DayRange, result: T) => Promise<void> | void,
+  opts: ChunkOptions = {},
+): Promise<void> {
+  const splitOn = opts.splitOn ?? isSplittableError;
+  let result: T;
+  try {
+    result = await run(range);
+  } catch (err) {
+    if (!splitOn(err)) throw err;
+    if (isRowCapError(err) && err.completeThrough !== null && err.completeThrough < range.since) {
+      // Every row held was of one day (the one after completeThrough): that day alone is over the cap.
+      throw new ShopifyqlDayTooLargeError(addDays(err.completeThrough, 1), err.cap, err.rows);
+    }
+    if (dayCount(range) <= 1) {
+      if (isRowCapError(err)) throw new ShopifyqlDayTooLargeError(range.since, err.cap, err.rows);
+      throw err;
+    }
+    const [older, newer] = splitAfter(range, err);
+    const rowCapSplit = isRowCapError(err) && older.until === err.completeThrough;
+    for (const part of rowCapSplit ? [older, newer] : [newer, older]) await forEachChunk(part, run, onChunk, opts);
+    return;
+  }
+  await onChunk(range, result);
+}
+
+/**
+ * forEachChunk, collected: every part's result with the sub-range it covers, NEWEST FIRST.
+ * Only for small datasets (sessions, store totals, the sales views of one step): the parts are
+ * all held in memory.
  */
 export async function runChunked<T>(
   range: DayRange,
   run: (range: DayRange) => Promise<T>,
+  opts: ChunkOptions = {},
 ): Promise<Array<{ range: DayRange; result: T }>> {
-  try {
-    return [{ range, result: await run(range) }];
-  } catch (err) {
-    if (!isTooLargeError(err) || dayCount(range) <= 1) throw err;
-    const [older, newer] = halveRange(range);
-    const newerResults = await runChunked(newer, run);
-    const olderResults = await runChunked(older, run);
-    return [...newerResults, ...olderResults];
-  }
+  const out: Array<{ range: DayRange; result: T }> = [];
+  await forEachChunk(range, run, (r, result) => void out.push({ range: r, result }), opts);
+  return out.sort((a, b) => (a.range.since < b.range.since ? 1 : a.range.since > b.range.since ? -1 : 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +553,8 @@ export const IMPLICIT_ROW_CAP = 1000;
 export const MAX_ROWS_PER_QUERY = 1_000_000;
 /** Safety stop for the page loop (MAX_ROWS_PER_QUERY / MIN_PAGE_SIZE). */
 export const MAX_PAGES = 1000;
+/** Safety stop for a streamed read (PageFlush), which may see many times MAX_ROWS_PER_QUERY rows. */
+export const STREAM_MAX_PAGES = 100_000;
 
 export type PageOptions = {
   pageSize?: number;
@@ -455,6 +562,34 @@ export type PageOptions = {
   maxRows?: number;
   maxPages?: number;
 };
+
+/**
+ * Streaming a large read (DB scale #1): once at least `rows` rows are held and the rows prove
+ * they come ordered by day, every COMPLETE day held (all days before the newest one seen) is
+ * handed to `onDays` and dropped, so a month of millions of stock rows is written a few days at
+ * a time. `through` is the last day handed over; the caller's next part starts the day after.
+ * The final (incomplete) days come back as the read's result, as without streaming.
+ */
+export type PageFlush = {
+  rows: number;
+  onDays: (table: ShopifyqlTableData, through: string) => Promise<void>;
+};
+
+/**
+ * The day of a row (the first key column must be "day"), normalised; undefined when absent or
+ * malformed. Rows come grouped by day, so the last raw value is remembered (normaliseDay builds a
+ * Date per call: millions of stock rows a month).
+ */
+let lastRawDay: unknown;
+let lastDay: string | undefined;
+function rowDay(row: Record<string, unknown>): string | undefined {
+  const v = row.day;
+  if (v !== lastRawDay) {
+    lastRawDay = v;
+    lastDay = normaliseDay(v);
+  }
+  return lastDay;
+}
 
 export type PagedTable = {
   /** Every page merged; rows are objects keyed by column name, one per distinct key, in first-seen order. */
@@ -501,26 +636,39 @@ function keyOf(row: Record<string, unknown>, key: readonly string[]): string {
  *    count (M10). A page that brings no new key (OFFSET ignored) fails the read.
  *  - RESPONSE_TOO_LARGE halves the page size (same OFFSET) down to `minPageSize`, then is
  *    rethrown so the caller can split the date range.
- *  - More than `maxRows` rows or `maxPages` pages, columns that change between pages, or key
- *    columns missing from a non-empty page → ShopifyqlTruncatedError (retryable): the caller
- *    must not store anything for that range.
+ *  - More than `maxRows` rows HELD → ShopifyqlRowCapError (a ShopifyqlTruncatedError; the
+ *    chunk runners split the date range on it, right after its last complete day). With
+ *    `flush`, complete days are handed over as the read goes (PageFlush), so only a single day
+ *    holding more than `maxRows` rows can hit the cap: ShopifyqlDayTooLargeError.
+ *  - More than `maxPages` pages, columns that change between pages, key columns missing from a
+ *    non-empty page, or (streaming) a row older than a day already handed over →
+ *    ShopifyqlTruncatedError (retryable): the caller must not store anything for that range.
  */
 export async function fetchAllPages(
   runPage: (paging: Paging) => Promise<ShopifyqlTableData>,
   key: readonly string[],
   opts: PageOptions = {},
+  flush?: PageFlush,
 ): Promise<PagedTable> {
   if (!key.length) throw new RangeError("fetchAllPages needs a row key");
   let size = opts.pageSize ?? PAGE_SIZE;
   const minSize = Math.min(size, opts.minPageSize ?? MIN_PAGE_SIZE);
   const maxRows = opts.maxRows ?? MAX_ROWS_PER_QUERY;
-  const maxPages = opts.maxPages ?? MAX_PAGES;
+  // Page count guard. Streaming hands rows over, so a read may see far more than maxRows rows:
+  // the stop is then STREAM_MAX_PAGES (100,000 pages ≈ 500 M rows), a runaway-loop guard only.
+  const maxPages = opts.maxPages ?? (flush ? STREAM_MAX_PAGES : MAX_PAGES);
   const merged = new Map<string, Record<string, unknown>>();
   let columns: ShopifyqlColumn[] | null = null;
   let columnSig = "";
   let offset = 0;
   let pages = 0;
   let duplicates = 0;
+  // Day order (rows sorted by day first): the newest day seen, and whether every row so far
+  // came in day order. Needed to hand complete days over (flush) and to split after a cap.
+  const byDay = key[0] === "day";
+  let ordered = byDay;
+  let newestDay: string | undefined;
+  let flushedThrough: string | undefined;
 
   for (;;) {
     if (pages >= maxPages) throw new ShopifyqlTruncatedError(`paging did not end after ${maxPages} pages`, offset);
@@ -552,13 +700,43 @@ export async function fetchAllPages(
     }
     let fresh = 0;
     for (const r of rows) {
+      if (byDay) {
+        const day = rowDay(r);
+        if (flushedThrough !== undefined && (day === undefined || day <= flushedThrough)) {
+          // A row of a day already handed over: pages overlap or the order changed. Those days
+          // are rewritten by the retry (writes are idempotent per range).
+          throw new ShopifyqlTruncatedError(`row for ${day ?? "an unknown day"} arrived after ${flushedThrough} was handed over`, offset);
+        }
+        if (day === undefined || (newestDay !== undefined && day < newestDay)) ordered = false;
+        else newestDay = day;
+      }
       const k = keyOf(r, key);
       if (merged.has(k)) duplicates++;
       else fresh++;
       merged.set(k, r);
     }
     offset += n;
-    if (merged.size > maxRows) throw new ShopifyqlTruncatedError(`more than ${maxRows} rows`, offset);
+    if (flush && ordered && newestDay !== undefined && merged.size >= flush.rows) {
+      // Hand over every complete day (all days before the newest one seen) and drop them.
+      const complete: Record<string, unknown>[] = [];
+      for (const [k, r] of merged) {
+        if (rowDay(r)! < newestDay) {
+          complete.push(r);
+          merged.delete(k);
+        }
+      }
+      if (complete.length) {
+        flushedThrough = addDays(newestDay, -1);
+        await flush.onDays({ columns: columns ?? [], rows: complete }, flushedThrough);
+      }
+    }
+    if (merged.size > maxRows) {
+      if (flush && ordered) {
+        // Everything older was handed over: the newest day alone is over the cap.
+        throw new ShopifyqlDayTooLargeError(newestDay ?? null, maxRows, offset);
+      }
+      throw new ShopifyqlRowCapError(maxRows, offset, ordered && newestDay !== undefined ? addDays(newestDay, -1) : null);
+    }
     if (n === 0) break;
     if (fresh === 0) throw new ShopifyqlTruncatedError(`page at OFFSET ${offset - n} brought no new rows (OFFSET ignored?)`, offset);
     if (n < size && n !== IMPLICIT_ROW_CAP) break;

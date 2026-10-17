@@ -8,7 +8,10 @@
  *    `ShopifyqlThrottledError`.
  *  - `parseErrors` non-empty → `ShopifyqlParseError` (never retried).
  *  - RESPONSE_TOO_LARGE → `ShopifyqlTooLargeError` (never retried as is); a paged read first
- *    halves its page size, then the caller splits the date range with `runChunked`.
+ *    halves its page size, then the caller splits the date range with `forEachChunk` — which
+ *    also splits on the row cap (`ShopifyqlRowCapError`, DB scale #1).
+ *  - `stockDaily(…, stream)` hands complete days over while it reads (StreamOptions), so a month
+ *    of millions of stock rows is never held at once.
  *  - Every typed dataset method reads ALL rows (`fetchAllPages`: unique ORDER BY key + LIMIT /
  *    OFFSET until a short page, de-duplicated by key). Without LIMIT ShopifyQL silently returns
  *    only the first 1,000 rows (audit 2026-10-17 C1). Passing `opts.paging` reads that one
@@ -51,6 +54,7 @@ import {
   STOCK_KEY,
   type BuildOptions,
   type PageOptions,
+  type PageFlush,
   type Paging,
   type Classified,
   type DayRange,
@@ -64,7 +68,17 @@ import {
   type StockRow,
 } from "../../lib/sync/shopifyql-shared";
 
-export { runChunked, monthChunks } from "../../lib/sync/shopifyql-shared";
+export { forEachChunk, runChunked, monthChunks } from "../../lib/sync/shopifyql-shared";
+
+/**
+ * A streamed dataset read (DB scale #1): once `rows` rows are held, every complete day is parsed
+ * and handed to `onChunk` (the caller writes and drops it); `through` is its last day. The read's
+ * result is then only the last, incomplete days.
+ */
+export type StreamOptions<T> = {
+  rows: number;
+  onChunk: (result: ParseResult<T>, through: string) => Promise<void>;
+};
 
 export const SHOPIFYQL_MAX_ATTEMPTS = 5;
 
@@ -125,7 +139,8 @@ export type ShopifyqlClient = {
   salesDaily: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<SalesRow>>;
   salesDailyByLocation: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<SalesRow>>;
   salesDailyByChannel: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<SalesRow>>;
-  stockDaily: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<StockRow>>;
+  /** With `stream`, complete days are handed over as they arrive (see StreamOptions). */
+  stockDaily: (range: DayRange, today: string, opts?: BuildOptions, stream?: StreamOptions<StockRow>) => Promise<ParseResult<StockRow>>;
   sessionsDaily: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<SessionsRow>>;
   shopDaily: (range: DayRange, today: string, opts?: BuildOptions) => Promise<ParseResult<ShopDayRow>>;
   /** Store-level units sold per day: the reconciliation total for the sales reads. */
@@ -206,13 +221,17 @@ export function createShopifyqlClient(
     parse: (t: ShopifyqlTableData) => ParseResult<T>,
     key: readonly string[],
     paging?: Paging,
+    stream?: StreamOptions<T>,
   ): Promise<ParseResult<T>> {
     if (paging) {
       const { table } = await run(build(paging));
       return parse(table);
     }
     build(); // validates the range before the first request
-    const paged = await fetchAllPages(async (p) => (await run(build(p))).table, key, options.paging);
+    const flush: PageFlush | undefined = stream
+      ? { rows: stream.rows, onDays: (table, through) => stream.onChunk(parse(table), through) }
+      : undefined;
+    const paged = await fetchAllPages(async (p) => (await run(build(p))).table, key, options.paging, flush);
     return { ...parse(paged.table), pages: paged.pages, duplicates: paged.duplicates };
   }
 
@@ -224,8 +243,8 @@ export function createShopifyqlClient(
       runParsed((p) => buildDailySalesByLocationQuery(range, today, { ...opts, paging: p }), parseSalesRows, SALES_BY_LOCATION_KEY, opts?.paging),
     salesDailyByChannel: (range, today, opts) =>
       runParsed((p) => buildDailySalesByChannelQuery(range, today, { ...opts, paging: p }), parseSalesRows, SALES_BY_CHANNEL_KEY, opts?.paging),
-    stockDaily: (range, today, opts) =>
-      runParsed((p) => buildDailyStockQuery(range, today, { ...opts, paging: p }), parseStockRows, STOCK_KEY, opts?.paging),
+    stockDaily: (range, today, opts, stream) =>
+      runParsed((p) => buildDailyStockQuery(range, today, { ...opts, paging: p }), parseStockRows, STOCK_KEY, opts?.paging, stream),
     sessionsDaily: (range, today, opts) =>
       runParsed((p) => buildDailySessionsQuery(range, today, { ...opts, paging: p }), parseSessionsRows, SESSIONS_KEY, opts?.paging),
     shopDaily: (range, today, opts) =>
