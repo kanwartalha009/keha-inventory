@@ -73,7 +73,13 @@ describe("Settings → Locations action", () => {
     });
     expect(r).toEqual({ status: 200, json: { ok: true, saved: 2 } });
     expect(loc(W)).toMatchObject({ role: "warehouse", onlinePool: null });
-    expect(loc(S)).toMatchObject({ role: "store", onlinePool: true });
+    // Every active location counts unless left out (countsForOnline): including an untouched
+    // store keeps following that rule (null); leaving it out writes false, including it again true.
+    expect(loc(S)).toMatchObject({ role: "store", onlinePool: null });
+    await post({ intent: "save", locations: [{ id: S, role: "store", include: false }] });
+    expect(loc(S)).toMatchObject({ onlinePool: false });
+    await post({ intent: "save", locations: [{ id: S, role: "store", include: true }] });
+    expect(loc(S)).toMatchObject({ onlinePool: true });
   });
 
   it("refuses another shop's location and leaves it alone", async () => {
@@ -100,9 +106,9 @@ describe("Settings → Locations action", () => {
 
   it("Growth: the include toggle saves (every plan); a role change is refused with the upgrade JSON", async () => {
     m.locations = false;
-    const ok = await post({ intent: "save", locations: [{ id: S, role: "other", include: true }] });
+    const ok = await post({ intent: "save", locations: [{ id: S, role: "other", include: false }] });
     expect(ok).toEqual({ status: 200, json: { ok: true, saved: 1 } });
-    expect(loc(S)).toMatchObject({ role: "other", onlinePool: true });
+    expect(loc(S)).toMatchObject({ role: "other", onlinePool: false });
     const r = await post({ intent: "save", locations: [{ id: S, role: "store", include: true }] });
     expect(r.status).toBe(403);
     expect(r.json).toMatchObject({ ok: false, upgrade: { feature: "locations" } });

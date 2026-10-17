@@ -53,13 +53,16 @@ describe("roles and pool choices", () => {
     expect(onlinePoolOf("no")).toBe(false);
   });
 
-  it("include toggle → override: leave out writes false; include keeps a counting row's override, else writes true", () => {
+  it("include toggle → override: leave out writes false; include keeps a counting row's override, else writes true (countsForOnline)", () => {
     expect(onlinePoolForInclude(false, { active: true, online: true, onlinePool: null })).toBe(false);
     expect(onlinePoolForInclude(true, { active: true, online: true, onlinePool: null })).toBeNull(); // untouched
     expect(onlinePoolForInclude(true, { active: true, online: false, onlinePool: true })).toBe(true);
     expect(onlinePoolForInclude(true, { active: true, online: true, onlinePool: false })).toBe(true);
-    // A POS store that doesn't count yet: including it writes true, whatever the default rule is.
-    expect(onlinePoolForInclude(true, { active: true, online: false, onlinePool: null })).toBe(true);
+    // Every active location counts unless left out (countsForOnline), so an untouched POS store
+    // already counts and keeps following the default; only a left-out one is written back to true.
+    expect(onlinePoolForInclude(true, { active: true, online: false, onlinePool: null })).toBeNull();
+    // An inactive location doesn't count: including it writes true.
+    expect(onlinePoolForInclude(true, { active: false, online: true, onlinePool: null })).toBe(true);
   });
 
   it("settings rows: counts reflects the override; sorted warehouses, stores, others", () => {
@@ -137,7 +140,11 @@ describe("Settings → Locations validation", () => {
     const opts = { rolesAllowed: false };
     expect(validateLocationsForm([{ id: "S", role: "other", include: true }], active, opts)).toEqual({
       ok: true,
-      updates: [{ id: "S", role: "other", onlinePool: true }],
+      updates: [{ id: "S", role: "other", onlinePool: null }],
+    });
+    expect(validateLocationsForm([{ id: "S", role: "other", include: false }], active, opts)).toEqual({
+      ok: true,
+      updates: [{ id: "S", role: "other", onlinePool: false }],
     });
     expect(validateLocationsForm([{ id: "S", role: "store", include: true }], active, opts)).toEqual({ ok: false, error: "rolesLocked" });
   });
