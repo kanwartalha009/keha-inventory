@@ -1,8 +1,10 @@
 /**
- * Forward order plan (Order plan · Next 90 days; Kanwar 2026-10-17). Pure.
+ * Forward order plan (Order plan · Next 90 days; Kanwar 2026-10-17; ordering audit 2026-10-17). Pure.
  *
  * Per variant, a day-by-day projection from today with the nightly engine's own numbers (no new
  * data): what to order, when, and how much — and, for the whole store, the cash needed per week.
+ * ONE rule for every screen (Dashboard "Order this week", Order now, Next 90 days, Products,
+ * Sidekick, the Monday email): an order is placed ON its order-by date.
  *
  * Inputs are exactly what compute stored for the variant (VariantMetric + inputs):
  *  - daily demand c(d) = rate × trend × plan × S(d). S(d) is the seasonal index. When compute
@@ -13,32 +15,33 @@
  *    H days the plan sells exactly what the nightly order quantity assumes, and later weeks
  *    follow last year's shape (a November ramp orders earlier and more). No curve → S = the
  *    stored index every day. Beyond the curve: the stored index.
- *  - safety stock (z × σ × √lead time), lead time (resolveLeadTime), cycle, on hand and incoming
- *    in the online pool. Incoming with a date (Shopify and Keha purchase orders, compute's
- *    landed estimate applied) arrives on that day (overdue → today); incoming without a date,
- *    and open Keha units compute did not count yet (drafts, orders sent since), arrive after
- *    one lead time.
- *  - the per-line rounding (lineQuantity: case pack, then MOQ) the Reorder screen uses.
+ *  - safety stock, lead time (resolveLeadTime), cycle, on hand and incoming in the stock pool.
+ *    Incoming with a date (Shopify and Keha purchase orders, compute's landed estimate applied)
+ *    arrives on that day (overdue → today); incoming without a date, and open Keha units compute
+ *    did not count yet (fresh drafts, orders sent since), arrive after one lead time.
+ *  - the per-line rounding (lineQuantity: case pack, then MOQ).
  *
  * Rules:
  *  - Stock at arrival for an order placed on day s = projected stock at the start of day
- *    s + lead (other arrivals of that day included, the new order not). Projection is unclamped,
- *    as the nightly order-by date.
+ *    s + lead (other arrivals of that day included, the new order not). Projection is unclamped.
  *  - Order-by date (deadline) = the last day s with stock at arrival ≥ safety stock: waiting one
  *    more day would let it fall below. Already below today → the date it was (overdue), found by
  *    running today's demand backwards. With a flat forecast and nothing incoming this is the
- *    nightly formula today + ⌊daysLeft − lead − safety ÷ forecast rate⌋. Compute stores this as
- *    VariantMetric.orderBy (one number for Products, Order now and the calendar).
- *  - Day 0 (today) is a review day with the Reorder screen's own rule: an order today iff
- *    netNeed(orderNeed, notCounted) > 0, quantity lineQuantity(that need). orderNeed is
- *    demand(H) + safety − (on hand + incoming), the nightly orderQuantity semantics. So a
- *    variant has a day-0 order iff Order now lists it, with the same quantity (tested).
- *    It is flagged overdue when its order-by date has passed.
- *  - Later days: an order is placed on day t when ordering on day t + 1 would be too late
- *    (stock at arrival of a day-t+1 order < safety) and the need is positive:
- *        need(t) = demand[t, t + H) + safety − (projected stock(t) + everything still on order)
+ *    nightly formula today + ⌊daysLeft − lead − safety ÷ forecast rate⌋. Compute stores it as
+ *    VariantMetric.orderBy.
+ *  - An order is placed on day t exactly when t is an order-by date: ordering on t + 1 would be
+ *    too late (stock at arrival of a day-t+1 order < safety). Day 0 (today) included: an
+ *    order-by date already passed is ordered today and flagged overdue. Never earlier — before
+ *    the audit a variant was ordered "today" up to 14 days before its deadline, every day.
+ *        need(t) = demand[t, t + H) + safety − (stock on hand at t + everything still on order)
  *    quantity lineQuantity(need(t)); it arrives on t + lead and the projection continues, so a
- *    fast seller can need several orders in 13 weeks.
+ *    fast seller can need several orders in 13 weeks. `why` keeps the terms of that sum.
+ *  - Supplier minimums (planStore): orders are batched per supplier — batch 0 = the next 7 days
+ *    (what Order now and "Order this week" show), then every 7 days after. In each batch,
+ *    after the per-line rounding: the minimum per style (minOrderScope "product": the product's
+ *    total raised to the minimum, split across its variants by share of sales, largest
+ *    remainder, whole case packs), then the order minimum in units, then the order minimum in
+ *    money (store currency). Top-ups go into the projection, so later orders move out.
  *  - Dead, not-enough-data and no-sales variants get no orders (`skip` says why).
  */
 import { addDays, daysBetween, isoWeek, toDayKey, weekStart, type DayKey } from "./dates-shared";
@@ -50,6 +53,8 @@ export const PLAN_WEEKS = 13;
 export const DEADLINE_SCAN_DAYS = 400;
 /** Days of seasonal shape compute keeps beyond the horizon (≥ the calendar). */
 export const FORWARD_CURVE_DAYS = 91;
+/** "Order now" / "Order this week": orders due in the next 7 days (today included, overdue too). */
+export const ORDER_NOW_DAYS = 7;
 
 const EPS = 1e-9;
 const S_MIN = 0.2;
@@ -81,12 +86,44 @@ export interface ForwardVariantInput {
   need: number | null;
   /** VariantMetric.orderQty (fallback for rows computed before orderNeed). */
   orderQty?: number | null;
-  /** Open Keha units compute did not count (drafts, orders sent since the run). */
+  /** Open Keha units compute did not count (fresh drafts, orders sent since the run). */
   notCounted?: number;
   pack: number | null;
   moq: number | null;
   /** Orders are planned on days 0 … days − 1 (0 = only the order-by date). */
   days: number;
+}
+
+/**
+ * Why an order has its quantity — the terms of need(t) as the plan computed them (shown in the
+ * "Why this quantity" popover; never recomputed elsewhere).
+ */
+export interface OrderWhy {
+  /** Days from today the order is placed (0 = today). */
+  day: number;
+  /** Days the order covers: lead time + cycle. */
+  days: number;
+  /** Forecast sales over those days. */
+  demand: number;
+  /** Sales per day while in stock (before season and growth). */
+  rate: number;
+  /** Average seasonal factor over those days. */
+  season: number;
+  /** Growth assumption (trend × plan); 1 = not applied. */
+  growth: number;
+  safety: number;
+  /** Stock on hand when the order is placed (today: stock now; later: the projection). */
+  onHand: number;
+  /** Still on order then (arrives later). */
+  onOrder: number;
+  /** demand + safety − onHand − onOrder. */
+  need: number;
+  /** After the case pack and the per-variant minimum. */
+  rounded: number;
+  pack: number | null;
+  moq: number | null;
+  /** Units added to reach the supplier's minimums (per style, order units, order value). */
+  topUp: number;
 }
 
 export interface ForwardOrder {
@@ -99,15 +136,17 @@ export interface ForwardOrder {
   need: number;
   /** Day-0 order whose order-by date has passed. */
   overdue: boolean;
-  /** The order-by date behind this order (= orderBy after day 0). */
+  /** The order-by date behind this order (= orderBy after day 0; day 0: today or the past date). */
   deadline: DayKey | null;
+  /** The terms of the quantity; null for rows without the plan's inputs. */
+  why: OrderWhy | null;
 }
 
 export interface ForwardVariantPlan {
   skip: PlanSkip | null;
   /** Order-by date (see the module header); null when the variant never runs low or has no advice. */
   deadline: DayKey | null;
-  /** Today's need after open Keha orders (> 0 → on Order now); null when not plannable. */
+  /** Today's stored need after open Keha orders; null when not plannable. */
   needNow: number | null;
   orders: ForwardOrder[];
 }
@@ -152,101 +191,213 @@ export function seasonalFactors(
   return out;
 }
 
-/** The forward plan for one variant (see the module header). */
-export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
-  const today = toDayKey(input.today);
-  const skip = planSkip(input.status, input.rate, input.need, input.orderQty);
-  const L = Math.max(0, Math.round(finite(input.leadTimeDays) ? input.leadTimeDays : 0));
-  const C = Math.max(0, Math.round(finite(input.cycleDays) ? input.cycleDays : 0));
-  const H = Math.max(1, L + C);
-  const N = Math.max(0, Math.floor(input.days));
-  const rate = finite(input.rate) ? input.rate : 0;
-  const base = rate * (finite(input.trend) ? input.trend : 1) * (finite(input.plan) ? input.plan : 1);
-  const safety = finite(input.safety) ? Math.max(0, input.safety) : null;
-  const notCounted = Math.max(0, finite(input.notCounted) ? input.notCounted : 0);
-  const needNow = skip ? null : netNeed(input.need, input.orderQty, notCounted);
-  // Nothing to project with (no sales rate, or a row without safety stock): today's order
-  // only, from the stored need, as Order now — no order-by date, no later orders.
-  if (base <= 0 || safety === null) {
-    const orders: ForwardOrder[] = [];
-    const qty = needNow !== null && needNow > EPS && N > 0 ? lineQuantity(needNow, input.pack, input.moq) : 0;
-    if (qty > 0) orders.push({ day: 0, orderBy: today, arrives: addDays(today, L), qty, need: needNow!, overdue: false, deadline: null });
-    return { skip, deadline: null, needNow, orders };
-  }
+// ---------------------------------------------------------------------------
+// The projection of one variant (a small stateful simulator)
+// ---------------------------------------------------------------------------
 
-  // Demand per day and its prefix sums (P[d] = demand over days 0 … d − 1).
-  const T = Math.max(N + H, DEADLINE_SCAN_DAYS + L + 2) + 1;
-  const S = seasonalFactors(input.seasonal, input.curve, H, T, input.curveOffset ?? 0);
-  const c = S.map((s) => base * s);
-  const P = new Float64Array(T + 1);
-  for (let d = 0; d < T; d++) P[d + 1] = P[d]! + c[d]!;
+/**
+ * One variant's projection. `nextOrderDay` finds the next order-by date from a day on;
+ * `needAt` the need on a day with its terms; `add` books units arriving one lead time after
+ * the day they are ordered (an order, or a top-up to it), so later dates move out.
+ */
+export class VariantProjection {
+  readonly today: DayKey;
+  readonly skip: PlanSkip | null;
+  readonly needNow: number | null;
+  readonly L: number;
+  readonly H: number;
+  readonly N: number;
+  readonly pack: number | null;
+  readonly moq: number | null;
+  /** False: no sales rate or no safety stock (legacy rows) — only today's stored need. */
+  readonly projected: boolean;
+  /** Order-by date before any planned order. */
+  readonly deadline: DayKey | null;
+  private readonly input: ForwardVariantInput;
+  private readonly base: number;
+  private readonly safety: number;
+  private readonly T: number;
+  private readonly c: number[] = [];
+  private readonly S: number[] = [];
+  private readonly P: Float64Array = new Float64Array(1);
+  private readonly arr: Float64Array = new Float64Array(1);
+  private readonly O: Float64Array = new Float64Array(1);
+  private onOrderTotal = 0;
+  /** Legacy path: today's order was taken. */
+  private legacyDone = false;
 
-  // Arrivals: dated ones on their day (capped at the total incoming, earliest first), the rest
-  // and the uncounted Keha units after one lead time.
-  const arr = new Float64Array(T + 1);
-  let left = Math.max(0, finite(input.incoming) ? input.incoming : 0);
-  const dated = [...(input.arrivals ?? [])].filter((a) => finite(a.units) && a.units > 0).sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
-  for (const a of dated) {
-    const u = Math.min(a.units, left);
-    if (u <= 0) break;
-    const off = clamp(daysBetween(today, toDayKey(a.day)), 0, T);
-    arr[off] += u;
-    left -= u;
-  }
-  arr[Math.min(L, T)] += left + notCounted;
+  constructor(input: ForwardVariantInput) {
+    this.input = input;
+    const today = toDayKey(input.today);
+    this.today = today;
+    this.skip = planSkip(input.status, input.rate, input.need, input.orderQty);
+    this.L = Math.max(0, Math.round(finite(input.leadTimeDays) ? input.leadTimeDays : 0));
+    const C = Math.max(0, Math.round(finite(input.cycleDays) ? input.cycleDays : 0));
+    this.H = Math.max(1, this.L + C);
+    this.N = Math.max(0, Math.floor(input.days));
+    this.pack = input.pack;
+    this.moq = input.moq;
+    const rate = finite(input.rate) ? input.rate : 0;
+    this.base = rate * (finite(input.trend) ? input.trend : 1) * (finite(input.plan) ? input.plan : 1);
+    const safety = finite(input.safety) ? Math.max(0, input.safety) : null;
+    this.safety = safety ?? 0;
+    const notCounted = Math.max(0, finite(input.notCounted) ? input.notCounted : 0);
+    this.needNow = this.skip ? null : netNeed(input.need, input.orderQty, notCounted);
+    this.projected = this.base > 0 && safety !== null;
+    this.T = 0;
+    if (!this.projected) {
+      this.deadline = null;
+      return;
+    }
+    const L = this.L;
+    const T = Math.max(this.N + this.H, DEADLINE_SCAN_DAYS + L + 2) + 1;
+    this.T = T;
+    this.S = seasonalFactors(input.seasonal, input.curve, this.H, T, input.curveOffset ?? 0);
+    this.c = this.S.map((s) => this.base * s);
+    this.P = new Float64Array(T + 1);
+    for (let d = 0; d < T; d++) this.P[d + 1] = this.P[d]! + this.c[d]!;
+    // Arrivals: dated ones on their day (capped at the total incoming, earliest first), the rest
+    // and the uncounted Keha units after one lead time.
+    this.arr = new Float64Array(T + 1);
+    let left = Math.max(0, finite(input.incoming) ? input.incoming : 0);
+    const dated = [...(input.arrivals ?? [])].filter((a) => finite(a.units) && a.units > 0).sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+    for (const a of dated) {
+      const u = Math.min(a.units, left);
+      if (u <= 0) break;
+      const off = clamp(daysBetween(today, toDayKey(a.day)), 0, T);
+      this.arr[off] += u;
+      left -= u;
+    }
+    this.arr[Math.min(L, T)] += left + notCounted;
+    // O[d] = projected stock at the start of day d (arrivals of day d included), unclamped.
+    this.O = new Float64Array(T + 1);
+    this.O[0] = input.onHand + this.arr[0]!;
+    for (let d = 0; d < T; d++) this.O[d + 1] = this.O[d]! - this.c[d]! + this.arr[d + 1]!;
+    this.onOrderTotal = this.arr.reduce((a, b) => a + b, 0);
 
-  // O[d] = projected stock at the start of day d (arrivals of day d included), unclamped.
-  const O = new Float64Array(T + 1);
-  O[0] = input.onHand + arr[0]!;
-  for (let d = 0; d < T; d++) O[d + 1] = O[d]! - c[d]! + arr[d + 1]!;
-  let onOrderTotal = arr.reduce((a, b) => a + b, 0);
-  const safeAt = (s: number) => O[Math.min(T, s + L)]! >= safety - EPS;
-
-  // Order-by date, before any planned order.
-  let deadline: DayKey | null;
-  if (!safeAt(0)) {
-    deadline = addDays(today, Math.min(0, Math.floor((O[Math.min(T, L)]! - safety) / c[0]! + EPS)));
-  } else {
-    let found: number | null = null;
-    for (let s = 0; s < DEADLINE_SCAN_DAYS; s++) {
-      if (!safeAt(s + 1)) {
-        found = s;
-        break;
+    if (!this.safeAt(0)) {
+      this.deadline = addDays(today, Math.min(0, Math.floor((this.O[Math.min(T, L)]! - this.safety) / this.c[0]! + EPS)));
+    } else {
+      let found: number | null = null;
+      for (let s = 0; s < DEADLINE_SCAN_DAYS; s++) {
+        if (!this.safeAt(s + 1)) {
+          found = s;
+          break;
+        }
       }
+      if (found === null) {
+        // Beyond the scan: the stored index, flat.
+        const flat = this.base * (finite(input.seasonal) && input.seasonal > 0 ? input.seasonal : 1);
+        const end = DEADLINE_SCAN_DAYS;
+        found = end + Math.floor((this.O[Math.min(T, end + L)]! - this.safety) / flat + EPS);
+      }
+      this.deadline = addDays(today, found);
     }
-    if (found === null) {
-      // Beyond the scan: the stored index, flat.
-      const flat = base * (finite(input.seasonal) && input.seasonal > 0 ? input.seasonal : 1);
-      const end = DEADLINE_SCAN_DAYS;
-      found = end + Math.floor((O[Math.min(T, end + L)]! - safety) / flat + EPS);
-    }
-    deadline = addDays(today, found);
   }
 
-  const orders: ForwardOrder[] = [];
-  if (skip) return { skip, deadline, needNow: null, orders };
+  /** Can this variant get orders at all? */
+  get plannable(): boolean {
+    return this.skip === null && this.needNow !== null;
+  }
 
-  const place = (t: number, need: number, overdue: boolean, dl: DayKey | null) => {
-    const qty = lineQuantity(need, input.pack, input.moq);
+  private safeAt(s: number): boolean {
+    return this.O[Math.min(this.T, s + this.L)]! >= this.safety - EPS;
+  }
+
+  /** The next day d in [from, days) on which an order is due (an order-by date); null when none. */
+  nextOrderDay(from: number): number | null {
+    if (!this.plannable) return null;
+    if (!this.projected) {
+      // Legacy rows: today's stored need only, as Order now always did for them.
+      return !this.legacyDone && from <= 0 && this.N > 0 && (this.needNow ?? 0) > EPS ? 0 : null;
+    }
+    for (let d = Math.max(0, from); d < this.N; d++) if (!this.safeAt(d + 1)) return d;
+    return null;
+  }
+
+  /** The need for an order placed on day t, with its terms (the rounding is filled by the caller). */
+  needAt(t: number): { need: number; why: OrderWhy | null } {
+    if (!this.projected) return { need: this.needNow ?? 0, why: null };
+    const T = this.T;
+    const end = Math.min(T, t + this.H);
+    const demand = this.P[end]! - this.P[t]!;
+    let arrived = 0;
+    for (let i = 0; i <= Math.min(t, T); i++) arrived += this.arr[i]!;
+    // Today: stock now and everything on order (arrivals due today or overdue included).
+    const onHand = t === 0 ? this.input.onHand : this.input.onHand + arrived - this.P[t]!;
+    const onOrder = t === 0 ? this.onOrderTotal : this.onOrderTotal - arrived;
+    const need = demand + this.safety - onHand - onOrder;
+    let sSum = 0;
+    for (let i = t; i < end; i++) sSum += this.S[i]!;
+    const days = end - t;
+    const growth = (finite(this.input.trend) ? this.input.trend : 1) * (finite(this.input.plan) ? this.input.plan : 1);
+    return {
+      need,
+      why: {
+        day: t,
+        days,
+        demand,
+        rate: finite(this.input.rate) ? this.input.rate : 0,
+        season: days > 0 ? sSum / days : 1,
+        growth,
+        safety: this.safety,
+        onHand,
+        onOrder,
+        need,
+        rounded: 0,
+        pack: this.pack,
+        moq: this.moq,
+        topUp: 0,
+      },
+    };
+  }
+
+  /** Book `qty` units ordered on day t (arriving t + lead). */
+  add(t: number, qty: number): void {
     if (!(qty > 0)) return;
-    const at = Math.min(T, t + L);
-    for (let i = at; i <= T; i++) O[i] += qty;
-    onOrderTotal += qty;
-    orders.push({ day: t, orderBy: addDays(today, t), arrives: addDays(today, t + L), qty, need, overdue, deadline: dl });
-  };
-
-  // Day 0: the Reorder screen's rule.
-  if (needNow === null) return { skip, deadline, needNow, orders };
-  if (N > 0 && needNow > EPS) place(0, needNow, deadline !== null && deadline < today, deadline);
-
-  // Later days: order when tomorrow would be too late.
-  for (let t = 1; t < N; t++) {
-    if (safeAt(t + 1)) continue;
-    const position = input.onHand + onOrderTotal - P[t]!;
-    const need = P[Math.min(T, t + H)]! - P[t]! + safety - position;
-    if (need > EPS) place(t, need, false, addDays(today, t));
+    if (!this.projected) {
+      if (t === 0) this.legacyDone = true;
+      return;
+    }
+    const at = Math.min(this.T, t + this.L);
+    this.arr[at] += qty;
+    for (let i = at; i <= this.T; i++) this.O[i] += qty;
+    this.onOrderTotal += qty;
   }
-  return { skip: null, deadline, needNow, orders };
+
+  /** The order placed on day t for `qty` units (`need`, `why` from needAt). */
+  order(t: number, qty: number, need: number, why: OrderWhy | null): ForwardOrder {
+    const orderBy = addDays(this.today, t);
+    const deadline = t === 0 ? (this.projected ? this.deadline : null) : orderBy;
+    return {
+      day: t,
+      orderBy,
+      arrives: addDays(this.today, t + this.L),
+      qty,
+      need,
+      overdue: t === 0 && deadline !== null && deadline < this.today,
+      deadline,
+      why,
+    };
+  }
+}
+
+/** The forward plan for one variant, without supplier minimums (see the module header). */
+export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
+  const sim = new VariantProjection(input);
+  const orders: ForwardOrder[] = [];
+  if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, orders };
+  let t = 0;
+  for (let d = sim.nextOrderDay(t); d !== null; d = sim.nextOrderDay(t)) {
+    const { need, why } = sim.needAt(d);
+    const qty = lineQuantity(need, sim.pack, sim.moq);
+    if (qty > 0) {
+      sim.add(d, qty);
+      orders.push(sim.order(d, qty, need, why ? { ...why, rounded: qty } : null));
+    }
+    t = d + 1;
+  }
+  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, orders };
 }
 
 // ---------------------------------------------------------------------------
@@ -321,12 +472,17 @@ export interface PlanEvent {
   orderBy: DayKey;
   arrives: DayKey;
   qty: number;
+  /** Unit cost in the store's currency (Shopify cost per item); null when unknown. */
   unitCost: number | null;
   /** qty × unitCost; null when the cost is unknown (never 0). */
   cost: number | null;
   overdue: boolean;
   /** The order-by date behind the order (overdue day-0 orders: in the past). */
   deadline: DayKey | null;
+  /** The terms of the quantity (Why this quantity); null for rows without the plan's inputs. */
+  why?: OrderWhy | null;
+  /** Units sold in the same weeks last year (weekday-aligned, the `why.days` window); null unknown. */
+  lastYear?: number | null;
 }
 
 /** Last day of the calendar: the Sunday of the 13th ISO week starting with today's. */
@@ -338,6 +494,8 @@ export function planEnd(today: DayKey, weeks: number = PLAN_WEEKS): DayKey {
 export function planDays(today: DayKey, weeks: number = PLAN_WEEKS): number {
   return daysBetween(toDayKey(today), planEnd(today, weeks)) + 1;
 }
+
+const costOf = (unit: number | null, qty: number) => (unit === null ? null : Math.round(unit * qty * 100) / 100);
 
 export function eventsOf(
   plan: ForwardVariantPlan,
@@ -352,11 +510,301 @@ export function eventsOf(
     arrives: o.arrives,
     qty: o.qty,
     unitCost: unit,
-    cost: unit === null ? null : Math.round(unit * o.qty * 100) / 100,
+    cost: costOf(unit, o.qty),
     overdue: o.overdue,
     deadline: o.deadline,
+    why: o.why,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Supplier minimums (pure; Order now, the Dashboard and the calendar share them)
+// ---------------------------------------------------------------------------
+
+const packOf = (pack: number | null | undefined) => (pack && pack > 1 ? Math.floor(pack) : 1);
+
+export type TopUpLine = { qty: number; pack: number | null; weight: number };
+
+/**
+ * Raise the order total to `minTotal`: extra units go to the lines with a
+ * quantity (> 0) in proportion to their weight (forecast sales per day; all
+ * equal when no line has a weight), in whole case packs. Deterministic: bulk
+ * whole-pack shares first, then one pack at a time to the line furthest below
+ * its share (ties: the earlier line).
+ */
+export function topUpToMinimum(lines: readonly TopUpLine[], minTotal: number | null): { qtys: number[]; toppedUp: boolean } {
+  const qtys = lines.map((l) => l.qty);
+  const total = qtys.reduce((a, b) => a + b, 0);
+  if (!minTotal || total >= minTotal) return { qtys, toppedUp: false };
+  const eligible = lines.map((l, i) => ({ i, pack: packOf(l.pack), w: l.qty > 0 && l.weight > 0 && Number.isFinite(l.weight) ? l.weight : 0 })).filter((x) => lines[x.i]!.qty > 0);
+  if (!eligible.length) return { qtys, toppedUp: false };
+  const sumW = eligible.reduce((a, x) => a + x.w, 0);
+  const share = (x: { w: number }) => (sumW > 0 ? x.w / sumW : 1 / eligible.length);
+  const deficit = minTotal - total;
+  const extra = new Map<number, number>();
+  let added = 0;
+  for (const x of eligible) {
+    const bulk = Math.floor((deficit * share(x)) / x.pack) * x.pack;
+    extra.set(x.i, bulk);
+    added += bulk;
+  }
+  // Only lines with a share take more; with weights, a zero-weight line keeps its own quantity.
+  const takers = eligible.filter((x) => share(x) > 0);
+  while (total + added < minTotal) {
+    let best = takers[0]!;
+    let bestGap = -Infinity;
+    for (const x of takers) {
+      const gap = deficit * share(x) - (extra.get(x.i) ?? 0);
+      if (gap > bestGap + 1e-9) {
+        best = x;
+        bestGap = gap;
+      }
+    }
+    extra.set(best.i, (extra.get(best.i) ?? 0) + best.pack);
+    added += best.pack;
+  }
+  for (const [i, e] of extra) qtys[i]! += e;
+  return { qtys, toppedUp: added > 0 };
+}
+
+/**
+ * Raise the order value (Σ qty × unitCost, store currency) to `minValue`, the same way as
+ * topUpToMinimum: by weight, whole case packs, bulk first then one pack at a time to the line
+ * furthest below its share of the missing value. Only lines with a quantity and a cost take
+ * more; nothing happens when no line has a cost (the value is unknown).
+ */
+export function topUpToValue(
+  lines: readonly (TopUpLine & { unitCost: number | null })[],
+  minValue: number | null,
+): { qtys: number[]; toppedUp: boolean } {
+  const qtys = lines.map((l) => l.qty);
+  if (!minValue || !(minValue > 0)) return { qtys, toppedUp: false };
+  const value = lines.reduce((a, l) => a + (l.unitCost !== null && l.unitCost > 0 ? l.qty * l.unitCost : 0), 0);
+  if (value >= minValue - 1e-9) return { qtys, toppedUp: false };
+  const eligible = lines
+    .map((l, i) => ({ i, pack: packOf(l.pack), cost: l.unitCost ?? 0, w: l.weight > 0 && Number.isFinite(l.weight) ? l.weight : 0 }))
+    .filter((x) => lines[x.i]!.qty > 0 && x.cost > 0);
+  if (!eligible.length) return { qtys, toppedUp: false };
+  const sumW = eligible.reduce((a, x) => a + x.w, 0);
+  const share = (x: { w: number }) => (sumW > 0 ? x.w / sumW : 1 / eligible.length);
+  const takers = eligible.filter((x) => share(x) > 0);
+  const deficit = minValue - value;
+  const extra = new Map<number, number>();
+  let added = 0;
+  for (const x of takers) {
+    const bulk = Math.floor((deficit * share(x)) / x.cost / x.pack) * x.pack;
+    extra.set(x.i, bulk);
+    added += bulk * x.cost;
+  }
+  while (value + added < minValue - 1e-9) {
+    let best = takers[0]!;
+    let bestGap = -Infinity;
+    for (const x of takers) {
+      const gap = deficit * share(x) - (extra.get(x.i) ?? 0) * x.cost;
+      if (gap > bestGap + 1e-9) {
+        best = x;
+        bestGap = gap;
+      }
+    }
+    extra.set(best.i, (extra.get(best.i) ?? 0) + best.pack);
+    added += best.pack * best.cost;
+  }
+  let any = false;
+  for (const [i, e] of extra) {
+    if (e > 0) any = true;
+    qtys[i]! += e;
+  }
+  return { qtys, toppedUp: any };
+}
+
+/**
+ * Split `units` across items by weight (share of sales), in whole case packs, largest
+ * remainder first (ties: the earlier item); all equal when no item has a weight. The result
+ * adds up to at least `units` (whole packs can overshoot by less than one pack).
+ */
+export function splitByShare(units: number, items: readonly { weight: number; pack: number | null }[]): number[] {
+  const out = items.map(() => 0);
+  if (!(units > 0) || !items.length) return out;
+  const w = items.map((x) => (x.weight > 0 && Number.isFinite(x.weight) ? x.weight : 0));
+  const sumW = w.reduce((a, b) => a + b, 0);
+  const share = (i: number) => (sumW > 0 ? w[i]! / sumW : 1 / items.length);
+  let given = 0;
+  items.forEach((x, i) => {
+    const p = packOf(x.pack);
+    out[i] = Math.floor((units * share(i)) / p) * p;
+    given += out[i]!;
+  });
+  const takers = items.map((_, i) => i).filter((i) => share(i) > 0);
+  while (given < units) {
+    let best = takers[0]!;
+    let bestGap = -Infinity;
+    for (const i of takers) {
+      const gap = units * share(i) - out[i]!;
+      if (gap > bestGap + 1e-9) {
+        best = i;
+        bestGap = gap;
+      }
+    }
+    const p = packOf(items[best]!.pack);
+    out[best]! += p;
+    given += p;
+  }
+  return out;
+}
+
+/** One variant of the store plan. */
+export interface PlanVariantSpec {
+  variantId: string;
+  productId: string;
+  supplierKey: string;
+  /** Store-currency unit cost (Shopify cost per item); null when unknown. */
+  unitCost: number | null;
+  /** Share of sales for top-ups (forecast sales per day). */
+  weight: number;
+  input: ForwardVariantInput;
+}
+
+/** A supplier's order minimums. Per-variant MOQs are each input's `moq`. */
+export interface PlanSupplierRules {
+  /** minOrderScope "product": every product (style) in an order totals at least this. */
+  styleMin: number | null;
+  /** Units per order. */
+  minTotal: number | null;
+  /** Money per order, in the store's currency (converted from the supplier's); null = none / unknown. */
+  minValue: number | null;
+}
+
+/** One supplier order the plan assumes: batch 0 = the next 7 days, then one every 7 days. */
+export interface PlanBatch {
+  supplierKey: string;
+  from: DayKey;
+  to: DayKey;
+  /** Raised to the order minimum in units. */
+  toppedUp: boolean;
+  /** Raised to the order minimum in money. */
+  valueToppedUp: boolean;
+  /** Products raised to the minimum per style. */
+  styleToppedUp: string[];
+}
+
+/** Day ranges [from, to] of the batches: the next 7 days (Order now), then every 7 days after. */
+export function batchWindows(days: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let d = 0; d < days; d += ORDER_NOW_DAYS) out.push([d, Math.min(days, d + ORDER_NOW_DAYS) - 1]);
+  return out;
+}
+
+export interface StorePlan {
+  events: PlanEvent[];
+  batches: PlanBatch[];
+  /** Per variant: why it can't be planned, its order-by date before any order. */
+  variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null }>;
+}
+
+type Ev = { spec: number; day: number; qty: number; need: number; why: OrderWhy | null };
+
+/**
+ * The whole store's forward plan with the supplier minimums applied in each batch (see the
+ * module header). Without minimums every variant's orders are exactly planVariant's.
+ */
+export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Record<string, PlanSupplierRules>>, today: DayKey): StorePlan {
+  const sims = specs.map((s) => new VariantProjection(s.input));
+  const variants = new Map<string, { skip: PlanSkip | null; deadline: DayKey | null }>();
+  sims.forEach((sim, i) => variants.set(specs[i]!.variantId, { skip: sim.skip, deadline: sim.deadline }));
+  const bySupplier = new Map<string, number[]>();
+  specs.forEach((s, i) => (bySupplier.get(s.supplierKey) ?? bySupplier.set(s.supplierKey, []).get(s.supplierKey)!).push(i));
+  const days = specs.reduce((a, s) => Math.max(a, Math.floor(s.input.days)), 0);
+  const windows = batchWindows(days);
+  const out: { spec: number; o: ForwardOrder }[] = [];
+  const batches: PlanBatch[] = [];
+  const keys = [...bySupplier.keys()].sort();
+  for (const key of keys) {
+    const members = bySupplier.get(key)!.slice().sort((a, b) => (specs[a]!.variantId < specs[b]!.variantId ? -1 : 1));
+    const r = rules[key] ?? { styleMin: null, minTotal: null, minValue: null };
+    for (const [a, b] of windows) {
+      const evs: Ev[] = [];
+      for (const i of members) {
+        const sim = sims[i]!;
+        let t = a;
+        for (let d = sim.nextOrderDay(t); d !== null && d <= b; d = sim.nextOrderDay(t)) {
+          const { need, why } = sim.needAt(d);
+          const qty = lineQuantity(need, sim.pack, sim.moq);
+          if (qty > 0) {
+            sim.add(d, qty);
+            evs.push({ spec: i, day: d, qty, need, why: why ? { ...why, rounded: qty } : null });
+          }
+          t = d + 1;
+        }
+      }
+      if (!evs.length) continue;
+      const batch: PlanBatch = { supplierKey: key, from: addDays(today, a), to: addDays(today, b), toppedUp: false, valueToppedUp: false, styleToppedUp: [] };
+      const bump = (e: Ev, extra: number) => {
+        if (!(extra > 0)) return;
+        e.qty += extra;
+        if (e.why) e.why = { ...e.why, topUp: e.why.topUp + extra };
+        sims[e.spec]!.add(e.day, extra);
+      };
+      // Minimum per style: the product's total, split across its variants by share of sales.
+      if (r.styleMin && r.styleMin > 0) {
+        const products = [...new Set(evs.map((e) => specs[e.spec]!.productId))].sort();
+        for (const pid of products) {
+          const mine = evs.filter((e) => specs[e.spec]!.productId === pid);
+          const total = mine.reduce((x, e) => x + e.qty, 0);
+          if (total >= r.styleMin) continue;
+          // Every plannable variant of the style from this supplier shares the minimum.
+          const family = members.filter((i) => specs[i]!.productId === pid && sims[i]!.plannable);
+          const withWeight = family.filter((i) => specs[i]!.weight > 0);
+          const takers = withWeight.length ? withWeight : [...new Set(mine.map((e) => e.spec))];
+          const split = splitByShare(r.styleMin - total, takers.map((i) => ({ weight: specs[i]!.weight, pack: sims[i]!.pack })));
+          const day = Math.min(...mine.map((e) => e.day));
+          takers.forEach((i, k) => {
+            const extra = split[k]!;
+            if (!(extra > 0)) return;
+            let e = mine.find((x) => x.spec === i);
+            if (!e) {
+              const w = sims[i]!.needAt(day).why;
+              e = { spec: i, day, qty: 0, need: 0, why: w ? { ...w, rounded: 0 } : null };
+              evs.push(e);
+            }
+            bump(e, extra);
+          });
+          batch.styleToppedUp.push(pid);
+        }
+      }
+      // Order minimum in units, then in money.
+      const lines = () => evs.map((e) => ({ qty: e.qty, pack: sims[e.spec]!.pack, weight: specs[e.spec]!.weight, unitCost: unitOf(specs[e.spec]!) }));
+      const units = topUpToMinimum(lines(), r.minTotal);
+      units.qtys.forEach((q, k) => bump(evs[k]!, q - evs[k]!.qty));
+      batch.toppedUp = units.toppedUp;
+      const value = topUpToValue(lines(), r.minValue);
+      value.qtys.forEach((q, k) => bump(evs[k]!, q - evs[k]!.qty));
+      batch.valueToppedUp = value.toppedUp;
+      batches.push(batch);
+      for (const e of evs) out.push({ spec: e.spec, o: sims[e.spec]!.order(e.day, e.qty, e.need, e.why) });
+    }
+  }
+  const events: PlanEvent[] = out.map(({ spec, o }) => {
+    const s = specs[spec]!;
+    const unit = unitOf(s);
+    return {
+      variantId: s.variantId,
+      productId: s.productId,
+      supplierKey: s.supplierKey,
+      orderBy: o.orderBy,
+      arrives: o.arrives,
+      qty: o.qty,
+      unitCost: unit,
+      cost: costOf(unit, o.qty),
+      overdue: o.overdue,
+      deadline: o.deadline,
+      why: o.why,
+    };
+  });
+  events.sort((a, b) => a.orderBy.localeCompare(b.orderBy) || a.supplierKey.localeCompare(b.supplierKey) || (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
+  return { events, batches, variants };
+}
+
+const unitOf = (s: Pick<PlanVariantSpec, "unitCost">) => (finite(s.unitCost) && s.unitCost >= 0 ? s.unitCost : null);
 
 export interface CashTotals {
   units: number;

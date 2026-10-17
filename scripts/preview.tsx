@@ -37,7 +37,6 @@ import type { PlannerData, ScenarioView } from "../app/models/planner.server";
 import type { OpenOrderRow, OrderDetail } from "../app/models/reorder.server";
 import type { PlanningLocation } from "../app/lib/locations-shared";
 import type { PoLine } from "../app/lib/supplier-shared";
-import type { ReorderVariantIn } from "../app/lib/reorder-shared";
 import type { PlannerVariant } from "../app/lib/planner-shared";
 import type { PlanMetric } from "../app/lib/transfers-shared";
 
@@ -83,9 +82,9 @@ const { lockedPageFeature } = await import("../app/lib/plan-shared");
 const { POLARIS_URL } = await import("../app/lib/polaris-shared");
 const { LockedPage } = await import("../app/components/plan");
 const { buildHome } = await import("../app/lib/dashboard-shared");
-const { previewRows } = await import("../app/lib/order-plan-shared");
+const { lockTeaser, previewRows } = await import("../app/lib/order-plan-shared");
 const { EMPTY_ORDER_PLAN } = await import("../app/lib/order-plan-shared");
-const { buildReorderGroups } = await import("../app/lib/reorder-shared");
+const { buildOrderNow } = await import("../app/lib/reorder-shared");
 const { buildTransferPlan } = await import("../app/lib/transfers-shared");
 const { addDays } = await import("../app/lib/engine/dates-shared");
 const { computeScenario, createPlannerSeason } = await import("../app/lib/planner-shared");
@@ -132,20 +131,6 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
   };
 }
 
-const rv = (n: number, title: string, over: Partial<ReorderVariantIn> = {}): ReorderVariantIn => ({
-  id: VID(n),
-  productTitle: title,
-  variantTitle: "M",
-  sku: `SKU-${n}`,
-  vendor: "Acme",
-  image: null,
-  supplierId: null,
-  caseQty: null,
-  cost: 2.5,
-  costCurrency: "EUR",
-  ...over,
-});
-
 const OPEN_ORDERS: OpenOrderRow[] = [
   { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, cost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
   { id: "po3", number: "PO-0002", source: "keha", status: "confirmed", supplierName: "Lisbon Linen", units: 120, cost: 1440, currency: "EUR", arrival: "2026-11-20", createdAt: "2026-10-08T00:00:00Z" },
@@ -181,32 +166,15 @@ function transfersPlan() {
 }
 
 function orderNow(kind: "free" | "growth" | "pro"): ReorderPageData {
-  const groups = buildReorderGroups({
-    variants: [
-      rv(1, "Linen shirt", { supplierId: "s1" }),
-      rv(2, "Linen trousers", { supplierId: "s1", cost: 6 }),
-      rv(3, "Wool beanie", { vendor: "Beta", cost: 3.2 }),
-      rv(4, "Canvas tote", { vendor: "Beta", cost: null }),
-      rv(5, "Ceramic mug", { vendor: "Acme", cost: 1.8 }),
-    ],
-    metrics: new Map([
-      [VID(1), { orderQty: 7, orderBy: "2026-11-12", daysLeft: 9.6, neverRunsOut: false, rate: 2 }],
-      [VID(2), { orderQty: 18, orderBy: "2026-11-05", daysLeft: 6.2, neverRunsOut: false, rate: 3.1 }],
-      [VID(3), { orderQty: 4, orderBy: null, daysLeft: null, neverRunsOut: false, rate: null }],
-      [VID(4), { orderQty: 12, orderBy: "2026-11-20", daysLeft: 30, neverRunsOut: false, rate: 1 }],
-      [VID(5), { orderQty: 3, orderBy: "2026-11-20", daysLeft: 30, neverRunsOut: false, rate: 1 }],
-    ]),
+  // Order now is the forward plan's next 7 days (the Dashboard's "Order this week").
+  const fx = orderPlanFixture();
+  const groups = buildOrderNow({
+    plan: fx,
     stock: new Map([
-      [VID(1), { onHand: 12, incoming: 4 }],
-      [VID(2), { onHand: 19, incoming: 0 }],
-      [VID(5), { onHand: 30, incoming: 0 }],
+      [VID(1), { onHand: 5, incoming: 0 }],
+      [VID(2), { onHand: 40, incoming: 0 }],
     ]),
     onOrder: new Map([[VID(1), 0]]),
-    suppliers: [
-      { id: "s1", name: "Acme Textiles", leadTimeDays: 30, minOrder: null, minOrderTotal: 40, casePack: 6, vendorMatch: ["Acme"], currency: null, hasEmail: true },
-    ],
-    storeCurrency: "EUR",
-    defaultLeadTimeDays: 14,
     selected: new Set([VID(1)]),
   });
   const base: ReorderPageData = {
@@ -221,8 +189,10 @@ function orderNow(kind: "free" | "growth" | "pro"): ReorderPageData {
     currency: "EUR",
     missingSelected: 0,
     openOrders: OPEN_ORDERS,
+    today: fx.today,
+    staleDrafts: 1,
   };
-  if (kind === "free") return { ...base, enabled: false, groups: [], openOrders: [], preview: previewRows(orderPlanFixture()) };
+  if (kind === "free") return { ...base, enabled: false, groups: [], openOrders: [], preview: previewRows(fx), teaser: lockTeaser(fx, 2) };
   if (kind === "growth") return base;
   return {
     ...base,
@@ -516,8 +486,8 @@ const screens: Screen[] = [
   S({ slug: "dashboard--pro-ready", screen: "Dashboard", state: "Pro, ready", nav: "dashboard", url: "/app", plan: "pro", Component: Home, data: () => dashboard("pro"), expect: ["Order this week", "Money at stake", "Take preorders for the gap"] }),
 
   S({ slug: "order-now--free-preview", screen: "Order plan → Order now", state: "Free preview", nav: "orderplan", url: "/app/reorder", plan: "free", Component: Reorder, data: () => orderNow("free"), expect: ["Order plan", "What to order, and by when", "Linen shirt"] }),
-  S({ slug: "order-now--growth", screen: "Order plan → Order now", state: "Growth", nav: "orderplan", url: "/app/reorder?variants=1", plan: "growth", Component: Reorder, data: () => orderNow("growth"), expect: ["Order plan", "Acme Textiles", "Create order"] }),
-  S({ slug: "order-now--pro-2-locations", screen: "Order plan → Order now", state: "Pro, 2 locations + transfers", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), expect: ["Acme Textiles", "Create transfer in Shopify", "Barcelona"] }),
+  S({ slug: "order-now--growth", screen: "Order plan → Order now", state: "Growth", nav: "orderplan", url: "/app/reorder?variants=1", plan: "growth", Component: Reorder, data: () => orderNow("growth"), expect: ["Order plan", "Lisbon Linen", "Create order"] }),
+  S({ slug: "order-now--pro-2-locations", screen: "Order plan → Order now", state: "Pro, 2 locations + transfers", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), expect: ["Lisbon Linen", "Create transfer in Shopify", "Barcelona"] }),
   S({ slug: "next-90-days--growth", screen: "Order plan → Next 90 days", state: "Growth", nav: "orderplan", url: "/app/reorder/calendar", plan: "growth", Component: OrderCalendar, data: (): CalendarPageData => ({ enabled: true, plan: orderPlanFixture() }), expect: ["Next 90 days", "Lisbon Linen", "Download CSV"] }),
   S({ slug: "season-plan--growth-scenario", screen: "Order plan → Season plan", state: "Growth, with scenario", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner(), expect: ["Season plan", "Black Friday 2026", "Slow Mill"] }),
   S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),

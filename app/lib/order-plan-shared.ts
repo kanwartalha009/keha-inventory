@@ -1,21 +1,26 @@
 /**
- * Order plan (Kanwar 2026-10-17): the forward order plan (engine/forward-plan-shared) shaped for
- * the screens — Dashboard "Order this week", Order plan · Next 90 days, the Free preview and the
- * 90-day CSV. Pure, client-safe; the database part is models/order-plan.server.ts.
+ * Order plan (Kanwar 2026-10-17; ordering audit 2026-10-17): the forward order plan
+ * (engine/forward-plan-shared) shaped for the screens — Dashboard "Order this week", Order now,
+ * Order plan · Next 90 days, the Free preview and the 90-day CSV. Pure, client-safe; the
+ * database part is models/order-plan.server.ts.
  */
 import { addDays, type DayKey } from "./engine/dates-shared";
 import {
+  ORDER_NOW_DAYS,
   PLAN_WEEKS,
   bySupplier,
   byWeek,
   cashTotals,
   dueWithin,
   type CashTotals,
+  type OrderWhy,
+  type PlanBatch,
   type PlanEvent,
   type PlanSupplierWeek,
   type PlanWeek,
 } from "./engine/forward-plan-shared";
 import { toCsv, variantName } from "./products-shared";
+import { fill } from "./i18n";
 
 type T = (s: string) => string;
 
@@ -33,9 +38,36 @@ export type PlanVariantInfo = {
   deadline: DayKey | null;
   /** Forecast sales per day × price: the money at stake per day, for ranking. */
   valuePerDay: number | null;
+  /** Sales per day while in stock (VariantMetric.rate). */
+  rate?: number | null;
+  /** Unit cost in the supplier's currency (only with an exchange rate, or the same currency). */
+  unitCostSupplier?: number | null;
+  /** Case pack and per-variant minimum used for the line. */
+  pack?: number | null;
+  moq?: number | null;
 };
 
-export type PlanSupplierInfo = { key: string; kind: "supplier" | "vendor"; supplierId: string | null; name: string };
+export type PlanSupplierInfo = {
+  key: string;
+  kind: "supplier" | "vendor";
+  supplierId: string | null;
+  name: string;
+  /** The supplier's currency (upper case; the store's when not set). */
+  currency?: string;
+  /** 1 unit of the supplier's currency in the store's currency; null = unknown. */
+  exchangeRate?: number | null;
+  minOrderTotal?: number | null;
+  /** Minimum order value in the supplier's currency, and in the store's (null: unknown rate). */
+  minOrderValue?: number | null;
+  minOrderValueStore?: number | null;
+  minOrder?: number | null;
+  minOrderScope?: "variant" | "product";
+  leadTimeDays?: number;
+  leadTimeSource?: "supplier" | "default";
+  hasEmail?: boolean;
+  /** The longest order cycle of its products (days) — the "Can join this order" window. */
+  cycleDays?: number | null;
+};
 
 export type OrderPlanData = {
   today: DayKey;
@@ -49,6 +81,12 @@ export type OrderPlanData = {
   suppliersSetUp: boolean;
   /** Products that can't be planned: no / too little sales history, dead stock. */
   cantPlan: { noData: number; dead: number };
+  /** The supplier orders the plan assumes (batch 0 = the next 7 days) and their top-ups. */
+  batches?: PlanBatch[];
+  /** Keha drafts older than 14 days: no longer counted as ordered. */
+  staleDrafts?: number;
+  /** Products marked "Don't reorder" (left out of every order). */
+  notReordered?: number;
 };
 
 export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UTC"): OrderPlanData => ({
@@ -60,7 +98,42 @@ export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UT
   suppliers: {},
   suppliersSetUp: false,
   cantPlan: { noData: 0, dead: 0 },
+  batches: [],
+  staleDrafts: 0,
+  notReordered: 0,
 });
+
+/** Weekday-aligned "same weeks last year": 52 weeks back. */
+export const LAST_YEAR_OFFSET_DAYS = 364;
+/** A suggestion above this × last year's sales in the same weeks gets a warning. */
+export const LAST_YEAR_WARN_RATIO = 1.5;
+
+/** The suggestion is more than 1.5× what sold in the same weeks last year (unknown → no warning). */
+export function aboveLastYear(qty: number, lastYear: number | null | undefined): boolean {
+  return typeof lastYear === "number" && Number.isFinite(lastYear) && qty > LAST_YEAR_WARN_RATIO * lastYear;
+}
+
+/**
+ * A line's unit cost in the store's currency and in the supplier's. Shopify stores cost per
+ * item in the store's currency; a cost in another currency is converted only with the
+ * supplier's exchange rate (1 supplier unit = rate store units). Unknown stays null.
+ */
+export function lineCosts(
+  cost: number | null,
+  costCurrency: string | null,
+  storeCurrency: string,
+  supplierCurrency: string | null,
+  exchangeRate: number | null,
+): { store: number | null; supplier: number | null } {
+  if (cost === null || !Number.isFinite(cost) || cost < 0) return { store: null, supplier: null };
+  const store = storeCurrency.toUpperCase();
+  const from = (costCurrency || store).toUpperCase();
+  const sup = (supplierCurrency || store).toUpperCase();
+  const rate = exchangeRate && exchangeRate > 0 ? exchangeRate : null;
+  if (from === store) return { store: cost, supplier: sup === store ? cost : rate ? cost / rate : null };
+  if (from === sup) return { store: rate ? cost * rate : null, supplier: cost };
+  return { store: null, supplier: null };
+}
 
 /** Supplier name, or the vendor ("No vendor" when blank). */
 export function supplierName(data: Pick<OrderPlanData, "suppliers">, key: string, t: T): string {
@@ -70,22 +143,39 @@ export function supplierName(data: Pick<OrderPlanData, "suppliers">, key: string
 }
 
 /**
- * Order now with these lines selected at the planned quantities, filtered to the supplier
- * (`?variants=id:qty,…&supplier=key`). Several orders of one variant add up. Creating the
- * purchase order still needs the merchant's confirm there.
+ * Order now with these orders selected (`?supplier=key&from=day&to=day`): the Order now loader
+ * re-reads the same plan and takes that supplier's orders with an order-by date in the range,
+ * at the planned quantities — any number of lines, nothing is truncated (audit: the old
+ * `?variants=id:qty` link kept 250 and dropped the rest). Creating the purchase order still
+ * needs the merchant's confirm there.
  */
-export function orderLink(events: readonly Pick<PlanEvent, "variantId" | "qty" | "supplierKey">[], supplierKey?: string): string {
-  const qty = new Map<string, number>();
-  for (const e of events) {
-    const id = /(\d+)$/.exec(e.variantId)?.[1];
-    if (id && e.qty > 0) qty.set(id, (qty.get(id) ?? 0) + e.qty);
-  }
-  const parts = [...qty].slice(0, 250).map(([id, q]) => `${id}:${q}`);
+export function orderLink(events: readonly Pick<PlanEvent, "orderBy" | "supplierKey">[], supplierKey?: string): string {
   const params = new URLSearchParams();
-  if (parts.length) params.set("variants", parts.join(","));
-  if (supplierKey) params.set("supplier", supplierKey);
-  const qs = params.toString().replace(/%3A/g, ":").replace(/%2C/g, ",");
+  const key = supplierKey ?? (new Set(events.map((e) => e.supplierKey)).size === 1 ? events[0]?.supplierKey : undefined);
+  if (key) params.set("supplier", key);
+  const days = events.map((e) => e.orderBy).sort();
+  if (days.length) {
+    params.set("from", days[0]!);
+    params.set("to", days[days.length - 1]!);
+  }
+  const qs = params.toString().replace(/%3A/g, ":");
   return qs ? `/app/reorder?${qs}` : "/app/reorder";
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `?supplier=&from=&to=` → the orders an orderLink selected (null when the link has no range). */
+export function readOrderLink(params: URLSearchParams): { supplierKey: string | null; from: DayKey; to: DayKey } | null {
+  const from = params.get("from");
+  const to = params.get("to");
+  if (!from || !to || !DAY.test(from) || !DAY.test(to) || from > to) return null;
+  const key = params.get("supplier");
+  return { supplierKey: key && key.length <= 300 ? key : null, from, to };
+}
+
+/** The plan's orders an orderLink selected. */
+export function linkedEvents(events: readonly PlanEvent[], link: { supplierKey: string | null; from: DayKey; to: DayKey }): PlanEvent[] {
+  return events.filter((e) => (!link.supplierKey || e.supplierKey === link.supplierKey) && e.orderBy >= link.from && e.orderBy <= link.to);
 }
 
 export type ThisWeekView = {
@@ -95,10 +185,10 @@ export type ThisWeekView = {
   next: { supplierKey: string; orderBy: DayKey } | null;
 };
 
-/** "Order this week": orders placed in the next 7 days (overdue ones included), by supplier. */
+/** "Order this week" = Order now: orders due in the next 7 days (overdue ones included), by supplier. */
 export function thisWeek(data: Pick<OrderPlanData, "events" | "today">): ThisWeekView {
-  const due = dueWithin(data.events, data.today, 7);
-  const later = data.events.filter((e) => e.orderBy > addDays(data.today, 6)).sort((a, b) => a.orderBy.localeCompare(b.orderBy) || (a.supplierKey < b.supplierKey ? -1 : 1));
+  const due = dueWithin(data.events, data.today, ORDER_NOW_DAYS);
+  const later = data.events.filter((e) => e.orderBy > addDays(data.today, ORDER_NOW_DAYS - 1)).sort((a, b) => a.orderBy.localeCompare(b.orderBy) || (a.supplierKey < b.supplierKey ? -1 : 1));
   return {
     suppliers: bySupplier(due),
     totals: cashTotals(due),
@@ -212,4 +302,95 @@ export function formatDayRange(from: DayKey | null, to: DayKey | null, locale: s
   } catch {
     return to && to !== from ? `${from} – ${to}` : from;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ordering texts shared by Order now, Next 90 days and Products (ordering audit 2026-10-17)
+// ---------------------------------------------------------------------------
+
+/** "27 Oct" (no year), in the admin language. */
+export function shortDay(day: DayKey, locale: string): string {
+  return formatDayRange(day, null, locale);
+}
+
+/** A line's real deadline: "Due today", "Due 27 Oct", "Overdue since 12 Oct" ("—" unknown). */
+export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string): string {
+  if (!deadline) return "—";
+  if (deadline < today) return fill(t("Overdue since {date}"), { date: shortDay(deadline, locale) });
+  if (deadline === today) return t("Due today");
+  return fill(t("Due {date}"), { date: shortDay(deadline, locale) });
+}
+
+function nf(v: number, locale: string, digits = 1): string {
+  try {
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v);
+  } catch {
+    return String(Math.round(v * 10 ** digits) / 10 ** digits);
+  }
+}
+
+/**
+ * "Why this quantity": the terms the plan used for one order (never recomputed): the forecast,
+ * safety stock, stock and stock on order, the need, then the rounding and any top-up.
+ */
+export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
+  const first = why.day === 0;
+  const qty = why.rounded + why.topUp;
+  const vars = {
+    n: nf(why.days, locale, 0),
+    demand: nf(why.demand, locale),
+    rate: nf(why.rate, locale, 2),
+    season: nf(why.season, locale, 2),
+    safety: nf(why.safety, locale),
+    onHand: nf(why.onHand, locale),
+    onOrder: nf(why.onOrder, locale),
+    need: nf(Math.max(0, why.need), locale),
+  };
+  const out = [
+    fill(
+      first
+        ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}")
+        : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} = {need}"),
+      vars,
+    ),
+  ];
+  if (Math.abs(why.growth - 1) > 1e-9) out.push(fill(t("Growth assumption ×{growth} included in the forecast."), { growth: nf(why.growth, locale, 2) }));
+  const r = { qty: nf(why.rounded, locale, 0), pack: nf(why.pack ?? 0, locale, 0), moq: nf(why.moq ?? 0, locale, 0) };
+  out.push(
+    fill(
+      why.pack && why.pack > 1 && why.moq
+        ? t("→ rounded to {qty} (case pack {pack} / minimum {moq})")
+        : why.pack && why.pack > 1
+          ? t("→ rounded to {qty} (case pack {pack})")
+          : why.moq
+            ? t("→ rounded to {qty} (minimum {moq})")
+            : t("→ rounded to {qty}"),
+      r,
+    ),
+  );
+  if (why.topUp > 0) out.push(fill(t("+ {n} to reach the supplier's minimum order = {qty}"), { n: nf(why.topUp, locale, 0), qty: nf(qty, locale, 0) }));
+  return out;
+}
+
+/** The same weeks last year, for the popover. */
+export function lastYearLine(lastYear: number | null | undefined, t: T, locale: string): string {
+  return typeof lastYear === "number" && Number.isFinite(lastYear)
+    ? fill(t("Sold in the same weeks last year: {n}"), { n: nf(lastYear, locale, 0) })
+    : t("Sold in the same weeks last year: — (no history yet)");
+}
+
+export type LockTeaser = { more: number; suppliers: number; cash: number | null; missingCost: number };
+
+/**
+ * The teaching lock with the merchant's own numbers (Free): how many more products than the
+ * preview shows have orders, from how many suppliers, and the 13-week cash. null = nothing more.
+ */
+export function lockTeaser(data: Pick<OrderPlanData, "events" | "variants">, limit = 10): LockTeaser | null {
+  if (!data.events.length) return null;
+  const products = new Set(data.events.map((e) => e.productId));
+  const shown = new Set(previewRows(data, limit).map((r) => data.variants[r.variantId]?.productId ?? r.variantId));
+  const more = [...products].filter((p) => !shown.has(p)).length;
+  if (more <= 0) return null;
+  const totals = cashTotals(data.events);
+  return { more, suppliers: new Set(data.events.map((e) => e.supplierKey)).size, cash: totals.cash, missingCost: totals.missingCost };
 }

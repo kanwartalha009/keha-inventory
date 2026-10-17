@@ -14,15 +14,6 @@ import type { Tr } from "./i18n";
 
 export const REORDER_TR: Record<string, Tr> = {
   // ---- Reorder screen ----
-  "What to order from each supplier, how much, and by which date. Quantities are rounded up to case packs and minimum orders.": {
-    es: "Qué pedir a cada proveedor, cuánto y antes de qué fecha. Las cantidades se redondean al alza a cajas completas y pedidos mínimos.",
-    fr: "Quoi commander à chaque fournisseur, en quelle quantité et avant quelle date. Les quantités sont arrondies au carton et aux minimums de commande.",
-    de: "Was du bei welchem Lieferanten bestellst, wie viel und bis wann. Mengen werden auf ganze Kartons und Mindestmengen aufgerundet.",
-    it: "Cosa ordinare a ogni fornitore, quanto ed entro quando. Le quantità sono arrotondate per eccesso a confezioni intere e ordini minimi.",
-    pt: "O que encomendar a cada fornecedor, quanto e até quando. As quantidades são arredondadas para caixas completas e encomendas mínimas.",
-    nl: "Wat je bij elke leverancier bestelt, hoeveel en vóór welke datum. Aantallen worden naar boven afgerond op hele dozen en minimale bestellingen.",
-    pl: "Co zamówić u każdego dostawcy, ile i do kiedy. Ilości są zaokrąglane w górę do pełnych opakowań i minimalnych zamówień.",
-  },
   "The products from your action list are highlighted.": {
     es: "Los productos de tu lista de acciones están destacados.",
     fr: "Les produits de votre liste d'actions sont mis en évidence.",
@@ -40,24 +31,6 @@ export const REORDER_TR: Record<string, Tr> = {
     pt: "Alguns produtos da ligação já não são acompanhados na sua loja.",
     nl: "Sommige producten uit de link worden niet meer bijgehouden in je winkel.",
     pl: "Niektóre produkty z linku nie są już śledzone w Twoim sklepie.",
-  },
-  "Nothing to reorder right now": {
-    es: "Nada que volver a pedir ahora",
-    fr: "Rien à recommander pour l'instant",
-    de: "Gerade nichts nachzubestellen",
-    it: "Niente da riordinare al momento",
-    pt: "Nada a reencomendar agora",
-    nl: "Nu niets om bij te bestellen",
-    pl: "Na razie nic do zamówienia",
-  },
-  "Products show up here when their stock will run out before a new order would arrive.": {
-    es: "Los productos aparecen aquí cuando su stock se agotará antes de que llegue un nuevo pedido.",
-    fr: "Les produits apparaissent ici quand leur stock sera épuisé avant l'arrivée d'une nouvelle commande.",
-    de: "Produkte erscheinen hier, wenn ihr Bestand ausgeht, bevor eine neue Bestellung ankommen würde.",
-    it: "I prodotti compaiono qui quando lo stock finirà prima che arrivi un nuovo ordine.",
-    pt: "Os produtos aparecem aqui quando o stock vai acabar antes de chegar uma nova encomenda.",
-    nl: "Producten verschijnen hier als hun voorraad op raakt voordat een nieuwe bestelling zou aankomen.",
-    pl: "Produkty pojawiają się tutaj, gdy ich zapas skończy się przed dotarciem nowego zamówienia.",
   },
   "No supplier — grouped by vendor": {
     es: "Sin proveedor asignado — agrupado por marca",
@@ -150,15 +123,6 @@ export const REORDER_TR: Record<string, Tr> = {
     pt: "Criar uma encomenda em rascunho para {supplier}?",
     nl: "Een conceptbestelling voor {supplier} aanmaken?",
     pl: "Utworzyć szkic zamówienia dla {supplier}?",
-  },
-  "{n} units. Nothing is sent to the supplier until you email the order or mark it as sent.": {
-    es: "{n} unidades. No se envía nada al proveedor hasta que le mandes el pedido por email o lo marques como enviado.",
-    fr: "{n} unités. Rien n'est envoyé au fournisseur tant que vous ne lui envoyez pas la commande par e-mail ou ne la marquez pas comme envoyée.",
-    de: "{n} Einheiten. An den Lieferanten geht nichts raus, bis du die Bestellung per E-Mail schickst oder als gesendet markierst.",
-    it: "{n} unità. Al fornitore non viene inviato nulla finché non invii l'ordine via email o lo segni come inviato.",
-    pt: "{n} unidades. Nada é enviado ao fornecedor até enviar a encomenda por email ou marcá-la como enviada.",
-    nl: "{n} stuks. Er gaat niets naar de leverancier tot je de bestelling mailt of als verzonden markeert.",
-    pl: "{n} szt. Nic nie trafia do dostawcy, dopóki nie wyślesz zamówienia e-mailem albo nie oznaczysz go jako wysłane.",
   },
   "Cases of {n}": { es: "Cajas de {n}", fr: "Cartons de {n}", de: "Kartons à {n}", it: "Confezioni da {n}", pt: "Caixas de {n}", nl: "Dozen van {n}", pl: "Opakowania po {n}" },
   "Minimum {n} per item": {

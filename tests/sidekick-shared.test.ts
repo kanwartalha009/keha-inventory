@@ -96,14 +96,15 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     expect(r).toMatchObject({ within_days: 7, order_by_until: "2026-10-22", currency: "EUR", url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
     expect(r.results!.map((x) => [x.uri, x.name])).toEqual([["gid://keha-inventory/Supplier/s1", "Lisbon Linen"]]);
     const meta = r.results![0]!._meta as Record<string, unknown> & { lines: Record<string, unknown>[] };
-    expect(meta).toMatchObject({ grouped_by: "supplier", order_by: "2026-09-29", overdue: true, orders: 2, products: 2, units: 87, cost: 1252 });
+    expect(meta).toMatchObject({ grouped_by: "supplier", order_by: "2026-09-29", overdue: true, orders: 2, products: 2, units: 89, cost: 1292 });
     expect(meta.order_by_label).toBe("Tue 29 Sep 2026 (17 days ago)");
     expect(meta.lines.map((l) => [l.variant_gid, l.order_qty, l.order_by, l.overdue, l.arrives, l.days_left])).toEqual([
       [V(1), 61, "2026-09-29", true, "2026-10-30", 2],
-      [V(2), 26, "2026-10-16", undefined, "2026-10-30", 20],
+      // Ordered on its own order-by date (tomorrow), not today (audit 2026-10-17).
+      [V(2), 28, "2026-10-17", undefined, "2026-10-31", 20],
     ]);
-    expect(meta.url).toBe("app://app/reorder?variants=1:61,2:26&supplier=supplier:s1");
-    expect(r.totals).toEqual({ suppliers: 1, orders: 2, units: 87, cash: 1252 });
+    expect(meta.url).toBe("app://app/reorder?supplier=supplier:s1&from=2026-10-16&to=2026-10-17");
+    expect(r.totals).toEqual({ suppliers: 1, orders: 2, units: 89, cash: 1292 });
     expect(r.cash_per_week).toBeUndefined();
   });
 

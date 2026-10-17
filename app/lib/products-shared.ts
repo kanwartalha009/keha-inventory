@@ -69,7 +69,13 @@ export type ProductFilters = {
   collection: string | null;
   vendor: string | null;
   q: string | null;
+  /** A Settings → Suppliers id, or "none" (no supplier: grouped by vendor). */
+  supplier?: string | null;
+  /** "title" = product name; default (null) = order-by date when the forecast is on. */
+  sort?: ProductSort | null;
 };
+
+export type ProductSort = "orderBy" | "title";
 
 const clean = (v: string | null): string | null => {
   const s = (v ?? "").trim();
@@ -83,6 +89,8 @@ export function parseFilters(params: URLSearchParams): ProductFilters {
     collection: clean(params.get("collection")),
     vendor: clean(params.get("vendor")),
     q: clean(params.get("q")),
+    supplier: clean(params.get("supplier")),
+    sort: params.get("sort") === "title" ? "title" : params.get("sort") === "orderBy" ? "orderBy" : null,
   };
 }
 
@@ -98,6 +106,8 @@ export function filtersToParams(f: ProductFilters): URLSearchParams {
   if (f.collection) p.set("collection", f.collection);
   if (f.vendor) p.set("vendor", f.vendor);
   if (f.q) p.set("q", f.q);
+  if (f.supplier) p.set("supplier", f.supplier);
+  if (f.sort) p.set("sort", f.sort);
   return p;
 }
 
@@ -139,6 +149,11 @@ export type ProductRow = {
   onOrder: number;
   /** Earliest expected arrival of those orders, "YYYY-MM-DD". */
   onOrderArrival: string | null;
+  /** The merchant marked it "Don't reorder" (never in an order; still in the stock numbers). */
+  noReorder?: boolean;
+  /** Its order-by date has passed (the plan orders it today). */
+  overdue?: boolean;
+  productId?: string;
 };
 
 /** Open Keha order units for one variant (models/reorder.server kehaOnOrder). */

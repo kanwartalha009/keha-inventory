@@ -4,14 +4,25 @@
  * linkable. 13 months of daily sales with sold-out days shaded (inline SVG
  * with an aria-label and a month table as its text fallback), how the
  * forecast was built (VariantMetric.inputs) and the last 14 days of sales.
+ *
+ * Ordering (audit 2026-10-17): "Order by" and "To order" are the forward plan's (the same as
+ * Order now). "Don't reorder" for the whole product or this variant, and the product's own case
+ * size (written to every variant; it wins over the supplier's case pack) — each confirmed, our
+ * database only.
  */
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import { useEffect, useState } from "react";
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
-import { getVariantDetail } from "../models/products.server";
-import { AppPage, FormCard, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import { getVariantDetail, setProductCaseSize } from "../models/products.server";
+import { setNoReorder } from "../models/reorder.server";
+import { AppPage, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import ConfirmModal from "../components/ConfirmModal";
+import { NoReorderConfirm } from "../components/order-plan";
+import { flag, val } from "../components/wc";
+import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
@@ -44,6 +55,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const inputs = readForecastInputs(detail.inputs, detail.sigma);
   return {
     row: detail.row,
+    productId: detail.variant.productId,
+    noReorder: detail.variant.noReorder,
+    productNoReorder: detail.siblings.length > 0 && detail.siblings.every((v) => v.noReorder),
+    variantCount: detail.siblings.length,
+    caseQty: detail.caseQty,
+    trendMode: detail.trendMode,
     vendor: detail.variant.vendor,
     series,
     months: monthlyTotals(series),
@@ -54,10 +71,48 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
 };
 
+export type VariantDetailAction = { ok: true; count: number } | { ok: false; error?: "caseQty" };
+
+/** "Don't reorder" (product or variant) and the product's case size — confirmed in the UI; our database only. */
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const gid = variantGid(params.variantId ?? "");
+  if (!gid) throw new Response("Not found", { status: 404 });
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    throw new Response("Bad request", { status: 400 });
+  }
+  const { features } = await getEntitlements(session.shop);
+  const detail = await getVariantDetail(session.shop, gid, features.forecast);
+  if (!detail) throw new Response("Not found", { status: 404 });
+  if (body.intent === "noReorder") {
+    const target = body.scope === "product" ? { productId: detail.variant.productId } : { variantId: gid };
+    return (await setNoReorder(session.shop, target, body.value !== false)) satisfies VariantDetailAction;
+  }
+  if (body.intent === "caseQty") {
+    const raw = body.caseQty;
+    const n = raw === null || raw === "" ? null : Number(raw);
+    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 10_000)) return { ok: false, error: "caseQty" } satisfies VariantDetailAction;
+    // 1 = no case size (single units): stored as none, so the supplier's case pack applies again.
+    return (await setProductCaseSize(session.shop, detail.variant.productId, n === null || n <= 1 ? null : n)) satisfies VariantDetailAction;
+  }
+  throw new Response("Bad request", { status: 400 });
+};
+
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 export type VariantDetailData = {
   row: ProductRow;
+  productId?: string;
+  /** This variant / every variant of the product is marked "Don't reorder". */
+  noReorder?: boolean;
+  productNoReorder?: boolean;
+  variantCount?: number;
+  /** The product's own case size (null: the supplier's case pack applies). */
+  caseQty?: number | null;
+  trendMode?: TrendMode;
   vendor: string | null;
   series: ChartDay[];
   months: MonthTotal[];
@@ -83,7 +138,7 @@ export default function VariantDetailPage() {
     >
       {!forecast && <UpgradeBanner feature="forecast" />}
 
-      <FormCard title={t("Stock")} sub={t("Online stock pool: active locations that fulfil online orders.")}>
+      <FormCard title={t("Stock")} sub={t("Stock counted in supplier orders: the active locations that fulfil online orders.")}>
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">
@@ -116,14 +171,31 @@ export default function VariantDetailPage() {
                 )
               }
             />
-            <KvRow label={t("Order by")} value={forecast ? formatDay(row.orderBy, locale) : locked} />
-            <KvRow label={t("Suggested qty")} value={forecast ? formatCount(row.orderQty, locale) : locked} />
+            <KvRow
+              label={t("Order by")}
+              value={
+                !forecast ? (
+                  locked
+                ) : (
+                  <span className="keha-inline">
+                    <span>{formatDay(row.orderBy, locale)}</span>
+                    {row.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+                  </span>
+                )
+              }
+            />
+            <KvRow
+              label={t("To order")}
+              value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Not reordered")}</s-badge> : formatCount(row.orderQty, locale)}
+            />
           </div>
         </div>
       </FormCard>
 
+      <OrderingCard data={data} />
+
       <SalesChart series={data.series} months={data.months} />
-      <ForecastInputs inputs={data.inputs} forecast={forecast} />
+      <ForecastInputs inputs={data.inputs} forecast={forecast} trendMode={data.trendMode ?? "off"} />
       <RecentSales recent={data.recent} />
     </AppPage>
   );
@@ -204,7 +276,7 @@ function monthName(month: string, locale: string): string {
   }
 }
 
-function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | null; forecast: boolean }) {
+function ForecastInputs({ inputs, forecast, trendMode }: { inputs: ForecastInputsView | null; forecast: boolean; trendMode: TrendMode }) {
   const { t, locale } = useLocale();
   const num = (v: number | null, digits = 1) =>
     v === null ? "—" : new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v);
@@ -251,7 +323,13 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
             />
             <KvRow
               label={t("Trend")}
-              value={isNeutralMultiplier(inputs.trend) ? t("No seasonal data yet") : `× ${num(inputs.trend, 2)}`}
+              value={
+                trendMode === "off"
+                  ? t("Not applied (growth assumption off)")
+                  : isNeutralMultiplier(inputs.trend)
+                    ? t("No change from last year")
+                    : `× ${num(inputs.trend, 2)}`
+              }
             />
             <KvRow
               label={t("Supplier lead time")}
@@ -266,7 +344,7 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
               }
             />
             <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(t("{n} days"), { n: num(inputs.cycleDays, 0) })} />
-            <KvRow label={t("Service level factor (z)")} value={!forecast ? locked : num(inputs.z, 2)} />
+            <KvRow label={t("Safety level")} value={!forecast ? locked : num(inputs.z, 2)} />
             <KvRow
               label={t("Safety stock")}
               value={!forecast ? locked : inputs.safety === null ? "—" : fill(t("{n} units"), { n: num(inputs.safety, 0) })}
@@ -277,6 +355,90 @@ function ForecastInputs({ inputs, forecast }: { inputs: ForecastInputsView | nul
           </s-text>
         </s-stack>
       )}
+    </FormCard>
+  );
+}
+
+/** Ordering: "Don't reorder" for the product or this variant, and the product's own case size. */
+function OrderingCard({ data }: { data: VariantDetailData }) {
+  const { t, locale } = useLocale();
+  const fetcher = useFetcher<VariantDetailAction>();
+  const saved = data.caseQty && data.caseQty > 1 ? String(data.caseQty) : "";
+  const [caseQty, setCaseQty] = useState(saved);
+  const [confirmCase, setConfirmCase] = useState(false);
+  const [ask, setAsk] = useState<null | { scope: "product" | "variant"; value: boolean }>(null);
+  useEffect(() => setCaseQty(saved), [saved]);
+  const variant = variantName(data.row.variantTitle);
+  const name = [data.row.productTitle, variant].filter(Boolean).join(" — ");
+  const n = caseQty.trim() === "" ? null : Number(caseQty);
+  const invalid = n !== null && !(Number.isInteger(n) && n >= 1 && n <= 10_000);
+  const saving = fetcher.state !== "idle";
+  const count = data.variantCount ?? 1;
+  const status = data.productNoReorder
+    ? t("This product is set to Don't reorder: it stays in your stock numbers but is never in an order.")
+    : data.noReorder
+      ? t("This variant is set to Don't reorder: it stays in your stock numbers but is never in an order.")
+      : t("Reordered as planned.");
+  return (
+    <FormCard title={t("Ordering")} sub={t("Leave a product out of every order, or set its own case size.")}>
+      <s-stack direction="block" gap="base">
+        <s-stack direction="block" gap="small-200">
+          <s-text>{status}</s-text>
+          <s-stack direction="inline" gap="small-200">
+            {data.productNoReorder || data.noReorder ? (
+              <s-button onClick={() => setAsk({ scope: data.productNoReorder ? "product" : "variant", value: false })}>{t("Reorder again")}</s-button>
+            ) : (
+              <>
+                <s-button onClick={() => setAsk({ scope: "product", value: true })}>{t("Don't reorder this product")}</s-button>
+                {count > 1 && <s-button variant="tertiary" onClick={() => setAsk({ scope: "variant", value: true })}>{t("Don't reorder this variant")}</s-button>}
+              </>
+            )}
+          </s-stack>
+        </s-stack>
+        <FormSaveBar
+          id="keha-product-case"
+          dirty={caseQty !== saved}
+          saving={saving}
+          onSave={() => (invalid ? undefined : setConfirmCase(true))}
+          onDiscard={() => setCaseQty(saved)}
+        />
+        <s-number-field
+          label={t("Case size")}
+          details={t("Units per case for this product, used for all its variants. It wins over the supplier's case pack. Leave empty to use the supplier's.")}
+          value={caseQty}
+          min={1}
+          step={1}
+          error={invalid || (fetcher.data && !fetcher.data.ok) ? t("Enter a whole number from 1 to 10,000.") : undefined}
+          disabled={flag(saving)}
+          onInput={(e) => setCaseQty(val(e))}
+        />
+      </s-stack>
+      <ConfirmModal
+        open={confirmCase}
+        destructive={false}
+        title={n && n > 1 ? fill(t("Set the case size to {n}?"), { n: formatCount(n, locale) }) : t("Use the supplier's case pack?")}
+        message={fill(count === 1 ? t("This applies to the product's only variant. Order quantities are rounded to it from now on.") : t("This applies to all {n} variants of the product. Order quantities are rounded to it from now on."), {
+          n: formatCount(count, locale),
+        })}
+        confirmLabel={t("Save")}
+        onCancel={() => setConfirmCase(false)}
+        onConfirm={() => {
+          setConfirmCase(false);
+          fetcher.submit({ intent: "caseQty", caseQty: n } as never, { method: "post", encType: "application/json" });
+        }}
+      />
+      <NoReorderConfirm
+        open={!!ask}
+        name={ask?.scope === "product" ? data.row.productTitle : name}
+        value={ask?.value ?? true}
+        scope={ask?.scope ?? "product"}
+        onCancel={() => setAsk(null)}
+        onConfirm={() => {
+          const a = ask;
+          setAsk(null);
+          if (a) fetcher.submit({ intent: "noReorder", scope: a.scope, value: a.value } as never, { method: "post", encType: "application/json" });
+        }}
+      />
     </FormCard>
   );
 }

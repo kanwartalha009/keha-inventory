@@ -3,7 +3,7 @@
  * Dashboard and Order plan SSR tests: two suppliers, one vendor group, one overdue line, one
  * line without a cost.
  */
-import { eventsOf, planDays, planVariant, type ForwardVariantInput, type PlanEvent } from "../app/lib/engine/forward-plan-shared";
+import { eventsOf, planDays, planStore, planVariant, type ForwardVariantInput, type PlanEvent } from "../app/lib/engine/forward-plan-shared";
 import { demand } from "../app/lib/engine/order-shared";
 import type { OrderPlanData, PlanVariantInfo } from "../app/lib/order-plan-shared";
 
@@ -49,12 +49,74 @@ export function orderPlanFixture(over: Partial<OrderPlanData> = {}): OrderPlanDa
     events,
     variants,
     suppliers: {
-      "supplier:s1": { key: "supplier:s1", kind: "supplier", supplierId: "s1", name: "Lisbon Linen" },
-      "supplier:s2": { key: "supplier:s2", kind: "supplier", supplierId: "s2", name: "Cap Co" },
-      "vendor:acme": { key: "vendor:acme", kind: "vendor", supplierId: null, name: "Acme" },
+      "supplier:s1": { key: "supplier:s1", kind: "supplier", supplierId: "s1", name: "Lisbon Linen", leadTimeDays: 14, leadTimeSource: "supplier", cycleDays: 14 },
+      "supplier:s2": { key: "supplier:s2", kind: "supplier", supplierId: "s2", name: "Cap Co", leadTimeDays: 14, leadTimeSource: "supplier", cycleDays: 14 },
+      "vendor:acme": { key: "vendor:acme", kind: "vendor", supplierId: null, name: "Acme", leadTimeDays: 14, leadTimeSource: "default", cycleDays: 14 },
     },
     suppliersSetUp: true,
     cantPlan: { noData: 12, dead: 1 },
     ...over,
+  };
+}
+
+/**
+ * Order now's plan: Acme Textiles (case pack 6, order minimum 40 units) with a two-size shirt
+ * (one size overdue, one due in two days), a tote without a cost and a sock due in 8 days
+ * (it can join this order); a vendor group (Beta) with an overdue beanie. Built with the real
+ * planStore, so the minimums and top-ups are the plan's own.
+ */
+export function orderNowFixture(over: { minOrderTotal?: number | null } = {}): OrderPlanData {
+  const minTotal = over.minOrderTotal === undefined ? 40 : over.minOrderTotal;
+  const rows: { n: number; product: string; variant: string; key: string; cost: number | null; pack: number | null; over: Partial<ForwardVariantInput> }[] = [
+    { n: 1, product: "Linen shirt", variant: "S", key: "supplier:s1", cost: 2.5, pack: 6, over: { onHand: 5 } },
+    { n: 2, product: "Linen shirt", variant: "M", key: "supplier:s1", cost: 2.5, pack: 6, over: { onHand: 60, rate: 3 } },
+    { n: 4, product: "Canvas tote", variant: "Default Title", key: "supplier:s1", cost: null, pack: 6, over: { onHand: 10, rate: 1 } },
+    { n: 3, product: "Wool sock", variant: "Default Title", key: "supplier:s1", cost: 1, pack: 6, over: { onHand: 32, rate: 1 } },
+    { n: 5, product: "Wool beanie", variant: "Default Title", key: "vendor:beta", cost: 3.2, pack: null, over: { onHand: 20 } },
+  ];
+  const productOf = (n: number) => (n === 2 ? "P1" : `P${n}`);
+  const specs = rows.map((r) => ({
+    variantId: V(r.n),
+    productId: productOf(r.n),
+    supplierKey: r.key,
+    unitCost: r.cost,
+    weight: r.over.rate ?? 2,
+    input: input({ ...r.over, pack: r.pack }),
+  }));
+  const plan = planStore(specs, { "supplier:s1": { styleMin: null, minTotal: minTotal, minValue: null } }, PLAN_TODAY);
+  const variants: Record<string, PlanVariantInfo> = {};
+  for (const r of rows) {
+    variants[V(r.n)] = {
+      variantId: V(r.n),
+      productId: productOf(r.n),
+      productTitle: r.product,
+      variantTitle: r.variant,
+      sku: `SKU-${r.n}`,
+      image: null,
+      daysLeft: (r.over.onHand ?? 100) / (r.over.rate ?? 2),
+      neverRunsOut: false,
+      deadline: plan.variants.get(V(r.n))?.deadline ?? null,
+      valuePerDay: (r.over.rate ?? 2) * 25,
+      rate: r.over.rate ?? 2,
+      unitCostSupplier: r.cost,
+      pack: r.pack,
+      moq: null,
+    };
+  }
+  return {
+    today: PLAN_TODAY,
+    currency: "EUR",
+    timezone: "Europe/Madrid",
+    events: plan.events,
+    variants,
+    suppliers: {
+      "supplier:s1": { key: "supplier:s1", kind: "supplier", supplierId: "s1", name: "Acme Textiles", currency: "EUR", exchangeRate: null, minOrderTotal: minTotal, minOrderValue: null, minOrderValueStore: null, minOrder: null, minOrderScope: "variant", leadTimeDays: 14, leadTimeSource: "supplier", hasEmail: true, cycleDays: 14 },
+      "vendor:beta": { key: "vendor:beta", kind: "vendor", supplierId: null, name: "Beta", currency: "EUR", leadTimeDays: 14, leadTimeSource: "default", cycleDays: 14 },
+    },
+    suppliersSetUp: true,
+    cantPlan: { noData: 0, dead: 0 },
+    batches: plan.batches,
+    staleDrafts: 0,
+    notReordered: 0,
   };
 }

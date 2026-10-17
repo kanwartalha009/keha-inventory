@@ -1,17 +1,25 @@
 /**
  * Products (/app/products) — spec §5.2. One row per variant, 50 per page
- * (server-side, URL params), filters for status / collection / vendor and a
- * search. Forecast columns (days left, order by, suggested qty) are the
- * Growth `forecast` feature: on Free they stay visible but locked and empty
+ * (server-side, URL params), filters for status / collection / vendor /
+ * supplier and a search. Forecast columns (days left, order by, to order) are
+ * the Growth `forecast` feature: on Free they stay visible but locked and empty
  * (plan locks teach, they don't hide). CSV export is Growth (`csvExport`).
+ *
+ * "To order" and "Order by" come from the forward plan — the same orders as
+ * Order now (ordering audit 2026-10-17) — and the table is sorted by order-by
+ * date by default (forecast on). Row action: "Don't reorder" (with a confirm;
+ * our database only): the variant or product leaves every order and shows
+ * "Not reordered"; it stays in the stock numbers.
  */
 import { useState } from "react";
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useNavigation, useSearchParams } from "react-router";
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
-import { listProducts, productFilterOptions } from "../models/products.server";
+import { listProducts, productFilterOptions, supplierFilterOptions } from "../models/products.server";
+import { setNoReorder } from "../models/reorder.server";
+import { NoReorderConfirm } from "../components/order-plan";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
@@ -48,14 +56,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     activeLocations(session.shop),
   ]);
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
-  const [page, options] = await Promise.all([
+  const [page, options, suppliers] = await Promise.all([
     listProducts(session.shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
     productFilterOptions(session.shop),
+    supplierFilterOptions(session.shop),
   ]);
   return {
     ...page,
     filters,
-    options,
+    options: { ...options, suppliers },
     forecast: features.forecast,
     csv: features.csvExport,
     locationsEnabled: features.locations,
@@ -65,6 +74,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+const VARIANT_GID = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
+const PRODUCT_GID = /^gid:\/\/shopify\/Product\/\d+$/;
+
+export type ProductsAction = { ok: true; count: number } | { ok: false };
+
+/** "Don't reorder" / "Reorder again" for a variant or its whole product (confirmed in the UI; our database only). */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    throw new Response("Bad request", { status: 400 });
+  }
+  if (body.intent !== "noReorder") throw new Response("Bad request", { status: 400 });
+  const target =
+    typeof body.productId === "string" && PRODUCT_GID.test(body.productId)
+      ? { productId: body.productId }
+      : typeof body.variantId === "string" && VARIANT_GID.test(body.variantId)
+        ? { variantId: body.variantId }
+        : null;
+  if (!target) throw new Response("Bad request", { status: 400 });
+  return (await setNoReorder(session.shop, target, body.value !== false)) satisfies ProductsAction;
+};
+
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 export type ProductsData = {
@@ -72,7 +106,7 @@ export type ProductsData = {
   total: number;
   info: PageInfo;
   filters: ProductFilters;
-  options: { vendors: string[]; collections: string[] };
+  options: { vendors: string[]; collections: string[]; suppliers?: { id: string; name: string }[] };
   forecast: boolean;
   csv: boolean;
   /** Pro `locations`: the switcher works (otherwise shown locked). */
@@ -85,7 +119,7 @@ export type ProductsData = {
   locationCount: number;
 };
 
-type FilterKey = "status" | "collection" | "vendor" | "q";
+type FilterKey = "status" | "collection" | "vendor" | "q" | "supplier" | "sort";
 
 export default function Products() {
   const { t, locale } = useLocale();
@@ -113,7 +147,8 @@ export default function Products() {
     else next.set("page", String(page));
     setParams(next);
   };
-  const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.q);
+  const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.q || filters.supplier);
+  const suppliers = options.suppliers ?? [];
   const locked = !forecast;
 
   // Forecast columns on Free: the short label plus a compact lock badge with the plan name.
@@ -191,6 +226,31 @@ export default function Products() {
                     onChange={(v) => apply({ vendor: v })}
                   />
                 )}
+                {suppliers.length > 0 && (
+                  <SelectField
+                    label={t("Supplier")}
+                    labelHidden
+                    value={filters.supplier ?? ""}
+                    options={[
+                      { value: "", label: t("All suppliers") },
+                      ...suppliers.map((x) => ({ value: x.id, label: x.name })),
+                      { value: "none", label: t("No supplier") },
+                    ]}
+                    onChange={(v) => apply({ supplier: v })}
+                  />
+                )}
+                {forecast && (
+                  <SelectField
+                    label={t("Sort")}
+                    labelHidden
+                    value={filters.sort === "title" ? "title" : "orderBy"}
+                    options={[
+                      { value: "orderBy", label: t("Sort: order-by date") },
+                      { value: "title", label: t("Sort: product name") },
+                    ]}
+                    onChange={(v) => apply({ sort: v === "title" ? "title" : "" })}
+                  />
+                )}
               </>
             }
           />
@@ -213,7 +273,10 @@ export default function Products() {
               <HeaderLabel id="keha-col-by" label={t("Order by")} badge={lockBadge} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("Suggested qty")} badge={lockBadge} />
+              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("The next planned order (the same as Order now)")} badge={lockBadge} />
+            </s-table-header>
+            <s-table-header>
+              <HeaderLabel id="keha-col-act" label={t("Actions")} />
             </s-table-header>
           </s-table-header-row>
           <s-table-body>
@@ -258,9 +321,13 @@ export default function Products() {
 function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: string }) {
   const { t } = useLocale();
   const link = useLinkProps();
+  const fetcher = useFetcher<ProductsAction>();
+  const [ask, setAsk] = useState<null | { scope: "product" | "variant"; value: boolean }>(null);
   const variant = variantName(r.variantTitle);
   const sub = [variant, r.sku].filter(Boolean).join(" · ");
   const left = daysLeftView(r);
+  const name = [r.productTitle, variant].filter(Boolean).join(" — ");
+  const menuId = `keha-prod-menu-${r.numericId}`;
   return (
     <s-table-row>
       <s-table-cell>
@@ -300,8 +367,44 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
           "—"
         )}
       </s-table-cell>
-      <s-table-cell>{locked ? "" : formatDay(r.orderBy, locale)}</s-table-cell>
-      <s-table-cell>{locked ? "" : formatCount(r.orderQty, locale)}</s-table-cell>
+      <s-table-cell>
+        {locked ? (
+          ""
+        ) : (
+          <span className="keha-inline">
+            <span>{formatDay(r.orderBy, locale)}</span>
+            {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+          </span>
+        )}
+      </s-table-cell>
+      <s-table-cell>{locked ? "" : r.noReorder ? <s-badge tone="neutral">{t("Not reordered")}</s-badge> : formatCount(r.orderQty, locale)}</s-table-cell>
+      <s-table-cell>
+        <s-button variant="tertiary" icon="menu-horizontal" commandFor={menuId} accessibilityLabel={`${t("More actions")}: ${name}`} />
+        <s-menu id={menuId} accessibilityLabel={t("More actions")}>
+          {r.noReorder ? (
+            <s-button onClick={() => setAsk({ scope: "variant", value: false })}>{t("Reorder again")}</s-button>
+          ) : (
+            <>
+              <s-button onClick={() => setAsk({ scope: "variant", value: true })}>{t("Don't reorder this variant")}</s-button>
+              {r.productId && <s-button onClick={() => setAsk({ scope: "product", value: true })}>{t("Don't reorder this product")}</s-button>}
+            </>
+          )}
+        </s-menu>
+        <NoReorderConfirm
+          open={!!ask}
+          name={ask?.scope === "product" ? r.productTitle : name}
+          value={ask?.value ?? true}
+          scope={ask?.scope ?? "variant"}
+          onCancel={() => setAsk(null)}
+          onConfirm={() => {
+            const a = ask;
+            setAsk(null);
+            if (!a) return;
+            const target = a.scope === "product" && r.productId ? { productId: r.productId } : { variantId: r.id };
+            fetcher.submit({ intent: "noReorder", ...target, value: a.value } as never, { method: "post", encType: "application/json" });
+          }}
+        />
+      </s-table-cell>
     </s-table-row>
   );
 }

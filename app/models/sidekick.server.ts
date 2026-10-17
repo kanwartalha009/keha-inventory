@@ -9,6 +9,7 @@ import prisma from "../db.server";
 import { METRIC_SCOPE, toProductRow, type ProductRow } from "../lib/products-shared";
 import { readSettings } from "../lib/settings-shared";
 import { kehaOnOrder, poolStock } from "./reorder.server";
+import { planView, withPlan } from "./products.server";
 
 /** Keha orders that count as "on order" (same as Products: drafts aren't ordered yet). */
 const ON_ORDER_STATUSES = ["sent", "confirmed"] as const;
@@ -18,7 +19,9 @@ export type FoundVariant = ProductRow & { productId: string };
 /**
  * Tracked, non-bundle variants matching every word (in the product title, the
  * variant title or the SKU, any case): "blue hoodie" finds "Hoodie / Blue".
- * Returns at most `take` rows and the number of matches.
+ * Returns at most `take` rows and the number of matches. "To order" and the
+ * order-by date are the forward plan's (the same as Order now and Products);
+ * a variant marked "Don't reorder" has none.
  */
 export async function searchVariantStock(
   shop: string,
@@ -43,25 +46,26 @@ export async function searchVariantStock(
     prisma.variant.count({ where }),
     prisma.variant.findMany({
       where,
-      select: { id: true, productId: true, productTitle: true, variantTitle: true, sku: true, vendor: true, image: true },
+      select: { id: true, productId: true, productTitle: true, variantTitle: true, sku: true, vendor: true, image: true, noReorder: true },
       orderBy: [{ productTitle: "asc" }, { variantTitle: "asc" }, { id: "asc" }],
       take,
     }),
   ]);
   if (!variants.length) return { rows: [], total };
   const ids = variants.map((v) => v.id);
-  const [metrics, stock, onOrder] = await Promise.all([
+  const [metrics, stock, onOrder, view] = await Promise.all([
     prisma.variantMetric.findMany({
       where: { shop, scope: METRIC_SCOPE, variantId: { in: ids } },
       select: { variantId: true, status: true, rate: true, daysLeft: true, neverRunsOut: true, orderQty: true, orderBy: true },
     }),
     poolStock(shop, ids),
     kehaOnOrder(shop, ON_ORDER_STATUSES, ids),
+    forecast ? planView(shop) : Promise.resolve(null),
   ]);
   const byId = new Map(metrics.map((m) => [m.variantId, m]));
   return {
     rows: variants.map((v) => ({
-      ...toProductRow(v, byId.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)),
+      ...withPlan(toProductRow(v, byId.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)), view, !!v.noReorder),
       productId: v.productId,
     })),
     total,

@@ -14,6 +14,8 @@ const m = vi.hoisted(() => ({
   allProducts: vi.fn(),
   loadReorder: vi.fn(),
   createOrderFromGroup: vi.fn(),
+  setNoReorder: vi.fn(async () => ({ ok: true, count: 2 })),
+  scenarioPlanned: vi.fn(async () => new Map([["gid://shopify/ProductVariant/5", 40]])),
   listPlanningLocations: vi.fn(),
   activeLocations: vi.fn(),
 }));
@@ -35,9 +37,15 @@ vi.mock("../app/models/products.server", () => ({
   listProducts: m.listProducts,
   allProducts: m.allProducts,
   productFilterOptions: async () => ({ vendors: [], collections: [] }),
+  supplierFilterOptions: async () => [],
 }));
 vi.mock("../app/models/locations.server", () => ({ listPlanningLocations: m.listPlanningLocations, activeLocations: m.activeLocations }));
-vi.mock("../app/models/reorder.server", () => ({ loadReorder: m.loadReorder, createOrderFromGroup: m.createOrderFromGroup }));
+vi.mock("../app/models/reorder.server", () => ({
+  loadReorder: m.loadReorder,
+  createOrderFromGroup: m.createOrderFromGroup,
+  setNoReorder: m.setNoReorder,
+  scenarioPlanned: m.scenarioPlanned,
+}));
 vi.mock("../app/models/transfers.server", () => ({
   loadTransfers: async () => ({ groups: [], recent: [], hasWarehouse: true, hasStore: true }),
 }));
@@ -116,6 +124,22 @@ describe("server: ?location", () => {
     m.locations = false;
     await post(body);
     expect(m.createOrderFromGroup.mock.calls[1]![3]).toEqual({ scope: "online", note: null });
+  });
+
+  it("Order now's links are resolved on the server: a supplier + date range, a Season plan scenario", async () => {
+    await reorderLoader(args("https://app.test/app/reorder?supplier=supplier:s1&from=2026-10-16&to=2026-10-22"));
+    expect(m.loadReorder.mock.calls[0]![5]).toEqual({ supplierKey: "supplier:s1", from: "2026-10-16", to: "2026-10-22" });
+    await reorderLoader(args("https://app.test/app/reorder?scenario=sc1&group=supplier:s1"));
+    expect(m.scenarioPlanned).toHaveBeenCalledWith("acme.myshopify.com", "sc1", "supplier:s1");
+    expect([...(m.loadReorder.mock.calls[1]![3] as Map<string, number>)]).toEqual([["gid://shopify/ProductVariant/5", 40]]);
+  });
+
+  it("Don't reorder this product (line menu, confirmed): our database only", async () => {
+    const post = (body: unknown) =>
+      reorderAction(args("https://app.test/app/reorder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+    expect(await post({ intent: "noReorder", productId: "gid://shopify/Product/7", value: true })).toEqual({ ok: true, intent: "noReorder", count: 2 });
+    expect(m.setNoReorder).toHaveBeenCalledWith("acme.myshopify.com", { productId: "gid://shopify/Product/7" }, true);
+    await expect(post({ intent: "noReorder", productId: "x" })).rejects.toBeInstanceOf(Response);
   });
 });
 
@@ -216,7 +240,7 @@ describe("SSR: the switcher", () => {
       transfers: { enabled: true, groups: [], recent: [], hasWarehouse: true, hasStore: true },
     };
     const html = render("/app/reorder?location=2", "reorder", Reorder, d);
-    expect(html).toContain("What Barcelona needs, from each supplier");
+    expect(html).toContain("What Barcelona needs to order in the next 7 days");
     expect(html).toContain("Barcelona · Store");
   });
 });

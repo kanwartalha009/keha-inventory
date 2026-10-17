@@ -67,8 +67,13 @@ describe("status", () => {
 describe("filters and paging", () => {
   it("parses known values and drops unknown statuses", () => {
     const f = parseFilters(new URLSearchParams("status=bogus&vendor=%20Acme%20&q=&collection=Summer"));
-    expect(f).toEqual({ status: null, collection: "Summer", vendor: "Acme", q: null });
+    expect(f).toEqual({ status: null, collection: "Summer", vendor: "Acme", q: null, supplier: null, sort: null });
     expect(parseFilters(new URLSearchParams("status=too_much")).status).toBe("too_much");
+  });
+  it("supplier filter and sort (order-by date is the default; product name on request)", () => {
+    expect(parseFilters(new URLSearchParams("supplier=s1&sort=title"))).toMatchObject({ supplier: "s1", sort: "title" });
+    expect(parseFilters(new URLSearchParams("sort=bogus")).sort).toBeNull();
+    expect(filtersToParams({ status: null, collection: null, vendor: null, q: null, supplier: "none", sort: "title" }).toString()).toBe("supplier=none&sort=title");
   });
   it("round-trips to a query string without the page", () => {
     const p = filtersToParams({ status: "dead", collection: null, vendor: "A&B", q: "shirt" });

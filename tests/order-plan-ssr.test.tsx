@@ -21,7 +21,7 @@ import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
 import { loadOrderPlan } from "../app/models/order-plan.server";
 import { featureMap } from "../app/lib/plan-shared";
-import { EMPTY_ORDER_PLAN, formatWeekRange, orderLink, planCsv, planWeeks, previewRows, supplierName, thisWeek } from "../app/lib/order-plan-shared";
+import { EMPTY_ORDER_PLAN, aboveLastYear, dueText, formatWeekRange, lastYearLine, lockTeaser, orderLink, planCsv, planWeeks, previewRows, supplierName, thisWeek, whyLines } from "../app/lib/order-plan-shared";
 import { translate } from "../app/lib/i18n";
 import { PLAN_TODAY, orderPlanFixture } from "./order-plan-fixtures";
 
@@ -41,8 +41,12 @@ describe("Next 90 days", () => {
     expect(html).toContain("Overdue");
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Create order");
-    // Create order → Order now with the lines at their planned quantities, that supplier only.
-    expect(html).toMatch(/href="\/app\/reorder\?variants=1:61,2:\d+&amp;supplier=supplier:s1"/);
+    // Create order → Order now with that supplier's orders of the week (resolved on the server).
+    expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
+    // Each line: its real deadline and "Why this quantity" from the plan's own terms.
+    expect(html).toContain("Overdue since Sep 29");
+    expect(html).toContain("Due Oct 17");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 = 61");
     // Unknown costs are counted, never 0.
     expect(html).toMatch(/\d+ lines without a cost price are not in the cash totals\./);
     expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
@@ -72,6 +76,8 @@ describe("Next 90 days", () => {
   });
 });
 
+const cashOf = (p: { events: { cost: number | null }[] }) => Math.round(p.events.reduce((a, e) => a + (e.cost ?? 0), 0) * 100) / 100;
+
 describe("order-plan-shared", () => {
   const plan = orderPlanFixture();
 
@@ -87,6 +93,46 @@ describe("order-plan-shared", () => {
     expect(thisWeek({ ...plan, events: [] }).next).toBeNull();
   });
 
+  it("due dates: Due today only when it is, Due 27 Oct, Overdue since 12 Oct", () => {
+    const t = (x: string) => x;
+    expect(dueText("2026-10-16", "2026-10-16", t, "en")).toBe("Due today");
+    expect(dueText("2026-10-27", "2026-10-16", t, "en")).toBe("Due Oct 27");
+    expect(dueText("2026-10-12", "2026-10-16", t, "en")).toBe("Overdue since Oct 12");
+    expect(dueText(null, "2026-10-16", t, "en")).toBe("—");
+    expect(dueText("2026-10-27", "2026-10-16", (x) => translate("de", x), "de")).toBe("Bis 27. Okt.");
+  });
+
+  it("Why this quantity: the plan's terms, the rounding and the top-up, in the admin language", () => {
+    const why = { day: 0, days: 28, demand: 56, rate: 2, season: 1.2, growth: 1, safety: 10, onHand: 5, onOrder: 3, need: 58, rounded: 60, pack: 12, moq: 50, topUp: 12 };
+    const t = (x: string) => x;
+    expect(whyLines(why, t, "en")).toEqual([
+      "Forecast for the next 28 days: 56 (sales per day 2, season ×1.2) + safety 10 − on hand 5 − on order 3 = 58",
+      "→ rounded to 60 (case pack 12 / minimum 50)",
+      "+ 12 to reach the supplier's minimum order = 72",
+    ]);
+    expect(whyLines({ ...why, day: 9, growth: 1.25, pack: null, moq: null, topUp: 0 }, t, "en")).toEqual([
+      "Forecast for the 28 days from this order: 56 (sales per day 2, season ×1.2) + safety 10 − stock expected then 5 − on order 3 = 58",
+      "Growth assumption ×1.25 included in the forecast.",
+      "→ rounded to 60",
+    ]);
+    expect(whyLines(why, (x) => translate("de", x), "de")[0]).toContain("Prognose für die nächsten 28 Tage");
+  });
+
+  it("last year's same weeks: the number, or — without history; a warning above 1.5×", () => {
+    const t = (x: string) => x;
+    expect(lastYearLine(40, t, "en")).toBe("Sold in the same weeks last year: 40");
+    expect(lastYearLine(null, t, "en")).toBe("Sold in the same weeks last year: — (no history yet)");
+    expect(aboveLastYear(61, 40)).toBe(true);
+    expect(aboveLastYear(60, 40)).toBe(false);
+    expect(aboveLastYear(61, null)).toBe(false);
+  });
+
+  it("the Free lock's numbers: products beyond the preview, suppliers, 13-week cash", () => {
+    expect(lockTeaser(plan, 2)).toEqual({ more: 2, suppliers: 3, cash: cashOf(plan), missingCost: plan.events.filter((e) => e.cost === null).length });
+    expect(lockTeaser(plan)).toBeNull(); // all four products are in the top 10
+    expect(lockTeaser({ ...plan, events: [] })).toBeNull();
+  });
+
   it("13 calendar weeks, 12 on the Dashboard", () => {
     expect(planWeeks(plan)).toHaveLength(13);
     expect(planWeeks(plan, 12)).toHaveLength(12);
@@ -100,9 +146,10 @@ describe("order-plan-shared", () => {
     expect(previewRows(plan, 2)).toHaveLength(2);
   });
 
-  it("links sum one variant's orders and keep the supplier", () => {
-    const e = (n: number, qty: number) => ({ variantId: `gid://shopify/ProductVariant/${n}`, qty, supplierKey: "supplier:s1" });
-    expect(orderLink([e(1, 5), e(2, 3), e(1, 4)], "supplier:s1")).toBe("/app/reorder?variants=1:9,2:3&supplier=supplier:s1");
+  it("links name the supplier and the order-by range (resolved on the server, never truncated)", () => {
+    const e = (orderBy: string) => ({ orderBy, supplierKey: "supplier:s1" });
+    expect(orderLink([e("2026-10-18"), e("2026-10-16"), e("2026-10-20")], "supplier:s1")).toBe("/app/reorder?supplier=supplier:s1&from=2026-10-16&to=2026-10-20");
+    expect(orderLink([e("2026-10-18")])).toBe("/app/reorder?supplier=supplier:s1&from=2026-10-18&to=2026-10-18");
     expect(orderLink([])).toBe("/app/reorder");
   });
 
@@ -136,15 +183,17 @@ describe("loaders: the plan gates on the server too", () => {
     vi.mocked(loadOrderPlan).mockResolvedValue(orderPlanFixture());
   };
 
-  it("Next 90 days: Growth loads the plan; Free gets nothing", async () => {
+  it("Next 90 days: Growth loads the plan; Free gets only the teaching totals", async () => {
     as("growth");
     expect((await calendarLoader(args("https://app.test/app/reorder/calendar"))).plan.events.length).toBeGreaterThan(0);
     as("free");
-    vi.mocked(loadOrderPlan).mockClear();
     const free = await calendarLoader(args("https://app.test/app/reorder/calendar"));
     expect(free.enabled).toBe(false);
+    // No order, product or variant reaches the browser — only the merchant's own totals.
     expect(free.plan.events).toEqual([]);
-    expect(loadOrderPlan).not.toHaveBeenCalled();
+    expect(free.plan.variants).toEqual({});
+    // Four products, all inside the Free top 10: nothing more to tease.
+    expect(free.teaser).toBeNull();
   });
 
   it("CSV: Growth downloads the plan in the store language; Free gets the upgrade answer", async () => {

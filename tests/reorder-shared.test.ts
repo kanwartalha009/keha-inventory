@@ -1,20 +1,24 @@
-/** Reorder plan (spec §5.3, J3): case packs, per-line and per-order minimums, grouping. */
+/** Order now (spec §5.3, J3; audit 2026-10-17): case packs, minimums, the plan's orders grouped by supplier and style. */
 import { describe, expect, it } from "vitest";
 import {
-  buildReorderGroups,
+  buildOrderNow,
   groupTitle,
   groupTotals,
   lineQuantity,
   minimumWarnings,
+  orderTotals,
   parseVariantsParam,
   parseVariantsWithQty,
+  productRuns,
   readQty,
   topUpToMinimum,
   unitCostIn,
-  type ReorderMetricIn,
   type ReorderSupplierIn,
   type ReorderVariantIn,
 } from "../app/lib/reorder-shared";
+import { dueWithin } from "../app/lib/engine/forward-plan-shared";
+import { lineCosts, linkedEvents, readOrderLink } from "../app/lib/order-plan-shared";
+import { orderNowFixture } from "./order-plan-fixtures";
 
 describe("lineQuantity", () => {
   it("rounds up to the case pack, then raises to the MOQ rounded to the pack", () => {
@@ -95,14 +99,6 @@ const variant = (n: number, over: Partial<ReorderVariantIn> = {}): ReorderVarian
   costCurrency: "EUR",
   ...over,
 });
-const metric = (orderQty: number | null, over: Partial<ReorderMetricIn> = {}): ReorderMetricIn => ({
-  orderQty,
-  orderBy: "2026-11-12",
-  daysLeft: 20,
-  neverRunsOut: false,
-  rate: 1,
-  ...over,
-});
 const supplier = (over: Partial<ReorderSupplierIn> = {}): ReorderSupplierIn => ({
   id: "s1",
   name: "Acme Textiles",
@@ -115,162 +111,100 @@ const supplier = (over: Partial<ReorderSupplierIn> = {}): ReorderSupplierIn => (
   hasEmail: true,
   ...over,
 });
+const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
 
-describe("buildReorderGroups", () => {
-  const base = {
-    stock: new Map([["gid://shopify/ProductVariant/1", { onHand: 3, incoming: 2 }]]),
-    storeCurrency: "EUR",
-    defaultLeadTimeDays: 14,
-  };
+describe("buildOrderNow (Order now = the plan's orders due in the next 7 days)", () => {
+  const plan = orderNowFixture({ minOrderTotal: null });
+  const base = { plan, stock: new Map([[V(1), { onHand: 5, incoming: 0 }]]), onOrder: new Map<string, number>() };
 
-  it("groups by supplier (vendor match) and by vendor when unassigned, with lead time and the earliest order-by", () => {
-    const groups = buildReorderGroups({
-      ...base,
-      variants: [variant(1), variant(2, { vendor: "Beta" }), variant(3), variant(4, { vendor: null })],
-      metrics: new Map([
-        [variant(1).id, metric(10, { orderBy: "2026-11-20" })],
-        [variant(2).id, metric(5)],
-        [variant(3).id, metric(4, { orderBy: "2026-11-02" })],
-        [variant(4).id, metric(2, { orderBy: null })],
-      ]),
-      onOrder: new Map(),
-      suppliers: [supplier()],
-    });
-    expect(groups.map((g) => [g.kind, g.name, g.leadTimeDays, g.orderBy])).toEqual([
-      ["supplier", "Acme Textiles", 30, "2026-11-02"],
-      ["vendor", "Beta", 14, "2026-11-12"],
-      ["vendor", "", 14, null],
+  it("one line per variant at the plan's quantity, with its real deadline; later orders aren't lines", () => {
+    const groups = buildOrderNow(base);
+    expect(groups.map((g) => g.key)).toEqual(["supplier:s1", "vendor:beta"]);
+    const due = dueWithin(plan.events, plan.today, 7);
+    for (const g of groups)
+      for (const l of g.lines) {
+        const mine = due.filter((e) => e.variantId === l.variantId);
+        expect(l.suggested).toBe(mine.reduce((a, e) => a + e.qty, 0));
+        expect(l.orderBy).toBe(mine[0]!.deadline);
+      }
+    const acme = groups[0]!;
+    expect(acme.overdue).toBe(true);
+    expect(acme.orderBy).toBe("2026-09-29");
+    // The sock is due on 24 Oct (day 8): not a line, but it can join (before the next order, 14 days).
+    expect(acme.lines.some((l) => l.productTitle === "Wool sock")).toBe(false);
+    expect(acme.joinable.map((l) => l.productTitle)).toEqual(["Wool sock"]);
+  });
+
+  it("lines by product then size; a product with an overdue line first", () => {
+    const acme = buildOrderNow(base)[0]!;
+    expect(acme.lines.map((l) => [l.productTitle, l.variantTitle])).toEqual([
+      ["Canvas tote", "Default Title"],
+      ["Linen shirt", "M"],
+      ["Linen shirt", "S"],
     ]);
-    expect(groups[0]!.lines.map((l) => l.variantId)).toEqual([variant(3).id, variant(1).id]);
-    expect(groups[0]!.lines[1]!.onHand).toBe(3);
-    expect(groupTitle(groups[2]!, (s) => s)).toBe("No vendor");
+    expect(productRuns(acme.lines).map((r) => [r.title, r.lines.length])).toEqual([
+      ["Canvas tote", 1],
+      ["Linen shirt", 2],
+    ]);
   });
 
-  it("subtracts only the Keha units compute did not already count in orderQty", () => {
-    const id = variant(1).id;
-    const run = (onOrder: number, kehaCounted: number) =>
-      buildReorderGroups({
-        ...base,
-        variants: [variant(1)],
-        metrics: new Map([[id, metric(30, { kehaCounted })]]),
-        onOrder: new Map([[id, onOrder]]),
-        suppliers: [],
-      })[0]?.lines[0]?.suggested ?? 0;
-    // 20 sent units counted by compute, nothing new: orderQty stands.
-    expect(run(20, 20)).toBe(30);
-    // 20 counted + a 5-unit draft made since: subtract the 5.
-    expect(run(25, 20)).toBe(25);
-    // Counted units already received (no longer open): nothing extra to subtract.
-    expect(run(0, 20)).toBe(30);
+  it("an orderLink range: that supplier's planned orders in the range instead of the next 7 days", () => {
+    const link = readOrderLink(new URLSearchParams("supplier=supplier:s1&from=2026-10-30&to=2026-11-05"))!;
+    const g = buildOrderNow({ ...base, link }).find((x) => x.key === "supplier:s1")!;
+    const want = linkedEvents(plan.events, link);
+    expect(g.lines.map((l) => l.variantId).sort()).toEqual([...new Set(want.map((e) => e.variantId))].sort());
+    expect(g.lines.reduce((a, l) => a + l.suggested, 0)).toBe(want.reduce((a, e) => a + e.qty, 0));
+    // Other suppliers keep their next 7 days.
+    expect(buildOrderNow({ ...base, link }).find((x) => x.key === "vendor:beta")!.lines).toHaveLength(1);
   });
 
-  it("review fix: drafts are netted from the UNROUNDED need, then rounded (need 3, MOQ 50, draft 3 → nothing)", () => {
-    const id = variant(1).id;
-    const run = (m: ReorderMetricIn, onOrder: number) =>
-      buildReorderGroups({
-        ...base,
-        variants: [variant(1)],
-        metrics: new Map([[id, m]]),
-        onOrder: new Map([[id, onOrder]]),
-        suppliers: [supplier({ minOrder: 50 })],
-      })[0]?.lines[0]?.suggested ?? 0;
-    // compute: need 3 → orderQty 50 (the MOQ). A 3-unit draft covers the need.
-    expect(run(metric(50, { need: 3 }), 3)).toBe(0);
-    // Need 10, draft 3 → 7 left → the MOQ again.
-    expect(run(metric(50, { need: 10 }), 3)).toBe(50);
-    // Rows without the stored need: orderQty as before.
-    expect(run(metric(50), 3)).toBe(50);
-  });
-
-  it("review fix: planned quantities from the Planner start their lines at max(planned, suggestion), marked from the planner", () => {
-    const groups = buildReorderGroups({
+  it("asked-for variants: an action's 'Add to order' and the Season plan's quantities", () => {
+    const groups = buildOrderNow({
       ...base,
-      variants: [variant(1), variant(2), variant(3)],
-      metrics: new Map([
-        [variant(1).id, metric(10)],
-        [variant(2).id, metric(30)],
-      ]),
-      onOrder: new Map(),
-      suppliers: [supplier({ casePack: 6 })],
-      planned: new Map([
-        [variant(1).id, 24],
-        [variant(2).id, 12],
-        [variant(3).id, 7],
-      ]),
+      extraVariants: [variant(9, { productId: "P9", productTitle: "Mug", vendor: "Zeta" })],
+      selected: new Set([V(9)]),
+      planned: new Map([[V(1), 200]]),
     });
-    const line = (n: number) => groups[0]!.lines.find((l) => l.variantId === variant(n).id)!;
-    expect(line(1)).toMatchObject({ suggested: 24, fromPlanner: true, planned: 24, selected: true });
-    expect(line(2)).toMatchObject({ suggested: 30, fromPlanner: true }); // the everyday suggestion is higher
-    expect(line(3)).toMatchObject({ suggested: 12, fromPlanner: true }); // no metric: planned, rounded to the pack
+    const shirt = groups.flatMap((g) => g.lines).find((l) => l.variantId === V(1))!;
+    expect(shirt).toMatchObject({ suggested: 204, fromPlanner: true, planned: 200, selected: true }); // cases of 6
+    const mug = groups.find((g) => g.key === "vendor:zeta")!;
+    expect(mug.lines[0]).toMatchObject({ productTitle: "Mug", suggested: 0, selected: true });
     expect(groups[0]!.selected).toBe(true);
   });
 
-  it("subtracts open Keha orders and drops lines with nothing left to order", () => {
-    const groups = buildReorderGroups({
-      ...base,
-      variants: [variant(1), variant(2)],
-      metrics: new Map([
-        [variant(1).id, metric(10)],
-        [variant(2).id, metric(5)],
-      ]),
-      onOrder: new Map([
-        [variant(1).id, 4],
-        [variant(2).id, 5],
-      ]),
-      suppliers: [],
-    });
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.lines.map((l) => [l.variantId, l.suggested, l.onOrder])).toEqual([[variant(1).id, 6, 4]]);
-  });
-
-  it("applies case pack (variant wins), MOQ and the order minimum with a top-up", () => {
-    const groups = buildReorderGroups({
-      ...base,
-      variants: [variant(1, { caseQty: 12 }), variant(2)],
-      metrics: new Map([
-        [variant(1).id, metric(5, { rate: 3 })],
-        [variant(2).id, metric(5, { rate: 1 })],
-      ]),
-      onOrder: new Map(),
-      suppliers: [supplier({ casePack: 6, minOrder: 10, minOrderTotal: 100 })],
-    });
-    const g = groups[0]!;
-    expect(g.toppedUp).toBe(true);
-    const [a, b] = g.lines;
-    expect(a!.pack).toBe(12);
-    expect(b!.pack).toBe(6);
-    expect(a!.suggested % 12).toBe(0);
-    expect(b!.suggested % 6).toBe(0);
-    expect(a!.suggested + b!.suggested).toBeGreaterThanOrEqual(100);
-    expect(a!.suggested).toBeGreaterThan(b!.suggested);
-  });
-
-  it("puts selected variants first, even without a suggestion", () => {
-    const groups = buildReorderGroups({
-      ...base,
-      variants: [variant(1), variant(2, { vendor: "Zed" })],
-      metrics: new Map([[variant(1).id, metric(10, { orderBy: "2026-10-20" })]]),
-      onOrder: new Map(),
-      suppliers: [],
-      selected: new Set([variant(2).id]),
-    });
-    expect(groups[0]!.name).toBe("Zed");
-    expect(groups[0]!.selected).toBe(true);
-    expect(groups[0]!.lines[0]!.suggested).toBe(0);
-  });
-
-  it("only knows the unit cost when it is in the order currency", () => {
-    const groups = buildReorderGroups({
-      ...base,
-      variants: [variant(1)],
-      metrics: new Map([[variant(1).id, metric(10)]]),
-      onOrder: new Map(),
-      suppliers: [supplier({ currency: "USD" })],
-    });
-    expect(groups[0]!.currency).toBe("USD");
-    expect(groups[0]!.lines[0]!.unitCost).toBeNull();
+  it("valuation: store currency always; the supplier's only with an exchange rate; a line without a cost never blanks the order", () => {
+    const usd = { ...plan, suppliers: { ...plan.suppliers, "supplier:s1": { ...plan.suppliers["supplier:s1"]!, currency: "USD", exchangeRate: 0.9 } } };
+    const g = buildOrderNow({ ...base, plan: usd })[0]!;
+    expect(g.currency).toBe("USD");
+    const t = orderTotals(g, g.lines, (id) => g.lines.find((l) => l.variantId === id)!.suggested);
+    expect(t.missingCost).toBe(1); // the tote
+    expect(t.cost).toBe(Math.round(g.lines.reduce((a, l) => a + (l.unitCostStore ?? 0) * l.suggested, 0) * 100) / 100);
+    expect(t.supplierCost).toBeCloseTo(t.cost! / 0.9, 2);
+    // Without a rate: store currency only.
+    const noRate = buildOrderNow({ ...base, plan: { ...usd, suppliers: { ...usd.suppliers, "supplier:s1": { ...usd.suppliers["supplier:s1"]!, exchangeRate: null } } } })[0]!;
+    const t2 = orderTotals(noRate, noRate.lines, () => 6);
+    expect(t2.cost).not.toBeNull();
+    expect(t2.supplierCost).toBeNull();
+    expect(lineCosts(10, null, "EUR", "USD", 0.9)).toEqual({ store: 10, supplier: 10 / 0.9 });
+    expect(lineCosts(10, "USD", "EUR", "USD", 0.9)).toEqual({ store: 9, supplier: 10 });
+    expect(lineCosts(10, "GBP", "EUR", "USD", 0.9)).toEqual({ store: null, supplier: null });
     expect(unitCostIn(5, null, "EUR", "EUR")).toBe(5);
     expect(unitCostIn(null, "EUR", "EUR", "EUR")).toBeNull();
+  });
+
+  it("the plan's top-ups show on the group (units in the plan, not added again here)", () => {
+    const topped = orderNowFixture({ minOrderTotal: 300 });
+    const g = buildOrderNow({ ...base, plan: topped })[0]!;
+    expect(g.toppedUp).toBe(true);
+    expect(g.lines.reduce((a, l) => a + l.suggested, 0)).toBeGreaterThanOrEqual(300);
+    expect(g.lines.reduce((a, l) => a + l.suggested, 0)).toBe(dueWithin(topped.events, topped.today, 7).filter((e) => e.supplierKey === "supplier:s1").reduce((a, e) => a + e.qty, 0));
+  });
+
+  it("a line joining from a later order takes its own quantity, without that order's top-up", () => {
+    const topped = orderNowFixture({ minOrderTotal: 300 });
+    const sock = topped.events.find((e) => e.variantId === V(3))!;
+    const g = buildOrderNow({ ...base, plan: topped })[0]!;
+    expect(g.joinable[0]!.suggested).toBe(sock.why!.rounded);
   });
 });
 
@@ -285,8 +219,17 @@ describe("totals and warnings", () => {
   });
   it("warns (never blocks) below the minimums and off the case pack", () => {
     const w = minimumWarnings({ minOrderTotal: 50, lines: lines as never }, (id) => (id === "a" ? 8 : 3));
-    expect(w).toEqual({ belowTotal: true, belowLine: ["a"], notPack: ["a"] });
+    expect(w).toEqual({ belowTotal: true, belowValue: false, belowLine: ["a"], belowStyle: [], notPack: ["a"] });
     expect(minimumWarnings({ minOrderTotal: 50, lines: lines as never }, () => 0).belowTotal).toBe(false);
+  });
+  it("warns below the money minimum (store currency) and below the minimum per style", () => {
+    const styled = [
+      { variantId: "a", productId: "shirt", unitCostStore: 2.5, moq: null, pack: null },
+      { variantId: "b", productId: "shirt", unitCostStore: 2.5, moq: null, pack: null },
+      { variantId: "c", productId: "sock", unitCostStore: null, moq: null, pack: null },
+    ];
+    const w = minimumWarnings({ minOrderTotal: null, minOrderValueStore: 100, minOrderScope: "product", minOrder: 30, lines: styled as never }, (id) => (id === "c" ? 40 : 10));
+    expect(w).toMatchObject({ belowValue: true, belowStyle: ["shirt"], belowLine: [] });
   });
 });
 

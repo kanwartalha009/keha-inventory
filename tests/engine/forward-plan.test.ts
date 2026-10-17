@@ -1,9 +1,11 @@
 /**
  * Forward order plan (engine/forward-plan-shared): fixtures for the day-by-day projection, the
- * order-by date, and the invariant that ties it to the Order now screen.
+ * order-by date, orders placed on it (audit 2026-10-17), the supplier minimums in the plan, and
+ * the invariant that ties it to Order now and the Dashboard.
  */
 import { describe, expect, it } from "vitest";
 import {
+  batchWindows,
   byWeek,
   bySupplier,
   cashTotals,
@@ -13,14 +15,20 @@ import {
   planDays,
   planEnd,
   planSkip,
+  planStore,
   planVariant,
   seasonalFactors,
+  splitByShare,
+  topUpToValue,
   type ForwardVariantInput,
+  type PlanSupplierRules,
+  type PlanVariantSpec,
 } from "../../app/lib/engine/forward-plan-shared";
 import { addDays, daysBetween } from "../../app/lib/engine/dates-shared";
 import { demand, lineQuantity, orderByDate, safetyStock } from "../../app/lib/engine/order-shared";
 import { computeVariant } from "../../app/lib/engine/index-shared";
-import { buildReorderGroups, type ReorderMetricIn, type ReorderVariantIn } from "../../app/lib/reorder-shared";
+import { buildOrderNow } from "../../app/lib/reorder-shared";
+import { thisWeek } from "../../app/lib/order-plan-shared";
 import { TODAY, buildSeries, variantInput } from "./fixtures";
 
 /** Steady seller: 2/day, safety 10, lead 14, cycle 14, nothing on order. */
@@ -183,7 +191,155 @@ describe("events, weeks and suppliers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Invariant: day-0 order ⇔ Order now lists it, same quantity.
+// Audit 2026-10-17: an order is placed ON its order-by date (C3, merchant #1)
+// ---------------------------------------------------------------------------
+
+describe("orders are placed on their order-by date, never earlier", () => {
+  it("failing scenario: stock below demand(lead + cycle) + safety, deadline 11 days out → no order today", () => {
+    // 60 on hand, 2/day, lead 14, cycle 14, safety 10: need today = 56 + 10 − 60 = 6 > 0, and the
+    // old rule ordered today (and every day until the deadline). The deadline is day 11.
+    const p = planVariant(steady({ onHand: 60 }));
+    expect(p.deadline).toBe(addDays(TODAY, 11));
+    expect(p.orders[0]!.day).toBe(11);
+    expect(p.orders[0]).toMatchObject({ orderBy: addDays(TODAY, 11), deadline: addDays(TODAY, 11), overdue: false });
+    expect(p.orders.some((o) => o.day === 0)).toBe(false);
+  });
+
+  it("a deadline today is ordered today and not overdue; a passed one is ordered today, overdue", () => {
+    const due = planVariant(steady({ onHand: 38 })); // (38 − 10) ÷ 2 − 14 = 0
+    expect(due.deadline).toBe(TODAY);
+    expect(due.orders[0]).toMatchObject({ day: 0, overdue: false, deadline: TODAY });
+    const late = planVariant(steady({ onHand: 5 }));
+    expect(late.orders[0]).toMatchObject({ day: 0, overdue: true });
+  });
+
+  it("simulated day by day, ordering whatever is due each day orders as often as the calendar (not 91 times)", () => {
+    // Each morning: re-plan from the stock that is really there, order what is due today, receive it a lead time later.
+    const rate = 2;
+    let onHand = 120;
+    const arrivals: { day: number; units: number }[] = [];
+    let simulated = 0;
+    const calendar = planVariant(steady({ onHand: 120, days: 91 })).orders.length;
+    for (let d = 0; d < 91; d++) {
+      onHand += arrivals.filter((a) => a.day === d).reduce((x, a) => x + a.units, 0);
+      const pending = arrivals.filter((a) => a.day > d);
+      const today = addDays(TODAY, d);
+      const incoming = pending.reduce((x, a) => x + a.units, 0);
+      const p = planVariant(
+        steady({ today, onHand, incoming, arrivals: pending.map((a) => ({ day: addDays(TODAY, a.day), units: a.units })), days: 1 }),
+      );
+      const o = p.orders.find((x) => x.day === 0);
+      if (o) {
+        simulated++;
+        arrivals.push({ day: d + 14, units: o.qty });
+      }
+      onHand -= rate;
+    }
+    expect(calendar).toBeGreaterThan(0);
+    expect(simulated).toBeLessThanOrEqual(calendar + 1);
+    expect(simulated).toBeGreaterThanOrEqual(calendar - 1);
+  });
+
+  it("each order keeps the terms of its quantity (Why this quantity), adding up to the need", () => {
+    const p = planVariant(steady({ onHand: 5, pack: 12 }));
+    const w = p.orders[0]!.why!;
+    expect(w).toMatchObject({ day: 0, days: 28, rate: 2, season: 1, growth: 1, safety: 10, onHand: 5, onOrder: 0, pack: 12, rounded: 72, topUp: 0 });
+    expect(w.demand).toBeCloseTo(56, 9);
+    expect(w.need).toBeCloseTo(w.demand + w.safety - w.onHand - w.onOrder, 9);
+    const later = p.orders[1]!.why!;
+    expect(later.day).toBe(p.orders[1]!.day);
+    expect(later.need).toBeCloseTo(later.demand + later.safety - later.onHand - later.onOrder, 9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Supplier minimums in the plan itself (merchant #2, #3): planStore
+// ---------------------------------------------------------------------------
+
+const spec = (n: number, over: Partial<ForwardVariantInput> = {}, x: { product?: string; cost?: number | null; weight?: number; key?: string } = {}): PlanVariantSpec => ({
+  variantId: `v${n}`,
+  productId: x.product ?? `p${n}`,
+  supplierKey: x.key ?? "supplier:s1",
+  unitCost: x.cost === undefined ? 2 : x.cost,
+  weight: x.weight ?? over.rate ?? 2,
+  input: steady(over),
+});
+
+describe("planStore: the supplier's minimums, batch by batch", () => {
+  it("without minimums: exactly planVariant's orders", () => {
+    const specs = [spec(1, { onHand: 5 }), spec(2, { onHand: 60, rate: 3 }), spec(3, { onHand: 300, rate: 1 })];
+    const store = planStore(specs, {}, TODAY);
+    for (const s of specs) {
+      const own = planVariant(s.input).orders.map((o) => [o.orderBy, o.qty]);
+      expect(store.events.filter((e) => e.variantId === s.variantId).map((e) => [e.orderBy, e.qty])).toEqual(own);
+    }
+  });
+
+  it("batches: the next 7 days (Order now), then every 7 days", () => {
+    expect(batchWindows(20)).toEqual([[0, 6], [7, 13], [14, 19]]);
+    expect(batchWindows(0)).toEqual([]);
+  });
+
+  it("order minimum in units: topped up in the plan, so later orders move out", () => {
+    const specs = [spec(1, { onHand: 5 }), spec(2, { onHand: 10 })];
+    const plain = planStore(specs, {}, TODAY);
+    const min = planStore(specs, { "supplier:s1": { styleMin: null, minTotal: 300, minValue: null } }, TODAY);
+    const now = (p: typeof min) => dueWithin(p.events, TODAY, 7);
+    expect(now(min).reduce((a, e) => a + e.qty, 0)).toBeGreaterThanOrEqual(300);
+    expect(min.batches[0]).toMatchObject({ supplierKey: "supplier:s1", toppedUp: true });
+    expect(now(min).every((e) => (e.why?.topUp ?? 0) >= 0)).toBe(true);
+    // The extra units arrive with this order: the next order of each variant comes later.
+    const next = (p: typeof min, id: string) => p.events.find((e) => e.variantId === id && e.orderBy > addDays(TODAY, 6))?.orderBy ?? "9999";
+    expect(next(min, "v1") > next(plain, "v1")).toBe(true);
+  });
+
+  it("order minimum in money (store currency): topped up by value, whole case packs; lines without a cost don't take any", () => {
+    const specs = [spec(1, { onHand: 5, pack: 6 }, { cost: 10 }), spec(2, { onHand: 10 }, { cost: null })];
+    const r = planStore(specs, { "supplier:s1": { styleMin: null, minTotal: null, minValue: 2000 } }, TODAY);
+    const now = dueWithin(r.events, TODAY, 7);
+    const v1 = now.find((e) => e.variantId === "v1")!;
+    const v2 = now.find((e) => e.variantId === "v2")!;
+    expect(v1.qty * 10).toBeGreaterThanOrEqual(2000);
+    expect(v1.qty % 6).toBe(0);
+    expect(v2.why!.topUp).toBe(0);
+    expect(r.batches[0]!.valueToppedUp).toBe(true);
+    expect(cashTotals(now)).toMatchObject({ missingCost: 1 });
+  });
+
+  it("minimum per style: a product's sizes share it by share of sales (largest remainder, whole packs), sizes not due join", () => {
+    // Shirt: S overdue (2/day), M healthy (6/day), L healthy (2/day); minimum 120 per style, packs of 1.
+    const specs = [
+      spec(1, { onHand: 5 }, { product: "shirt", weight: 2 }),
+      spec(2, { onHand: 900, rate: 6 }, { product: "shirt", weight: 6 }),
+      spec(3, { onHand: 400, rate: 2 }, { product: "shirt", weight: 2 }),
+    ];
+    const r = planStore(specs, { "supplier:s1": { styleMin: 120, minTotal: null, minValue: null } }, TODAY);
+    const now = dueWithin(r.events, TODAY, 7);
+    expect(now.reduce((a, e) => a + e.qty, 0)).toBe(120);
+    const q = Object.fromEntries(now.map((e) => [e.variantId, e.qty]));
+    // S needs 61; the other 59 split 2 : 6 : 2 → 11.8, 35.4, 11.8 → 12, 35, 12 (largest remainder).
+    expect(q).toEqual({ v1: 61 + 12, v2: 35, v3: 12 });
+    expect(r.batches[0]!.styleToppedUp).toEqual(["shirt"]);
+  });
+
+  it("splitByShare: largest remainder, whole packs, equal shares without weights", () => {
+    expect(splitByShare(10, [{ weight: 1, pack: null }, { weight: 1, pack: null }, { weight: 1, pack: null }])).toEqual([4, 3, 3]);
+    expect(splitByShare(10, [{ weight: 3, pack: 4 }, { weight: 1, pack: 4 }])).toEqual([8, 4]);
+    expect(splitByShare(5, [{ weight: 0, pack: null }, { weight: 0, pack: null }])).toEqual([3, 2]);
+    expect(splitByShare(0, [{ weight: 1, pack: null }])).toEqual([0]);
+  });
+
+  it("topUpToValue: nothing to raise without costs; reaches the value otherwise", () => {
+    expect(topUpToValue([{ qty: 4, pack: null, weight: 1, unitCost: null }], 100)).toEqual({ qtys: [4], toppedUp: false });
+    const r = topUpToValue([{ qty: 4, pack: 2, weight: 1, unitCost: 5 }, { qty: 2, pack: null, weight: 3, unitCost: 10 }], 200);
+    expect(r.qtys[0]! * 5 + r.qtys[1]! * 10).toBeGreaterThanOrEqual(200);
+    expect(r.qtys[0]! % 2).toBe(0);
+    expect(r.toppedUp).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Invariant: Order now ⇔ the plan's orders due in the next 7 days, same quantities.
 // ---------------------------------------------------------------------------
 
 function rng(seed: number) {
@@ -194,13 +350,20 @@ function rng(seed: number) {
   };
 }
 
-describe("invariant: a day-0 order exactly when Order now lists the variant, with the same quantity", () => {
-  it("holds over 600 random stores", () => {
+describe("invariant: Order now lists exactly the plan's orders due in the next 7 days, with the same quantities", () => {
+  it("holds over 600 random variants in random suppliers with random minimums", () => {
     const r = rng(42);
     const statuses = ["healthy", "running_low", "out", "too_much", "dead", "not_enough_data"];
-    let listed = 0;
+    const specs: PlanVariantSpec[] = [];
+    const rules: Record<string, PlanSupplierRules> = {};
+    for (let k = 0; k < 6; k++) {
+      rules[`supplier:s${k}`] = {
+        styleMin: r() < 0.3 ? Math.ceil(r() * 80) : null,
+        minTotal: r() < 0.4 ? Math.ceil(r() * 200) : null,
+        minValue: r() < 0.3 ? Math.ceil(r() * 500) : null,
+      };
+    }
     for (let i = 0; i < 600; i++) {
-      const id = `gid://shopify/ProductVariant/${i}`;
       const status = statuses[Math.floor(r() * statuses.length)]!;
       const rate = r() < 0.1 ? 0 : Math.round(r() * 800) / 100;
       const lead = Math.floor(r() * 40);
@@ -211,41 +374,35 @@ describe("invariant: a day-0 order exactly when Order now lists the variant, wit
       const incoming = r() < 0.4 ? Math.floor(r() * 100) : 0;
       const pack = r() < 0.4 ? Math.ceil(r() * 12) : null;
       const moq = r() < 0.3 ? Math.ceil(r() * 60) : null;
-      const kehaCounted = r() < 0.2 ? Math.floor(r() * 20) : 0;
-      const onOrder = kehaCounted + (r() < 0.3 ? Math.floor(r() * 30) : 0);
       const seasonal = r() < 0.5 ? 1 : 0.5 + r() * 2;
-      const trend = r() < 0.5 ? 1 : 0.6 + r();
       const advice = status !== "not_enough_data";
       const safety = advice ? safetyStock(z, sigma, lead) : null;
-      const need = advice ? demand(rate, { seasonal, trend, plan: 1 }, lead + cycle) + safety! - (onHand + incoming) : null;
+      const need = advice ? demand(rate, { seasonal, trend: 1, plan: 1 }, lead + cycle) + safety! - (onHand + incoming) : null;
       const orderQty = need !== null && Math.ceil(need - 1e-9) > 0 ? lineQuantity(need, pack, moq) : null;
-      const inputs = { today: TODAY, seasonal, trend, plan: 1, leadTimeDays: lead, cycleDays: cycle, z, onHand, incoming, orderNeed: need, safety, kehaOnOrder: kehaCounted };
-      const metric = { status, rate: advice ? rate : null, sigma: advice ? sigma : null, orderQty, inputs };
-      const notCounted = Math.max(0, onOrder - kehaCounted);
-      const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack, moq, notCounted, days: 91 }));
-
-      const variant: ReorderVariantIn = { id, productTitle: "P", variantTitle: "V", sku: null, vendor: "Acme", image: null, supplierId: null, caseQty: pack, cost: null, costCurrency: null };
-      const m: ReorderMetricIn = { orderQty, orderBy: fwd.deadline, daysLeft: null, neverRunsOut: false, rate: metric.rate, kehaCounted, need, plannable: fwd.skip === null };
-      const supplier = { id: "s1", name: "Acme", leadTimeDays: lead, minOrder: moq, minOrderTotal: null, casePack: null, vendorMatch: ["Acme"], currency: null, hasEmail: false };
-      const groups = buildReorderGroups({
-        variants: [variant],
-        metrics: new Map([[id, m]]),
-        stock: new Map(),
-        onOrder: new Map([[id, onOrder]]),
-        suppliers: [supplier],
-        storeCurrency: "EUR",
-        defaultLeadTimeDays: 14,
+      const metric = { status, rate: advice ? rate : null, sigma: advice ? sigma : null, orderQty, inputs: { today: TODAY, seasonal, trend: 1, plan: 1, leadTimeDays: lead, cycleDays: cycle, z, onHand, incoming, orderNeed: need, safety } };
+      specs.push({
+        variantId: `gid://shopify/ProductVariant/${i}`,
+        productId: `p${Math.floor(i / 3)}`,
+        supplierKey: `supplier:s${i % 6}`,
+        unitCost: r() < 0.2 ? null : Math.round(r() * 2000) / 100,
+        weight: rate,
+        input: forwardInputFromMetric(metric, { today: TODAY, pack, moq, notCounted: r() < 0.2 ? Math.floor(r() * 20) : 0, days: 91 }),
       });
-      const line = groups[0]?.lines[0];
-      const day0 = fwd.orders.find((o) => o.day === 0);
-      expect(!!day0, `#${i} ${status}`).toBe(!!line);
-      if (line) {
-        listed++;
-        expect(line.suggested, `#${i}`).toBe(day0!.qty);
-        expect(line.orderBy).toBe(fwd.deadline);
-      }
     }
-    expect(listed).toBeGreaterThan(100);
+    const store = planStore(specs, rules, TODAY);
+    const info = Object.fromEntries(specs.map((s) => [s.variantId, { variantId: s.variantId, productId: s.productId, productTitle: s.productId, variantTitle: s.variantId, sku: null, image: null, daysLeft: null, neverRunsOut: false, deadline: null, valuePerDay: null }]));
+    const plan = { today: TODAY, events: store.events, variants: info, suppliers: {}, batches: store.batches, currency: "EUR" };
+    const groups = buildOrderNow({ plan, stock: new Map(), onOrder: new Map() });
+    const due = dueWithin(store.events, TODAY, 7);
+    const sum = new Map<string, number>();
+    for (const e of due) sum.set(e.variantId, (sum.get(e.variantId) ?? 0) + e.qty);
+    const lines = new Map(groups.flatMap((g) => g.lines.map((l) => [l.variantId, l.suggested] as const)));
+    expect([...lines].sort()).toEqual([...sum].sort());
+    expect(lines.size).toBeGreaterThan(50);
+    // …and the Dashboard's "Order this week" is the same orders: same units, same cash.
+    const week = thisWeek(plan);
+    expect(week.totals.units).toBe([...sum.values()].reduce((a, b) => a + b, 0));
+    expect(week.totals.cash).toBe(cashTotals(due).cash);
   });
 
   it("holds for computeVariant's own numbers (series in, stored metric out)", () => {
@@ -255,8 +412,10 @@ describe("invariant: a day-0 order exactly when Order now lists the variant, wit
         const metric = { status: res.status, rate: res.rate, sigma: res.sigma, orderQty: res.orderQty, inputs: { ...res.inputs, safety: res.safety } };
         const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: 6, moq: null, notCounted: 0, days: 91 }));
         const day0 = fwd.orders.find((o) => o.day === 0);
-        expect(!!day0, `${onHand}/${incoming}`).toBe((res.orderQty ?? 0) > 0);
-        if (day0) expect(day0.qty).toBe(res.orderQty);
+        // An order today exactly when the order-by date is today or has passed.
+        expect(!!day0, `${onHand}/${incoming}`).toBe(fwd.deadline !== null && fwd.deadline <= TODAY);
+        // …at the plan's own need for today (stored need), rounded to the case pack.
+        if (day0) expect(day0.qty).toBe(lineQuantity(res.inputs.orderNeed!, 6, null));
       }
   });
 });

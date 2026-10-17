@@ -1,10 +1,10 @@
 /**
- * Reorder plan and purchase orders (spec §5.3, J3). Database only.
+ * Order plan (Order now) and purchase orders (spec §5.3, J3). Database only.
  *
- * Suggestions come from VariantMetric (scope "online", Phase 1) with
- * orderQty > 0, minus units already on an open Keha order (draft, sent,
- * confirmed — the engine can't see Keha orders: they never reach Shopify),
- * then the supplier's minimums (lib/reorder-shared).
+ * Order now comes from the forward order plan (models/order-plan.server, the same function as
+ * the Dashboard): orders due in the next 7 days, after units already on an open Keha order
+ * (sent, confirmed, and drafts up to 14 days old — the engine can't see Keha orders: they never
+ * reach Shopify) and the supplier's minimums.
  *
  * Location view (Pro, phase 3; `scope` = a warehouse / store Location.id):
  * store-level replenishment from that location's metrics and its StockNow,
@@ -29,14 +29,10 @@ import { readSettings } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
-import { forwardInputFromMetric, planVariant } from "../lib/engine/forward-plan-shared";
-import { todayIn } from "../lib/dashboard-shared";
-import {
-  buildReorderGroups,
-  type ReorderGroup,
-  type ReorderMetricIn,
-  type ReorderVariantIn,
-} from "../lib/reorder-shared";
+import { buildOrderNow, type ReorderGroup } from "../lib/reorder-shared";
+import { thisWeek } from "../lib/order-plan-shared";
+import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
+import { computeOrderPlan } from "./order-plan.server";
 import {
   REORDER_HOLD_STATUSES,
   applyDraftEdit,
@@ -106,18 +102,6 @@ export async function locationStock(
   });
   for (const r of rows) out.set(r.variantId, { onHand: r.onHand, incoming: r.incoming });
   return out;
-}
-
-/** VariantMetric.inputs.kehaOnOrder (compute, task 2.1): Keha units already in orderQty. */
-function kehaCountedOf(inputs: unknown): number {
-  const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>).kehaOnOrder : undefined;
-  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
-}
-
-/** VariantMetric.inputs.orderNeed (engine): the unrounded need; null when absent (older rows). */
-function needOf(inputs: unknown): number | null {
-  const v = inputs && typeof inputs === "object" ? (inputs as Record<string, unknown>).orderNeed : undefined;
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /** Transit days per supplier id (arrival = confirmed ship date + transit; supplier-shared poArrival). */
@@ -236,11 +220,23 @@ export type ReorderData = {
   currency: string;
   /** ?variants= ids that aren't tracked variants of this store. */
   missingSelected: number;
+  /** Today in the store's time zone (due dates). */
+  today?: string;
+  /** Keha drafts older than 14 days, no longer counted as ordered. */
+  staleDrafts?: number;
+  /** The next order after the next 7 days (the empty state). */
+  next?: { supplierKey: string; name: string; kind: "supplier" | "vendor"; orderBy: string } | null;
+  /** Products marked "Don't reorder". */
+  notReordered?: number;
 };
 
 /**
- * The Reorder screen: suggestions grouped by supplier, and the open orders. `scope`: "online"
- * or a Location.id. `planned`: the Planner's quantities (?variants=id:qty) for those lines.
+ * Order now: the forward plan's orders due in the next 7 days, grouped by supplier — the same
+ * function, orders and quantities as the Dashboard's "Order this week" (models/order-plan.server)
+ * — and the open orders. `scope`: "online" or a Location.id. `selected` (?variants=) and
+ * `planned` (the Season plan's quantities) add those variants; `link` (orderLink: a supplier
+ * and a date range) shows that supplier's planned orders in the range instead of the next 7
+ * days — resolved here, so no order is ever cut short by the URL.
  */
 export async function loadReorder(
   shop: string,
@@ -248,79 +244,68 @@ export async function loadReorder(
   scope: string = METRIC_SCOPE,
   planned: ReadonlyMap<string, number> = new Map(),
   now: Date = new Date(),
+  link: { supplierKey: string | null; from: string; to: string } | null = null,
 ): Promise<ReorderData> {
   const basics = await shopBasics(shop);
-  const metrics = await prisma.variantMetric.findMany({
-    where: { shop, scope, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
-    select: { variantId: true, status: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true, inputs: true },
-  });
-  const ids = [...new Set([...metrics.map((m) => m.variantId), ...selected])];
-  const [variants, suppliers, onOrder, stock, open] = await Promise.all([
-    ids.length
-      ? prisma.variant.findMany({
-          where: { shop, id: { in: ids }, tracked: true, isBundle: false },
-          select: {
-            id: true,
-            productTitle: true,
-            variantTitle: true,
-            sku: true,
-            vendor: true,
-            image: true,
-            supplierId: true,
-            caseQty: true,
-            cost: true,
-            costCurrency: true,
-          },
-        })
-      : Promise.resolve([]),
-    prisma.supplier.findMany({
-      where: { shop },
-      select: { id: true, name: true, email: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, currency: true },
-    }),
-    kehaOnOrder(shop, REORDER_HOLD_STATUSES, ids),
-    scope === METRIC_SCOPE ? poolStock(shop, ids) : locationStock(shop, ids, scope),
-    openOrders(shop),
+  const [{ data: plan, suppliers }, open] = await Promise.all([computeOrderPlan(shop, now, { scope, lastYear: true }), openOrders(shop)]);
+  const asked = [...new Set([...selected, ...planned.keys()])];
+  const missing = asked.filter((id) => !plan.variants[id]);
+  const extra = missing.length
+    ? await prisma.variant.findMany({
+        where: { shop, id: { in: missing }, tracked: true, isBundle: false },
+        select: { id: true, productId: true, productTitle: true, variantTitle: true, sku: true, vendor: true, image: true, supplierId: true, caseQty: true, cost: true, costCurrency: true, noReorder: true },
+      })
+    : [];
+  const known = new Set([...Object.keys(plan.variants), ...extra.map((v) => v.id)]);
+  const lineIds = [...new Set([...plan.events.map((e) => e.variantId), ...extra.map((v) => v.id)])];
+  const [stock, onOrder] = await Promise.all([
+    scope === METRIC_SCOPE ? poolStock(shop, lineIds) : locationStock(shop, lineIds, scope),
+    kehaOnOrder(shop, REORDER_HOLD_STATUSES, lineIds, { now }),
   ]);
-  // One rule with the forward order plan (engine/forward-plan-shared): a variant it can't plan
-  // (dead, not enough data, no sales) isn't suggested; the online view shows its order-by date,
-  // with the open Keha units compute didn't count yet (location views keep the stored date).
-  const today = todayIn(basics.timezone, now);
-  const metricMap = new Map<string, ReorderMetricIn>(
-    metrics.map((m) => {
-      const kehaCounted = kehaCountedOf(m.inputs);
-      const notCounted = Math.max(0, (onOrder.get(m.variantId)?.qty ?? 0) - kehaCounted);
-      const fwd = planVariant(forwardInputFromMetric(m, { today, pack: null, moq: null, notCounted, days: 0 }));
-      return [
-        m.variantId,
-        {
-          orderQty: m.orderQty,
-          // Rows without the plan's inputs (written before it) keep their stored date; compute
-          // writes the same function's date, so both agree whenever it can be projected.
-          orderBy: scope === METRIC_SCOPE && fwd.deadline !== null ? fwd.deadline : dayOf(m.orderBy),
-          daysLeft: m.daysLeft,
-          neverRunsOut: m.neverRunsOut,
-          rate: m.rate,
-          kehaCounted,
-          need: needOf(m.inputs),
-          plannable: fwd.skip === null,
-        },
-      ];
-    }),
-  );
-  const variantRows: ReorderVariantIn[] = variants.map((v) => ({ ...v, cost: num(v.cost) }));
-  const known = new Set(variantRows.map((v) => v.id));
-  const groups = buildReorderGroups({
-    variants: variantRows,
-    metrics: metricMap,
+  const groups = buildOrderNow({
+    plan,
+    extraVariants: extra.map((v) => ({ ...v, cost: num(v.cost) })),
+    suppliers: suppliers.map(({ email, ...s }) => ({ ...s, hasEmail: !!email })),
+    defaultLeadTimeDays: basics.leadTimeDays,
     stock,
     onOrder: new Map([...onOrder].map(([k, v]) => [k, v.qty])),
-    suppliers: suppliers.map(({ email, ...s }) => ({ ...s, hasEmail: !!email })),
-    storeCurrency: basics.currency,
-    defaultLeadTimeDays: basics.leadTimeDays,
     selected: new Set(selected.filter((s) => known.has(s))),
     planned: new Map([...planned].filter(([id]) => known.has(id))),
+    link,
   });
-  return { groups, openOrders: open, currency: basics.currency, missingSelected: selected.filter((s) => !known.has(s)).length };
+  const week = thisWeek(plan);
+  const nextKey = week.next?.supplierKey;
+  return {
+    groups,
+    openOrders: open,
+    currency: basics.currency,
+    missingSelected: asked.filter((s) => !known.has(s)).length,
+    today: plan.today,
+    staleDrafts: plan.staleDrafts ?? 0,
+    notReordered: plan.notReordered ?? 0,
+    next:
+      week.next && nextKey
+        ? { supplierKey: nextKey, name: plan.suppliers[nextKey]?.name ?? "", kind: plan.suppliers[nextKey]?.kind ?? "vendor", orderBy: week.next.orderBy }
+        : null,
+  };
+}
+
+/** A saved Season plan's lines (`?scenario=&group=`): variant → planned quantity; null when not this shop's. */
+export async function scenarioPlanned(shop: string, id: string, groupKey: string | null): Promise<Map<string, number> | null> {
+  const row = await prisma.scenario.findFirst({ where: { id, shop }, select: { result: true } });
+  if (!row) return null;
+  return scenarioQuantities(readScenarioResult(row.result), groupKey);
+}
+
+/** Marks a whole product or one variant "Don't reorder" (or back). Our database only — the store isn't changed. */
+export async function setNoReorder(
+  shop: string,
+  target: { variantId: string } | { productId: string },
+  value: boolean,
+): Promise<{ ok: true; count: number } | { ok: false }> {
+  const where = "variantId" in target ? { shop, id: target.variantId } : { shop, productId: target.productId };
+  const r = await prisma.variant.updateMany({ where, data: { noReorder: value } });
+  return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 
 /** A fresh supplier-confirm token: 32 random bytes, base64url (spec §14). */

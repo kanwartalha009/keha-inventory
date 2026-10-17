@@ -22,7 +22,8 @@ import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
 import { featureMap } from "../app/lib/plan-shared";
 import SupplierConfirm, { type ConfirmPageData } from "../app/routes/supplier.confirm.$token";
-import { buildReorderGroups, type ReorderVariantIn } from "../app/lib/reorder-shared";
+import { buildOrderNow } from "../app/lib/reorder-shared";
+import { orderNowFixture } from "./order-plan-fixtures";
 import { renderPoPdf, pdfSafe } from "../app/services/po-pdf.server";
 import type { OrderDetail } from "../app/models/reorder.server";
 import type { PoLine } from "../app/lib/supplier-shared";
@@ -32,36 +33,16 @@ function render(path: string, id: string, Component: React.ComponentType, data: 
   return renderToString(<Stub initialEntries={[path]} hydrationData={{ loaderData: { [id]: data } }} />);
 }
 
-const v = (n: number, over: Partial<ReorderVariantIn> = {}): ReorderVariantIn => ({
-  id: `gid://shopify/ProductVariant/${n}`,
-  productTitle: `Shirt ${n}`,
-  variantTitle: "M",
-  sku: `SKU-${n}`,
-  vendor: "Acme",
-  image: null,
-  supplierId: null,
-  caseQty: null,
-  cost: 2.5,
-  costCurrency: "EUR",
-  ...over,
-});
+const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
 
-function reorderData(): ReorderPageData {
-  const groups = buildReorderGroups({
-    variants: [v(1), v(2, { vendor: "Beta" }), v(3, { cost: null })],
-    metrics: new Map([
-      [v(1).id, { orderQty: 7, orderBy: "2026-11-12", daysLeft: 9.6, neverRunsOut: false, rate: 2 }],
-      [v(2).id, { orderQty: 4, orderBy: null, daysLeft: null, neverRunsOut: false, rate: null }],
-      [v(3).id, { orderQty: 3, orderBy: "2026-11-20", daysLeft: 30, neverRunsOut: false, rate: 1 }],
-    ]),
-    stock: new Map([[v(1).id, { onHand: 12, incoming: 4 }]]),
-    onOrder: new Map([[v(1).id, 0]]),
-    suppliers: [
-      { id: "s1", name: "Acme Textiles", leadTimeDays: 30, minOrder: null, minOrderTotal: 40, casePack: 6, vendorMatch: ["Acme"], currency: null, hasEmail: true },
-    ],
-    storeCurrency: "EUR",
-    defaultLeadTimeDays: 14,
-    selected: new Set([v(1).id]),
+/** Order now from the real plan (orderNowFixture): Acme Textiles (minimum 150 units, cases of 6), vendor Beta. */
+function reorderData(over: { minOrderTotal?: number | null } = {}): ReorderPageData {
+  const plan = orderNowFixture({ minOrderTotal: over.minOrderTotal === undefined ? 150 : over.minOrderTotal });
+  const groups = buildOrderNow({
+    plan,
+    stock: new Map([[V(1), { onHand: 5, incoming: 0 }]]),
+    onOrder: new Map([[V(1), 0]]),
+    selected: new Set([V(1)]),
   });
   return {
     enabled: true,
@@ -72,6 +53,7 @@ function reorderData(): ReorderPageData {
     groups,
     currency: "EUR",
     missingSelected: 0,
+    today: plan.today,
     openOrders: [
       { id: "po1", number: "PO-0001", source: "keha", status: "sent", supplierName: "Acme Textiles", units: 24, cost: 60, currency: "EUR", arrival: "2026-11-02", createdAt: "2026-10-01T00:00:00Z" },
       { id: "po2", number: "#PO7", source: "shopify", status: "sent", supplierName: "Zeta", units: 10, cost: null, currency: "EUR", arrival: null, createdAt: "2026-10-02T00:00:00Z" },
@@ -87,16 +69,17 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Acme Textiles");
     expect(html).toContain("No supplier — grouped by vendor");
     expect(html).toContain("Beta");
-    expect(html).toContain("30 days (supplier)");
+    expect(html).toContain("14 days (supplier)");
     expect(html).toContain("14 days (store default)");
-    expect(html).toContain("Nov 12, 2026"); // order-by of the Acme group
-    expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 40 units.");
+    expect(html).toContain("Sep 29, 2026"); // the group's earliest order-by date (overdue)
+    expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 150 units.");
     expect(html).toContain("The products from your action list are highlighted.");
     expect(html).toContain("From your action list");
-    // Acme: two lines, cases of 6, topped up to ≥ 40 → whole cases.
-    expect(html).toMatch(/Units: (42|48)/);
-    // Unknown cost on one Acme line → the group cost is unknown.
-    expect(html).toContain("Cost: —");
+    // Acme: the plan's quantities, in whole cases of 6, topped up to ≥ 150.
+    expect(html).toMatch(/Units: 15\d/);
+    // A line without a cost is "—" and counted; the order's cost is still shown (store currency).
+    expect(html).toMatch(/Cost: €[\d.,]+/);
+    expect(html).toContain("1 lines without a cost price");
     expect(html).toContain("Create order");
     // The open orders list moved to its own tab (no duplicate): a count and a link stay.
     expect(html).not.toContain("PO-0001");
@@ -106,6 +89,50 @@ describe("Reorder page (Order plan · Order now)", () => {
     // DESIGN-RULES: short header with the long form in a tooltip; number columns right-aligned.
     expect(html).toMatch(/<s-text interestFor="keha-left-[^"]+">Days left<\/s-text><s-tooltip id="keha-left-[^"]+">Days of stock left<\/s-tooltip>/);
     expect((html.match(/format="numeric"/g) ?? []).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("each line shows its real deadline, never 'today' unless it is (audit 2026-10-17)", () => {
+    const html = render("/app/reorder", "reorder", Reorder, reorderData());
+    expect(html).toContain("Overdue since Sep 29");
+    expect(html).toContain("Due Oct 18");
+    expect(html).not.toContain("Due today");
+  });
+
+  it("lines are grouped by style: sizes together, an overdue product first, a product subtotal", () => {
+    const html = render("/app/reorder", "reorder", Reorder, reorderData());
+    const acme = html.slice(html.indexOf("Acme Textiles"), html.indexOf("Wool beanie"));
+    // Canvas tote and Linen shirt are both overdue: by name; the shirt's sizes M then S, then its subtotal.
+    const order = ["Canvas tote", "Linen shirt</s-text><s-text color=\"subdued\">M", "Linen shirt</s-text><s-text color=\"subdued\">S", "Linen shirt: subtotal"].map((x) => acme.indexOf(x));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("Why this quantity: the plan's own terms, and last year's same weeks", () => {
+    const html = render("/app/reorder", "reorder", Reorder, reorderData({ minOrderTotal: null }));
+    expect(html).toContain("Why this quantity");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 = 61");
+    expect(html).toContain("→ rounded to 66 (case pack 6)");
+    expect(html).toContain("Forecast for the 28 days from this order:");
+    expect(html).toContain("Sold in the same weeks last year: — (no history yet)");
+  });
+
+  it("Can join this order: the supplier's lines due before its next order, collapsed, at their own quantity", () => {
+    const d = reorderData({ minOrderTotal: null });
+    const acme = d.groups.find((g) => g.key === "supplier:s1")!;
+    expect(acme.joinable.map((l) => [l.productTitle, l.orderBy, l.suggested])).toEqual([["Wool sock", "2026-10-24", 18]]);
+    const html = render("/app/reorder", "reorder", Reorder, d);
+    expect(html).toContain("Can join this order (1)");
+    expect(html).toContain('aria-expanded="false"');
+  });
+
+  it("Create order's confirm shows units AND cost; the line menu: Don't reorder this product, with its own confirm", () => {
+    const html = render("/app/reorder", "reorder", Reorder, reorderData());
+    expect(html).toMatch(/Create a draft order for Acme Textiles\?/);
+    expect(html).toMatch(/\d+ units, €[\d.,]+\. Nothing is sent to the supplier until you email the order or mark it as sent\./);
+    expect(html).toContain("1 lines without a cost price are not in this total.");
+    expect(html).toContain("It stays in your stock numbers");
+    expect(html).toContain("Don&#x27;t reorder this product");
+    expect(html).toContain('icon="menu-horizontal"');
   });
 
   it("one-location store: no location switcher at all; Pro with two: the switcher in a toolbar", () => {
@@ -122,11 +149,23 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(render("/app/reorder", "reorder", Reorder, d)).toContain("+6 on order");
   });
 
-  it("shows the empty state with the way to the next 90 days", () => {
-    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], openOrders: [] });
-    expect(html).toContain("Nothing to reorder right now");
+  it("old drafts: says they no longer count, with the way to Open orders", () => {
+    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), staleDrafts: 2 });
+    expect(html).toContain("2 old drafts (more than 14 days, never sent) are no longer counted as ordered.");
+  });
+
+  it("empty: Nothing to order today, and the next order", () => {
+    const html = render("/app/reorder", "reorder", Reorder, {
+      ...reorderData(),
+      groups: [],
+      openOrders: [],
+      next: { supplierKey: "supplier:s1", name: "Acme Textiles", kind: "supplier", orderBy: "2026-10-24" },
+    });
+    expect(html).toContain("Nothing to order today");
+    expect(html).toContain("Next order: Acme Textiles by Oct 24, 2026.");
     expect(html).toContain('href="/app/reorder/calendar"');
     expect(html).not.toContain("Open orders: ");
+    expect(render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null })).toContain("No orders needed in the next 90 days.");
   });
 
   it("?supplier= shows that supplier only, with the way back", () => {
@@ -156,18 +195,19 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(showTransfers({ transfersEnabled: false, planningLocations: 0, activeLocations: 2 })).toBe(true);
   });
 
-  it("Free: a read-only preview of the 10 most urgent products and the teaching lock", () => {
+  it("Free: a read-only preview of the 10 most urgent products and the teaching lock with the merchant's own numbers", () => {
     const preview: PreviewRow[] = [
-      { variantId: v(1).id, productTitle: "Shirt 1", variantTitle: "M", daysLeft: 2.4, neverRunsOut: false, orderBy: "2026-10-01", overdue: true, qty: 61 },
-      { variantId: v(2).id, productTitle: "Mug", variantTitle: "Default Title", daysLeft: 30, neverRunsOut: false, orderBy: "2026-11-12", overdue: false, qty: 28 },
+      { variantId: V(1), productTitle: "Shirt 1", variantTitle: "M", daysLeft: 2.4, neverRunsOut: false, orderBy: "2026-10-01", overdue: true, qty: 61 },
+      { variantId: V(2), productTitle: "Mug", variantTitle: "Default Title", daysLeft: 30, neverRunsOut: false, orderBy: "2026-11-12", overdue: false, qty: 28 },
     ];
-    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview });
+    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview, teaser: { more: 23, suppliers: 4, cash: 5120, missingCost: 0 } });
     expect(html).toContain("keha-tabs");
     expect(html).toContain("Shirt 1");
     expect(html).toContain("Overdue");
     expect(html).toContain("61");
     expect(html).toContain("Nov 12, 2026");
     expect(html).toContain("Group by supplier, send purchase orders, see the next 90 days");
+    expect(html).toContain("Your plan has 23 more products to order from 4 suppliers — €5,120 over the next 13 weeks.");
     expect(html).toContain('href="/app/plans?upgrade=reorderPlan"');
     // Read only: no quantities to edit, no purchase order, no CSV.
     expect(html).not.toContain("Create order");

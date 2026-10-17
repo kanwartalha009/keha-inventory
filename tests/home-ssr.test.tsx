@@ -266,7 +266,8 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Overdue");
     expect(html).toContain("Review order");
-    expect(html).toMatch(/href="\/app\/reorder\?variants=1:61,2:\d+&amp;supplier=supplier:s1"/);
+    // Review order → Order now with that supplier's orders of the next 7 days (a key, never a list of variants).
+    expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     expect(html).toMatch(/[\d,]+ units from 1 supplier · €[\d,]+/);
     expect(html).toMatch(/Cash needed, next 12 weeks: €[\d,]+/);
     expect(html).toContain("keha-orderplan-strip");

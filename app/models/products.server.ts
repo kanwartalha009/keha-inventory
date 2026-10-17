@@ -13,9 +13,19 @@
  * table reads that location's VariantMetric scope and its StockNow only, and
  * lists the variants that have a metric there (the ones the location carries).
  * The variant detail page stays on the online stock pool.
+ *
+ * "To order" and the order-by date come from the forward plan (models/order-plan.server, the
+ * same function as Order now and the Dashboard; ordering audit 2026-10-17): the variant's next
+ * planned order — after open Keha orders and the supplier's minimums — and its real order-by
+ * date. Sorted by that date by default (forecast on), with a supplier filter. A variant marked
+ * "Don't reorder" shows "Not reordered" and is sorted last.
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import type { PlanEvent } from "../lib/engine/forward-plan-shared";
+import { supplierFor } from "../lib/supplier-shared";
+import { readSettings, type TrendMode } from "../lib/settings-shared";
+import { computeOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
 import {
   CHART_DAYS,
   METRIC_SCOPE,
@@ -74,14 +84,76 @@ async function variantWhere(shop: string, f: ProductFilters, scope: string): Pro
 
 const VARIANT_SELECT = {
   id: true,
+  productId: true,
   productTitle: true,
   variantTitle: true,
   sku: true,
   vendor: true,
   image: true,
+  noReorder: true,
 } as const;
 
+/** The forward plan, per variant: its next planned order and its plan state. */
+export type PlanView = { first: Map<string, PlanEvent>; state: Map<string, PlanVariantState> };
+
+export async function planView(shop: string, scope: string = METRIC_SCOPE, now: Date = new Date()): Promise<PlanView> {
+  const { data, state } = await computeOrderPlan(shop, now, { scope });
+  const first = new Map<string, PlanEvent>();
+  for (const e of data.events) if (!first.has(e.variantId)) first.set(e.variantId, e);
+  return { first, state };
+}
+
+/**
+ * "To order" and "Order by" from the forward plan (one rule with Order now): the next planned
+ * order's quantity and its real order-by date (overdue: in the past). Without a planned order in
+ * the 13 weeks: nothing to order ("—") and the plan's (or the stored) order-by date.
+ */
+export function withPlan(row: ProductRow, view: PlanView | null, noReorder: boolean): ProductRow {
+  if (noReorder) return { ...row, noReorder: true, orderQty: null, orderBy: null, overdue: false };
+  if (!view) return { ...row, noReorder: false };
+  const e = view.first.get(row.id);
+  if (e) return { ...row, noReorder: false, orderQty: e.qty, orderBy: e.deadline ?? e.orderBy, overdue: e.overdue };
+  const st = view.state.get(row.id);
+  return { ...row, noReorder: false, orderQty: null, orderBy: st ? (st.deadline ?? row.orderBy) : row.orderBy, overdue: false };
+}
+
 const ORDER: Prisma.VariantOrderByWithRelationInput[] = [{ productTitle: "asc" }, { variantTitle: "asc" }, { id: "asc" }];
+
+/** Supplier filter value of a variant: its Settings → Suppliers id, or "none". */
+function supplierValue(v: { supplierId: string | null; vendor: string | null }, suppliers: Awaited<ReturnType<typeof planSuppliers>>): string {
+  return supplierFor(v, suppliers)?.id ?? "none";
+}
+
+/**
+ * The filtered variant ids in table order: by order-by date (the plan's, else the stored one;
+ * nothing last, "Don't reorder" after that), or by product name; with the supplier filter.
+ */
+async function orderedIds(
+  shop: string,
+  where: Prisma.VariantWhereInput,
+  f: ProductFilters,
+  scope: string,
+  view: PlanView | null,
+): Promise<string[]> {
+  const [rows, suppliers] = await Promise.all([
+    prisma.variant.findMany({ where, select: { id: true, supplierId: true, vendor: true, noReorder: true }, orderBy: ORDER, take: CSV_MAX_ROWS }),
+    f.supplier ? planSuppliers(shop) : Promise.resolve([]),
+  ]);
+  const list = f.supplier ? rows.filter((r) => supplierValue(r, suppliers) === f.supplier) : rows;
+  if (!view || f.sort === "title") return list.map((r) => r.id);
+  const stored = new Map(
+    (await prisma.variantMetric.findMany({ where: { shop, scope }, select: { variantId: true, orderBy: true } })).map((m) => [m.variantId, m.orderBy ? m.orderBy.toISOString().slice(0, 10) : null]),
+  );
+  const key = (r: { id: string; noReorder: boolean }): [number, string] => {
+    if (r.noReorder) return [2, ""];
+    const e = view.first.get(r.id);
+    const d = e ? (e.deadline ?? e.orderBy) : (view.state.get(r.id)?.deadline ?? stored.get(r.id) ?? null);
+    return d ? [0, d] : [1, ""];
+  };
+  const keyed = list.map((r, i) => ({ id: r.id, i, k: key(r) }));
+  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1].localeCompare(b.k[1]) || a.i - b.i);
+  return keyed.map((x) => x.id);
+}
 
 /** Metrics and summed stock for a set of variants, by variant id. `scope`: "online" or a Location.id. */
 async function joinFor(shop: string, ids: string[], scope: string) {
@@ -120,47 +192,81 @@ export async function listProducts(
   page: number,
   forecast: boolean,
   scope: string = METRIC_SCOPE,
+  now: Date = new Date(),
 ): Promise<ProductPage> {
   const where = await variantWhere(shop, filters, scope);
-  const total = await prisma.variant.count({ where });
-  const info = pageInfo(total, page);
-  const variants =
-    total === 0
-      ? []
-      : await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, skip: info.skip, take: info.take });
+  const view = forecast ? await planView(shop, scope, now) : null;
+  // By order-by date (the default with the forecast) or a supplier filter: ordered in memory.
+  const inMemory = (!!view && filters.sort !== "title") || !!filters.supplier;
+  let total: number;
+  let info: PageInfo;
+  let variants: { id: string; productId: string; productTitle: string; variantTitle: string; sku: string | null; vendor: string | null; image: string | null; noReorder: boolean }[];
+  if (inMemory) {
+    const ids = await orderedIds(shop, where, filters, scope, view);
+    total = ids.length;
+    info = pageInfo(total, page);
+    const pageIds = ids.slice(info.skip, info.skip + info.take);
+    const rows = pageIds.length ? await prisma.variant.findMany({ where: { shop, id: { in: pageIds } }, select: VARIANT_SELECT }) : [];
+    const pos = new Map(pageIds.map((id, i) => [id, i]));
+    variants = rows.sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
+  } else {
+    total = await prisma.variant.count({ where });
+    info = pageInfo(total, page);
+    variants = total === 0 ? [] : await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, skip: info.skip, take: info.take });
+  }
   const { metrics, stock, onOrder } = await joinFor(
     shop,
     variants.map((v) => v.id),
     scope,
   );
   return {
-    rows: variants.map((v) => toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id))),
+    rows: variants.map((v) => withPlan({ ...toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)), productId: v.productId }, view, !!v.noReorder)),
     total,
     info,
   };
 }
 
-/** Every filtered row (CSV export), capped at CSV_MAX_ROWS. */
+/** Every filtered row (CSV export), capped at CSV_MAX_ROWS, in the table's order. */
 export async function allProducts(
   shop: string,
   filters: ProductFilters,
   forecast: boolean,
   scope: string = METRIC_SCOPE,
+  now: Date = new Date(),
 ): Promise<ProductRow[]> {
   const where = await variantWhere(shop, filters, scope);
-  const variants = await prisma.variant.findMany({ where, select: VARIANT_SELECT, orderBy: ORDER, take: CSV_MAX_ROWS });
+  const view = forecast ? await planView(shop, scope, now) : null;
+  const ids = await orderedIds(shop, where, filters, scope, view);
   const out: ProductRow[] = [];
   // Join in slices so each IN list stays small.
-  for (let i = 0; i < variants.length; i += 1000) {
-    const slice = variants.slice(i, i + 1000);
+  for (let i = 0; i < ids.length; i += 1000) {
+    const sliceIds = ids.slice(i, i + 1000);
+    const rows = await prisma.variant.findMany({ where: { shop, id: { in: sliceIds } }, select: VARIANT_SELECT });
+    const pos = new Map(sliceIds.map((id, k) => [id, k]));
+    const slice = rows.sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
     const { metrics, stock, onOrder } = await joinFor(
       shop,
       slice.map((v) => v.id),
       scope,
     );
-    for (const v of slice) out.push(toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)));
+    for (const v of slice) out.push(withPlan({ ...toProductRow(v, metrics.get(v.id), stock.get(v.id), forecast, onOrder.get(v.id)), productId: v.productId }, view, !!v.noReorder));
   }
   return out;
+}
+
+/** Supplier choices for the filter (Settings → Suppliers, then "No supplier"). */
+export async function supplierFilterOptions(shop: string): Promise<{ id: string; name: string }[]> {
+  const rows = await prisma.supplier.findMany({ where: { shop }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  return rows.map((r) => ({ id: r.id, name: r.name }));
+}
+
+/**
+ * The product's own case size (written to every variant of the product: Variant.caseQty wins
+ * over the supplier's case pack). null clears it. Our database only — the store isn't changed.
+ */
+export async function setProductCaseSize(shop: string, productId: string, caseQty: number | null): Promise<{ ok: true; count: number } | { ok: false }> {
+  const r = await prisma.variant.updateMany({ where: { shop, productId }, data: { caseQty } });
+  return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 
 /** Vendor and collection choices for the filters. */
@@ -186,12 +292,20 @@ export async function productFilterOptions(shop: string): Promise<{ vendors: str
 export type VariantDetail = {
   variant: {
     id: string;
+    productId: string;
     productTitle: string;
     variantTitle: string;
     sku: string | null;
     vendor: string | null;
     image: string | null;
+    noReorder: boolean;
   };
+  /** The product's own case size (null: the supplier's case pack applies). */
+  caseQty: number | null;
+  /** Variants of the same product (the "Don't reorder" choice for the whole product). */
+  siblings: { id: string; variantTitle: string; noReorder: boolean }[];
+  /** Settings → growth assumption (the Trend row). */
+  trendMode: TrendMode;
   row: ProductRow;
   /** Today in the store's time zone (the chart ends yesterday). */
   today: string;
@@ -209,10 +323,14 @@ export async function getVariantDetail(
   now: Date = new Date(),
 ): Promise<VariantDetail | null> {
   const [variant, shopRow] = await Promise.all([
-    prisma.variant.findFirst({ where: { id: variantId, shop }, select: VARIANT_SELECT }),
-    prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
+    prisma.variant.findFirst({ where: { id: variantId, shop }, select: { ...VARIANT_SELECT, caseQty: true } }),
+    prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true, settings: true } }),
   ]);
   if (!variant) return null;
+  const [siblings, view] = await Promise.all([
+    prisma.variant.findMany({ where: { shop, productId: variant.productId }, select: { id: true, variantTitle: true, noReorder: true, caseQty: true }, orderBy: [{ variantTitle: "asc" }, { id: "asc" }] }),
+    forecast ? planView(shop, METRIC_SCOPE, now) : Promise.resolve(null),
+  ]);
   const today = todayIn(shopRow?.timezone, now);
   const since = new Date(`${addDays(today, -CHART_DAYS)}T00:00:00Z`);
   const until = new Date(`${today}T00:00:00Z`);
@@ -236,14 +354,19 @@ export async function getVariantDetail(
     }),
     kehaOnOrder(shop, ON_ORDER_STATUSES, [variantId]),
   ]);
+  const caseQtys = [...new Set(siblings.map((v) => v.caseQty ?? null))];
   return {
-    variant,
-    row: toProductRow(
-      variant,
-      metric,
-      { onHand: stockNow._sum.onHand ?? null, incoming: stockNow._sum.incoming ?? null },
-      forecast,
-      onOrder.get(variantId),
+    variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
+    caseQty: caseQtys.length === 1 ? caseQtys[0]! : (variant.caseQty ?? null),
+    siblings: siblings.map((v) => ({ id: v.id, variantTitle: v.variantTitle, noReorder: !!v.noReorder })),
+    trendMode: readSettings(shopRow?.settings).trendMode,
+    row: withPlan(
+      {
+        ...toProductRow(variant, metric, { onHand: stockNow._sum.onHand ?? null, incoming: stockNow._sum.incoming ?? null }, forecast, onOrder.get(variantId)),
+        productId: variant.productId,
+      },
+      view,
+      !!variant.noReorder,
     ),
     today,
     sigma: metric?.sigma ?? null,

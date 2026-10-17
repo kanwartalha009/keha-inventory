@@ -226,15 +226,6 @@ export const STORES_TR: Record<string, Tr> = {
     nl: "Nog geen cijfers voor deze locatie. Die verschijnen na de volgende nachtelijke verversing, voor de producten die ze voert.",
     pl: "Brak jeszcze liczb dla tej lokalizacji. Pojawią się po najbliższym nocnym odświeżeniu, dla produktów, które ma na stanie.",
   },
-  "What {location} needs, from each supplier, and by which date: its own sales and stock. Quantities are rounded up to case packs and minimum orders.": {
-    es: "Lo que necesita {location}, de cada proveedor y antes de qué fecha: sus propias ventas y su stock. Las cantidades se redondean al alza a cajas completas y pedidos mínimos.",
-    fr: "Ce dont {location} a besoin, par fournisseur et avant quelle date : ses propres ventes et son stock. Les quantités sont arrondies au carton et aux minimums de commande.",
-    de: "Was {location} braucht, je Lieferant und bis wann: seine eigenen Verkäufe und sein Bestand. Mengen werden auf ganze Kartons und Mindestmengen aufgerundet.",
-    it: "Ciò che serve a {location}, per fornitore ed entro quando: le sue vendite e il suo stock. Le quantità sono arrotondate per eccesso a confezioni intere e ordini minimi.",
-    pt: "O que {location} precisa, de cada fornecedor e até quando: as suas próprias vendas e o seu stock. As quantidades são arredondadas para caixas completas e encomendas mínimas.",
-    nl: "Wat {location} nodig heeft, per leverancier en vóór welke datum: de eigen verkopen en voorraad. Aantallen worden naar boven afgerond op hele dozen en minimale bestellingen.",
-    pl: "Czego potrzebuje {location}, od każdego dostawcy i do kiedy: na podstawie własnej sprzedaży i zapasów. Ilości są zaokrąglane w górę do pełnych opakowań i minimalnych zamówień.",
-  },
   "The order notes that it is for {location}.": {
     es: "El pedido indica que es para {location}.",
     fr: "La commande indique qu'elle est destinée à {location}.",

@@ -872,6 +872,17 @@ export function reorderLink(lines: readonly (string | { variantId: string; qty?:
   return parts.length ? `/app/reorder?variants=${parts.join(",")}` : "/app/reorder";
 }
 
+/** The Season plan lines Order now starts from (`?scenario=&group=`): variant → planned quantity. */
+export function scenarioQuantities(result: ScenarioResult | null, groupKey?: string | null): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!result) return out;
+  for (const g of result.groups) {
+    if (groupKey && g.key !== groupKey) continue;
+    for (const l of g.lines) if (Number.isInteger(l.qty) && l.qty > 0) out.set(l.variantId, Math.max(out.get(l.variantId) ?? 0, l.qty));
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Cash chart geometry (inline SVG, spec §13)
 // ---------------------------------------------------------------------------

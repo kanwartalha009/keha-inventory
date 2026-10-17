@@ -198,16 +198,6 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   // ---- Order now ----
   "Showing {supplier} only.": { es: "Solo se muestra {supplier}.", fr: "Seul {supplier} est affiché.", de: "Nur {supplier} wird angezeigt.", it: "Viene mostrato solo {supplier}.", pt: "Só é mostrado {supplier}.", nl: "Alleen {supplier} wordt getoond.", pl: "Pokazano tylko: {supplier}." },
   "Show all suppliers": { es: "Ver todos los proveedores", fr: "Voir tous les fournisseurs", de: "Alle Lieferanten anzeigen", it: "Mostra tutti i fornitori", pt: "Ver todos os fornecedores", nl: "Alle leveranciers tonen", pl: "Pokaż wszystkich dostawców" },
-  "The products from your order plan are highlighted, starting at the planned quantities.": {
-    es: "Los productos de tu plan de pedidos están destacados, con las cantidades planificadas.",
-    fr: "Les produits de votre plan de commandes sont mis en évidence, avec les quantités prévues.",
-    de: "Die Produkte aus deinem Bestellplan sind hervorgehoben, mit den geplanten Mengen.",
-    it: "I prodotti del tuo piano ordini sono evidenziati, con le quantità pianificate.",
-    pt: "Os produtos do seu plano de encomendas estão destacados, com as quantidades planeadas.",
-    nl: "De producten uit je bestelplan zijn gemarkeerd, met de geplande aantallen.",
-    pl: "Produkty z Twojego planu zamówień są wyróżnione, z zaplanowanymi ilościami.",
-  },
-  "From your order plan": { es: "De tu plan de pedidos", fr: "De votre plan de commandes", de: "Aus deinem Bestellplan", it: "Dal tuo piano ordini", pt: "Do seu plano de encomendas", nl: "Uit je bestelplan", pl: "Z Twojego planu zamówień" },
   "Open orders: {n}": { es: "Pedidos abiertos: {n}", fr: "Commandes en cours : {n}", de: "Offene Bestellungen: {n}", it: "Ordini aperti: {n}", pt: "Encomendas em aberto: {n}", nl: "Open bestellingen: {n}", pl: "Otwarte zamówienia: {n}" },
   "See open orders": { es: "Ver pedidos abiertos", fr: "Voir les commandes en cours", de: "Offene Bestellungen ansehen", it: "Vedi ordini aperti", pt: "Ver encomendas em aberto", nl: "Open bestellingen bekijken", pl: "Zobacz otwarte zamówienia" },
 

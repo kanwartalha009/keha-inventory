@@ -13,12 +13,20 @@ vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn()
 vi.mock("../app/models/products.server", () => ({
   listProducts: vi.fn(),
   productFilterOptions: vi.fn(),
+  supplierFilterOptions: vi.fn(),
   getVariantDetail: vi.fn(),
   allProducts: vi.fn(),
+  setProductCaseSize: vi.fn(async () => ({ ok: true, count: 3 })),
 }));
+vi.mock("../app/models/reorder.server", () => ({ setNoReorder: vi.fn(async () => ({ ok: true, count: 1 })) }));
 
-import Products, { type ProductsData } from "../app/routes/app.products";
-import VariantDetailPage, { type VariantDetailData } from "../app/routes/app.products_.$variantId";
+import Products, { action as productsAction, type ProductsData } from "../app/routes/app.products";
+import VariantDetailPage, { action as detailAction, type VariantDetailData } from "../app/routes/app.products_.$variantId";
+import { authenticate } from "../app/shopify.server";
+import { getEntitlements } from "../app/services/entitlements.server";
+import { getVariantDetail, setProductCaseSize } from "../app/models/products.server";
+import { setNoReorder } from "../app/models/reorder.server";
+import { featureMap } from "../app/lib/plan-shared";
 import { dailySeries, monthlyTotals, pageInfo, readForecastInputs, recentDays, toProductRow } from "../app/lib/products-shared";
 
 const v = (n: number, over: Partial<{ productTitle: string; variantTitle: string; image: string | null }> = {}) => ({
@@ -81,7 +89,7 @@ describe("Products page", () => {
     for (const h of ["Stock now", "Incoming", "Sales/day", "Days left", "Order by", "To order"]) {
       expect(html).toContain(h);
     }
-    for (const h of ["Sales per day while in stock", "Days of stock left", "Suggested qty"]) {
+    for (const h of ["Sales per day while in stock", "Days of stock left", "The next planned order (the same as Order now)"]) {
       expect(html).toContain(`<s-tooltip id="keha-col-`);
       expect(html).toContain(h);
     }
@@ -239,11 +247,78 @@ describe("Variant detail", () => {
     expect(html).toContain('<s-text interestFor="keha-window-rate">Sales/day</s-text><s-tooltip id="keha-window-rate">Sales per day while in stock</s-tooltip>');
   });
 
+  it("plain words (audit): Safety level, the growth assumption, stock counted in supplier orders", () => {
+    const html = renderDetail({ ...detail(true), trendMode: "off" });
+    expect(html).toContain("Safety level");
+    expect(html).not.toContain("Service level factor");
+    expect(html).toContain("Not applied (growth assumption off)");
+    // The Trend row never says "No seasonal data yet" (only the seasonal row can).
+    expect(count(html, "No seasonal data yet")).toBe(1);
+    expect(renderDetail({ ...detail(true), trendMode: "store" })).toContain("No change from last year");
+    expect(html).toContain("Stock counted in supplier orders");
+    expect(html).not.toContain("Online stock pool");
+  });
+
+  it("Ordering: Don't reorder (product or this variant) and the product's case size", () => {
+    const html = renderDetail({ ...detail(true), productId: "gid://shopify/Product/1", variantCount: 3, caseQty: 12 });
+    expect(html).toContain("<s-heading>Ordering</s-heading>");
+    expect(html).toContain("Don&#x27;t reorder this product");
+    expect(html).toContain("Don&#x27;t reorder this variant");
+    expect(html).toContain('label="Case size"');
+    expect(html).toContain('value="12"');
+    const off = renderDetail({ ...detail(true), noReorder: true, productNoReorder: true, row: { ...detail(true).row, noReorder: true, orderQty: null } });
+    expect(off).toContain("This product is set to Don&#x27;t reorder");
+    expect(off).toContain("Reorder again");
+    expect(off).toContain("Not reordered");
+  });
+
   it("Free: forecast parts locked, sales rate still shown", () => {
     const html = renderDetail(detail(false));
     expect(html).toContain("Growth plan");
     expect(html).toContain("Last 28 days");
     expect(html).not.toContain("days (store default)");
     expect(html).not.toContain("Oct 20, 2026");
+  });
+});
+
+describe("Products: the plan's To order, Don't reorder, sort and supplier filter", () => {
+  it("rows: Not reordered, Overdue, a row menu; toolbar: supplier and sort", () => {
+    const [a, b, c] = rows(true);
+    const html = render(
+      data(true, {
+        rows: [{ ...a!, overdue: true, productId: "gid://shopify/Product/1" }, { ...b!, noReorder: true, orderQty: null }, c!],
+        options: { vendors: [], collections: [], suppliers: [{ id: "s1", name: "Lisbon Linen" }] },
+      }),
+    );
+    expect(html).toContain("Not reordered");
+    expect(html).toContain("Overdue");
+    expect(html).toContain("Don&#x27;t reorder this variant");
+    expect(html).toContain("Don&#x27;t reorder this product");
+    expect(html).toContain("Reorder again");
+    expect(html).toContain("All suppliers");
+    expect(html).toContain("Lisbon Linen");
+    expect(html).toContain("Sort: order-by date");
+    expect(html).toContain("The next planned order (the same as Order now)");
+  });
+
+  it("actions: Don't reorder a variant or a product; the product's case size (validated)", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    const post = (body: unknown) => ({ request: new Request("https://x/app/products", { method: "POST", body: JSON.stringify(body) }), params: { variantId: "1" }, context: {} }) as never;
+    expect(await productsAction(post({ intent: "noReorder", variantId: "gid://shopify/ProductVariant/1", value: true }))).toEqual({ ok: true, count: 1 });
+    expect(setNoReorder).toHaveBeenLastCalledWith("acme.myshopify.com", { variantId: "gid://shopify/ProductVariant/1" }, true);
+    await productsAction(post({ intent: "noReorder", productId: "gid://shopify/Product/9", value: false }));
+    expect(setNoReorder).toHaveBeenLastCalledWith("acme.myshopify.com", { productId: "gid://shopify/Product/9" }, false);
+    await expect(productsAction(post({ intent: "noReorder", variantId: "nope" }))).rejects.toBeInstanceOf(Response);
+    vi.mocked(getVariantDetail).mockResolvedValue({ variant: { productId: "gid://shopify/Product/1" } } as never);
+    expect(await detailAction(post({ intent: "caseQty", caseQty: 0 }))).toEqual({ ok: false, error: "caseQty" });
+    expect(await detailAction(post({ intent: "caseQty", caseQty: 24 }))).toEqual({ ok: true, count: 3 });
+    expect(setProductCaseSize).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", 24);
+    await detailAction(post({ intent: "caseQty", caseQty: null }));
+    expect(setProductCaseSize).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", null);
+    await detailAction(post({ intent: "noReorder", scope: "product", value: true }));
+    expect(setNoReorder).toHaveBeenLastCalledWith("acme.myshopify.com", { productId: "gid://shopify/Product/1" }, true);
+    await detailAction(post({ intent: "noReorder", scope: "variant", value: true }));
+    expect(setNoReorder).toHaveBeenLastCalledWith("acme.myshopify.com", { variantId: "gid://shopify/ProductVariant/1" }, true);
   });
 });

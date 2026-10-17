@@ -265,7 +265,7 @@ describe("tools on Growth", () => {
     expect(nowLines.length).toBe(2);
     // Order-by dates are the forward plan's (overdue: the date that passed), never null.
     for (const l of today.results![0]!._meta.lines as Line[]) expect(l.order_by).toBe(calendar.plan.variants[l.variant_gid]!.deadline);
-    expect(today.results![0]!._meta).toMatchObject({ overdue: true, url: expect.stringMatching(/^app:\/\/app\/reorder\?variants=.+&supplier=supplier:s1$/) });
+    expect(today.results![0]!._meta).toMatchObject({ overdue: true, url: expect.stringMatching(/^app:\/\/app\/reorder\?supplier=supplier:s1&from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/) });
     expect(today).toMatchObject({ url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
     expect(today.cash_per_week).toBeUndefined();
     expect((await body("get_order_plan", "supplier=nobody")).message).toBe(MSG.noSupplierMatch);
@@ -282,8 +282,10 @@ describe("tools on Growth", () => {
       keha_order_arrival: "2026-11-01",
       sales_per_day: 2,
       days_left: 5,
-      order_by: "2026-10-12",
-      suggested_order_qty: 65,
+      // The forward plan's (the same as Order now and Products): the 20 units on the sent Keha
+      // order are netted (the stored nightly quantity, 65, predates that order).
+      order_by: "2026-10-08",
+      suggested_order_qty: 45,
       url: "app://app/products/1",
     });
     expect((await body("get_product_stock", "query=sku-3")).results!.map((x) => x.name)).toEqual(["Cap"]);
