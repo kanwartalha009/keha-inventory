@@ -33,7 +33,8 @@ import {
   type ScenarioResult,
   type TargetType,
 } from "../lib/planner-shared";
-import { SEASON, spanStats, type Coverage, type UnitsSeries } from "../lib/engine/season-shared";
+import { SEASON, buildSeasonGroups, spanStats, type Coverage, type UnitsSeries } from "../lib/engine/season-shared";
+import { productTypeSeriesQuery, readProductTypeSeries, type RawQuery } from "../lib/season-sql-shared";
 import { addDays } from "../lib/engine/dates-shared";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds, salesCoverage, type DemandScope } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
@@ -46,6 +47,7 @@ import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { kehaOnOrder } from "../models/reorder.server";
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+const prismaRaw: RawQuery = (sql, params) => prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
   const n = typeof v === "number" ? v : Number(String(v));
@@ -116,6 +118,7 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
         vendor: true,
         supplierId: true,
         collections: true,
+        productType: true,
         caseQty: true,
         cost: true,
         costCurrency: true,
@@ -150,6 +153,7 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
       vendor: v.vendor,
       supplierId: v.supplierId,
       collections: v.collections ?? [],
+      productType: v.productType,
       caseQty: v.caseQty,
       cost: num(v.cost),
       costCurrency: v.costCurrency,
@@ -168,11 +172,16 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
   return out;
 }
 
-/** Store and collection unit series over the windows the period maths reads. */
+/**
+ * Store and season-group unit series over the windows the period maths reads: qualifying
+ * collections from the variant × day sums, every qualifying product type in ONE grouped statement
+ * (season-sql-shared; members: the planner's variants, active and tracked).
+ */
 async function plannerSeason(
   shop: string,
   ctx: PlannerShop,
-  input: { start: string; end: string; variants: { id: string; collections: string[] }[] },
+  input: { start: string; end: string; variants: { id: string; productId: string; collections: string[]; productType?: string | null }[] },
+  raw: RawQuery = prismaRaw,
 ) {
   const { today, coverage } = ctx;
   const yesterday = addDays(today, -1);
@@ -190,14 +199,17 @@ async function plannerSeason(
   for (const g of storeG.flat()) storeUnits.set(dayKey(g.day), num(g._sum.sold) ?? 0);
 
   const variantUnits12 = new Map(units12G.map((g) => [g.variantId, num(g._sum.sold) ?? 0]));
-  const members = new Map<string, string[]>();
-  for (const v of input.variants) for (const c of new Set(v.collections)) (members.get(c) ?? members.set(c, []).get(c)!).push(v.id);
-  const units12m = new Map<string, number>();
-  for (const [c, vs] of members) units12m.set(c, vs.reduce((a, id) => a + (variantUnits12.get(id) ?? 0), 0));
-  const qualifying = [...units12m].filter(([, u]) => u >= SEASON.collectionMinUnits12m).map(([c]) => c);
+  // The planner's variants are active and tracked: every one counts toward the catalogue.
+  const { groups, members } = buildSeasonGroups(
+    input.variants.map((v) => ({ id: v.id, productId: v.productId, collections: v.collections, productType: v.productType, counted: true })),
+    variantUnits12,
+  );
+  const qualifying = [...groups.values()].filter((g) => g.qualifies);
+  const collections = qualifying.filter((g) => g.kind === "collection");
+  const types = qualifying.filter((g) => g.kind === "productType");
 
-  const collections = new Map<string, UnitsSeries>();
-  if (qualifying.length) {
+  const groupSeries = new Map<string, UnitsSeries>();
+  if (collections.length) {
     const rows = (
       await Promise.all(windows.map((r) => prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } })))
     ).flat();
@@ -206,13 +218,18 @@ async function plannerSeason(
       const m = byVariant.get(g.variantId) ?? byVariant.set(g.variantId, new Map()).get(g.variantId)!;
       m.set(dayKey(g.day), num(g._sum.sold) ?? 0);
     }
-    for (const c of qualifying) {
+    for (const c of collections) {
       const units = new Map<string, number>();
-      for (const id of members.get(c) ?? []) for (const [day, u] of byVariant.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + u);
-      collections.set(c, { units, coverage });
+      for (const id of members.get(c.id) ?? []) for (const [day, u] of byVariant.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + u);
+      groupSeries.set(c.id, { units, coverage });
     }
   }
-  return createPlannerSeason({ today, start: input.start, end: input.end, store: { units: storeUnits, coverage }, collections, units12m, trendMode: ctx.trendMode });
+  const q = productTypeSeriesQuery({ shop, demand: ctx.demand, types: types.map((g) => g.key), windows, plannedOnly: true });
+  if (q) {
+    const byType = readProductTypeSeries(await raw(q.sql, q.params));
+    for (const g of types) groupSeries.set(g.id, { units: byType.get(g.key) ?? new Map(), coverage });
+  }
+  return createPlannerSeason({ today, start: input.start, end: input.end, store: { units: storeUnits, coverage }, groupSeries, groups, trendMode: ctx.trendMode });
 }
 
 /** Units and revenue over the same dates last year (channel view, all channels); null below 80 % coverage. */

@@ -1,8 +1,9 @@
 /**
  * Seasonality, trend and the plan multiplier (spec §7.3). Pure.
  *
- * Level: store or collection, never per variant. A collection uses its own index when it sold
- * ≥ 2,000 units in the last 12 months; otherwise the store's is used.
+ * Level: store, collection or product type — never per variant. A variant uses the most specific
+ * (fewest products) of its collections and its product type that sold ≥ 2,000 units in the last
+ * 12 months and is not a catch-all (≥ 60 % of the store: CATCH_ALL_SHARE); otherwise the store's.
  *
  * Definitions (all spans are inclusive calendar days; "today" is the store-local day):
  *  - Coverage. A day counts only when the sales history covers it (`Coverage`): inside
@@ -366,29 +367,140 @@ export function seasonCurve(s: UnitsSeries, today: DayKey, weeks: number): (numb
 }
 
 // ---------------------------------------------------------------------------
-// Store vs collection
+// Store vs season group (collection or product type)
 // ---------------------------------------------------------------------------
 
-export interface SeasonSourceChoice {
-  level: "store" | "collection";
-  collectionId: string | null;
+/**
+ * A group covering this share of the store is a CATCH-ALL ("All products", "Sale", "New in",
+ * "Home page"): its shape is the whole store's, blurred by everything else in it, so it is never a
+ * season source. Data-driven, never by name: a group is a catch-all when its variants are ≥ 60 %
+ * of the store's active tracked variants, OR its products are ≥ 60 % of the catalogue (products
+ * with an active tracked variant) — whatever units it sold. Owner decision 2026-10-17. Applied to
+ * product types too: a type covering most of the store is the store.
+ */
+export const CATCH_ALL_SHARE = 0.6;
+
+/** Group ids of product types (collection ids are Shopify gids, so they never collide). */
+export const PRODUCT_TYPE_GROUP = "type:";
+
+/** The season group id of a product type; null when the product has none. */
+export function productTypeGroupId(productType: string | null | undefined): string | null {
+  return typeof productType === "string" && productType.trim() !== "" ? PRODUCT_TYPE_GROUP + productType : null;
+}
+
+/** A variant's candidate season groups: its collections, then its product type. */
+export function seasonGroupsOf(v: { collections?: readonly string[] | null; productType?: string | null }): string[] {
+  const out = [...new Set(v.collections ?? [])];
+  const t = productTypeGroupId(v.productType);
+  if (t) out.push(t);
+  return out;
+}
+
+export interface SeasonGroup {
+  id: string;
+  kind: "collection" | "productType";
+  /** Collection id, or the product type itself. */
+  key: string;
+  /** Units its member variants sold in the last 12 months. */
+  units12m: number;
+  /** Its active tracked variants, and the products they belong to. */
+  variants: number;
+  products: number;
+  catchAll: boolean;
+  /** ≥ 2,000 units in 12 months and not a catch-all: its own index may be used. */
+  qualifies: boolean;
+}
+
+export interface SeasonGroupVariant {
+  id: string;
+  productId: string;
+  collections?: readonly string[] | null;
+  productType?: string | null;
+  /** Active and tracked (not a bundle): counts toward the catalogue the catch-all rule compares with. */
+  counted: boolean;
 }
 
 /**
- * Which index a variant uses: among its collections that sold ≥ 2,000 units in the last 12
- * months, the MOST SPECIFIC one (fewest units; ties by id), so a catch-all "All products"
- * collection never hides a seasonal sub-collection. None qualifies → the store.
+ * Every collection and product type of the variants with its 12-month units (all given variants,
+ * as the series are summed), its size (active tracked variants and their products) and whether it
+ * is a catch-all / qualifies. `members` = the variant ids per group.
  */
-export function chooseSeasonSource(
-  collections: readonly string[],
-  units12m: ReadonlyMap<string, number>,
+export function buildSeasonGroups(
+  variants: readonly SeasonGroupVariant[],
+  variantUnits12m: ReadonlyMap<string, number>,
   minUnits: number = SEASON.collectionMinUnits12m,
-): SeasonSourceChoice {
-  const ok = collections
-    .map((id) => ({ id, units: units12m.get(id) ?? 0 }))
-    .filter((c) => c.units >= minUnits)
-    .sort((a, b) => a.units - b.units || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return ok.length ? { level: "collection", collectionId: ok[0].id } : { level: "store", collectionId: null };
+): { groups: Map<string, SeasonGroup>; members: Map<string, string[]> } {
+  const members = new Map<string, string[]>();
+  const countedVariants = new Map<string, number>();
+  const countedProducts = new Map<string, Set<string>>();
+  let totalVariants = 0;
+  const allProducts = new Set<string>();
+  for (const v of variants) {
+    if (v.counted) {
+      totalVariants++;
+      allProducts.add(v.productId);
+    }
+    for (const g of seasonGroupsOf(v)) {
+      (members.get(g) ?? members.set(g, []).get(g)!).push(v.id);
+      if (!v.counted) continue;
+      countedVariants.set(g, (countedVariants.get(g) ?? 0) + 1);
+      (countedProducts.get(g) ?? countedProducts.set(g, new Set()).get(g)!).add(v.productId);
+    }
+  }
+  const groups = new Map<string, SeasonGroup>();
+  for (const [id, ids] of members) {
+    const units12m = ids.reduce((a, x) => a + (variantUnits12m.get(x) ?? 0), 0);
+    const nv = countedVariants.get(id) ?? 0;
+    const np = countedProducts.get(id)?.size ?? 0;
+    const catchAll =
+      (totalVariants > 0 && nv / totalVariants >= CATCH_ALL_SHARE) || (allProducts.size > 0 && np / allProducts.size >= CATCH_ALL_SHARE);
+    const isType = id.startsWith(PRODUCT_TYPE_GROUP);
+    groups.set(id, {
+      id,
+      kind: isType ? "productType" : "collection",
+      key: isType ? id.slice(PRODUCT_TYPE_GROUP.length) : id,
+      units12m,
+      variants: nv,
+      products: np,
+      catchAll,
+      qualifies: !catchAll && units12m >= minUnits,
+    });
+  }
+  return { groups, members };
+}
+
+export type SeasonLevel = "store" | "collection" | "productType";
+
+export interface SeasonSourceChoice {
+  level: SeasonLevel;
+  /** The season group id (collection id or "type:<product type>"); null for the store. */
+  groupId: string | null;
+  collectionId: string | null;
+  productType: string | null;
+}
+
+function choiceOf(g: SeasonGroup | null): SeasonSourceChoice {
+  if (!g) return { level: "store", groupId: null, collectionId: null, productType: null };
+  return g.kind === "collection"
+    ? { level: "collection", groupId: g.id, collectionId: g.key, productType: null }
+    : { level: "productType", groupId: g.id, collectionId: null, productType: g.key };
+}
+
+/**
+ * Which index a variant uses: among its groups (non-catch-all collections and its product type)
+ * that sold ≥ 2,000 units in the last 12 months, the MOST SPECIFIC one — fewest products (then
+ * fewest units, then id). None qualifies → the store.
+ */
+export function chooseSeasonSource(groupIds: readonly string[], groups: ReadonlyMap<string, SeasonGroup>): SeasonSourceChoice {
+  return choiceOf(rankedSources(groupIds, groups)[0] ?? null);
+}
+
+/** The variant's qualifying groups, most specific first (chooseSeasonSource's order). */
+function rankedSources(groupIds: readonly string[], groups: ReadonlyMap<string, SeasonGroup>): SeasonGroup[] {
+  return [...new Set(groupIds)]
+    .map((id) => groups.get(id))
+    .filter((g): g is SeasonGroup => !!g && g.qualifies)
+    .sort((a, b) => a.products - b.products || a.units12m - b.units12m || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** The seasonal + trend multipliers one variant gets, with where they came from. */
@@ -396,27 +508,35 @@ export interface VariantSeason {
   seasonal: number;
   /** The APPLIED trend (1 when the growth assumption is off); trendResult.measured has the value. */
   trend: number;
-  level: "store" | "collection";
+  level: SeasonLevel;
   collectionId: string | null;
+  productType: string | null;
   seasonalResult: SeasonalResult;
   trendResult: TrendResult;
 }
 
+const groupIdOf = (s: { level: SeasonLevel; collectionId: string | null; productType: string | null }) =>
+  s.level === "collection" ? s.collectionId : s.level === "productType" ? productTypeGroupId(s.productType) : null;
+
 /**
- * Memoised per (source, horizon). A qualifying collection whose own index can't be computed
- * falls back to the store's (and so does its trend: both always come from one level).
+ * Memoised per (source, horizon). The chosen group (chooseSeasonSource) whose own index can't be
+ * computed falls back to the store's (and so does its trend: both always come from one level).
  */
 export function createSeasonContext(input: {
   today: DayKey;
   store: UnitsSeries;
-  collections: ReadonlyMap<string, UnitsSeries>;
-  units12m: ReadonlyMap<string, number>;
+  /** Units series per qualifying season group id (collections and product types). */
+  groupSeries?: ReadonlyMap<string, UnitsSeries>;
+  /** Season groups (buildSeasonGroups); empty → always the store. */
+  groups?: ReadonlyMap<string, SeasonGroup>;
   /** Growth assumption (settings trendMode); default "off": trend measured, never applied. */
   trendMode?: TrendMode;
 }) {
+  const groupSeries = input.groupSeries ?? new Map<string, UnitsSeries>();
+  const groups = input.groups ?? new Map<string, SeasonGroup>();
   const seasonalMemo = new Map<string, SeasonalResult>();
   const trendMemo = new Map<string, TrendResult>();
-  const seriesOf = (id: string | null) => (id === null ? input.store : (input.collections.get(id) ?? null));
+  const seriesOf = (id: string | null) => (id === null ? input.store : (groupSeries.get(id) ?? null));
   const seasonal = (id: string | null, H: number): SeasonalResult | null => {
     const s = seriesOf(id);
     if (!s) return null;
@@ -438,25 +558,27 @@ export function createSeasonContext(input: {
     /** The weekly seasonal shape from the same source as `season` (seasonCurve); null when its index wasn't applied. */
     curveFor(season: VariantSeason, weeks: number): (number | null)[] | null {
       if (!season.seasonalResult.applied) return null;
-      const key = `${season.collectionId ?? ""}|${weeks}`;
+      const id = groupIdOf(season);
+      const key = `${id ?? ""}|${weeks}`;
       if (curveMemo.has(key)) return curveMemo.get(key)!;
-      const s = seriesOf(season.level === "collection" ? season.collectionId : null);
+      const s = seriesOf(id);
       const c = s ? seasonCurve(s, input.today, weeks) : null;
       curveMemo.set(key, c);
       return c;
     },
-    forVariant(collections: readonly string[], horizonDays: number): VariantSeason {
-      const choice = chooseSeasonSource(collections, input.units12m);
-      if (choice.level === "collection") {
-        const sr = seasonal(choice.collectionId, horizonDays);
-        const tr = trend(choice.collectionId);
+    /** `groupIds`: the variant's season groups (seasonGroupsOf: its collections and product type). */
+    forVariant(groupIds: readonly string[], horizonDays: number): VariantSeason {
+      const c = chooseSeasonSource(groupIds, groups);
+      if (c.groupId !== null) {
+        const sr = seasonal(c.groupId, horizonDays);
+        const tr = trend(c.groupId);
         if (sr && tr && sr.applied) {
-          return { seasonal: sr.value, trend: tr.value, level: "collection", collectionId: choice.collectionId, seasonalResult: sr, trendResult: tr };
+          return { seasonal: sr.value, trend: tr.value, level: c.level, collectionId: c.collectionId, productType: c.productType, seasonalResult: sr, trendResult: tr };
         }
       }
       const sr = seasonal(null, horizonDays)!;
       const tr = trend(null)!;
-      return { seasonal: sr.value, trend: tr.value, level: "store", collectionId: null, seasonalResult: sr, trendResult: tr };
+      return { seasonal: sr.value, trend: tr.value, level: "store", collectionId: null, productType: null, seasonalResult: sr, trendResult: tr };
     },
   };
 }
@@ -466,6 +588,7 @@ export function seasonFacts(s: VariantSeason) {
   return {
     level: s.level,
     collectionId: s.collectionId,
+    productType: s.productType,
     seasonalApplied: s.seasonalResult.applied,
     seasonalReason: s.seasonalResult.reason,
     seasonalRaw: s.seasonalResult.raw,

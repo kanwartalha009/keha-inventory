@@ -6,8 +6,12 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../../app/lib/engine/dates-shared";
 import {
+  CATCH_ALL_SHARE,
   NO_SEASONAL_DATA,
   SEASON,
+  buildSeasonGroups,
+  productTypeGroupId,
+  seasonGroupsOf,
   TREND_NOT_APPLIED,
   chooseSeasonSource,
   createSeasonContext,
@@ -23,6 +27,7 @@ import {
   type Coverage,
   type UnitsSeries,
 } from "../../app/lib/engine/season-shared";
+import { testGroups } from "../helpers/season-groups";
 
 const TODAY = "2026-10-16";
 const FULL: Coverage = { from: "2025-08-01", to: "2026-10-15" };
@@ -196,12 +201,12 @@ describe("trend", () => {
       expect(r).toMatchObject({ value: 1, applied: false, reason: "off", mode: "off" });
       expect(r.measured).toBeCloseTo(1.5, 12);
     }
-    const ctx = createSeasonContext({ today: TODAY, store: s, collections: new Map(), units12m: new Map() });
+    const ctx = createSeasonContext({ today: TODAY, store: s });
     const v = ctx.forVariant([], 28);
     expect(v.trend).toBe(1);
     expect(seasonFacts(v)).toMatchObject({ trendApplied: false, trendReason: "off", trendMode: "off", trendNote: TREND_NOT_APPLIED });
     expect(seasonFacts(v).trendMeasured).toBeCloseTo(1.5, 12);
-    const on = createSeasonContext({ today: TODAY, store: s, collections: new Map(), units12m: new Map(), trendMode: "store" }).forVariant([], 28);
+    const on = createSeasonContext({ today: TODAY, store: s, trendMode: "store" }).forVariant([], 28);
     expect(on.trend).toBeCloseTo(1.5, 12);
     expect(seasonFacts(on).trendNote).toBeNull();
   });
@@ -218,32 +223,99 @@ describe("trend", () => {
   });
 });
 
-describe("store vs collection", () => {
-  it("uses a collection only from 2,000 units in 12 months (threshold and just below)", () => {
-    expect(chooseSeasonSource(["c1"], new Map([["c1", 2000]]))).toEqual({ level: "collection", collectionId: "c1" });
-    expect(chooseSeasonSource(["c1"], new Map([["c1", 1999]]))).toEqual({ level: "store", collectionId: null });
-    expect(chooseSeasonSource([], new Map())).toEqual({ level: "store", collectionId: null });
+describe("store vs season group (collection or product type)", () => {
+  it("uses a group only from 2,000 units in 12 months (threshold and just below)", () => {
+    expect(chooseSeasonSource(["c1"], testGroups([["c1", 2000]]))).toEqual({ level: "collection", groupId: "c1", collectionId: "c1", productType: null });
+    expect(chooseSeasonSource(["c1"], testGroups([["c1", 1999]]))).toEqual({ level: "store", groupId: null, collectionId: null, productType: null });
+    expect(chooseSeasonSource([], new Map())).toEqual({ level: "store", groupId: null, collectionId: null, productType: null });
   });
 
-  it("picks the most specific qualifying collection", () => {
-    const units = new Map([["all", 90000], ["coats", 2500], ["tiny", 100]]);
-    expect(chooseSeasonSource(["all", "coats", "tiny"], units).collectionId).toBe("coats");
+  it("picks the most specific qualifying group: fewest products", () => {
+    const groups = testGroups([["coats", 2500, 12], ["winter", 9000, 4], ["tiny", 100, 1]]);
+    expect(chooseSeasonSource(["coats", "winter", "tiny"], groups).collectionId).toBe("winter");
+    // Same product count: fewer units, then id.
+    expect(chooseSeasonSource(["a", "b"], testGroups([["a", 5000, 3], ["b", 2500, 3]])).collectionId).toBe("b");
   });
 
-  it("context: collection index when it qualifies, store index otherwise, store fallback when the collection can't compute", () => {
+  it("a catch-all collection is never a source, whatever it sold", () => {
+    const groups = testGroups([["all", 90000, 80, true], ["coats", 2500, 10]]);
+    expect(chooseSeasonSource(["all"], groups).level).toBe("store");
+    expect(chooseSeasonSource(["all", "coats"], groups).collectionId).toBe("coats");
+  });
+
+  it("product type is a candidate next to the collections; the smaller group wins", () => {
+    const jackets = productTypeGroupId("Jackets")!;
+    expect(jackets).toBe("type:Jackets");
+    const groups = testGroups([["outerwear", 8000, 30], [jackets, 3000, 6], ["coats", 2600, 4]]);
+    expect(chooseSeasonSource(["outerwear", jackets], groups)).toEqual({ level: "productType", groupId: jackets, collectionId: null, productType: "Jackets" });
+    expect(chooseSeasonSource(["outerwear", jackets, "coats"], groups)).toMatchObject({ level: "collection", collectionId: "coats" });
+    // The type alone, below the threshold → the store.
+    expect(chooseSeasonSource([productTypeGroupId("Hats")!], testGroups([["type:Hats", 1500, 2]])).level).toBe("store");
+  });
+
+  it("seasonGroupsOf: collections (once each), then the product type; no type when blank", () => {
+    expect(seasonGroupsOf({ collections: ["c1", "c2", "c1"], productType: "Jackets" })).toEqual(["c1", "c2", "type:Jackets"]);
+    expect(seasonGroupsOf({ collections: [], productType: "  " })).toEqual([]);
+    expect(seasonGroupsOf({ collections: null, productType: null })).toEqual([]);
+  });
+
+  it("buildSeasonGroups: units, size, the 60 % catch-all rule (variants or products) and qualification", () => {
+    expect(CATCH_ALL_SHARE).toBe(0.6);
+    // 10 active tracked variants on 5 products (2 each) + one draft variant on a sixth product.
+    const vs = Array.from({ length: 10 }, (_, i) => ({
+      id: `v${i}`,
+      productId: `p${Math.floor(i / 2)}`,
+      // "all": every variant; "sale": 6 of 10 variants (60 %); "coats": p0 and p1 (4 variants, 2 of 5 products).
+      collections: ["all", ...(i < 6 ? ["sale"] : []), ...(i < 4 ? ["coats"] : [])],
+      productType: i < 4 ? "Jackets" : "Shirts",
+      counted: true,
+    }));
+    vs.push({ id: "draft", productId: "p9", collections: ["all", "coats"], productType: "Jackets", counted: false });
+    const units = new Map([...vs.map((v) => [v.id, 600] as const)]);
+    const { groups, members } = buildSeasonGroups(vs, units);
+    expect(groups.get("all")).toMatchObject({ kind: "collection", variants: 10, products: 5, catchAll: true, qualifies: false, units12m: 6600 });
+    expect(groups.get("sale")).toMatchObject({ variants: 6, products: 3, catchAll: true, qualifies: false }); // 60 % of the variants
+    // The draft counts in the units (as the series) but not in the size.
+    expect(groups.get("coats")).toMatchObject({ variants: 4, products: 2, catchAll: false, qualifies: true, units12m: 3000 });
+    expect(members.get("coats")).toEqual(["v0", "v1", "v2", "v3", "draft"]);
+    expect(groups.get("type:Jackets")).toMatchObject({ kind: "productType", key: "Jackets", products: 2, catchAll: false, qualifies: true });
+    expect(groups.get("type:Shirts")).toMatchObject({ variants: 6, catchAll: true, qualifies: false });
+    // Products alone: one product with 1 variant of 5 → 3 of 5 products (60 %) is a catch-all even with few variants.
+    const few = [
+      { id: "a1", productId: "A", collections: ["big"], productType: null, counted: true },
+      { id: "a2", productId: "A", collections: [], productType: null, counted: true },
+      { id: "a3", productId: "A", collections: [], productType: null, counted: true },
+      { id: "a4", productId: "A", collections: [], productType: null, counted: true },
+      { id: "b1", productId: "B", collections: ["big"], productType: null, counted: true },
+      { id: "c1", productId: "C", collections: ["big"], productType: null, counted: true },
+      { id: "d1", productId: "D", collections: [], productType: null, counted: true },
+      { id: "e1", productId: "E", collections: [], productType: null, counted: true },
+    ];
+    const g2 = buildSeasonGroups(few, new Map(few.map((v) => [v.id, 5000]))).groups.get("big")!;
+    expect(g2).toMatchObject({ variants: 3, products: 3, catchAll: true, qualifies: false }); // 3/8 variants, 3/5 products
+  });
+
+  it("context: group index when it qualifies, store index otherwise, store fallback when the group can't compute", () => {
     const store = series((d) => (d >= "2025-10-17" && d <= "2025-12-31" ? 20 : 10)); // store: shrunk (one year)
     const coats = series((d) => (d >= "2025-10-17" && d <= "2025-12-31" ? 40 : 10)); // coats: higher
+    const jackets = series((d) => (d >= "2025-10-17" && d <= "2025-12-31" ? 30 : 10));
     const dead = series(() => 0); // qualifies by units12m (overridden) but base sold nothing
     const ctx = createSeasonContext({
       today: TODAY,
       store,
-      collections: new Map([["coats", coats], ["dead", dead]]),
-      units12m: new Map([["coats", 3000], ["dead", 2500], ["small", 10]]),
+      groupSeries: new Map([["coats", coats], ["dead", dead], ["type:Jackets", jackets]]),
+      groups: testGroups([["coats", 3000, 5], ["dead", 2500, 2], ["small", 10], ["type:Jackets", 4000, 3]]),
     });
     const c = ctx.forVariant(["coats"], 28);
-    expect(c).toMatchObject({ level: "collection", collectionId: "coats" });
+    expect(c).toMatchObject({ level: "collection", collectionId: "coats", productType: null });
     expect(c.seasonal).toBeCloseTo(seasonalIndex(coats, TODAY, 28).value, 12);
     expect(c.seasonal).toBeGreaterThan(2);
+    // The product type has fewer products than "coats": it wins.
+    const j = ctx.forVariant(["coats", "type:Jackets"], 28);
+    expect(j).toMatchObject({ level: "productType", collectionId: null, productType: "Jackets" });
+    expect(j.seasonal).toBeCloseTo(seasonalIndex(jackets, TODAY, 28).value, 12);
+    expect(ctx.curveFor(j, 4)).toEqual(seasonCurve(jackets, TODAY, 4));
+    expect(seasonFacts(j)).toMatchObject({ level: "productType", collectionId: null, productType: "Jackets" });
     expect(ctx.forVariant(["small"], 28).level).toBe("store");
     expect(ctx.forVariant(["small"], 28).seasonal).toBeCloseTo(seasonalIndex(store, TODAY, 28).value, 12);
     const fb = ctx.forVariant(["dead"], 28);
@@ -252,9 +324,9 @@ describe("store vs collection", () => {
   });
 
   it("facts label the fallback 'No seasonal data yet'", () => {
-    const ctx = createSeasonContext({ today: TODAY, store: series(() => 10, { from: null, to: null }), collections: new Map(), units12m: new Map() });
+    const ctx = createSeasonContext({ today: TODAY, store: series(() => 10, { from: null, to: null }) });
     const f = seasonFacts(ctx.forVariant([], 28));
-    expect(f).toMatchObject({ level: "store", seasonalApplied: false, seasonalReason: "short_history", label: NO_SEASONAL_DATA });
+    expect(f).toMatchObject({ level: "store", collectionId: null, productType: null, seasonalApplied: false, seasonalReason: "short_history", label: NO_SEASONAL_DATA });
   });
 });
 

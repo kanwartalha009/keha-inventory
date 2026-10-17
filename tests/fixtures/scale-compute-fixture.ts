@@ -115,7 +115,9 @@ export function seedScaleFixture(db: FakeDb, opts: FixtureOptions = {}): { varia
       sku: `SKU-${i}`,
       vendor: i % 2 ? "Acme" : "Brava",
       productType: null,
-      collections: [i % 4 === 0 ? "gid://shopify/Collection/2" : "gid://shopify/Collection/1"],
+      // Collection/1 holds every product (a catch-all: never a season source); Collection/2 holds
+      // products 4 and 8 (20 % of the catalogue: its own season index).
+      collections: productNo % 4 === 0 ? ["gid://shopify/Collection/1", "gid://shopify/Collection/2"] : ["gid://shopify/Collection/1"],
       image: null,
       tracked: true,
       isBundle: false,

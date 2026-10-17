@@ -44,6 +44,7 @@ import { resolveSettings } from "./engine/types-shared";
 import {
   SEASON,
   chooseSeasonSource,
+  seasonGroupsOf,
   monthsEarlier,
   planMultiplier,
   seasonalIndex,
@@ -51,6 +52,8 @@ import {
   spanStats,
   trendFactor,
   type Coverage,
+  type SeasonGroup,
+  type SeasonLevel,
   type SeasonalReason,
   type SeasonalResult,
   type SpanStats,
@@ -342,8 +345,9 @@ export function periodSeasonalIndex(s: UnitsSeries, today: DayKey, start: DayKey
 }
 
 export interface VariantPeriodSeason {
-  level: "store" | "collection";
+  level: SeasonLevel;
   collectionId: string | null;
+  productType: string | null;
   period: PeriodSeasonal;
   /** Seasonal index for today → the period start (engine seasonalIndex); null when it starts today. */
   gap: SeasonalResult | null;
@@ -351,33 +355,39 @@ export interface VariantPeriodSeason {
 }
 
 /**
- * The planner's season context. Same level rule as the engine (createSeasonContext): a variant
- * in a collection that sold ≥ 2,000 units in the last 12 months uses that collection's index
- * (the most specific one) when the collection's period index can be computed; otherwise the
- * store's. Period, gap and trend always come from one level.
+ * The planner's season context. Same level rule as the engine (createSeasonContext /
+ * chooseSeasonSource): a variant uses the most specific (fewest products) of its non-catch-all
+ * collections and its product type that sold ≥ 2,000 units in the last 12 months, when that
+ * group's period index can be computed; otherwise the store's. Period, gap and trend always come
+ * from one level.
  */
 export function createPlannerSeason(input: {
   today: DayKey;
   start: DayKey;
   end: DayKey;
   store: UnitsSeries;
-  collections: ReadonlyMap<string, UnitsSeries>;
-  units12m: ReadonlyMap<string, number>;
+  /** Units series per qualifying season group id (collections and product types). */
+  groupSeries?: ReadonlyMap<string, UnitsSeries>;
+  /** Season groups (season-shared buildSeasonGroups); empty → always the store. */
+  groups?: ReadonlyMap<string, SeasonGroup>;
   /** Growth assumption (settings trendMode); default "off": the trend is measured, not applied. */
   trendMode?: TrendMode;
 }) {
   const today = toDayKey(input.today);
   const from = effectiveStart(input.start, today);
   const gapDays = daysBetween(today, from);
+  const groupSeries = input.groupSeries ?? new Map<string, UnitsSeries>();
+  const groups = input.groups ?? new Map<string, SeasonGroup>();
   const memo = new Map<string, VariantPeriodSeason | null>();
-  const build = (id: string | null): VariantPeriodSeason | null => {
-    const key = id ?? "";
+  const build = (c: { level: SeasonLevel; groupId: string | null; collectionId: string | null; productType: string | null }): VariantPeriodSeason | null => {
+    const key = c.groupId ?? "";
     if (memo.has(key)) return memo.get(key)!;
-    const s = id === null ? input.store : input.collections.get(id);
+    const s = c.groupId === null ? input.store : groupSeries.get(c.groupId);
     const r = s
       ? {
-          level: (id === null ? "store" : "collection") as "store" | "collection",
-          collectionId: id,
+          level: c.level,
+          collectionId: c.collectionId,
+          productType: c.productType,
           period: periodSeasonalIndex(s, today, from, input.end),
           gap: gapDays > 0 ? seasonalIndex(s, today, gapDays) : null,
           trend: trendFactor(s, today, input.trendMode ?? "off"),
@@ -386,17 +396,19 @@ export function createPlannerSeason(input: {
     memo.set(key, r);
     return r;
   };
+  const STORE = { level: "store" as const, groupId: null, collectionId: null, productType: null };
   return {
     gapDays,
     effectiveStart: from,
-    store: () => build(null)!,
-    forVariant(collections: readonly string[]): VariantPeriodSeason {
-      const choice = chooseSeasonSource(collections, input.units12m);
-      if (choice.level === "collection") {
-        const c = build(choice.collectionId);
+    store: () => build(STORE)!,
+    /** `groupIds`: the variant's season groups (seasonGroupsOf: its collections and product type). */
+    forVariant(groupIds: readonly string[]): VariantPeriodSeason {
+      const choice = chooseSeasonSource(groupIds, groups);
+      if (choice.groupId !== null) {
+        const c = build(choice);
         if (c && c.period.applied) return c;
       }
-      return build(null)!;
+      return build(STORE)!;
     },
   };
 }
@@ -417,6 +429,8 @@ export interface PlannerVariant {
   vendor: string | null;
   supplierId: string | null;
   collections: string[];
+  /** Shopify product type (a season group); null / absent = none. */
+  productType?: string | null;
   caseQty: number | null;
   /** Unit cost and its currency (Shopify's cost field). */
   cost: number | null;
@@ -556,6 +570,8 @@ export interface SeasonSummary {
   trendApplied: boolean;
   /** Variants that used their collection's index instead of the store's. */
   collectionVariants: number;
+  /** Variants that used their product type's index instead of the store's. */
+  productTypeVariants: number;
 }
 
 export type ResultStatus = "ok" | "no_data" | "no_baseline";
@@ -643,7 +659,7 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
       noData++;
       continue;
     }
-    const s = season.forVariant(v.collections ?? []);
+    const s = season.forVariant(seasonGroupsOf(v));
     const base = v.rate * s.period.value * s.trend.value * days;
     const gapDemand = s.gap ? v.rate * s.gap.value * s.trend.value * season.gapDays : 0;
     rows.push({ v, s, base, gapDemand });
@@ -828,6 +844,7 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
       trend: store.trend.value,
       trendApplied: store.trend.applied,
       collectionVariants: rows.filter((r) => r.s.level === "collection").length,
+      productTypeVariants: rows.filter((r) => r.s.level === "productType").length,
     },
     totals: {
       units: status === "ok" ? round1(totalUnits) : null,

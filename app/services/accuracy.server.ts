@@ -37,7 +37,7 @@ import {
   snapshotDue,
   snapshotRows,
 } from "../lib/engine/accuracy-shared";
-import { spanStats, type TrendMode } from "../lib/engine/season-shared";
+import { seasonGroupsOf, spanStats, type TrendMode } from "../lib/engine/season-shared";
 import { readSettings } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds, pooledOutOfStock, salesCoverage, type DemandScope } from "../lib/compute-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
@@ -94,20 +94,24 @@ async function snapshotMonth(
   if (!metrics.length) return "no_data";
   const latest = metrics.reduce((m, x) => Math.max(m, x.computedAt.getTime()), 0);
   if (now.getTime() - latest > FRESH_MS) return "stale_metrics";
-  const variants = await prisma.variant.findMany({ where: { shop }, select: { id: true, collections: true } });
-  const collectionsOf = new Map(variants.map((v) => [v.id, v.collections ?? []]));
+  // Non-bundle variants, as compute builds the season groups (collections and product type).
+  const variants = await prisma.variant.findMany({
+    where: { shop, isBundle: false },
+    select: { id: true, productId: true, collections: true, productType: true, tracked: true, status: true },
+  });
+  const groupsOf = new Map(variants.map((v) => [v.id, seasonGroupsOf(v)]));
   const days = daysInMonth(month);
   const season = await loadSeasonContext(shop, {
     today,
     demand,
-    variants: variants.map((v) => ({ id: v.id, collections: v.collections ?? [] })),
+    variants: variants.map((v) => ({ id: v.id, productId: v.productId, collections: v.collections ?? [], productType: v.productType, counted: v.tracked && v.status === "ACTIVE" })),
     coverage,
     maxHorizonDays: days,
     trendMode,
   });
   const rows = snapshotRows(
     metrics.map((m) => {
-      const s = season.forVariant(collectionsOf.get(m.variantId) ?? [], days);
+      const s = season.forVariant(groupsOf.get(m.variantId) ?? [], days);
       return { variantId: m.variantId, rate: m.rate, seasonal: s.seasonal, trend: s.trend, naiveRate: naiveRateOf(m.inputs) };
     }),
     month,

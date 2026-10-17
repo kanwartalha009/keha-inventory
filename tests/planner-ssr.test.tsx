@@ -62,7 +62,7 @@ function result() {
     defaultLeadTimeDays: 14,
     variants: [V(1, { supplierId: "s1" }), V(2, { cost: null, collections: ["gid://shopify/Collection/1", "gid://shopify/Collection/2"] })],
     suppliers: [{ id: "s1", name: "Slow Mill", leadTimeDays: 60, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: [], currency: null }],
-    season: createPlannerSeason({ today: TODAY, start, end, store: { units, coverage: SHORT }, collections: new Map(), units12m: new Map() }),
+    season: createPlannerSeason({ today: TODAY, start, end, store: { units, coverage: SHORT } }),
     coverage: SHORT,
     lastYear: { from: "2025-11-26", to: "2025-11-30", units: null, revenue: null, coverage: 0 },
     computedAt: "2026-10-16T08:00:00.000Z",

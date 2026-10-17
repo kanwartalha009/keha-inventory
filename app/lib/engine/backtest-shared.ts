@@ -56,7 +56,7 @@ import {
   type EngineSettings,
   type VariantResult,
 } from "./index-shared";
-import { SEASON, createSeasonContext, spanStats, type Coverage, type TrendMode, type UnitsSeries } from "./season-shared";
+import { SEASON, buildSeasonGroups, createSeasonContext, seasonGroupsOf, spanStats, type Coverage, type TrendMode, type UnitsSeries } from "./season-shared";
 import {
   buildSeries,
   productTraffic,
@@ -81,6 +81,8 @@ export interface BacktestVariant {
   handle: string;
   vendor: string | null;
   collections: string[];
+  /** Shopify product type (a season group when it sells enough); null / absent = none. */
+  productType?: string | null;
   tracked: boolean;
   isBundle: boolean;
   /** ACTIVE | DRAFT | ARCHIVED (today's value). */
@@ -250,30 +252,30 @@ export function backtestMonth(data: BacktestData, month: string): BacktestMonthR
   const storeUnits = new Map<string, number>();
   for (const s of pastPool) storeUnits.set(s.day, (storeUnits.get(s.day) ?? 0) + s.sold);
   const units12 = sumBy(pastPool, addDays(asOf, -SEASON.units12mDays), yesterday, (r) => r.sold);
-  const members = new Map<string, string[]>();
-  for (const v of nonBundle) for (const c of v.collections ?? []) (members.get(c) ?? members.set(c, []).get(c)!).push(v.id);
-  const units12m = new Map<string, number>();
-  for (const [c, ids] of members) units12m.set(c, ids.reduce((a, id) => a + (units12.get(id) ?? 0), 0));
-  const collections = new Map<string, UnitsSeries>();
+  const { groups, members } = buildSeasonGroups(
+    nonBundle.map((v) => ({ id: v.id, productId: v.productId, collections: v.collections, productType: v.productType, counted: v.tracked && v.status === "ACTIVE" })),
+    units12,
+  );
+  const groupSeries = new Map<string, UnitsSeries>();
   const byVariantDay = new Map<string, Map<string, number>>();
   for (const s of pastPool) {
     const m = byVariantDay.get(s.variantId) ?? byVariantDay.set(s.variantId, new Map()).get(s.variantId)!;
     m.set(s.day, (m.get(s.day) ?? 0) + s.sold);
   }
-  for (const [c, u] of units12m) {
-    if (u < SEASON.collectionMinUnits12m) continue;
+  for (const g of groups.values()) {
+    if (!g.qualifies) continue;
     const units = new Map<string, number>();
-    for (const id of members.get(c) ?? []) for (const [day, n] of byVariantDay.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + n);
-    collections.set(c, { units, coverage });
+    for (const id of members.get(g.id) ?? []) for (const [day, n] of byVariantDay.get(id) ?? []) units.set(day, (units.get(day) ?? 0) + n);
+    groupSeries.set(g.id, { units, coverage });
   }
-  const season = createSeasonContext({ today: asOf, store: { units: storeUnits, coverage }, collections, units12m, trendMode: data.trendMode ?? "off" });
+  const season = createSeasonContext({ today: asOf, store: { units: storeUnits, coverage }, groupSeries, groups, trendMode: data.trendMode ?? "off" });
   const storeSeason = season.forVariant([], fDays);
 
   // ---- forecast for M+1 (accuracy's snapshot) ----
   const snapshot = snapshotRows(
     considered.map((v) => {
       const r = salesRate(indexSeries(series.get(v.id) ?? [], asOf), asOf, settings);
-      const s = season.forVariant(v.collections ?? [], fDays);
+      const s = season.forVariant(seasonGroupsOf(v), fDays);
       return { variantId: v.id, rate: r.rate, seasonal: s.seasonal, trend: s.trend };
     }),
     fStart,
@@ -410,7 +412,7 @@ function moneyAsOf(
     }
     const supplier = supplierFor(v, x.suppliers);
     const lead = resolveLeadTime(supplier?.leadTimeDays ?? null, settings);
-    const s = x.seasonCtx.forVariant(v.collections ?? [], lead.days + settings.cycleDays);
+    const s = x.seasonCtx.forVariant(seasonGroupsOf(v), lead.days + settings.cycleDays);
     const r = computeVariant({
       id: v.id,
       isBundle: false,

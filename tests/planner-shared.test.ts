@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { addDays } from "../app/lib/engine/dates-shared";
 import { safetyStock } from "../app/lib/engine/order-shared";
 import type { Coverage, UnitsSeries } from "../app/lib/engine/season-shared";
+import { testGroups } from "./helpers/season-groups";
 import {
   RESULT_VERSION,
   blackFriday,
@@ -94,7 +95,7 @@ function input(over: Partial<PlannerInput> = {}, seasonSeries: UnitsSeries = fla
     defaultLeadTimeDays: 14,
     variants: [V(1)],
     suppliers: [],
-    season: createPlannerSeason({ today, start, end, store: seasonSeries, collections: new Map(), units12m: new Map() }),
+    season: createPlannerSeason({ today, start, end, store: seasonSeries }),
     coverage,
     lastYear: { from: "2025-11-26", to: "2025-11-30", units: null, revenue: null, coverage: 0 },
     computedAt: "2026-10-16T08:00:00.000Z",
@@ -228,12 +229,15 @@ describe("seasonal index for a period", () => {
       start: "2026-11-26",
       end: "2026-11-30",
       store: seasonal,
-      collections: new Map([["C1", coll]]),
-      units12m: new Map([["C1", 2500], ["C2", 100]]),
+      groupSeries: new Map([["C1", coll], ["type:Coats", coll]]),
+      groups: testGroups([["C1", 2500, 3], ["C2", 100], ["type:Coats", 2600, 2], ["ALL", 90000, 50, true]]),
     });
     expect(s.forVariant(["C1"])).toMatchObject({ level: "collection", collectionId: "C1" });
     expect(s.forVariant(["C1"]).period.value).toBe(4);
     expect(s.forVariant(["C2"])).toMatchObject({ level: "store" });
+    // A catch-all is skipped; the product type (fewer products) wins over C1.
+    expect(s.forVariant(["ALL"])).toMatchObject({ level: "store" });
+    expect(s.forVariant(["C1", "type:Coats"])).toMatchObject({ level: "productType", productType: "Coats", collectionId: null });
     expect(s.gapDays).toBe(41);
     expect(s.forVariant([]).gap?.horizonDays).toBe(41);
   });
@@ -362,7 +366,7 @@ describe("computeScenario", () => {
     const s = series((d) => (d >= "2025-10-16" && d <= "2025-10-31" ? 2 : 1), FULL);
     const spec = { start: "2026-10-01", end: "2026-10-20", targetType: "keep_pace" as const, targetValue: 0, variants: [V(1, { onHand: 0, incoming: 0 })] };
     const season = (trendMode?: "off" | "store") =>
-      createPlannerSeason({ today: TODAY, start: spec.start, end: spec.end, store: s, collections: new Map(), units12m: new Map(), trendMode });
+      createPlannerSeason({ today: TODAY, start: spec.start, end: spec.end, store: s, trendMode });
     const off = computeScenario(input({ ...spec, season: season() }, s, FULL));
     const on = computeScenario(input({ ...spec, season: season("store") }, s, FULL));
     expect(off.season).toMatchObject({ trendApplied: false, trend: 1 });

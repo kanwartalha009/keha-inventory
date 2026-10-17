@@ -4,16 +4,21 @@
  *
  * Units come from the pool's demand view (compute-shared demandWhere: all channels, minus
  * locations the merchant left out), the same view the sales rate uses; never both views.
- * Collection series are loaded only when a collection sold ≥ 2,000 units in the last 12 months.
+ * Group series are loaded only for groups that qualify (season-shared buildSeasonGroups: sold
+ * ≥ 2,000 units in the last 12 months and not a catch-all): one day-level query per qualifying
+ * collection, and ONE grouped statement for every qualifying product type (season-sql-shared).
  */
 import prisma from "../db.server";
 import {
   SEASON,
+  buildSeasonGroups,
   createSeasonContext,
   type Coverage,
+  type SeasonGroupVariant,
   type TrendMode,
   type UnitsSeries,
 } from "../lib/engine/season-shared";
+import { productTypeSeriesQuery, readProductTypeSeries, type RawQuery } from "../lib/season-sql-shared";
 import { dayDate } from "../lib/sync/facts-shared";
 import { demandWhere, type DemandScope } from "../lib/compute-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
@@ -24,6 +29,7 @@ const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 /** Member variant ids per `in` filter (bounded query size). */
 const MEMBER_CHUNK = 5000;
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
+const prismaRaw: RawQuery = (sql, params) => prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
 
 export async function loadSeasonContext(
   shop: string,
@@ -31,13 +37,17 @@ export async function loadSeasonContext(
     today: string;
     /** Pool demand (compute-shared demandScope): the same SalesDaily view the sales rate reads. */
     demand: DemandScope;
-    variants: { id: string; collections: string[] }[];
+    /** Non-bundle variants with their collections, product type and whether they are active and tracked. */
+    variants: SeasonGroupVariant[];
     coverage: Coverage;
     /** Longest horizon any variant will ask for (lead time + cycle, or a month). */
     maxHorizonDays: number;
     /** Growth assumption (Shop.settings.trendMode); default "off" — the trend is measured, not applied. */
     trendMode?: TrendMode;
+    /** Members of a product type: false (default) = every non-bundle variant, as the collections' members. */
+    plannedOnly?: boolean;
   },
+  raw: RawQuery = prismaRaw,
 ): Promise<SeasonContext> {
   const { today, coverage } = input;
   const yesterday = addDays(today, -1);
@@ -65,33 +75,39 @@ export async function loadSeasonContext(
   const storeUnits = new Map<string, number>(storeG.map((g) => [dayKey(g.day), num(g._sum.sold)]));
 
   const variantUnits12 = new Map(units12G.map((g) => [g.variantId, num(g._sum.sold)]));
-  const members = new Map<string, string[]>();
-  for (const v of input.variants) for (const c of v.collections ?? []) (members.get(c) ?? members.set(c, []).get(c)!).push(v.id);
-  const units12m = new Map<string, number>();
-  for (const [c, ids] of members) units12m.set(c, ids.reduce((a, id) => a + (variantUnits12.get(id) ?? 0), 0));
-
-  const qualifying = [...units12m].filter(([, u]) => u >= SEASON.collectionMinUnits12m).map(([c]) => c);
-  const collections = new Map<string, UnitsSeries>();
-  // One day-level query per qualifying collection (its members' units summed in SQL), over the
-  // last-year windows (both years, bases and smoothing: [from … lyTo]) and the last 28 days.
-  const windows = [
-    { gte: dayDate(from), lte: dayDate(lyTo < yesterday ? lyTo : yesterday) },
-    ...(lyTo < addDays(today, -SEASON.trendDays) ? [{ gte: dayDate(addDays(today, -SEASON.trendDays)), lte: dayDate(yesterday) }] : []),
+  const { groups, members } = buildSeasonGroups(input.variants, variantUnits12);
+  const qualifying = [...groups.values()].filter((g) => g.qualifies);
+  const groupSeries = new Map<string, UnitsSeries>();
+  // Day-level reads over the last-year windows (both years, bases and smoothing: [from … lyTo])
+  // and the last 28 days.
+  const lyEnd = lyTo < yesterday ? lyTo : yesterday;
+  const dayWindows = [
+    { from, to: lyEnd },
+    ...(lyTo < addDays(today, -SEASON.trendDays) ? [{ from: addDays(today, -SEASON.trendDays), to: yesterday }] : []),
   ];
-  for (const c of qualifying) {
-    const ids = members.get(c) ?? [];
+  // One day-level query per qualifying collection (its members' units summed in SQL).
+  for (const g of qualifying.filter((x) => x.kind === "collection")) {
+    const ids = members.get(g.id) ?? [];
     const units = new Map<string, number>();
-    for (const day of windows) {
+    for (const w of dayWindows) {
+      const day = { gte: dayDate(w.from), lte: dayDate(w.to) };
       for (let i = 0; i < ids.length; i += MEMBER_CHUNK) {
         const rows = await prisma.salesDaily.groupBy({
           by: ["day"],
           where: { ...pool, variantId: { in: ids.slice(i, i + MEMBER_CHUNK) }, day },
           _sum: { sold: true },
         });
-        for (const g of rows) units.set(dayKey(g.day), (units.get(dayKey(g.day)) ?? 0) + num(g._sum.sold));
+        for (const r of rows) units.set(dayKey(r.day), (units.get(dayKey(r.day)) ?? 0) + num(r._sum.sold));
       }
     }
-    collections.set(c, { units, coverage });
+    groupSeries.set(g.id, { units, coverage });
   }
-  return createSeasonContext({ today, store: { units: storeUnits, coverage }, collections, units12m, trendMode: input.trendMode ?? "off" });
+  // Every qualifying product type in ONE grouped statement (type × day rows, same windows).
+  const types = qualifying.filter((x) => x.kind === "productType");
+  const q = productTypeSeriesQuery({ shop, demand: input.demand, types: types.map((g) => g.key), windows: dayWindows, plannedOnly: input.plannedOnly });
+  if (q) {
+    const byType = readProductTypeSeries(await raw(q.sql, q.params));
+    for (const g of types) groupSeries.set(g.id, { units: byType.get(g.key) ?? new Map(), coverage });
+  }
+  return createSeasonContext({ today, store: { units: storeUnits, coverage }, groupSeries, groups, trendMode: input.trendMode ?? "off" });
 }

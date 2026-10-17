@@ -85,7 +85,7 @@ import { generateActions, type RuleProduct, type RuleVariant } from "../lib/engi
 import { resolveLeadTime } from "../lib/engine/order-shared";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
-import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
+import { SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
 import { OPEN_PO_STATUSES, casePackFor, cycleFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
@@ -307,6 +307,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         handle: true,
         vendor: true,
         collections: true,
+        productType: true,
         tracked: true,
         isBundle: true,
         cost: true,
@@ -383,7 +384,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const seasonCtx = await loadSeasonContext(shop, {
     today,
     demand,
-    variants: variants.filter((v) => !v.isBundle).map((v) => ({ id: v.id, collections: v.collections ?? [] })),
+    // Season groups: collections and product type; active tracked variants size them (catch-all rule).
+    variants: variants
+      .filter((v) => !v.isBundle)
+      .map((v) => ({ id: v.id, productId: v.productId, collections: v.collections ?? [], productType: v.productType, counted: v.tracked && v.status === "ACTIVE" })),
     coverage,
     // + the seasonal shape (seasonCurve) beyond the horizon — the forward plan's 13 weeks and the
     // status / cash-stuck projection (Too much threshold) — for collection series.
@@ -557,7 +561,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
     for (const { v, supplier, horizon } of chunk) {
       const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
-      const season = seasonCtx.forVariant(v.collections ?? [], horizon);
+      const season = seasonCtx.forVariant(seasonGroupsOf(v), horizon);
       seasonOf.set(v.id, season);
       // The weekly seasonal shape (only when the index was applied): the forward plan's 13 weeks and
       // the status / money projection up to the Too-much threshold (H6).
