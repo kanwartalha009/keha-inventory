@@ -93,7 +93,7 @@ describe("Next 13 weeks", () => {
   it("Free (and below Growth): the tab bar stays and the tab teaches", () => {
     const html = render({ enabled: false, plan: EMPTY_ORDER_PLAN("") });
     expect(html).toContain("keha-tabs");
-    expect(html).toContain("13-week order calendar · Growth plan");
+    expect(html).toContain("Next 13 weeks · Growth plan");
     expect(html).toContain('href="/app/plans?upgrade=orderCalendar"');
     expect(html).not.toContain("Download CSV");
   });

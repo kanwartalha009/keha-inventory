@@ -24,7 +24,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "reorderPlan":
       return { title: t("Order plan"), body: t("Know what to order from each supplier, how much, and by which date.") };
     case "orderCalendar":
-      return { title: t("13-week order calendar"), body: t("Every order for the next 13 weeks, by week and supplier, with the cash you need each week.") };
+      return { title: t("Next 13 weeks"), body: t("Every order for the next 13 weeks, by week and supplier, with the cash you need each week.") };
     case "suppliers":
       return { title: t("Suppliers"), body: t("Keep lead times, minimum orders and case packs for each supplier.") };
     case "poExport":

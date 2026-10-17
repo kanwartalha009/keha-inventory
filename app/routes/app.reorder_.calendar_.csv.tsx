@@ -14,7 +14,7 @@ import { planCsv } from "../lib/order-plan-shared";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await authenticateApp(request);
   const { features } = await getEntitlements(shop);
-  if (!features.orderCalendar) return upgradeResponse("orderCalendar", "The 13-week order calendar is on the Growth plan.");
+  if (!features.orderCalendar) return upgradeResponse("orderCalendar", "Next 13 weeks is on the Growth plan.");
   const [plan, basics] = await Promise.all([loadOrderPlan(shop), shopBasics(shop)]);
   const locale = toSupportedLocale(basics.locale);
   const csv = planCsv(plan, (s) => translate(locale, s));

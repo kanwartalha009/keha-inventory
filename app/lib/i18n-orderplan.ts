@@ -166,7 +166,6 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
     nl: "Free toont je 10 meest dringende producten, alleen-lezen.",
     pl: "Plan Free pokazuje 10 najpilniejszych produktów, tylko do odczytu.",
   },
-  "13-week order calendar": { es: "Calendario de pedidos de 13 semanas", fr: "Calendrier de commandes sur 13 semaines", de: "13-Wochen-Bestellkalender", it: "Calendario ordini a 13 settimane", pt: "Calendário de encomendas a 13 semanas", nl: "Bestelkalender voor 13 weken", pl: "Kalendarz zamówień na 13 tygodni" },
   "Every order for the next 13 weeks, by week and supplier, with the cash you need each week.": {
     es: "Cada pedido de las próximas 13 semanas, por semana y proveedor, con el dinero que necesitas cada semana.",
     fr: "Chaque commande des 13 prochaines semaines, par semaine et par fournisseur, avec la trésorerie nécessaire chaque semaine.",
