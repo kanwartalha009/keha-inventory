@@ -64,7 +64,7 @@ export default function PlansPage() {
   return (
     <AppPage
       heading={t("Plans & billing")}
-      intro={t("Start free with your 10 most urgent orders. Growth plans every order by supplier, with purchase orders and the cash per week. Pro plans each warehouse and store.")}
+      intro={t("Start free with your 10 most urgent products. Growth plans every order by supplier, with purchase orders and the cash per week. Pro plans each warehouse and store.")}
     >
       {comped && <s-banner tone="success">{t("Your plan is comped — no charge.")}</s-banner>}
 

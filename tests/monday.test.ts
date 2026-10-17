@@ -786,7 +786,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     };
     const e = composeMondayEmail({ ...base, refresh: "weekly", orders });
     expect(e.subject).toBe("2 products to order by Nov 2");
-    expect(e.text).toContain("Your most urgent orders");
+    expect(e.text).toContain("Your most urgent products");
     expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · order now");
     expect(e.text).toContain("- Cap · 6 units · order by Nov 2");
     expect(e.text).not.toContain("Review order"); // read-only

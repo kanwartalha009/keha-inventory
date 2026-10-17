@@ -92,7 +92,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
 
 /** Who each plan is for, and what it adds on top of the plan before it. */
 export const PLAN_PITCH: Record<PlanCode, string> = {
-  free: "Your 10 most urgent orders and the money at stake.",
+  free: "Your 10 most urgent products and the money at stake.",
   growth: "Plan every order by supplier and send purchase orders.",
   pro: "Plan each warehouse and POS store, and move stock between them.",
 };

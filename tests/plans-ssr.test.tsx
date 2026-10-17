@@ -44,7 +44,8 @@ describe("Plans page", () => {
     expect(html).toContain("Recommended");
     expect(html).not.toContain("Most popular");
     expect(html).toContain("No revenue tiers or SKU limits.");
-    expect(html).toContain("Start free with your 10 most urgent orders.");
+    expect(html).toContain("Start free with your 10 most urgent products.");
+    expect(html).not.toContain("most urgent orders");
     // The order plan leads the comparison.
     expect(html.indexOf("What to order, how much and by when")).toBeLessThan(html.indexOf("How often the numbers refresh"));
     expect(html).toContain("Full order plan by supplier, with purchase orders");

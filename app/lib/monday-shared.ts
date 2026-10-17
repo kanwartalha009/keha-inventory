@@ -315,7 +315,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
   }
   if (orders.kind === "preview") {
     return {
-      heading: tr("Your most urgent orders"),
+      heading: tr("Your most urgent products"),
       lines: orders.rows.map((r) => ({
         text: [
           r.variant ? `${r.title} · ${r.variant}` : r.title,

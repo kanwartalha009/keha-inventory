@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { FEATURE_PLAN, hasFeature, type Feature } from "../app/lib/plan-shared";
-import { FEATURES_AS_LIMITS, PLAN_MATRIX, PLAN_POINTS, cellFor, matrixFeatures } from "../app/lib/plan-matrix";
+import { FEATURES_AS_LIMITS, PLAN_MATRIX, PLAN_POINTS, cellFor, matrixFeatures, PLAN_PITCH } from "../app/lib/plan-matrix";
 
 describe("plan matrix", () => {
   it("lists every paid feature", () => {
@@ -40,5 +40,12 @@ describe("plan wording (2026-10-17 click-through)", () => {
     for (const w of words) expect(w, w).not.toMatch(/planner/i);
     expect(PLAN_POINTS.growth).toContain("Season plan (1 scenario) and forecast accuracy");
     expect(PLAN_POINTS.pro).toContain("Unlimited Season plan scenarios");
+  });
+});
+
+describe("the Free pitch says what Free shows (pricing audit 2026-10-17)", () => {
+  it("10 products, not 10 orders: the preview lists products (one line each, with its next order)", () => {
+    expect(PLAN_PITCH.free).toContain("10 most urgent products");
+    expect(PLAN_PITCH.free).not.toMatch(/urgent orders/);
   });
 });
