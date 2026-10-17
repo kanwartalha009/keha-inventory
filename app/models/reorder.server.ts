@@ -529,7 +529,7 @@ export async function transitionOrder(shop: string, id: string, to: PoStatus, no
       shopBasics(shop),
       o.supplierId ? prisma.supplier.findFirst({ where: { id: o.supplierId, shop }, select: { leadTimeDays: true } }) : null,
     ]);
-    const dates = sentDates(now, supplier?.leadTimeDays ?? basics.leadTimeDays);
+    const dates = sentDates(now, supplier?.leadTimeDays ?? basics.leadTimeDays, basics.timezone);
     const stock = await poolStock(shop, lines.map((l) => l.variantId));
     data.sentAt = now;
     data.expectedDate = new Date(`${dates.expectedDate}T00:00:00Z`);

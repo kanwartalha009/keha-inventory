@@ -53,6 +53,17 @@ describe("dates and the confirm link", () => {
     expect(d.expectedDate).toBe("2026-11-06");
     expect(d.confirmExpiresAt.toISOString()).toBe("2026-12-15T10:00:00.000Z");
   });
+  it("L1: the arrival counts from the store-local day the order was sent", () => {
+    // 22:30 UTC on 16 Oct is 00:30 on 17 Oct in Madrid (CEST, UTC+2): 17 Oct + 21 days.
+    expect(sentDates(new Date("2026-10-16T22:30:00Z"), 21, "Europe/Madrid").expectedDate).toBe("2026-11-07");
+    // 23:30 in Madrid on 16 Oct (21:30 UTC): still the 16th there.
+    expect(sentDates(new Date("2026-10-16T21:30:00Z"), 21, "Europe/Madrid").expectedDate).toBe("2026-11-06");
+    // 18:00 in Los Angeles on 16 Oct is 01:00 UTC on 17 Oct: the store's day is the 16th, not the 17th.
+    expect(sentDates(new Date("2026-10-17T01:00:00Z"), 21, "America/Los_Angeles").expectedDate).toBe("2026-11-06");
+    expect(sentDates(new Date("2026-10-17T01:00:00Z"), 21).expectedDate).toBe("2026-11-07"); // no zone: UTC
+    // Across the end of summer time (25 Oct in Madrid) a whole number of calendar days still adds up.
+    expect(sentDates(new Date("2026-10-20T21:30:00Z"), 7, "Europe/Madrid").expectedDate).toBe("2026-10-27");
+  });
   it("opens only for sent / confirmed Keha orders before expiry", () => {
     const po = { source: "keha", status: "sent", confirmExpiresAt: new Date("2026-12-15T10:00:00Z") };
     expect(confirmLinkOpen(po, new Date("2026-12-15T09:59:00Z"))).toBe(true);

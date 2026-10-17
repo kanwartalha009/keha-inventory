@@ -13,6 +13,8 @@
  * Shopify is their source of truth.
  */
 import { toCsv } from "./products-shared";
+import { addDays } from "./engine/dates-shared";
+import { localDate } from "./sync/store-time-shared";
 import { lineRemaining, type PoLine } from "./supplier-shared";
 
 type T = (s: string) => string;
@@ -65,11 +67,15 @@ export function nextPoNumber(existing: readonly string[]): string {
 
 const dayOf = (d: Date) => d.toISOString().slice(0, 10);
 
-/** When an order is sent: expected arrival (sent + lead time, a calendar day) and the confirm-link expiry. */
-export function sentDates(sentAt: Date, leadTimeDays: number): { expectedDate: string; confirmExpiresAt: Date } {
+/**
+ * When an order is sent: expected arrival and the confirm-link expiry. The arrival is a calendar
+ * day (stored at UTC midnight, @db.Date): the STORE-LOCAL day the order was sent + the lead time
+ * (L1: an order sent at 23:30 in Madrid was sent on that Madrid day, not the next UTC one).
+ */
+export function sentDates(sentAt: Date, leadTimeDays: number, timeZone?: string | null): { expectedDate: string; confirmExpiresAt: Date } {
   const lead = Number.isFinite(leadTimeDays) && leadTimeDays > 0 ? Math.floor(leadTimeDays) : 0;
   return {
-    expectedDate: dayOf(new Date(sentAt.getTime() + lead * DAY_MS)),
+    expectedDate: addDays(localDate(sentAt, timeZone), lead),
     confirmExpiresAt: new Date(sentAt.getTime() + CONFIRM_LINK_DAYS * DAY_MS),
   };
 }
