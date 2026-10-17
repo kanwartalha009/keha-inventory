@@ -588,15 +588,13 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     // The last sale before the window, where the series cannot stand in for it (no sale in the
     // series) or the older-series rule below asks whether there is one: exact, per variant.
     await resolveLastSale(shop, lastSale, ids.filter((id) => !seriesSold(series.get(id)) || fewInStock(id)), from, demandFilter);
-    const olderSeries = await loadOlderSeries(shop, {
-      // Data audit #2: too few in-stock days in the 90 days but sales before them — out of stock
-      // most of the window. Their pace comes from older in-stock days (engine inStockPace).
-      ids: ids.filter((id) => lastSale.get(id) && fewInStock(id)),
-      from: addDays(today, -PACE_LOOKBACK_DAYS),
-      before: from,
-      pool,
-      demandFilter,
-    });
+    // The 14 months before the window, for every variant (forecast quality 2026-10-17): the spike
+    // cap's one-off rule reads them (engine `history`). Data audit #2: variants with too few in-stock
+    // days in the 90 days but sales before them (out of stock most of the window) also take their
+    // pace from them (engine `olderSeries`, inStockPace).
+    const history = await loadOlderSeries(shop, { ids, from: addDays(today, -PACE_LOOKBACK_DAYS), before: from, pool, demandFilter });
+    const paceFallback = new Set(ids.filter((id) => lastSale.get(id) && fewInStock(id)));
+    const olderSeries = new Map([...history].filter(([id]) => paceFallback.has(id)));
     const onHand = stockNow;
 
     const chunkResults: VariantResult[] = [];
@@ -624,6 +622,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         isBundle: false,
         series: series.get(v.id) ?? [],
         olderSeries: olderSeries.get(v.id) ?? null,
+        history: history.get(v.id) ?? null,
         today,
         onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
         incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),

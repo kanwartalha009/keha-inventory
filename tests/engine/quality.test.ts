@@ -52,6 +52,41 @@ describe("robustCap / spikeCap (outliers-shared)", () => {
   });
 });
 
+describe("one-off, not recurring (B6, forecast quality 2026-10-17)", () => {
+  it("recurring high days are demand: with 6 promo days in 300 only the top 1 % (3 days) is lowered", () => {
+    // 300 days at 9 / 11 and a 40-unit promotion day every 50 days (6 days, 2 %).
+    const series = buildSeries({ days: 300, sold: (k) => (k % 50 === 7 ? 40 : steady(k)) });
+    const index = indexSeries(series, TODAY);
+    const robust = robustCap(Array.from({ length: 90 }, (_, i) => series[i]!.sold))!;
+    const r = spikeCap(index, TODAY);
+    expect(robust).toBeLessThan(40);
+    // 6 days above the robust cap > the 3 allowed (1 % of 300): the cap rises to the 4th highest day = 40.
+    expect(r.cap).toBe(40);
+    expect(r.capped).toEqual([]);
+  });
+
+  it("a single wholesale day in 300 is still capped at the robust cap", () => {
+    const series = buildSeries({ days: 300, sold: (k) => (k === 20 ? 300 : steady(k)) });
+    const r = spikeCap(indexSeries(series, TODAY), TODAY);
+    expect(r.cap).toBeCloseTo(robustCap(series.slice(0, 90).map((x) => x.sold))!, 9);
+    expect(r.capped.map((c) => c.sold)).toEqual([300]);
+  });
+
+  it("computeVariant reads the older months (history) for the rule: the promotions keep their units in the pace", () => {
+    const sold = (k: number) => (k % 50 === 7 ? 40 : steady(k));
+    const all = buildSeries({ days: 300, sold });
+    const recent = all.filter((r) => r.day >= ago(90));
+    const older = all.filter((r) => r.day < ago(90));
+    const only90 = computeVariant(variantInput({ series: recent }))!;
+    const withHistory = computeVariant(variantInput({ series: recent, history: older }))!;
+    // 2 promotion days inside the 90 (k = 7, 57): with 90 days only, 2 > 1 allowed → raised as well;
+    // the history shows 6 in 300 (> 3): recurring, uncapped.
+    expect(withHistory.inputs.spikes.count).toBe(0);
+    expect(withHistory.rate!).toBeGreaterThan(10);
+    expect(only90.rate).not.toBeNull();
+  });
+});
+
 describe("partial days and σ (rate-shared)", () => {
   it("a day it ran out counts at least at the pace of the full days; σ leaves it out", () => {
     const rows = buildSeries({ days: 28, sold: (k) => (k === 5 ? 2 : 10) });

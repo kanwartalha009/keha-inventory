@@ -37,6 +37,7 @@ import { storeSales } from "../app/services/sync/facts.server";
 import { addDays, type DayRange } from "../app/lib/sync/shopifyql-shared";
 import type { ShopifyqlClient } from "../app/services/sync/shopifyql.server";
 import { ShopifyqlRowCapError } from "../app/lib/sync/shopifyql-shared";
+import { PACE_LOOKBACK_DAYS } from "../app/lib/engine/rate-shared";
 import { COMPUTE_QUERY_CONCURRENCY, computeShop, productChunks } from "../app/services/compute.server";
 import { matches, type Row } from "./helpers/fake-prisma";
 import { createMemoryJobStore } from "./helpers/memory-job-store";
@@ -200,8 +201,10 @@ describe("#4 compute in chunks", () => {
     const run = await computeShop(FX_SHOP, { now: () => FX_NOW, chunkSize, buildDays: false });
     for (const table of ["salesDaily", "stockDaily"]) client[table].groupBy = reals[table];
     expect(run.variants).toBe(30);
-    // Each per-day read holds at most one chunk: ≤ chunkSize + a product's other variants, × 90 days × channels.
-    expect(Math.max(...perDay)).toBeLessThanOrEqual((chunkSize + 2) * 90 * 2);
+    // Each per-day read holds at most one chunk: ≤ chunkSize + a product's other variants, × the days
+    // read × channels — the 90 days, or the 14 months before them (forecast quality 2026-10-17: the
+    // spike cap's one-off rule and the forecast-error backtest read them for every variant).
+    expect(Math.max(...perDay)).toBeLessThanOrEqual((chunkSize + 2) * (PACE_LOOKBACK_DAYS - 90) * 2);
     // The chunk's reads are capped; a read may itself run two (poolDays' facts fallback).
     expect(maxInFlight).toBeLessThanOrEqual(COMPUTE_QUERY_CONCURRENCY + 1);
     console.info(`[scale] compute in chunks of ${chunkSize}: ${perDay.length} per-day reads, largest ${Math.max(...perDay)} rows; ${maxInFlight} reads in flight at most`);

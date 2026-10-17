@@ -85,8 +85,9 @@ export function spikeCap(
     if (!r || soldOut(r) || r.partial || !(r.sold >= 0)) continue;
     values.push(r.sold);
   }
-  const cap = robustCap(values, opts.k ?? SPIKE_CAP.k, opts.minDays ?? SPIKE_CAP.minDays);
-  if (cap === null) return { cap: null, capped: [] };
+  const robust = robustCap(values, opts.k ?? SPIKE_CAP.k, opts.minDays ?? SPIKE_CAP.minDays);
+  if (robust === null) return { cap: null, capped: [] };
+  const cap = recurringCap(rows, t, robust);
   const capped: CappedDay[] = [];
   for (const [i, r] of rows) {
     if (i >= t || soldOut(r)) continue;
@@ -94,6 +95,32 @@ export function spikeCap(
   }
   capped.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
   return { cap, capped };
+}
+
+/**
+ * One-off, not recurring (forecast quality 2026-10-17, B6): only the top 1 % of the in-stock days of
+ * the history (at least one day) can be capped. When more days than that are above the robust cap,
+ * they are the product's own recurring high days (promotions, campaign days) — real demand, not
+ * one-offs — and the cap rises to the highest day that is not among that top 1 %. Measured on a real
+ * store: 2.5 % of the A items' days were above the robust cap, removing 3.3 % of their units, and
+ * the forecast of fast sellers ran 8–12 % low (docs/ACCURACY.md). The k = 4 cap had been chosen on
+ * WAPE, which rewards a median-like forecast — and on right-skewed daily sales the median is below
+ * the mean the order quantity needs.
+ */
+export const SPIKE_SHARE = 0.01;
+
+function recurringCap(rows: ReadonlyMap<number, DailyRow>, t: number, robust: number): number {
+  const all: number[] = [];
+  for (let i = t - 1; i >= t - SPIKE_CAP.lookbackDays; i--) {
+    const r = rows.get(i);
+    if (!r || soldOut(r) || r.partial || !(r.sold >= 0)) continue;
+    all.push(r.sold);
+  }
+  const allowed = Math.max(1, Math.floor(SPIKE_SHARE * all.length));
+  const above = all.filter((x) => x > robust + 1e-9).length;
+  if (above <= allowed) return robust;
+  all.sort((a, b) => b - a);
+  return Math.max(robust, all[allowed]!);
 }
 
 /** A copy of `rows` with every day's sold above `cap` lowered to it (null cap: the same map). */

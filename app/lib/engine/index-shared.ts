@@ -97,6 +97,12 @@ export interface VariantInput {
    * blended with its own while it has fewer than PLAN_LIKE_DAYS in-stock days (new-style-shared).
    */
   planLike?: PlanLikeInput | null;
+  /**
+   * Older daily facts of this scope (before the `historyDays` window, up to 14 months back) for every
+   * variant: the spike cap's one-off rule (outliers-shared) reads them. The in-stock pace fallback
+   * still reads `olderSeries` only.
+   */
+  history?: readonly DailyRow[] | null;
   /** "Don't cap" (the product's forecast override): no spike capping for this variant. */
   noCap?: boolean | null;
   /**
@@ -315,9 +321,18 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       if (i < start && i >= oldest && Number.isFinite(row.sold) && !all.has(i)) all.set(i, row);
     }
   }
+  // Every older row (history) for the spike cap's one-off rule.
+  const hist = new Map(all);
+  if (input.history?.length) {
+    const oldest = dayIndex(today) - PACE_LOOKBACK_DAYS;
+    for (const row of input.history) {
+      const i = dayIndex(row.day);
+      if (i < dayIndex(today) && i >= oldest && Number.isFinite(row.sold) && !hist.has(i)) hist.set(i, row);
+    }
+  }
   // R4: one-off spikes are capped before the pace and σ are measured (outliers-shared).
   const capOff = input.noCap === true || !(settings.spikeCapK > 0);
-  const spikes = spikeCap(all, today, { k: settings.spikeCapK, off: capOff });
+  const spikes = spikeCap(hist, today, { k: settings.spikeCapK, off: capOff });
   const capped = applyCap(index, spikes.cap);
 
   // §7.2 rate and σ.

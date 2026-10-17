@@ -35,7 +35,8 @@ import { state } from "./mocks";
 import { facts } from "../../app/services/facts-store.server";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere } from "../../app/lib/compute-shared";
 import { SEASON } from "../../app/lib/engine/season-shared";
-import { SPIKE_CAP, robustCap } from "../../app/lib/engine/outliers-shared";
+import { SPIKE_CAP, SPIKE_SHARE, robustCap } from "../../app/lib/engine/outliers-shared";
+import { PACE_LOOKBACK_DAYS } from "../../app/lib/engine/rate-shared";
 import { readSettings } from "../../app/lib/settings-shared";
 import { dayDate } from "../../app/lib/sync/facts-shared";
 
@@ -388,21 +389,31 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
     };
     // R4 (forecast quality): the day a variant ran out (it ended at 0 but sold, the day before
     // ended with stock) is PARTIAL — counted at least at the window's full-day pace; one-off
-    // spikes are capped at median + 4 × max(1.4826 × MAD, √mean) of the in-stock full days of the
-    // 90-day series compute reads (older history only for the out-of-stock-most-of-the-window
-    // variants, whose stored pace these checks skip).
+    // spikes are capped at median + 4 × max(1.4826 × MAD, √mean) of the 90 most recent in-stock
+    // full days of the 14 months compute reads — raised to the highest day outside the top 1 % of
+    // those 14 months' in-stock days when more days than that are above it (recurring high days
+    // are demand, not one-offs: forecast quality 2026-10-17).
+    const firstOlder = Math.max(v.firstStock, D - PACE_LOOKBACK_DAYS);
     const day = (d: number) => {
       const x = raw(d);
-      // (The day before must be in the 90-day series compute reads: its first day is never partial.)
-      const partial = x.ended && x.sold > 0 && d > Math.max(v.firstStock, D - 90) && !raw(d - 1).ended;
+      // Compute reads two series (the 90 days, the older months): neither's first day is partial.
+      const partial = x.ended && x.sold > 0 && d > firstOlder && d !== D - 90 && !raw(d - 1).ended;
       return { sold: x.sold, out: x.ended && !(x.sold > 0), partial };
     };
     const capValues: number[] = [];
-    for (let d = D - 1; d >= Math.max(v.firstStock, D - 90) && capValues.length < SPIKE_CAP.windowDays; d--) {
+    const allValues: number[] = [];
+    for (let d = D - 1; d >= firstOlder; d--) {
       const x = day(d);
-      if (!x.out && !x.partial && x.sold >= 0) capValues.push(x.sold);
+      if (x.out || x.partial || !(x.sold >= 0)) continue;
+      if (capValues.length < SPIKE_CAP.windowDays) capValues.push(x.sold);
+      allValues.push(x.sold);
     }
-    const cap = (inputsOf(v.id).spikes as { off?: boolean } | undefined)?.off ? null : robustCap(capValues);
+    const robust = (inputsOf(v.id).spikes as { off?: boolean } | undefined)?.off ? null : robustCap(capValues);
+    let cap = robust;
+    if (robust !== null) {
+      const allowed = Math.max(1, Math.floor(SPIKE_SHARE * allValues.length));
+      if (allValues.filter((x) => x > robust + 1e-9).length > allowed) cap = Math.max(robust, [...allValues].sort((a, b) => b - a)[allowed]!);
+    }
     const capped = (n: number) => (cap !== null && n > cap ? cap : n);
     let num = 0;
     let den = 0;
