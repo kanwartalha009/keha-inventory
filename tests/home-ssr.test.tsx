@@ -201,7 +201,7 @@ describe("Home: this week's actions (task 2.3)", () => {
   it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
     const html = withActions("growth", actionList("growth"));
     expect(html).toContain("This week&#x27;s actions");
-    for (const tab of ["All (8)", "Reorder (1)", "Bridge (1)", "Promote (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
+    for (const tab of ["All (8)", "Reorder (1)", "Sold out (1)", "Promote (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
     expect(html).toContain("€8,200");
     expect(html).toContain("€3,400");
     // Ranked by € across groups: Clear (8,200) first, Reorder (3,400) next.

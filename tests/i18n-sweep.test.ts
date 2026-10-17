@@ -33,7 +33,7 @@ describe("i18n sweep", () => {
   });
 });
 
-describe("screen names (nav: Order plan; tabs: Order now, Next 90 days, Season plan, Open orders)", () => {
+describe("screen names (nav: Order plan; tabs: Order now, Next 13 weeks, Season plan, Open orders)", () => {
   it("no English key names a 'Reorder' screen or page any more", async () => {
     const { AREAS } = await import("../app/lib/i18n");
     const keys = Object.values(AREAS).flatMap((a) => Object.keys(a));

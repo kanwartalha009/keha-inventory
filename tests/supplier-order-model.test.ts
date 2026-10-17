@@ -3,7 +3,7 @@
  * supplier's own order cycle in the forward plan (order quantities cover lead time + that
  * cycle), the supplier order builder's data, one draft for everything due within the cycle,
  * adding lines to an existing draft, and the netting on every screen afterwards (Order now,
- * Next 90 days, Sidekick's get_order_plan).
+ * Next 13 weeks, Sidekick's get_order_plan).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FakeDb } from "./helpers/fake-prisma";
@@ -168,7 +168,7 @@ describe("the supplier order builder", () => {
     expect(p).toMatchObject({ unitCostStore: 2, weight: 2, pack: null, moq: null });
   });
 
-  it("one draft for the whole cycle (another supplier's line is refused); its lines leave Order now and Next 90 days", async () => {
+  it("one draft for the whole cycle (another supplier's line is refused); its lines leave Order now and Next 13 weeks", async () => {
     const { view } = (await loadSupplierOrder(S, KEY, null, NOW))!;
     const before = await loadOrderPlan(S, NOW);
     expect(before.events.some((e) => e.variantId === V(1) && e.orderBy <= view.cycleTo)).toBe(true);
@@ -184,7 +184,7 @@ describe("the supplier order builder", () => {
       [V(3), 12, 2],
     ]);
     // Cross-screen: the draft counts as ordered (under 14 days), so none of its lines is due again
-    // within the cycle — not on Order now, not in Next 90 days (the same plan), not in the builder.
+    // within the cycle — not on Order now, not in Next 13 weeks (the same plan), not in the builder.
     const after = await loadOrderPlan(S, NOW);
     for (const id of [V(1), V(2)]) expect(after.events.filter((e) => e.variantId === id && e.orderBy <= view.cycleTo), id).toEqual([]);
     const now = await loadReorder(S, [], "online", new Map(), NOW);

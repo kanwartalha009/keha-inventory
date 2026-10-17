@@ -201,7 +201,7 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   "Open orders: {n}": { es: "Pedidos abiertos: {n}", fr: "Commandes en cours : {n}", de: "Offene Bestellungen: {n}", it: "Ordini aperti: {n}", pt: "Encomendas em aberto: {n}", nl: "Open bestellingen: {n}", pl: "Otwarte zamówienia: {n}" },
   "See open orders": { es: "Ver pedidos abiertos", fr: "Voir les commandes en cours", de: "Offene Bestellungen ansehen", it: "Vedi ordini aperti", pt: "Ver encomendas em aberto", nl: "Open bestellingen bekijken", pl: "Zobacz otwarte zamówienia" },
 
-  // ---- Next 90 days ----
+  // ---- Next 13 weeks ----
   "Every order your forecast needs in the next 13 weeks: by week and supplier, with the cash each week needs.": {
     es: "Cada pedido que tu previsión necesita en las próximas 13 semanas: por semana y proveedor, con el dinero de cada semana.",
     fr: "Chaque commande dont votre prévision a besoin dans les 13 prochaines semaines : par semaine et fournisseur, avec la trésorerie de chaque semaine.",

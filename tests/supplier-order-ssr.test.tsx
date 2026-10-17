@@ -2,7 +2,7 @@
  * SSR: the supplier order builder (/app/reorder/build; consolidated supplier purchase order,
  * Kanwar 2026-10-17) on Growth and Free, in English and German, its loader and action plan
  * checks, and its entry points on Order now ("Build supplier order" on each supplier card, inside
- * "Can join this order" when there is one) and Next 90 days (per supplier-week).
+ * "Can join this order" when there is one) and Next 13 weeks (per supplier-week).
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
@@ -209,7 +209,7 @@ describe("entry points", () => {
     expect(join.indexOf('href="/app/reorder/build?supplier=supplier:s1"')).toBeLessThan(join.indexOf("</s-box>"));
   });
 
-  it("Next 90 days: each supplier-week opens the builder for that week", () => {
+  it("Next 13 weeks: each supplier-week opens the builder for that week", () => {
     const html = render("/app/reorder/calendar", "cal", OrderCalendar, { enabled: true, plan: orderPlanFixture() });
     expect(html).toMatch(/href="\/app\/reorder\/build\?supplier=supplier:s1&amp;from=\d{4}-\d{2}-\d{2}&amp;to=\d{4}-\d{2}-\d{2}"/);
     expect(html).toContain("Build supplier order");

@@ -11,7 +11,6 @@ import type { Tr } from "./i18n";
 export const ACTIONS_TR: Record<string, Tr> = {
   // ---- List, tabs and notices ----
   "This week's actions": { es: "Acciones de esta semana", fr: "Actions de la semaine", de: "Aufgaben dieser Woche", it: "Azioni di questa settimana", pt: "Ações desta semana", nl: "Acties van deze week", pl: "Działania na ten tydzień" },
-  "Bridge": { es: "Puente", fr: "Relais", de: "Überbrücken", it: "Ponte", pt: "Ponte", nl: "Overbruggen", pl: "Pomost" },
   "Fix": { es: "Corregir", fr: "Corriger", de: "Beheben", it: "Correggere", pt: "Corrigir", nl: "Oplossen", pl: "Popraw" },
   "Clear": { es: "Liquidar", fr: "Écouler", de: "Abverkaufen", it: "Smaltire", pt: "Escoar", nl: "Opruimen", pl: "Wyprzedaj" },
   "Snoozed for 7 days.": { es: "Pospuesta 7 días.", fr: "Reportée de 7 jours.", de: "Für 7 Tage zurückgestellt.", it: "Rimandata di 7 giorni.", pt: "Adiada por 7 dias.", nl: "7 dagen uitgesteld.", pl: "Odłożone na 7 dni." },

@@ -66,14 +66,20 @@ describe("buildSupplierOrder", () => {
   });
 
   it("the minimums are applied once to the whole order (not per week): the cycle's lines can make a top-up unnecessary", () => {
-    const plan = orderNowFixture({ minOrderTotal: 150 });
-    // Order now tops this week's lines up to 150; with the sock due on day 8 the whole order already reaches it.
-    const now = buildOrderNow({ plan, stock: new Map(), onOrder: new Map() }).find((g) => g.key === KEY)!;
+    // The minimum is set to the whole cycle's quantity: this week's lines alone are below it.
+    const free = orderNowFixture({ minOrderTotal: null });
+    const all = view(free);
+    const whole = all.lines.reduce((a, l) => a + l.base, 0);
+    const week = all.lines.filter((l) => l.section === "due").reduce((a, l) => a + l.base, 0);
+    expect(all.lines.some((l) => l.section === "cycle")).toBe(true);
+    expect(week).toBeLessThan(whole);
+    // Order now tops this week's lines up to it …
+    const now = buildOrderNow({ plan: orderNowFixture({ minOrderTotal: whole }), stock: new Map(), onOrder: new Map() }).find((g) => g.key === KEY)!;
     expect(now.toppedUp).toBe(true);
-    const v = view(plan, { minOrderTotal: 150 });
-    expect(v.lines.reduce((a, l) => a + l.base, 0)).toBeGreaterThanOrEqual(150);
+    // … the builder's one order for the cycle already reaches it: no top-up.
+    const v = view(free, { minOrderTotal: whole });
     expect(v.lines.every((l) => l.topUp === 0)).toBe(true);
-    expect(minimumStatus(v, asQty(v))).toMatchObject({ met: true, units: { min: 150, missing: 0 } });
+    expect(minimumStatus(v, asQty(v))).toMatchObject({ met: true, units: { min: whole, total: whole, missing: 0 } });
   });
 
   it("below the minimum the order starts topped up: ≥ the minimum, in whole cases, shown on the line and in Why", () => {
@@ -97,15 +103,24 @@ describe("buildSupplierOrder", () => {
     expect(fixed.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(200);
   });
 
-  it("from Next 90 days: that week's orders are 'due', the cycle runs from the week's start", () => {
+  it("from Next 13 weeks: that week's orders are 'due', the cycle runs from the week's start", () => {
     const plan = orderNowFixture({ minOrderTotal: null });
-    const range = { from: "2026-11-01", to: "2026-11-01" };
+    const mine = plan.events.filter((e) => e.supplierKey === KEY);
+    // A later supplier-week (the first order day after Order now's 7 days).
+    const day = mine.map((e) => e.orderBy).filter((d) => d > addDays(PLAN_TODAY, 6)).sort()[0]!;
+    const range = { from: day, to: day };
     const v = view(plan, {}, range);
-    expect(v).toMatchObject({ range, from: "2026-11-01", dueTo: "2026-11-01", cycleTo: "2026-11-14" });
-    expect(v.lines.filter((l) => l.section === "due").map((l) => l.variantId).sort()).toEqual([V(1), V(2), V(4)].sort());
-    expect(v.lines.filter((l) => l.section === "cycle").map((l) => l.variantId)).toEqual([V(3)]);
-    // Nothing from before the week (today's orders belong to Order now).
-    expect(qtyOf(v, V(1))).toBe(30);
+    const cycleTo = addDays(day, 13);
+    expect(v).toMatchObject({ range, from: day, dueTo: day, cycleTo });
+    const due = [...new Set(mine.filter((e) => e.orderBy === day).map((e) => e.variantId))].sort();
+    const later = [...new Set(mine.filter((e) => e.orderBy > day && e.orderBy <= cycleTo).map((e) => e.variantId))].filter((id) => !due.includes(id)).sort();
+    expect(due.length).toBeGreaterThan(0);
+    expect(v.lines.filter((l) => l.section === "due").map((l) => l.variantId).sort()).toEqual(due);
+    expect(v.lines.filter((l) => l.section === "cycle").map((l) => l.variantId).sort()).toEqual(later);
+    // Nothing from before the week (today's orders belong to Order now): only the window's orders add up.
+    for (const l of v.lines) {
+      expect(l.base, l.variantId).toBe(mine.filter((e) => e.variantId === l.variantId && e.orderBy >= day && e.orderBy <= cycleTo).reduce((a, e) => a + e.why!.rounded, 0));
+    }
   });
 
   it("a supplier with nothing planned opens empty (products can still be added)", () => {
@@ -195,7 +210,11 @@ describe("links, quantities, drafts, teaser", () => {
     const plan = orderNowFixture({ minOrderTotal: null });
     const v = view(plan);
     const t = builderTeaser(v);
-    expect(t).toEqual({ name: "Acme Textiles", kind: "supplier", products: 3, units: 66 + 30 + 42 + 18, cash: (66 + 42) * 2.5 + 18, cycleDays: 14, currency: "EUR" });
+    // The lines' own units and cost (the tote has no cost: counted in units, not in cash).
+    const units = v.lines.reduce((a, l) => a + l.suggested, 0);
+    const cash = v.lines.reduce((a, l) => a + (l.unitCostStore === null ? 0 : l.unitCostStore * l.suggested), 0);
+    expect(v.lines.some((l) => l.unitCostStore === null)).toBe(true);
+    expect(t).toEqual({ name: "Acme Textiles", kind: "supplier", products: 3, units, cash: Math.round(cash * 100) / 100, cycleDays: 14, currency: "EUR" });
     expect(Object.keys(t)).not.toContain("lines");
   });
 });

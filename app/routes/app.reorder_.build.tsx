@@ -4,9 +4,9 @@
  * checks the plan on the server too).
  *
  * One purchase order per supplier per cycle: for the supplier, from the same forward plan as
- * Order now and Next 90 days (lib/supplier-order-shared, models/supplier-order.server):
- *  - "Due now" — its lines due in the next 7 days, overdue included (or, opened from Next 90
- *    days, its lines of that week), selected;
+ * Order now and Next 13 weeks (lib/supplier-order-shared, models/supplier-order.server):
+ *  - "Due now" — its lines due in the next 7 days, overdue included (or, opened from Next 13
+ *    weeks, its lines of that week), selected;
  *  - "Due before your next order" — its later lines up to the end of its order cycle (Settings →
  *    Suppliers "Order every … days", else the store's cycle), selected, each with its own date;
  *  - "Add products" — any of its products, any quantity.
@@ -17,7 +17,7 @@
  * Keha draft with every selected line and opens it; with a fresh draft for the supplier, "Add to
  * PO-00xx" adds the lines to it instead. Nothing is sent until the merchant emails the order or
  * marks it sent. The draft counts as ordered (under 14 days), so its lines leave Order now and
- * Next 90 days.
+ * Next 13 weeks.
  *
  * Free: the teaching lock with the supplier's own numbers (products, units, cash; no lines).
  * The page gates itself (ORDER_PLAN_PATHS).

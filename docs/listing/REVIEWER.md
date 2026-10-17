@@ -47,7 +47,7 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 | Plan | Unlocks |
 |---|---|
 | Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
-| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders, Build supplier order), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
+| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders, Build supplier order), purchase orders (PDF / CSV / email) and the supplier confirmation link, what to do while a best seller is sold out (back-in-stock sign-ups; the **Sold out** tab of the actions), Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
 | Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
 **Steps (Growth plan, store with history).**
@@ -65,7 +65,7 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    the cash needed for the next 13 weeks with **See the next 13 weeks**.
 4. **Dashboard → money cards:** open "How we got this" on any card to see the inputs. A dash (—)
    means not enough data, never zero.
-5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Bridge, Promote, Fix, Clear).
+5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Sold out, Promote, Fix, Clear).
    Each row's "…" menu has **Mark as done**, **Snooze 7 days**, **Dismiss** and **Why** (Undo
    appears after Done, Snooze and Dismiss).
 6. **Clear** tab → **Create discount** → a confirm dialog shows the products and the

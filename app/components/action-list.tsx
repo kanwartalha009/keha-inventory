@@ -44,7 +44,8 @@ export function tabLabel(tab: ActionTab, t: T): string {
     case "reorder":
       return t("Reorder");
     case "bridge":
-      return t("Bridge");
+      // Plain words for the merchant (plan wording "What to do while a best seller is sold out"); the kind id stays "bridge".
+      return t("Sold out");
     case "push":
       return t("Promote");
     case "fix":

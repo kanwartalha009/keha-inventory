@@ -3,7 +3,7 @@
  * only, no Shopify calls; the logic is lib/supplier-order-shared.
  *
  * One supplier's order for its whole order cycle, from the same forward plan as Order now, Next
- * 90 days, the Dashboard and Sidekick (models/order-plan.server computeOrderPlan): its lines due
+ * 13 weeks, the Dashboard and Sidekick (models/order-plan.server computeOrderPlan): its lines due
  * now (or in a Next 13 weeks week), its lines due before its next order, and any of its products
  * the merchant adds. "Create draft order" saves ONE Keha draft with every line; "Add to PO-00xx"
  * adds the lines to the supplier's fresh draft instead. Either way the draft counts as ordered
@@ -139,8 +139,8 @@ async function freshDraft(shop: string, info: PlanSupplierInfo, now: Date): Prom
 export type SupplierOrderLoad = { view: SupplierOrderView; today: string } | null;
 
 /**
- * The builder for one supplier (`key` = "supplier:<id>" or "vendor:<name>"; `range`: a Next 90
- * days supplier-week). null when the supplier doesn't exist (deleted) or the vendor has no product.
+ * The builder for one supplier (`key` = "supplier:<id>" or "vendor:<name>"; `range`: a Next 13
+ * weeks supplier-week). null when the supplier doesn't exist (deleted) or the vendor has no product.
  */
 export async function loadSupplierOrder(
   shop: string,

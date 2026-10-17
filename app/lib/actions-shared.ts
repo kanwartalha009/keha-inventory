@@ -19,7 +19,7 @@ export const ACTION_KINDS = [
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
-/** Home tabs (spec §5.1): All · Reorder · Bridge · Push · Fix · Clear. */
+/** Home tabs (spec §5.1): All · Reorder · Sold out (kind "bridge") · Promote (kind "push") · Fix · Clear. */
 export const ACTION_TABS = ["all", "reorder", "bridge", "push", "fix", "clear"] as const;
 export type ActionTab = (typeof ACTION_TABS)[number];
 
