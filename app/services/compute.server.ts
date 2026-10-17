@@ -28,10 +28,12 @@
  * incoming (`arrivals`) and the seasonal index's weekly shape (`seasonCurve`, only when the index
  * was applied). Location metrics keep the engine's flat order-by formula.
  *
- * Phase 3 (Pro `locations`): after the online pool, one call to syncLocationMetrics writes a
- * VariantMetric per variant × warehouse / store (scope = Location.id) from that location's
- * own sales and stock, reusing the roles, suppliers and seasonal × trend built here. The pool
- * honours the merchant's "counts for online sales" override (compute-shared countsForOnline).
+ * Phase 3 (Pro `locations`): after the pool, one call to syncLocationMetrics writes a
+ * VariantMetric per variant × warehouse / store (scope = Location.id): stores from their own
+ * sales, pool warehouses as their share of the online demand (compute-locations-shared), reusing
+ * the roles, suppliers, seasonal × trend and weekly shape built here. The pool (scope "online")
+ * is every active location that counts in supplier orders, on every plan, and its demand is all
+ * channels (compute-shared demandScope).
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -58,7 +60,8 @@ import {
   planActionWrites,
   RETIRE_WHEN_GONE_STATES,
   poArrivals,
-  poolSalesKeys,
+  demandScope,
+  demandWhere,
   metricRow,
   moneyDue,
   POOL_LOCATION_SELECT,
@@ -163,7 +166,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   ]);
   const pool = poolLocationIds(locations);
   const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
-  const poolKeys = poolSalesKeys(pool);
+  // Pool demand: all channels, minus locations the merchant left out (compute-shared demandWhere).
+  const demand = demandScope(locations);
+  const demandFilter = demandWhere(demand);
 
   // ---- facts (grouped in SQL) ----
   const [channelG, poolSalesG, stockG, outG, lastSaleG, dataSinceG, stockNow] = await Promise.all([
@@ -173,10 +178,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       where: { shop, locationKey: ALL, day: range },
       _sum: { sold: true, gross: true, returned: true },
     }),
-    // Location view, online + pool locations: units sold for the online pool.
+    // Pool demand (one SalesDaily view): units sold for the supplier-order pool.
     prisma.salesDaily.groupBy({
       by: ["variantId", "day"],
-      where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: range },
+      where: { shop, ...demandFilter, day: range },
       _sum: { sold: true },
     }),
     pool.length
@@ -196,7 +201,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       : Promise.resolve([]),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, channel: ALL, locationKey: { in: poolKeys }, sold: { gt: 0 }, day: { lt: dayDate(from) } },
+      where: { shop, ...demandFilter, sold: { gt: 0 }, day: { lt: dayDate(from) } },
       _max: { day: true },
     }),
     // Oldest pool stock day per variant: start of the no-sale period for never-sold variants.
@@ -277,7 +282,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }));
   const isKeha = (po: OpenPo) => po.source === "keha";
   const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
-  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, poolKeys, to, onHand));
+  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, demandFilter, to, onHand));
   const kehaOpen = kehaOpenUnits(openPos.filter(isKeha));
   const dated = datedIncoming(openPos);
 
@@ -290,7 +295,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   });
   const seasonCtx = await loadSeasonContext(shop, {
     today,
-    poolKeys,
+    demand,
     variants: variants.filter((v) => !v.isBundle).map((v) => ({ id: v.id, collections: v.collections ?? [] })),
     coverage,
     // + the seasonal shape (seasonCurve) beyond the horizon — the forward plan's 13 weeks and the
@@ -317,7 +322,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const aheadG = aheadCovered
     ? await prisma.salesDaily.groupBy({
         by: ["variantId"],
-        where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: { gte: dayDate(aheadFrom), lte: dayDate(aheadTo) } },
+        where: { shop, ...demandFilter, day: { gte: dayDate(aheadFrom), lte: dayDate(aheadTo) } },
         _sum: { sold: true },
       })
     : [];
@@ -444,6 +449,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     plans,
     roles,
     seasonOf,
+    curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
     pool: { series, lastSale, dataSince },
   });
 
@@ -691,7 +697,7 @@ async function landedFacts(
   shop: string,
   pos: readonly OpenPo[],
   pool: string[],
-  poolKeys: string[],
+  demandFilter: ReturnType<typeof demandWhere>,
   yesterday: string,
   stockNow: ReadonlyMap<string, { onHand: number }>,
 ): Promise<LandedFacts> {
@@ -716,7 +722,7 @@ async function landedFacts(
     firstSent <= yesterday
       ? prisma.salesDaily.groupBy({
           by: ["variantId", "day"],
-          where: { shop, variantId: { in: ids }, channel: ALL, locationKey: { in: poolKeys }, day: { gte: dayDate(firstSent), lte: dayDate(yesterday) } },
+          where: { shop, variantId: { in: ids }, ...demandFilter, day: { gte: dayDate(firstSent), lte: dayDate(yesterday) } },
           _sum: { sold: true },
         })
       : Promise.resolve([]),

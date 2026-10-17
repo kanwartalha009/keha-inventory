@@ -110,11 +110,41 @@ describe("per-location metrics (Pro)", () => {
     expect(m.orderQty).toBeGreaterThan(0);
   });
 
-  it("the online pool is unchanged by the store (its POS sales and stock stay out)", async () => {
+  it("#4: the pool counts the store by default — its stock and its POS demand (all channels, once)", async () => {
     await computeShop(S, { now: () => NOW });
     const online = metric(A, "online")!;
-    expect(online.rate).toBeCloseTo(2, 10);
+    // 300 + 0 on hand; 2 online + 7 at the till on the 80 days the store had stock, 2 after.
     expect((online.inputs as { onHand: number }).onHand).toBe(300);
+    expect(online.rate!).toBeGreaterThan(2);
+    // Left out by the merchant: its stock and its POS demand leave the pool.
+    db.tables.location.find((l) => l.id === SHOP1)!.onlinePool = false;
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A, "online")!.rate).toBeCloseTo(2, 10);
+  });
+
+  it("H7: warehouses that count are planned as one pool — each gets its stock share of the online demand, no orders of its own", async () => {
+    const WH2 = "gid://shopify/Location/5";
+    db.tables.location.push({ id: WH2, shop: S, name: "Warehouse 2", active: true, online: true, role: "warehouse", onlinePool: null });
+    for (const day of daysBetween("2026-07-18", "2026-10-15")) db.tables.stockDaily.push({ shop: S, day: d(day), variantId: A, locationId: WH2, endUnits: 100, outOfStock: false });
+    db.tables.stockNow.push({ shop: S, variantId: A, locationId: WH2, onHand: 100, incoming: 0 });
+    await computeShop(S, { now: () => NOW });
+    const w1 = metric(A, WH)!;
+    const w2 = metric(A, WH2)!;
+    // Online demand 2/day split 300 : 100 → 1.5 and 0.5 a day (not 2 each: that was 2× the advice).
+    expect(w1.rate).toBeCloseTo(1.5, 10);
+    expect(w2.rate).toBeCloseTo(0.5, 10);
+    expect(w1.daysLeft).toBeCloseTo(200, 6);
+    expect(w2.daysLeft).toBeCloseTo(200, 6);
+    expect(w1.inputs).toMatchObject({ demandSource: "online_pool", poolShare: 0.75, orderNeed: null });
+    expect(w1).toMatchObject({ orderQty: null, orderBy: null });
+  });
+
+  it("H7: a store without sales of its own gets a neutral 'Not enough data', no advice", async () => {
+    db.tables.salesDaily = db.tables.salesDaily.filter((r) => r.locationKey !== SHOP1);
+    await computeShop(S, { now: () => NOW });
+    const st = metric(A, SHOP1)!;
+    expect(st.status).toBe("not_enough_data");
+    expect(st).toMatchObject({ daysLeft: null, orderQty: null, orderBy: null });
   });
 
   it("review fix: a warehouse that counts for online sales is measured at the online pool's pace, never Dead from 0 POS sales", async () => {

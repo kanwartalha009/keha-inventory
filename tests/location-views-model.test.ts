@@ -61,7 +61,7 @@ beforeEach(() => {
   fake.tables.shop = [{ domain: S, currency: "EUR", timezone: "UTC", locale: "en", settings: {}, uninstalledAt: null }];
   fake.tables.location = [
     { id: WH, shop: S, name: "Main", active: true, online: true, role: "warehouse", onlinePool: null },
-    { id: STORE, shop: S, name: "Barcelona", active: true, online: false, role: "store", onlinePool: null },
+    { id: STORE, shop: S, name: "Barcelona", active: true, online: false, role: "store", onlinePool: false }, // left out of supplier orders (the default now counts every active location)
   ];
   fake.tables.variant = [variant(1), variant(2)];
   fake.tables.variantMetric = [

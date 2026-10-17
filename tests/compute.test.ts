@@ -46,7 +46,8 @@ function seed() {
   db.tables.shop = [{ domain: S, timezone: "Europe/Madrid", currency: "EUR", settings: {}, uninstalledAt: null }];
   db.tables.location = [
     { id: L1, shop: S, active: true, online: true },
-    { id: L2, shop: S, active: true, online: false },
+    // The merchant left the store out of supplier orders (the default counts every active location).
+    { id: L2, shop: S, active: true, online: false, onlinePool: false },
   ];
   const v = (id: string, productId: string, handle: string, extra: Record<string, unknown> = {}) => ({
     id,
@@ -155,10 +156,25 @@ describe("computeShop", () => {
     // Oversold: nothing on the shelf, 1,500 sold but not shipped (committed) → available −1,500.
     const row = db.tables.stockNow.find((s) => s.variantId === A && s.locationId === L1)!;
     Object.assign(row, { onHand: 0, available: -1500, committed: 1500 });
+    db.tables.location.find((l) => l.id === L2)!.onlinePool = false; // only the warehouse in the pool
     await computeShop(S, { now: () => NOW });
     const a = metric(A);
     expect((a.inputs as { onHand: number }).onHand).toBe(-1500);
     expect(a.status).toBe("out");
+  });
+
+  it("#4: by default every active location counts in supplier orders and demand is all channels", async () => {
+    db.tables.location.find((l) => l.id === L2)!.onlinePool = null;
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    // Stock 100 (warehouse) + 50 (store); demand 2 online + 7 at the store's till (channel view, once).
+    expect((a.inputs as { onHand: number }).onHand).toBe(150);
+    expect(a.rate).toBeCloseTo(9, 10);
+    // The store's stock is no longer invisible: a product only on the store's shelf isn't "Out".
+    db.tables.stockNow = db.tables.stockNow.map((r) => (r.variantId === A && r.locationId === L1 ? { ...r, onHand: 0, available: 0 } : r));
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).status).not.toBe("out");
+    expect((metric(A).inputs as { onHand: number }).onHand).toBe(50);
   });
 
   it("review fix: Keha order units that already landed are not counted as incoming again", async () => {

@@ -29,7 +29,7 @@ import {
 } from "../lib/engine/accuracy-shared";
 import { spanStats, type TrendMode } from "../lib/engine/season-shared";
 import { readSettings } from "../lib/settings-shared";
-import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere, salesCoverage, type DemandScope } from "../lib/compute-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
@@ -57,11 +57,11 @@ export async function runAccuracy(shop: string, now: Date = new Date()): Promise
   const today = localDate(now, safeTimeZone(row.timezone));
   const coverage = salesCoverage(readBackfillState(row.backfillState));
   const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
-  const poolKeys = poolSalesKeys(poolLocationIds(locations));
+  const demand = demandScope(locations);
   return {
     status: "ok",
-    snapshot: await snapshotMonth(shop, today, now, poolKeys, coverage, trendMode),
-    grade: await gradeMonths(shop, today, poolKeys, coverage),
+    snapshot: await snapshotMonth(shop, today, now, demand, coverage, trendMode),
+    grade: await gradeMonths(shop, today, demand, coverage),
   };
 }
 
@@ -69,7 +69,7 @@ async function snapshotMonth(
   shop: string,
   today: string,
   now: Date,
-  poolKeys: string[],
+  demand: DemandScope,
   coverage: ReturnType<typeof salesCoverage>,
   trendMode: TrendMode,
 ): Promise<AccuracyResult["snapshot"]> {
@@ -89,7 +89,7 @@ async function snapshotMonth(
   const days = daysInMonth(month);
   const season = await loadSeasonContext(shop, {
     today,
-    poolKeys,
+    demand,
     variants: variants.map((v) => ({ id: v.id, collections: v.collections ?? [] })),
     coverage,
     maxHorizonDays: days,
@@ -115,7 +115,7 @@ async function snapshotMonth(
 async function gradeMonths(
   shop: string,
   today: string,
-  poolKeys: string[],
+  demand: DemandScope,
   coverage: ReturnType<typeof salesCoverage>,
 ): Promise<AccuracyResult["grade"]> {
   const [snapshotted, graded] = await Promise.all([
@@ -131,14 +131,14 @@ async function gradeMonths(
     today,
     coverage.to,
   );
-  for (const month of plan.due) await gradeOneMonth(shop, month, poolKeys, coverage);
+  for (const month of plan.due) await gradeOneMonth(shop, month, demand, coverage);
   if (plan.due.length) return "written";
   if (plan.waiting.length) return "waiting";
   return snapshotted.length ? "exists" : "no_snapshot";
 }
 
 /** Grades one snapshotted month (its data is complete). */
-async function gradeOneMonth(shop: string, month: string, poolKeys: string[], coverage: ReturnType<typeof salesCoverage>): Promise<void> {
+async function gradeOneMonth(shop: string, month: string, demand: DemandScope, coverage: ReturnType<typeof salesCoverage>): Promise<void> {
   const end = monthEnd(month);
   const snapshot = await prisma.forecastSnapshot.findMany({
     where: { shop, month: dayDate(month) },
@@ -151,7 +151,7 @@ async function gradeOneMonth(shop: string, month: string, poolKeys: string[], co
   const [unitsG, revenueG] = await Promise.all([
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: days },
+      where: { shop, ...demandWhere(demand), day: days },
       _sum: { sold: true },
     }),
     prisma.salesDaily.groupBy({

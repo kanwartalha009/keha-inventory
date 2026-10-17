@@ -2,8 +2,8 @@
  * Loads the daily units behind seasonality and trend (spec §7.3) for one shop and builds the
  * pure season context (app/lib/engine/season-shared). Shared by compute and accuracy.
  *
- * Units come from the SalesDaily LOCATION view (channel "all", locationKey in the online pool
- * keys), the same view the sales rate uses; the channel view is never added to it.
+ * Units come from the pool's demand view (compute-shared demandWhere: all channels, minus
+ * locations the merchant left out), the same view the sales rate uses; never both views.
  * Collection series are loaded only when a collection sold ≥ 2,000 units in the last 12 months.
  */
 import prisma from "../db.server";
@@ -14,7 +14,8 @@ import {
   type TrendMode,
   type UnitsSeries,
 } from "../lib/engine/season-shared";
-import { ALL, dayDate } from "../lib/sync/facts-shared";
+import { dayDate } from "../lib/sync/facts-shared";
+import { demandWhere, type DemandScope } from "../lib/compute-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 
 export type SeasonContext = ReturnType<typeof createSeasonContext>;
@@ -28,7 +29,8 @@ export async function loadSeasonContext(
   shop: string,
   input: {
     today: string;
-    poolKeys: string[];
+    /** Pool demand (compute-shared demandScope): the same SalesDaily view the sales rate reads. */
+    demand: DemandScope;
     variants: { id: string; collections: string[] }[];
     coverage: Coverage;
     /** Longest horizon any variant will ask for (lead time + cycle, or a month). */
@@ -37,7 +39,7 @@ export async function loadSeasonContext(
     trendMode?: TrendMode;
   },
 ): Promise<SeasonContext> {
-  const { today, poolKeys, coverage } = input;
+  const { today, coverage } = input;
   const yesterday = addDays(today, -1);
   // Oldest day any span reads: the oldest year's base blend (its longest rate window) and the
   // 3-week smoothing margin, or the LY trend window (season-shared seasonalIndex / trendFactor).
@@ -46,7 +48,7 @@ export async function loadSeasonContext(
   const horizon = Math.min(SEASON.maxHorizonDays, Math.max(1, input.maxHorizonDays));
   // Newest last-year day a span (or the weekly curve) reads, smoothing margin included.
   const lyTo = addDays(today, -SEASON.yearShiftDays + horizon + SEASON.smoothRadiusDays + 7);
-  const pool = { shop, channel: ALL, locationKey: { in: poolKeys } };
+  const pool = { shop, ...demandWhere(input.demand) };
 
   const [storeG, units12G] = await Promise.all([
     prisma.salesDaily.groupBy({

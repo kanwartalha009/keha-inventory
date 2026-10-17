@@ -89,7 +89,10 @@ describe("Settings → Locations action", () => {
       error: "unknown",
     });
     expect((await post({ intent: "save", locations: [{ id: W, role: "pos", pool: "follow" }] })).json).toEqual({ ok: false, error: "invalid" });
-    expect((await post({ intent: "save", locations: [{ id: W, role: "warehouse", pool: "no" }] })).json).toEqual({
+    // Every active location counts by default, so leaving out both is what empties the pool.
+    expect(
+      (await post({ intent: "save", locations: [{ id: W, role: "warehouse", pool: "no" }, { id: S, role: "store", pool: "no" }] })).json,
+    ).toEqual({
       ok: false,
       error: "emptyPool",
     });
@@ -108,7 +111,7 @@ describe("Settings → Locations action", () => {
     const data = (await loader({ request: new Request("https://app.test/app/settings/locations"), params: {}, context: {} } as never)) as LocationsData;
     expect(data.enabled).toBe(true);
     expect(data.locations.map((l) => [l.name, l.online, l.counts, l.pool])).toEqual([
-      ["Barcelona", false, false, "follow"],
+      ["Barcelona", false, true, "follow"], // counts by default (audit 2026-10-17)
       ["Main warehouse", true, true, "follow"],
     ]);
   });

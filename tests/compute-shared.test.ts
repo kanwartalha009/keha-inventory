@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSeries,
+  demandScope,
+  demandWhere,
   engineSettingsFrom,
   jsonSafe,
   metricRow,
@@ -23,14 +25,22 @@ import { DEFAULT_SETTINGS } from "../app/lib/settings-shared";
 import type { VariantResult } from "../app/lib/engine/index-shared";
 
 describe("pool", () => {
-  it("is the active locations that fulfil online orders", () => {
+  it("#4: every active location counts in supplier orders unless the merchant left it out", () => {
     expect(
       poolLocationIds([
         { id: "L1", active: true, online: true },
         { id: "L2", active: true, online: false },
         { id: "L3", active: false, online: true },
+        { id: "L4", active: true, online: true, onlinePool: false },
       ]),
-    ).toEqual(["L1"]);
+    ).toEqual(["L1", "L2"]);
+  });
+
+  it("demand is all channels (channel view) unless a location is left out (then the location view without it)", () => {
+    expect(demandWhere(demandScope([{ id: "L1", active: true, online: true }, { id: "L2", active: true, online: false }]))).toEqual({ locationKey: "all" });
+    const out = demandScope([{ id: "L1", active: true, online: true }, { id: "L2", active: true, online: false, onlinePool: false }]);
+    expect(out).toEqual({ view: "location", exclude: ["L2"] });
+    expect(demandWhere(out)).toEqual({ channel: "all", locationKey: { notIn: ["all", "L2"] } });
   });
 
   it("a day is out when pooled units ≤ 0 or every reporting location is out", () => {

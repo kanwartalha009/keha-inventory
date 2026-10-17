@@ -48,7 +48,7 @@ function seed() {
   db.tables.shop = [{ domain: SHOP, currency: "EUR", timezone: "Europe/Madrid" }];
   db.tables.location = [
     { id: WH, shop: SHOP, active: true, online: true },
-    { id: STORE, shop: SHOP, active: true, online: false },
+    { id: STORE, shop: SHOP, active: true, online: false, onlinePool: false }, // left out of supplier orders (the default now counts every active location)
   ];
   db.tables.action = [
     { id: "a1", shop: SHOP, kind: "reorder", productId: P1, variantIds: [V(11)], amount: 300, currency: "EUR", reason: {}, state: "open", snoozeUntil: null, stateAmount: null, doneAt: null },

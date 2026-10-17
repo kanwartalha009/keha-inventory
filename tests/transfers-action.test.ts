@@ -56,8 +56,10 @@ function seed() {
     { id: V2, shop: SHOP, productTitle: "Linen shirt", variantTitle: "M", sku: "LS-M", image: null, tracked: true, isBundle: false },
   ];
   db.tables.variantMetric = [
-    { shop: SHOP, variantId: V1, scope: W, status: "healthy", rate: 0, sigma: 0, daysLeft: null, inputs },
-    { shop: SHOP, variantId: V2, scope: W, status: "healthy", rate: 0, sigma: 0, daysLeft: null, inputs },
+    // Every active location counts in supplier orders by default (audit 2026-10-17): compute writes
+    // pool warehouses' metrics at their share of the online pace (demandSource "online_pool").
+    { shop: SHOP, variantId: V1, scope: W, status: "healthy", rate: 0, sigma: 0, daysLeft: null, inputs: { ...inputs, demandSource: "online_pool" } },
+    { shop: SHOP, variantId: V2, scope: W, status: "healthy", rate: 0, sigma: 0, daysLeft: null, inputs: { ...inputs, demandSource: "online_pool" } },
     { shop: SHOP, variantId: V1, scope: S, status: "out", rate: 1, sigma: 0, daysLeft: 0, inputs }, // needs 20
     { shop: SHOP, variantId: V2, scope: S, status: "running_low", rate: 0.5, sigma: 0, daysLeft: 3, inputs }, // needs 10 − 2 = 8
   ];

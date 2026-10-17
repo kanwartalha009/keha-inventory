@@ -60,7 +60,7 @@ function seed() {
   db.tables.shop = [{ domain: SHOP, currency: "EUR", timezone: "UTC", settings: { leadTimeDays: 10 }, backfillState: {} }];
   db.tables.location = [
     { id: WH, shop: SHOP, active: true, online: true },
-    { id: POS, shop: SHOP, active: true, online: false },
+    { id: POS, shop: SHOP, active: true, online: false, onlinePool: false }, // left out of supplier orders (the default now counts every active location)
   ];
   const variant = (n: number, collections: string[]) => ({
     id: V(n),

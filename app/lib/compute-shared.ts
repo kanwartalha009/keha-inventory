@@ -2,19 +2,16 @@
  * Compute — pure part (spec §7, task 1.5): stored daily facts → engine inputs, and engine
  * results → stored rows. No I/O.
  *
- * Online pool rule (spec §3: one stock pool on Free / Growth; per-location planning is Pro;
- * spec §7.1 "Online pool" = the sum over active, fulfillsOnlineOrders locations; §5.5 the
- * merchant may override which locations count, Pro):
- * scope "online" =
- *   pool:  the ACTIVE locations that count for online sales: the merchant's override
- *          (Location.onlinePool) when set, else Shopify's fulfillsOnlineOrders. The override
- *          applies on every plan (a downgrade keeps the merchant's earlier choice; changing it
- *          is Pro). Online orders are keyed "online" in the sales view whichever location
- *          fulfils them, so the override moves STOCK in or out of the pool, plus the POS
- *          sales of a store the merchant adds;
- *   sales: the SalesDaily LOCATION view (channel "all") for locationKey "online" (sales with
- *          no POS location) plus the pool location ids — never the channel view, which
- *          includes POS stores outside the pool;
+ * Supplier-order pool (audit 2026-10-17, merchant blocker #4 + H7; all plans). It used to be the
+ * "online" locations only, so a product stocked only in a POS store read "Out" with 40 on the
+ * shelf and shop demand was never ordered. Now (scope "online" keeps its name for storage):
+ *   pool:  every ACTIVE location COUNTS IN SUPPLIER ORDERS unless the merchant left it out
+ *          (Location.onlinePool = false); onlinePool = true includes it explicitly, null follows
+ *          the default (included). Shopify's fulfillsOnlineOrders no longer decides it;
+ *   sales: demand from ALL channels — the SalesDaily CHANNEL view (locationKey "all", every
+ *          channel summed). When the merchant left a location out, the LOCATION view is used
+ *          instead (channel "all", every key except the excluded locations), so that store's
+ *          POS demand leaves with its stock. One view at a time: the two are never added;
  *   stock: Σ StockDaily over the pool; a day is SOLD OUT when the pooled ending units are ≤ 0
  *          OR every pooled location that reported that day reported out of stock — AND
  *          nothing sold that day (a day that still sold is a backorder / continue-selling day:
@@ -22,7 +19,7 @@
  *   data:  a day counts only when the variant has a pool StockDaily row that day; sales on a
  *          day without one are MISSING data, never "in stock";
  *   onHand / incoming: Σ StockNow over the pool.
- * The channel view (locationKey "all") is used only for revenue (ABC) and the unit price.
+ * The channel view (locationKey "all") also gives revenue (ABC) and the unit price.
  */
 import type { DailyRow, EngineSettings, VariantResult } from "./engine/index-shared";
 import type { ProductTraffic, StoreConversion } from "./engine/money-shared";
@@ -35,6 +32,7 @@ import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { poArrival } from "./supplier-shared";
+import { ALL } from "./sync/facts-shared";
 
 export const SCOPE_ONLINE = "online";
 
@@ -51,26 +49,54 @@ export type PooledStockDay = {
   outReported: number;
 };
 
-/** A Location as the pool rule reads it. `onlinePool` null / absent = follow Shopify (`online`). */
+/**
+ * A Location as the pool rule reads it. `onlinePool` = the merchant's "counts in supplier
+ * orders" choice: false leaves it out, true / null (the default) counts it.
+ */
 export type PoolLocation = { id: string; active: boolean; online: boolean; onlinePool?: boolean | null };
 
 /** The Location columns every pool reader selects (keep the override in every select). */
 export const POOL_LOCATION_SELECT = { id: true, active: true, online: true, onlinePool: true } as const;
 
-/** Does this location count for online sales? Active, and the override when set, else Shopify's flag. */
+/**
+ * Does this location count in supplier orders (the stock pool)? Every active location unless
+ * the merchant left it out (onlinePool = false). Name kept for its many readers.
+ */
 export function countsForOnline(l: Omit<PoolLocation, "id">): boolean {
-  return l.active && (l.onlinePool ?? l.online);
+  return l.active && l.onlinePool !== false;
 }
+
+/** Same rule, by its meaning. */
+export const countsInSupplierOrders = countsForOnline;
 
 export function poolLocationIds(locations: PoolLocation[]): string[] {
   return locations.filter(countsForOnline).map((l) => l.id);
+}
+
+/**
+ * Where pool demand comes from (see the header): all channels (the channel view) unless the
+ * merchant left a location out; then the location view without those locations.
+ */
+export type DemandScope = { view: "channel" } | { view: "location"; exclude: string[] };
+
+export function demandScope(locations: readonly PoolLocation[]): DemandScope {
+  const exclude = locations.filter((l) => l.onlinePool === false).map((l) => l.id).sort();
+  return exclude.length ? { view: "location", exclude } : { view: "channel" };
+}
+
+/** The SalesDaily filter for pool demand (one view, never both). */
+export function demandWhere(d: DemandScope): { locationKey: string } | { channel: string; locationKey: { notIn: string[] } } {
+  return d.view === "channel" ? { locationKey: ALL } : { channel: ALL, locationKey: { notIn: [ALL, ...d.exclude] } };
 }
 
 export function pooledOutOfStock(s: Pick<PooledStockDay, "endUnits" | "reported" | "outReported">): boolean {
   return s.endUnits <= 0 || (s.reported > 0 && s.outReported === s.reported);
 }
 
-/** SalesDaily location-view keys that belong to the online pool. */
+/**
+ * SalesDaily location-view keys of the online orders plus the pool locations' POS sales. Kept
+ * for readers that still filter by keys (planner, PO sync); compute reads demandWhere.
+ */
 export function poolSalesKeys(pool: string[]): string[] {
   return ["online", ...pool];
 }

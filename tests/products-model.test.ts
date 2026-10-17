@@ -88,7 +88,7 @@ beforeEach(() => {
   ];
   db.location = [
     { id: WH, shop: SHOP, active: true, online: true },
-    { id: STORE, shop: SHOP, active: true, online: false },
+    { id: STORE, shop: SHOP, active: true, online: false, onlinePool: false }, // left out of supplier orders (the default now counts every active location)
     { id: OLD, shop: SHOP, active: false, online: true },
   ];
   db.variantMetric = [
@@ -134,7 +134,7 @@ describe("products model (review fixes)", () => {
   });
 
   it("no online locations: stock is unknown (—), never 0", async () => {
-    db.location = [{ id: STORE, shop: SHOP, active: true, online: false }];
+    db.location = [{ id: STORE, shop: SHOP, active: true, online: false, onlinePool: false }]; // left out of supplier orders (the default now counts every active location)
     const page = await listProducts(SHOP, { status: null, collection: null, vendor: null, q: null }, 1, true);
     expect(page.rows[0]).toMatchObject({ onHand: null, incoming: null });
   });

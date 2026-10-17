@@ -1,7 +1,8 @@
 /**
  * Per-location planning (Pro `locations`; spec §4 J7, §7.1): one VariantMetric row per
  * variant × planning location (active warehouse or store), scope = Location.id. The rules
- * are in lib/compute-locations-shared. Called once per compute run from
+ * are in lib/compute-locations-shared (stores: their own sales; warehouses that count in
+ * supplier orders: one pool, each with its stock share of the online demand, no own orders). Called once per compute run from
  * compute.server computeShop, after the online pool, with the inputs it already built
  * (ABC roles, suppliers, seasonal × trend). Reads only the database.
  *
@@ -15,7 +16,17 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { POOL_LOCATION_SELECT, SCOPE_ONLINE, buildSeries, countsForOnline, metricRow, type SalesDay } from "../lib/compute-shared";
-import { carriedAt, demandSourceFor, keptScopes, locationStockDays, neutralWarehouse, type DemandSource } from "../lib/compute-locations-shared";
+import {
+  carriedAt,
+  demandSourceFor,
+  keptScopes,
+  locationStockDays,
+  neutralLocation,
+  poolWarehouse,
+  shareSeries,
+  warehouseShares,
+  type DemandSource,
+} from "../lib/compute-locations-shared";
 import { computeVariant, type AbcRole, type DailyRow, type EngineSettings, type VariantResult } from "../lib/engine/index-shared";
 import { seasonFacts, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor, type SafetyLevelKey } from "../lib/engine/safety-shared";
@@ -37,6 +48,7 @@ export type LocationVariantPlan = {
     caseQty: number | null;
     price: unknown;
     cost: unknown;
+    noReorder?: boolean | null;
   };
   supplier: (SupplierLite & { minOrder: number | null }) | null;
 };
@@ -53,6 +65,8 @@ export type LocationComputeInput = {
   plans: readonly LocationVariantPlan[];
   roles: ReadonlyMap<string, AbcRole>;
   seasonOf: ReadonlyMap<string, VariantSeason>;
+  /** The pool's weekly seasonal shape per variant (compute's curveFor; absent = flat). */
+  curveOf?: ReadonlyMap<string, readonly (number | null)[] | null>;
   /** The online pool's daily series, last sale and first stock day (warehouses in the pool). */
   pool: {
     series: ReadonlyMap<string, DailyRow[]>;
@@ -73,10 +87,36 @@ export async function syncLocationMetrics(shop: string, enabled: boolean, input:
   const planning = planningLocations(rows);
   const byId = new Map(rows.map((r) => [r.id, r]));
   await prisma.variantMetric.deleteMany({ where: { shop, scope: { notIn: keptScopes(planning.map((l) => l.id)) } } });
+  // H7: warehouses that count in supplier orders are planned as one pool — each gets its share
+  // (by stock on hand) of the online demand: location view keys "online" + their own POS sales.
+  const poolWh = planning.filter((l) => l.role === "warehouse" && countsForOnline(byId.get(l.id)!)).map((l) => l.id);
+  const ids = input.plans.map((p) => p.v.id);
+  const onlineSold = new Map<string, Map<string, number>>();
+  const shares = new Map<string, Map<string, number>>();
+  if (poolWh.length) {
+    const [salesG, nowRows] = await Promise.all([
+      chunked(ids, (chunk) =>
+        prisma.salesDaily.groupBy({
+          by: ["variantId", "day"],
+          where: { shop, channel: ALL, locationKey: { in: ["online", ...poolWh] }, variantId: { in: chunk }, day: input.range },
+          _sum: { sold: true },
+        }),
+      ),
+      prisma.stockNow.findMany({ where: { shop, locationId: { in: poolWh } }, select: { variantId: true, locationId: true, onHand: true } }),
+    ]);
+    for (const g of salesG) {
+      const m = onlineSold.get(g.variantId) ?? onlineSold.set(g.variantId, new Map()).get(g.variantId)!;
+      m.set(dayKey(g.day), (m.get(dayKey(g.day)) ?? 0) + num(g._sum.sold));
+    }
+    const onHand = new Map<string, Map<string, number>>();
+    for (const id of ids) onHand.set(id, new Map(poolWh.map((w) => [w, 0])));
+    for (const r of nowRows) onHand.get(r.variantId)?.set(r.locationId, (onHand.get(r.variantId)!.get(r.locationId) ?? 0) + r.onHand);
+    for (const [id, m] of onHand) shares.set(id, warehouseShares(m));
+  }
   let metrics = 0;
   for (const l of planning) {
     const source = demandSourceFor(l.role, countsForOnline(byId.get(l.id)!));
-    metrics += await computeLocation(shop, l.id, l.role, source, input);
+    metrics += await computeLocation(shop, l.id, l.role, source, input, { onlineSold, shares });
   }
   return { locations: planning.length, metrics };
 }
@@ -88,7 +128,14 @@ async function chunked<T>(ids: readonly string[], read: (chunk: string[]) => Pro
   return out;
 }
 
-async function computeLocation(shop: string, locationId: string, role: string, source: DemandSource, x: LocationComputeInput): Promise<number> {
+async function computeLocation(
+  shop: string,
+  locationId: string,
+  role: string,
+  source: DemandSource,
+  x: LocationComputeInput,
+  pooled: { onlineSold: ReadonlyMap<string, ReadonlyMap<string, number>>; shares: ReadonlyMap<string, ReadonlyMap<string, number>> },
+): Promise<number> {
   // Only the planned variants (active, tracked, not bundles), only the rate window (x.range).
   const ids = x.plans.map((p) => p.v.id);
   const [salesG, stockRows, lastSaleG, dataSinceG, stockNow] = await Promise.all([
@@ -135,8 +182,10 @@ async function computeLocation(shop: string, locationId: string, role: string, s
     const computed = computeVariant({
       id: v.id,
       isBundle: false,
-      // A warehouse in the online pool is measured at the online pool's pace (see the shared header).
-      series: (fromPool ? x.pool.series.get(v.id) : series.get(v.id)) ?? [],
+      // A pool warehouse gets its share of the online demand on the pool's days (see the shared header).
+      series: fromPool
+        ? shareSeries(x.pool.series.get(v.id) ?? [], pooled.onlineSold.get(v.id), pooled.shares.get(v.id)?.get(locationId) ?? 0)
+        : (series.get(v.id) ?? []),
       today: x.today,
       onHand: s?.available ?? 0, // planning position: Shopify available (may be negative), not on_hand (audit C2)
       incoming: s?.incoming ?? 0,
@@ -150,11 +199,13 @@ async function computeLocation(shop: string, locationId: string, role: string, s
       seasonal: season?.seasonal ?? 1,
       trend: season?.trend ?? 1,
       plan: 1,
+      seasonCurve: x.curveOf?.get(v.id) ?? null,
+      noReorder: v.noReorder === true,
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),
       settings: x.overrides,
     });
-    const r = computed ? neutralWarehouse(computed, role, source, ownSold.get(v.id) ?? 0) : null;
+    const r = computed ? (fromPool ? poolWarehouse(computed) : neutralLocation(computed, source, ownSold.get(v.id) ?? 0)) : null;
     if (r) results.push({ r, supplierId: supplier?.id ?? null });
   }
 
@@ -166,6 +217,7 @@ async function computeLocation(shop: string, locationId: string, role: string, s
       const m = metricRow(r, {
         location: locationId,
         demandSource: source,
+        ...(fromPool ? { poolShare: pooled.shares.get(r.id)?.get(locationId) ?? 0 } : {}),
         season: season ? seasonFacts(season) : null,
         safetyLevel: x.safetyLevel,
         serviceLevel: serviceLevelFor(x.safetyLevel, r.role),

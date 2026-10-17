@@ -22,8 +22,9 @@ import { carriedAt, demandSourceFor, keptScopes, locationStockDays, neutralWareh
 describe("online pool with the merchant's override", () => {
   const L = (id: string, active: boolean, online: boolean, onlinePool?: boolean | null) => ({ id, active, online, onlinePool });
 
-  it("follows Shopify when the override is not set (null or absent)", () => {
-    expect(poolLocationIds([L("a", true, true, null), L("b", true, false), L("c", false, true)])).toEqual(["a"]);
+  it("counts every active location when the override is not set (null or absent) — audit 2026-10-17, on every plan", () => {
+    // Shopify's fulfillsOnlineOrders no longer decides it: a POS store's stock counts in supplier orders.
+    expect(poolLocationIds([L("a", true, true, null), L("b", true, false), L("c", false, true)])).toEqual(["a", "b"]);
   });
 
   it("the override wins: Yes adds a location, No removes one", () => {
@@ -66,7 +67,7 @@ describe("roles and pool choices", () => {
     ];
     expect(rows.map((r) => [r.id, r.counts, r.pool])).toEqual([
       ["3", true, "yes"],
-      ["2", false, "follow"],
+      ["2", true, "follow"],
       ["1", false, "no"],
     ]);
     expect(sortLocations(rows).map((r) => r.name)).toEqual(["Main", "Barcelona", "Zeta"]);
@@ -105,7 +106,17 @@ describe("Settings → Locations validation", () => {
   });
 
   it("refuses leaving no location counting for online sales", () => {
-    expect(validateLocationsForm([{ id: "W", role: "warehouse", pool: "no" }], active)).toEqual({ ok: false, error: "emptyPool" });
+    expect(
+      validateLocationsForm(
+        [
+          { id: "W", role: "warehouse", pool: "no" },
+          { id: "S", role: "store", pool: "no" },
+        ],
+        active,
+      ),
+    ).toEqual({ ok: false, error: "emptyPool" });
+    // The store counts by default now, so leaving the warehouse out alone is fine.
+    expect(validateLocationsForm([{ id: "W", role: "warehouse", pool: "no" }], active).ok).toBe(true);
     // …but moving the pool to the store is fine.
     expect(
       validateLocationsForm(
