@@ -208,6 +208,9 @@ model Variant {
   firstSaleDay     DateTime? @db.Date
   /// Last channel-view day with sold > 0.
   lastSaleDay      DateTime? @db.Date
+  /// A Shopify bundle's components (ProductVariant.productVariantComponents): [{ variantId, quantity }].
+  /// Bundle sales count as demand on each component (quantity per bundle); null = not a bundle / not read.
+  bundleComponents Json?
   updatedAt        DateTime  @updatedAt
 
   @@index([shop])
@@ -614,4 +617,22 @@ model Transfer {
   createdAt             DateTime @default(now())
 
   @@index([shop])
+}
+
+/// Per-product forecast choices the merchant made on the product page (R4 forecast quality):
+/// "Don't cap" (no spike capping) and "Plan like…" (a new style with too little history uses
+/// another product's or its product type's sales pace, × likePct %, until it has 28 days in stock).
+model ForecastOverride {
+  shop        String
+  productId   String
+  noCap       Boolean  @default(false)
+  /// "product" | "productType"; null = no "Plan like".
+  likeKind    String?
+  /// The product id (likeKind "product") or the product type (likeKind "productType").
+  likeRef     String?
+  /// Percent of the reference pace (100 = the same pace).
+  likePct     Int      @default(100)
+  updatedAt   DateTime @updatedAt
+
+  @@id([shop, productId])
 }

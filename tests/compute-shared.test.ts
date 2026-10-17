@@ -42,6 +42,17 @@ describe("pool", () => {
     expect(demandWhere(out)).toEqual({ channel: "all", locationKey: { notIn: ["all", "L2"] } });
   });
 
+  it("channels left out of the forecast: the channel view without them; with a location left out too, the location view wins (never both views)", () => {
+    const locs = [{ id: "L1", active: true, online: true }];
+    const ch = demandScope(locs, ["Wholesale", "Draft Orders", "Draft Orders", "", "all"]);
+    expect(ch).toEqual({ view: "channel", excludeChannels: ["Draft Orders", "Wholesale"] });
+    expect(demandWhere(ch)).toEqual({ locationKey: "all", channel: { notIn: ["Draft Orders", "Wholesale"] } });
+    expect(demandScope(locs, [])).toEqual({ view: "channel" });
+    const both = demandScope([...locs, { id: "L2", active: true, online: false, onlinePool: false }], ["Draft Orders"]);
+    expect(both).toEqual({ view: "location", exclude: ["L2"], channelsIgnored: ["Draft Orders"] });
+    expect(demandWhere(both)).toEqual({ channel: "all", locationKey: { notIn: ["all", "L2"] } });
+  });
+
   it("a day is out when pooled units ≤ 0 or every reporting location is out", () => {
     expect(pooledOutOfStock({ endUnits: 0, reported: 2, outReported: 0 })).toBe(true);
     expect(pooledOutOfStock({ endUnits: 5, reported: 2, outReported: 2 })).toBe(true);

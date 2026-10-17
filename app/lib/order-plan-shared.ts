@@ -455,6 +455,22 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while sold out is owed, so it is ordered back."));
   // Data audit #2: out of stock most of the last 90 days — the pace comes from older in-stock days.
   if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));
+  // R4: one-off spikes capped in the pace; a new style planned like another product.
+  if (why.spikes && why.spikes.count > 0) {
+    const v = { n: nf(why.spikes.count, locale, 0), date: shortDay(why.spikes.day, locale), units: nf(why.spikes.sold, locale, 0), cap: nf(why.spikes.cap, locale, 0) };
+    out.push(fill(why.spikes.count === 1 ? t("1 unusual day capped ({date}: {units} units, counted as {cap})") : t("{n} unusual days capped (largest {date}: {units} units, counted as {cap})"), v));
+  }
+  if (why.planLike) {
+    const v = { name: why.planLike.name, pct: nf(why.planLike.pct, locale, 0), days: nf(why.planLike.days, locale, 0) };
+    out.push(
+      fill(
+        why.planLike.kind === "product"
+          ? t("Based on {name} at {pct} % until this product has 28 days in stock (now {days}).")
+          : t("Based on the median {name} product at {pct} % until this product has 28 days in stock (now {days})."),
+        v,
+      ),
+    );
+  }
   if (Math.abs(why.growth - 1) > 1e-9) out.push(fill(t("Growth assumption ×{growth} included in the forecast."), { growth: nf(why.growth, locale, 2) }));
   const r = { qty: nf(why.rounded, locale, 0), pack: nf(why.pack ?? 0, locale, 0), moq: nf(why.moq ?? 0, locale, 0) };
   out.push(

@@ -90,7 +90,7 @@ export async function plannerShop(shop: string, now: Date = new Date()): Promise
     today: localDate(now, timezone),
     leadTimeDays: settings.leadTimeDays,
     coverage: salesCoverage(readBackfillState(row?.backfillState)),
-    demand: demandScope(locations),
+    demand: demandScope(locations, settings.excludedChannels),
     pool,
     trendMode: settings.trendMode,
   };

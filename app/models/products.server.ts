@@ -384,6 +384,8 @@ export type VariantDetail = {
     id: string;
     productId: string;
     productTitle: string;
+    /** R4: the product type ("Plan like…" suggests its median pace). */
+    productType?: string | null;
     variantTitle: string;
     sku: string | null;
     vendor: string | null;
@@ -417,7 +419,7 @@ export async function getVariantDetail(
   now: Date = new Date(),
 ): Promise<VariantDetail | null> {
   const [variant, shopRow] = await Promise.all([
-    prisma.variant.findFirst({ where: { id: variantId, shop }, select: { ...VARIANT_SELECT, caseQty: true } }),
+    prisma.variant.findFirst({ where: { id: variantId, shop }, select: { ...VARIANT_SELECT, caseQty: true, productType: true } }),
     prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true, settings: true } }),
   ]);
   if (!variant) return null;
@@ -455,7 +457,7 @@ export async function getVariantDetail(
       ? ((await prisma.collection.findFirst({ where: { shop, id: source.collectionId }, select: { title: true } }))?.title ?? null)
       : null;
   return {
-    variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
+    variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, productType: variant.productType ?? null, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
     caseQty: caseQtys.length === 1 ? caseQtys[0]! : (variant.caseQty ?? null),
     supplierCode: siblings.find((v) => v.id === variant.id)?.supplierCode ?? siblings.find((v) => v.supplierCode)?.supplierCode ?? null,
     siblings: siblings.map((v) => ({ id: v.id, variantTitle: v.variantTitle, noReorder: !!v.noReorder })),

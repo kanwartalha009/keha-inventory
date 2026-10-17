@@ -107,6 +107,9 @@ import { forgetOrderPlan } from "../models/plan-cache.server";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
 import { legacyDays, lastSaleBefore, locationDays, type SalesViewWhere } from "../models/fact-days.server";
 import { buildFactDays, fillVariantDays } from "./sync/fact-days.server";
+import { lastProductPaces, overridesFor } from "../models/forecast-overrides.server";
+import { resolveReference, variantShares, type PlanLikeReference } from "../lib/forecast-override-shared";
+import { bundleSalesForComponents, bundlesOf, componentBundles } from "../lib/bundles-shared";
 
 const HISTORY_DAYS = 90;
 /**
@@ -321,6 +324,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         productType: true,
         tracked: true,
         isBundle: true,
+        bundleComponents: true,
         cost: true,
         price: true,
         productCreatedAt: true,
@@ -341,9 +345,12 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   ]);
   const pool = poolLocationIds(locations);
   const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
-  // Pool demand: all channels, minus locations the merchant left out (compute-shared demandWhere).
-  const demand = demandScope(locations);
+  // Pool demand: all channels (minus the ones left out of the forecast), minus locations the
+  // merchant left out (compute-shared demandScope / demandWhere: one SalesDaily view).
+  const demand = demandScope(locations, shopSettings.excludedChannels);
   const demandFilter = demandWhere(demand);
+  // R4: bundles' sales count on their components (bundles-shared): component → bundles in it.
+  const inBundles = componentBundles(variants.filter((v) => v.isBundle));
 
   // ---- shop-wide inputs (one read each, no per-day rows) ----
   // ABC roles need every variant's 90-day revenue (channel view) before any chunk is planned.
@@ -377,7 +384,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
   // landedFacts reads on-hand now only for the variants on open Keha orders.
   const kehaIds = [...new Set(rawPos.filter(isKeha).flatMap((po) => po.lines.map((l) => l.variantId)))];
-  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, demandFilter, to, await poolStockNow(shop, pool, kehaIds)));
+  // Landed units are measured from stock movement: every channel (a channel left out of the
+  // forecast still takes stock), as auto-receive (sync/po.server).
+  const stockMoveFilter = demandWhere(demandScope(locations));
+  const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, stockMoveFilter, to, await poolStockNow(shop, pool, kehaIds)));
   const kehaOpen = kehaOpenUnits(openPos.filter(isKeha));
   // Each Keha order's share of the incoming (inputs.kehaOrders): the order plan takes the units of
   // an order closed short / cancelled after this run out at once (H2).
@@ -434,6 +444,16 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     considered.map((v) => ({ id: v.id, revenue90: revenue.get(v.id) ?? 0 })),
     settings,
   );
+
+  // Per-product forecast choices (R4): "Don't cap" and "Plan like…" — the reference paces are the
+  // last run's (VariantMetric), so a style planned like another reads yesterday's pace.
+  const forecastChoices = await overridesFor(shop);
+  const paces = [...forecastChoices.values()].some((o) => o.likeKind) ? await lastProductPaces(shop) : new Map();
+  const references = new Map<string, PlanLikeReference>();
+  for (const o of forecastChoices.values()) {
+    const ref = resolveReference(o, paces);
+    if (ref) references.set(o.productId, ref);
+  }
 
   // Money cards (and the action list) are due on this run? Read before the chunks: the sold-out
   // page figure is built per chunk from that chunk's series.
@@ -543,6 +563,17 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       sold: num(g._sum.sold),
       gross: 0,
     }));
+    // R4: units sold inside bundles, in the same SalesDaily view, added to each component's own.
+    const bundleIds = bundlesOf(inBundles, ids);
+    if (bundleIds.length) {
+      const bundleG = await prisma.salesDaily.groupBy({
+        by: ["variantId", "day"],
+        where: { shop, ...demandFilter, variantId: { in: bundleIds }, day: range },
+        _sum: { sold: true },
+      });
+      const bundleSales = bundleG.map((g) => ({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold) }));
+      poolSales.push(...bundleSalesForComponents(inBundles, bundleSales, ids));
+    }
     const outCount = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
     const stock: PooledStockDay[] = stockG.map((g) => ({
       variantId: g.variantId,
@@ -570,6 +601,14 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
 
     const chunkResults: VariantResult[] = [];
     const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
+    // "Plan like…": each variant's share of its style's reference pace (its share of the units so far).
+    const shareOf = new Map<string, number>();
+    for (const productId of new Set(chunk.map((p) => p.v.productId))) {
+      if (!references.has(productId)) continue;
+      const ids = chunk.filter((p) => p.v.productId === productId).map((p) => p.v.id);
+      const units = new Map(ids.map((id) => [id, (series.get(id) ?? []).reduce((a, r) => a + Math.max(0, r.sold), 0)]));
+      for (const [id, share] of variantShares(units, ids)) shareOf.set(id, share);
+    }
     for (const { v, supplier, horizon } of chunk) {
       const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
       const season = seasonCtx.forVariant(seasonGroupsOf(v), horizon);
@@ -578,6 +617,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       // the status / money projection up to the Too-much threshold (H6).
       const curve = seasonCtx.curveFor(season, Math.ceil(Math.max(FORWARD_CURVE_DAYS + horizon, settings.tooMuchDays + 1, settings.cashStuckCoverDays) / 7));
       const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
+      const ref = references.get(v.productId);
+      const share = shareOf.get(v.id) ?? 0;
       const r = computeVariant({
         id: v.id,
         isBundle: false,
@@ -604,6 +645,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         arrivals,
         soldLastYearAhead: aheadCovered ? (soldAhead.get(v.id) ?? 0) : null,
         noReorder: v.noReorder,
+        // R4: spike capping unless the product says "Don't cap"; σ on de-seasonalised demand.
+        noCap: forecastChoices.get(v.productId)?.noCap === true,
+        levels: seasonCtx.levelsFor(season, settings.historyDays),
+        planLike: ref ? { rate: ref.rate * share, kind: ref.kind, name: ref.name, pct: ref.pct, share } : null,
         // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
         sellsWhenOut: v.inventoryPolicy === "CONTINUE",
         price: numOrNull(v.price),
@@ -693,6 +738,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         roles,
         seasonOf,
         curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
+        levelsOf: new Map(chunk.map(({ v }) => [v.id, seasonOf.has(v.id) ? seasonCtx.levelsFor(seasonOf.get(v.id)!, settings.historyDays) : null])),
+        noCapProducts: new Set([...forecastChoices.values()].filter((o) => o.noCap).map((o) => o.productId)),
         pool: { series, lastSale, dataSince, resolveLastSale: (unknown: readonly string[]) => resolveLastSale(shop, lastSale, unknown, from, demandFilter) },
         daysReady,
       });

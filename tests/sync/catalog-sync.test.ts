@@ -190,6 +190,62 @@ describe("syncProduct / deleteProduct", () => {
     expect(db.tables.variant[0]).toMatchObject({ productTitle: "Basic Tee v2", price: "27.00", cost: null, collections: ["gid://shopify/Collection/301"] });
   });
 
+  it("R4: a bundle's components are read (nodes on ProductVariant) and stored; a failed read keeps them", async () => {
+    const product = (bundle: boolean) => ({
+      product: {
+        id: "gid://shopify/Product/5",
+        title: "Gift set",
+        handle: "gift-set",
+        status: "ACTIVE",
+        vendor: "Acme",
+        productType: "Sets",
+        createdAt: "2025-01-10T09:00:00Z",
+        hasVariantsThatRequiresComponents: bundle,
+        collections: { nodes: [] },
+        variants: {
+          nodes: [{ id: "gid://shopify/ProductVariant/5001", title: "Default", price: "50.00", requiresComponents: bundle, inventoryItem: { tracked: true, unitCost: null } }],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+    const a = admin((q, vars) =>
+      q.includes("KehaInvBundleComponents")
+        ? {
+            nodes: (vars!.ids as string[]).map((id) => ({
+              id,
+              productVariantComponents: {
+                nodes: [
+                  { quantity: 2, productVariant: { id: "gid://shopify/ProductVariant/1001" } },
+                  { quantity: 1, productVariant: { id: "gid://shopify/ProductVariant/1002" } },
+                ],
+              },
+            })),
+          }
+        : product(true),
+    );
+    await syncProduct(a.client, S, "gid://shopify/Product/5");
+    expect(a.calls.filter((c) => c.query.includes("KehaInvBundleComponents")).map((c) => c.variables)).toEqual([{ ids: ["gid://shopify/ProductVariant/5001"] }]);
+    expect(db.tables.variant[0]).toMatchObject({
+      isBundle: true,
+      bundleComponents: [
+        { variantId: "gid://shopify/ProductVariant/1001", quantity: 2 },
+        { variantId: "gid://shopify/ProductVariant/1002", quantity: 1 },
+      ],
+    });
+    // The components read fails: the product still syncs, the stored components stay.
+    const broken = admin((q) => {
+      if (q.includes("KehaInvBundleComponents")) throw new Error("boom");
+      return product(true);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await syncProduct(broken.client, S, "gid://shopify/Product/5")).toBe(1);
+    expect((db.tables.variant[0] as { bundleComponents: unknown[] }).bundleComponents).toHaveLength(2);
+    // Not a bundle: no components query at all.
+    const plain = admin(() => product(false));
+    await syncProduct(plain.client, S, "gid://shopify/Product/5");
+    expect(plain.calls.some((c) => c.query.includes("KehaInvBundleComponents"))).toBe(false);
+  });
+
   it("deletes a product's variants, stock now and metrics only", async () => {
     db.tables.variant = [
       { id: "v1", shop: S, productId: "gid://shopify/Product/1" },

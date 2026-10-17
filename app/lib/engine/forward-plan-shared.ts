@@ -112,6 +112,26 @@ export interface ForwardVariantInput {
   sellsWhenOut?: boolean | null;
   /** Data audit #2: the pace comes from in-stock days since this day (inputs.pace.from); null = the usual windows. */
   paceFrom?: DayKey | null;
+  /** R4: unusual days capped in the pace (inputs.spikes): how many, and the largest. */
+  spikes?: SpikesWhy | null;
+  /** R4: the style is planned like another product / its product type (inputs.planLike). */
+  planLike?: PlanLikeWhy | null;
+}
+
+/** Unusual (spike) days capped in the pace: how many, and the largest one. */
+export interface SpikesWhy {
+  count: number;
+  day: DayKey;
+  sold: number;
+  cap: number;
+}
+
+/** "Plan like…" in the Why: the reference, its %, and the style's own in-stock days so far. */
+export interface PlanLikeWhy {
+  kind: "product" | "productType";
+  name: string;
+  pct: number;
+  days: number;
 }
 
 /**
@@ -142,6 +162,10 @@ export interface OrderWhy {
   sellsWhenOut?: boolean;
   /** The sales pace comes from in-stock days since this day (out of stock most of the last 90 days). */
   paceFrom?: DayKey | null;
+  /** Unusual days capped in the pace (R4). */
+  spikes?: SpikesWhy | null;
+  /** Planned like another product / its product type (R4). */
+  planLike?: PlanLikeWhy | null;
   /** demand + safety − onHand − onOrder − missed. */
   need: number;
   /** After the case pack and the per-variant minimum. */
@@ -426,6 +450,8 @@ export class VariantProjection {
         missed,
         sellsWhenOut: this.sellsWhenOut,
         paceFrom: this.input.paceFrom ?? null,
+        spikes: this.input.spikes ?? null,
+        planLike: this.input.planLike ?? null,
         need,
         rounded: 0,
         pack: this.pack,
@@ -498,6 +524,31 @@ export interface StoredMetric {
 }
 
 const numIn = (o: Record<string, unknown>, k: string): number | null => (finite(o[k]) ? (o[k] as number) : null);
+
+/** inputs.spikes (R4) → the Why's count and largest capped day; null when none. */
+export function spikesWhy(raw: unknown): SpikesWhy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const days = Array.isArray(r.days) ? r.days : [];
+  let best: SpikesWhy | null = null;
+  for (const d of days) {
+    if (!d || typeof d !== "object") continue;
+    const x = d as Record<string, unknown>;
+    if (typeof x.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(x.day) || !finite(x.sold) || !finite(x.cap)) continue;
+    if (!best || x.sold > best.sold) best = { count: 0, day: x.day, sold: x.sold, cap: x.cap };
+  }
+  if (!best) return null;
+  const count = finite(r.count) && r.count >= days.length ? r.count : days.length;
+  return { ...best, count };
+}
+
+/** inputs.planLike (R4) → the Why's reference; null when not planned like another. */
+function planLikeWhy(raw: unknown): PlanLikeWhy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if ((r.kind !== "product" && r.kind !== "productType") || typeof r.name !== "string" || !finite(r.pct)) return null;
+  return { kind: r.kind, name: r.name, pct: r.pct, days: finite(r.ownDays) ? r.ownDays : 0 };
+}
 
 /** inputs.pace.from (data audit #2), or null. */
 function paceFromInputs(p: unknown): DayKey | null {
@@ -596,6 +647,8 @@ export function forwardInputFromMetric(
     outSince: typeof inputs.outSince === "string" ? inputs.outSince : null,
     sellsWhenOut: inputs.sellsWhenOut === true,
     paceFrom: paceFromInputs(inputs.pace),
+    spikes: spikesWhy(inputs.spikes),
+    planLike: planLikeWhy(inputs.planLike),
   };
 }
 

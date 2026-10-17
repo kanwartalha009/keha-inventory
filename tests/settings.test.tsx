@@ -6,10 +6,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { DEFAULT_SETTINGS, SETTINGS_ERRORS, applySettingsForm, settingsToForm } from "../app/lib/settings-shared";
+import { DEFAULT_SETTINGS, SETTINGS_ERRORS, applySettingsForm, readSettings, settingsToForm } from "../app/lib/settings-shared";
 
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
-vi.mock("../app/models/settings.server", () => ({ getShopSettings: vi.fn(), saveShopSettings: vi.fn() }));
+vi.mock("../app/models/settings.server", () => ({ getShopSettings: vi.fn(), saveShopSettings: vi.fn(), salesChannels: vi.fn(), hasLocationLeftOut: vi.fn() }));
 
 import Settings from "../app/routes/app.settings";
 import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
@@ -62,6 +62,19 @@ describe("settings form", () => {
     const off = applySettingsForm(store, { ...settingsToForm(store), trendMode: "off" }, now);
     expect(off.ok && off.settings.trendMode).toBe("off");
   });
+
+  it("sales channels in the forecast: none left out by default; saves, cleans and keeps the list", () => {
+    expect(DEFAULT_SETTINGS.excludedChannels).toEqual([]);
+    expect(readSettings({}).excludedChannels).toEqual([]);
+    const r = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), excludedChannels: [" Draft Orders ", "Draft Orders", "", 7 as never, "Wholesale"] }, now);
+    expect(r.ok && r.settings.excludedChannels).toEqual(["Draft Orders", "Wholesale"]);
+    // An older client that doesn't send the field keeps the stored list.
+    const stored = { ...DEFAULT_SETTINGS, excludedChannels: ["Draft Orders"] };
+    const { excludedChannels: _drop, ...noField } = settingsToForm(stored);
+    const kept = applySettingsForm(stored, noField, now);
+    expect(kept.ok && kept.settings.excludedChannels).toEqual(["Draft Orders"]);
+    expect(readSettings({ excludedChannels: "Draft Orders" }).excludedChannels).toEqual([]);
+  });
 });
 
 describe("Settings page", () => {
@@ -87,6 +100,36 @@ describe("Settings page", () => {
     expect(html).toMatch(/<s-choice value="store" selected=/);
     expect(html).not.toMatch(/<s-choice value="off" selected=/);
     expect(html).toContain("adding it again usually orders too much");
+  });
+
+  it("sales channels: one checkbox per channel with its units, ticked unless left out; More options open when one is", () => {
+    const data = {
+      form: settingsToForm({ ...DEFAULT_SETTINGS, excludedChannels: ["Draft Orders"] }),
+      channels: [
+        { name: "Online Store", units: 361025 },
+        { name: "Draft Orders", units: 5479 },
+      ],
+      locationLeftOut: false,
+    };
+    const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
+    const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expect(html).toContain("Sales channels in the forecast");
+    expect(html).toMatch(/<s-choice value="Online Store" selected=/);
+    expect(html).not.toMatch(/<s-choice value="Draft Orders" selected=/);
+    expect(html).toContain("361,025 units in the last 12 months");
+    expect(html).toContain("Every channel counts by default.");
+    expect(html).not.toContain("aren&#x27;t applied while a location is left out");
+  });
+
+  it("sales channels: with a location left out, says honestly the channel choice can't be applied", () => {
+    const data = {
+      form: settingsToForm({ ...DEFAULT_SETTINGS, excludedChannels: ["Draft Orders"] }),
+      channels: [{ name: "Draft Orders", units: 12 }],
+      locationLeftOut: true,
+    };
+    const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
+    const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expect(html).toContain("aren&#x27;t applied while a location is left out");
   });
 
   it("same anatomy as every tab: cards with a heading and a one-line description, Save in the save bar", () => {

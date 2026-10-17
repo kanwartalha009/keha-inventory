@@ -55,10 +55,17 @@ export interface WindowStats {
   soldInStock: number;
 }
 
-/** Stats for the last `days` days: [today − days, today − 1]. */
+/**
+ * Stats for the last `days` days: [today − days, today − 1]. A PARTIAL day (it ran out that day,
+ * DailyRow.partial) is an in-stock day whose sales were cut short: it counts at least at the pace
+ * of the window's full in-stock days, max(sold, pace without it) — censored demand, never lowered
+ * by the stock-out (R4, analyst item 6).
+ */
 export function windowStats(index: SeriesIndex, today: DayKey, days: number): WindowStats {
   const t = dayIndex(today);
   const s: WindowStats = { days, dataDays: 0, inStockDays: 0, outOfStockDays: 0, soldInStock: 0 };
+  const partial: number[] = [];
+  let full = 0;
   for (let i = t - days; i < t; i++) {
     const row = index.get(i);
     if (!row) continue;
@@ -67,8 +74,16 @@ export function windowStats(index: SeriesIndex, today: DayKey, days: number): Wi
       s.outOfStockDays++;
     } else {
       s.inStockDays++;
-      s.soldInStock += row.sold;
+      if (row.partial) partial.push(row.sold);
+      else {
+        full++;
+        s.soldInStock += row.sold;
+      }
     }
+  }
+  if (partial.length) {
+    const pace = full > 0 ? Math.max(0, s.soldInStock / full) : 0;
+    for (const sold of partial) s.soldInStock += Math.max(sold, pace);
   }
   return s;
 }
@@ -137,14 +152,23 @@ export function salesRate(
 /**
  * σ_daily: POPULATION standard deviation of daily demand on in-stock days in the last `days`
  * days. Days with negative net sales (returns larger than sales) are left out: a return is
- * not negative demand. Null when there is no such day.
+ * not negative demand. PARTIAL days (ran out that day) are left out too: their sales were cut
+ * short. Null when there is no such day.
+ *
+ * With `levels` (season-shared dailyLevels: each past day's seasonal level, mean 1 over the
+ * window), σ is measured on the DE-SEASONALISED demand x ÷ level (R4, analyst item 6): a sales
+ * ramp into a peak is level, not noise, so it no longer inflates σ; the caller scales σ back up
+ * by the seasonal index of the protection period. A day without a level uses 1. computeVariant
+ * uses it only when it is below the raw σ (the season explains part of the variation).
  */
-export function sigmaDaily(index: SeriesIndex, today: DayKey, days: number): number | null {
+export function sigmaDaily(index: SeriesIndex, today: DayKey, days: number, levels?: ReadonlyMap<DayKey, number> | null): number | null {
   const t = dayIndex(today);
   const xs: number[] = [];
   for (let i = t - days; i < t; i++) {
     const row = index.get(i);
-    if (row && !soldOutDay(row) && row.sold >= 0) xs.push(row.sold);
+    if (!row || soldOutDay(row) || row.partial || !(row.sold >= 0)) continue;
+    const l = levels?.get(row.day);
+    xs.push(typeof l === "number" && Number.isFinite(l) && l > 0 ? row.sold / l : row.sold);
   }
   if (xs.length === 0) return null;
   const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -193,15 +217,19 @@ export interface InStockPace {
 export function inStockPace(index: SeriesIndex, today: DayKey, settings: EngineSettings = ENGINE_DEFAULTS): InStockPace | null {
   const t = dayIndex(today);
   const target = Math.max(settings.minInStockDays, PACE_TARGET_DAYS);
-  const used: { i: number; sold: number }[] = [];
+  const used: { i: number; sold: number; partial: boolean }[] = [];
   for (let i = t - 1; i >= t - PACE_LOOKBACK_DAYS && used.length < target; i--) {
     const row = index.get(i);
     if (!row || soldOutDay(row)) continue;
-    used.push({ i, sold: row.sold });
+    used.push({ i, sold: row.sold, partial: row.partial === true });
   }
   if (used.length < settings.minInStockDays) return null;
-  const sold = used.reduce((a, d) => a + d.sold, 0);
-  const xs = used.filter((d) => d.sold >= 0).map((d) => d.sold);
+  // Partial days (ran out that day) count at least at the pace of the full days; σ leaves them out.
+  const full = used.filter((d) => !d.partial);
+  const fullSold = full.reduce((a, d) => a + d.sold, 0);
+  const pace = full.length ? Math.max(0, fullSold / full.length) : 0;
+  const sold = used.reduce((a, d) => a + (d.partial ? Math.max(d.sold, pace) : d.sold), 0);
+  const xs = full.filter((d) => d.sold >= 0).map((d) => d.sold);
   const mean = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
   const sigma = xs.length ? Math.sqrt(xs.reduce((a, x) => a + (x - mean) * (x - mean), 0) / xs.length) : 0;
   return { rate: Math.max(0, sold / used.length), sigma, inStockDays: used.length, from: fromDayIndex(used[used.length - 1]!.i) };

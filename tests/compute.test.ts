@@ -551,3 +551,52 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect((metric(C).inputs as { productCreatedDay: string }).productCreatedDay).toBe("2026-07-17");
   });
 });
+
+describe("R4 forecast quality in computeShop", () => {
+  it("a bundle's sales count on its components (× quantity), in the same SalesDaily view; the bundle is still not planned", async () => {
+    const bundle = db.tables.variant.find((v) => v.id === BUNDLE)!;
+    bundle.bundleComponents = [{ variantId: A, quantity: 2 }];
+    for (const day of daysBetween("2026-07-18", "2026-10-15")) {
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: BUNDLE, locationKey: "online", channel: "all", sold: 5, returned: 0, gross: 0 });
+    }
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).rate).toBeCloseTo(2 + 5 * 2, 10);
+    expect(db.tables.variantMetric.some((m) => m.variantId === BUNDLE)).toBe(false);
+    // Without its components known: the component's own sales only (as before).
+    seed();
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).rate).toBeCloseTo(2, 10);
+  });
+
+  it("a one-off spike is capped, and the product's \"Don't cap\" uses every day as sold", async () => {
+    const spike = db.tables.salesDaily.find((r) => r.variantId === A && r.locationKey === "online" && (r.day as Date).toISOString().startsWith("2026-10-01"))!;
+    spike.sold = 302;
+    await computeShop(S, { now: () => NOW });
+    const capped = metric(A);
+    expect((capped.inputs as { spikes: { count: number; days: { day: string; sold: number }[] } }).spikes).toMatchObject({ count: 1, days: [{ day: "2026-10-01", sold: 302 }] });
+    expect(capped.rate as number).toBeLessThan(2.5);
+    db.tables.forecastOverride = [{ shop: S, productId: "PA", noCap: true, likeKind: null, likeRef: null, likePct: 100 }];
+    await computeShop(S, { now: () => NOW });
+    expect(metric(A).rate as number).toBeGreaterThan(7); // 28-day window: (27 × 2 + 302) / 28 ≈ 12.7, weighted
+    expect((metric(A).inputs as { spikes: { off: boolean } }).spikes.off).toBe(true);
+  });
+
+  it("Plan like: a new style borrows the reference product's last pace until it has 28 days in stock", async () => {
+    const NEW = "gid://shopify/ProductVariant/8";
+    db.tables.variant.push({ ...db.tables.variant.find((v) => v.id === A)!, id: NEW, productId: "PN", handle: "new-tee", productCreatedAt: new Date("2026-10-08T00:00:00Z") });
+    for (const day of daysBetween("2026-10-09", "2026-10-15")) {
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: NEW, locationKey: "online", channel: "all", sold: 1, returned: 0, gross: 0 });
+      db.tables.stockDaily.push({ shop: S, day: d(day), variantId: NEW, locationId: L1, endUnits: 20, outOfStock: false });
+    }
+    db.tables.stockNow.push({ shop: S, variantId: NEW, locationId: L1, onHand: 20, available: 20, incoming: 0 });
+    await computeShop(S, { now: () => NOW });
+    expect(metric(NEW).orderQty).toBeNull(); // 7 in-stock days: can't be planned on its own
+    db.tables.forecastOverride = [{ shop: S, productId: "PN", noCap: false, likeKind: "product", likeRef: "PA", likePct: 50 }];
+    await computeShop(S, { now: () => NOW });
+    const n = metric(NEW);
+    // w = 7 ÷ 28: 0.25 × its own 1 + 0.75 × (A's 2 × 50 %).
+    expect(n.rate).toBeCloseTo(0.25 * 1 + 0.75 * 1, 10);
+    expect((n.inputs as { planLike: unknown }).planLike).toMatchObject({ kind: "product", rate: 1, pct: 50, share: 1, ownDays: 7, weight: 0.75 });
+    expect(n.orderQty).not.toBeNull();
+  });
+});

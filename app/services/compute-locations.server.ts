@@ -54,6 +54,8 @@ export type LocationVariantPlan = {
     cost: unknown;
     noReorder?: boolean | null;
     inventoryPolicy?: string | null;
+    /** For "Don't cap" (R4); absent = capped as the store default. */
+    productId?: string;
   };
   supplier: (SupplierLite & { minOrder: number | null }) | null;
 };
@@ -72,6 +74,10 @@ export type LocationComputeInput = {
   seasonOf: ReadonlyMap<string, VariantSeason>;
   /** The pool's weekly seasonal shape per variant (compute's curveFor; absent = flat). */
   curveOf?: ReadonlyMap<string, readonly (number | null)[] | null>;
+  /** R4: the pool's past daily seasonal levels per variant (σ on de-seasonalised demand; absent = raw σ). */
+  levelsOf?: ReadonlyMap<string, ReadonlyMap<string, number> | null>;
+  /** R4: products set to "Don't cap" (no spike capping). */
+  noCapProducts?: ReadonlySet<string>;
   /**
    * The online pool's daily series, last sale before the window and first stock day (warehouses
    * in the pool). A last sale `undefined` is not known yet (compute's poolDays): resolveLastSale
@@ -279,6 +285,8 @@ async function computeLocation(
       plan: 1,
       seasonCurve: x.curveOf?.get(v.id) ?? null,
       noReorder: v.noReorder === true,
+      noCap: !!v.productId && x.noCapProducts?.has(v.productId) === true,
+      levels: x.levelsOf?.get(v.id) ?? null,
       sellsWhenOut: v.inventoryPolicy === "CONTINUE",
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),

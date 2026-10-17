@@ -58,7 +58,10 @@ export async function locationDays(shop: string, ids: readonly string[]): Promis
 }
 
 /** A SalesDaily filter for one sales view (compute-shared demandWhere, or one location's view). */
-export type SalesViewWhere = { locationKey: string } | { channel: string; locationKey: string | { notIn: string[] } };
+export type SalesViewWhere =
+  | { locationKey: string }
+  | { locationKey: string; channel: { notIn: string[] } }
+  | { channel: string; locationKey: string | { notIn: string[] } };
 
 /**
  * The last day with sold > 0 BEFORE `from` in one sales view, per variant — exact, one short

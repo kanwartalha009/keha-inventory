@@ -154,6 +154,24 @@ export const PRODUCT_QUERY = `#graphql
     }
   }`;
 
+/**
+ * A bundle's components (R4: bundle sales count on them). `nodes(ids:)` on ProductVariant needs
+ * read_products. Cost ≈ 1 + 2 + 30 × 2 per bundle, so BUNDLE_BATCH (10) stays well under the
+ * 1,000-point single-query limit; Shopify bundles have at most 30 components.
+ */
+export const BUNDLE_COMPONENTS_QUERY = `#graphql
+  query KehaInvBundleComponents($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on ProductVariant {
+        id
+        productVariantComponents(first: 30) {
+          nodes { quantity productVariant { id } }
+        }
+      }
+    }
+  }`;
+export const BUNDLE_BATCH = 10;
+
 /** Needs no scope beyond the app's own (shop fields are always readable). */
 export const SHOP_QUERY = `#graphql
   query KehaInvShopInfo {

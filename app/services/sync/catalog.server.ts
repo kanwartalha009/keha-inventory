@@ -22,10 +22,13 @@ import prisma from "../../db.server";
 import type { AdminGraphqlClient } from "../../models/shop.server";
 import { readShopLocale } from "../shop-locale.server";
 import { catalogWriter } from "./catalog-writes.server";
+import { bundleComponentsFromNodes } from "../../lib/bundles-shared";
 import {
   ADMIN_MAX_ATTEMPTS,
   BULK_RUN_MUTATION,
   BULK_STATUS_QUERY,
+  BUNDLE_BATCH,
+  BUNDLE_COMPONENTS_QUERY,
   CATALOG_BULK_QUERY,
   LOCATIONS_QUERY,
   LOCATION_QUERY,
@@ -295,6 +298,27 @@ export async function upsertCollections(shop: string, rows: CollectionRow[]): Pr
   return rows.length;
 }
 
+/**
+ * R4: each bundle's components (productVariantComponents) → Variant.bundleComponents, so the
+ * bundle's sales count on its components. Fails open: a failed read keeps what was stored and
+ * the catalog sync goes on (the components then miss only the bundle's units, as before).
+ */
+export async function syncBundleComponents(admin: AdminGraphqlClient, shop: string, bundleIds: string[], deps: SyncDeps = {}): Promise<number> {
+  let stored = 0;
+  for (let i = 0; i < bundleIds.length; i += BUNDLE_BATCH) {
+    const ids = bundleIds.slice(i, i + BUNDLE_BATCH);
+    try {
+      const data = await gql<{ nodes?: unknown }>(admin, BUNDLE_COMPONENTS_QUERY, { ids }, deps);
+      for (const [id, components] of bundleComponentsFromNodes(data?.nodes)) {
+        stored += (await prisma.variant.updateMany({ where: { shop, id }, data: { bundleComponents: components } })).count;
+      }
+    } catch (e) {
+      console.warn(`[sync/catalog] ${shop}: bundle components not read (${ids.length} bundle(s)): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return stored;
+}
+
 export type CatalogResult = {
   variants: number;
   products: number;
@@ -310,6 +334,7 @@ export async function syncCatalog(admin: AdminGraphqlClient, shop: string, deps:
   const text = await runBulkQuery(admin, CATALOG_BULK_QUERY, deps);
   const parsed = parseCatalogJsonl(text);
   await upsertVariants(shop, parsed.variants);
+  await syncBundleComponents(admin, shop, parsed.variants.filter((v) => v.isBundle).map((v) => v.id), deps);
   const seen = new Set(parsed.variants.map((v) => v.id));
   const existing = await prisma.variant.findMany({ where: { shop }, select: { id: true } });
   const removed = await deleteVariants(
@@ -379,6 +404,7 @@ export async function syncProduct(admin: AdminGraphqlClient, shop: string, produ
     after = info.endCursor;
   }
   await upsertVariants(shop, rows);
+  await syncBundleComponents(admin, shop, rows.filter((r) => r.isBundle).map((r) => r.id), deps);
   const keep = new Set(rows.map((r) => r.id));
   const existing = await prisma.variant.findMany({ where: { shop, productId }, select: { id: true } });
   await deleteVariants(

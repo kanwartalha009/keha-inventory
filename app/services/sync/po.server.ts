@@ -225,7 +225,8 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
         : Promise.resolve([]),
       facts.salesDaily.groupBy({
         by: ["variantId"],
-        // Pool demand: the same SalesDaily view compute reads (demandWhere; never both views).
+        // Units that left the pool's stock: the SalesDaily view compute reads (demandWhere; never both
+        // views), every channel — a channel left out of the forecast still takes stock.
         where: { shop, variantId: { in: ids }, ...demandWhere(demandScope(locations)), day: { gte: dayDate(from) } },
         _sum: { sold: true },
       }),

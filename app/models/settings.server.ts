@@ -6,6 +6,7 @@
 import prisma from "../db.server";
 import { forgetOrderPlan } from "./plan-cache.server";
 import { readSettings, type ShopSettings } from "../lib/settings-shared";
+import { ALL } from "../lib/sync/facts-shared";
 
 export async function getShopSettings(shop: string): Promise<ShopSettings> {
   const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { settings: true } });
@@ -34,4 +35,30 @@ export async function recordReviewAsk(shop: string, code: string, now: Date): Pr
   if (stored.reviewAsk) return false;
   await prisma.shop.update({ where: { domain: shop }, data: { settings: { ...stored, reviewAsk: { askedAt: now.toISOString(), code } } } });
   return true;
+}
+
+export type SalesChannelRow = { name: string; units: number };
+
+/**
+ * The sales channels in the store's history (SalesDaily channel view, last 365 days) with their
+ * units, most units first — the "Sales channels in the forecast" choices (R4). Channels left out
+ * earlier but not seen in the year are kept (0 units) so they can be put back.
+ */
+export async function salesChannels(shop: string, excluded: readonly string[], today = new Date()): Promise<SalesChannelRow[]> {
+  const from = new Date(today.getTime() - 365 * 86_400_000);
+  const rows = await prisma.salesDaily.groupBy({
+    by: ["channel"],
+    where: { shop, locationKey: ALL, day: { gte: from } },
+    _sum: { sold: true },
+  });
+  const out = rows
+    .filter((r) => typeof r.channel === "string" && r.channel !== "" && r.channel !== ALL)
+    .map((r) => ({ name: r.channel, units: Number(r._sum.sold ?? 0) }));
+  for (const name of excluded) if (!out.some((c) => c.name === name)) out.push({ name, units: 0 });
+  return out.sort((a, b) => b.units - a.units || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** A location is left out of supplier orders (Settings → Locations): demand uses the location view. */
+export async function hasLocationLeftOut(shop: string): Promise<boolean> {
+  return (await prisma.location.count({ where: { shop, onlinePool: false } })) > 0;
 }

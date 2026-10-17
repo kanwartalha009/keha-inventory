@@ -366,6 +366,38 @@ export function seasonCurve(s: UnitsSeries, today: DayKey, weeks: number): (numb
   return out;
 }
 
+/**
+ * Each past day's seasonal LEVEL for de-seasonalising σ (R4, analyst item 6; rate-shared
+ * sigmaDaily): the centred 3-week units/day around the day (the same smoothing as the index;
+ * truncated at yesterday for the last days), divided by the mean of those levels over the
+ * `days` days, so the levels average 1 over the window, then bounded to LEVEL_BOUNDS (a group
+ * that sold almost nothing at the start of the window must not multiply those days' noise by
+ * ten). Days the history doesn't cover get no level (σ uses the raw sales for them). Empty when
+ * nothing is covered.
+ */
+export const LEVEL_BOUNDS = Object.freeze({ min: 0.5, max: 2 });
+
+export function dailyLevels(s: UnitsSeries, today: DayKey, days: number): Map<DayKey, number> {
+  const t = toDayKey(today);
+  const n = Math.max(1, Math.round(days));
+  const R = SEASON.smoothRadiusDays;
+  const from = addDays(t, -n);
+  const idx = dailyIndex(s, addDays(from, -R), addDays(t, -1));
+  const raw: { day: DayKey; m: number }[] = [];
+  for (let d = 0; d < n; d++) {
+    const day = addDays(from, d);
+    if (!isCovered(s.coverage, day)) continue;
+    const m = idx.mean(d, d + 2 * R);
+    if (m !== null && m > 0) raw.push({ day, m });
+  }
+  const out = new Map<DayKey, number>();
+  if (!raw.length) return out;
+  const mean = raw.reduce((a, x) => a + x.m, 0) / raw.length;
+  if (!(mean > 0)) return out;
+  for (const x of raw) out.set(x.day, Math.min(LEVEL_BOUNDS.max, Math.max(LEVEL_BOUNDS.min, x.m / mean)));
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Store vs season group (collection or product type)
 // ---------------------------------------------------------------------------
@@ -554,7 +586,23 @@ export function createSeasonContext(input: {
     return r;
   };
   const curveMemo = new Map<string, (number | null)[] | null>();
+  const levelMemo = new Map<string, Map<DayKey, number>>();
   return {
+    /**
+     * The past daily levels (dailyLevels) of the source `season` came from, for σ on
+     * de-seasonalised demand; null when its seasonal index wasn't applied (no seasonality known).
+     */
+    levelsFor(season: VariantSeason, days: number): Map<DayKey, number> | null {
+      if (!season.seasonalResult.applied) return null;
+      const id = groupIdOf(season);
+      const key = `${id ?? ""}|${days}`;
+      let m = levelMemo.get(key);
+      if (!m) {
+        const s = seriesOf(id);
+        levelMemo.set(key, (m = s ? dailyLevels(s, input.today, days) : new Map()));
+      }
+      return m.size ? m : null;
+    },
     /** The weekly seasonal shape from the same source as `season` (seasonCurve); null when its index wasn't applied. */
     curveFor(season: VariantSeason, weeks: number): (number | null)[] | null {
       if (!season.seasonalResult.applied) return null;

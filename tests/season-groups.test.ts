@@ -209,4 +209,9 @@ describe.skipIf(!PG_AVAILABLE)("productTypeSeriesQuery on Postgres", () => {
     const planned = run(productTypeSeriesQuery({ shop: SHOP, demand: { view: "channel" }, types: ["Jackets"], windows, plannedOnly: true })!);
     expect(planned.get("Jackets")?.get("2025-01-10")).toBe(9); // without the draft
   });
+
+  it("a channel left out of the forecast is left out of the type's season too (R4)", () => {
+    const out = run(productTypeSeriesQuery({ shop: SHOP, demand: { view: "channel", excludeChannels: ["Point of Sale"] }, types: ["Jackets"], windows })!);
+    expect(out.get("Jackets")?.get("2025-01-10")).toBe(8); // j1's 2 POS units out
+  });
 });

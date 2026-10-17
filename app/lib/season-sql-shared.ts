@@ -38,13 +38,14 @@ export function productTypeSeriesQuery(input: ProductTypeSeriesInput): { sql: st
   const params: unknown[] = [input.shop];
   const p = (v: unknown) => (params.push(v), `$${params.length}`);
   // The compact SalesFact (services/facts-store.server): shop and location keys are numbers
-  // (Shop.num, FactKey), the variant is the number in its GID; "all" is FactKey 0.
+  // (Shop.num, FactKey), the variant is the number in its GID; "all" is FactKey 0. Channels left
+  // out of the forecast (R4, Settings → Defaults) are FactKey keys too.
+  const d = input.demand;
+  const keys = (list: readonly string[]) => `(SELECT k."num" FROM "FactKey" k WHERE k."key" IN (${list.map(p).join(", ")}))`;
   const demand =
-    input.demand.view === "channel"
-      ? `s."locNum" = ${KEY_ALL}`
-      : `s."channelNum" = ${KEY_ALL} AND s."locNum" <> ${KEY_ALL}${
-          input.demand.exclude.length ? ` AND s."locNum" NOT IN (SELECT k."num" FROM "FactKey" k WHERE k."key" IN (${input.demand.exclude.map(p).join(", ")}))` : ""
-        }`;
+    d.view === "channel"
+      ? `s."locNum" = ${KEY_ALL}${d.excludeChannels?.length ? ` AND s."channelNum" NOT IN ${keys(d.excludeChannels)}` : ""}`
+      : `s."channelNum" = ${KEY_ALL} AND s."locNum" <> ${KEY_ALL}${d.exclude.length ? ` AND s."locNum" NOT IN ${keys(d.exclude)}` : ""}`;
   const typeList = types.map(p).join(", ");
   const days = windows.map((w) => `(s."day" >= ${p(w.from)}::date AND s."day" <= ${p(w.to)}::date)`).join(" OR ");
   const sql = `SELECT v."productType" AS "productType", to_char(s."day", 'YYYY-MM-DD') AS "day", SUM(s."sold")::bigint AS "sold"

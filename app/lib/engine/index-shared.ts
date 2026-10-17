@@ -28,6 +28,8 @@ import {
   type SeriesIndex,
 } from "./rate-shared";
 import { variantStatus } from "./status-shared";
+import { applyCap, cappedSince, spikeCap, type CappedDay } from "./outliers-shared";
+import { PLAN_LIKE_DAYS, ownWeight, type PlanLikeInput } from "./new-style-shared";
 import { arrivalsFrom, coverDays, demandProjection, lostUnits, type Projection } from "./projection-shared";
 import {
   resolveSettings,
@@ -44,6 +46,8 @@ export * from "./order-shared";
 export * from "./status-shared";
 export * from "./money-shared";
 export * from "./projection-shared";
+export * from "./outliers-shared";
+export * from "./new-style-shared";
 
 export interface VariantInput {
   id: string;
@@ -88,6 +92,19 @@ export interface VariantInput {
   soldLastYearAhead?: number | null;
   /** "Don't reorder" (Variant.noReorder): stock and status as usual, no order advice. */
   noReorder?: boolean | null;
+  /**
+   * "Plan like…" (the product's forecast override): this variant's share of a reference pace,
+   * blended with its own while it has fewer than PLAN_LIKE_DAYS in-stock days (new-style-shared).
+   */
+  planLike?: PlanLikeInput | null;
+  /** "Don't cap" (the product's forecast override): no spike capping for this variant. */
+  noCap?: boolean | null;
+  /**
+   * Past daily seasonal levels of the variant's season source (season-shared dailyLevels): σ is
+   * measured on de-seasonalised demand and scaled by `seasonal` for the protection period.
+   * Absent: σ on the raw daily sales (as before).
+   */
+  levels?: ReadonlyMap<DayKey, number> | null;
   /**
    * Keeps selling when out of stock (Shopify ProductVariant.inventoryPolicy CONTINUE). Absent /
    * false (DENY, Shopify's default): sales missed while sold out are lost, not owed. A negative
@@ -179,6 +196,19 @@ export interface VariantInputs {
    * earliest day used. null = the usual windows.
    */
   pace: { from: DayKey; inStockDays: number } | null;
+  /**
+   * One-off spikes (outliers-shared): the cap the pace and σ used (null: nothing capped — too few
+   * days, or off), the days above it in the days the pace read (newest first, at most 10; `count`
+   * all of them) and whether capping is off for this product ("Don't cap").
+   */
+  spikes: { cap: number | null; days: CappedDay[]; count: number; off: boolean };
+  /** σ was measured on de-seasonalised demand and scaled by the seasonal index (levels given). */
+  sigmaSeasonal: boolean;
+  /**
+   * "Plan like…" in use (fewer than PLAN_LIKE_DAYS in-stock days): the reference, its share of
+   * this variant, the weight of the reference in the blended pace and the own in-stock days.
+   */
+  planLike: (PlanLikeInput & { weight: number; ownDays: number; ownRate: number | null }) | null;
   /**
    * M3: the first day of the out-of-stock spell the variant is in now (sales history: every day
    * from it through yesterday ended at ≤ 0 units; a day without data ends the search); null when
@@ -275,23 +305,51 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const incoming = Math.max(0, input.incoming ?? 0);
   const onHand = input.onHand;
 
-  // §7.2 rate and σ.
-  const r = salesRate(index, today, settings);
-  // Data audit #2: out of stock most of the window → the pace of the most recent in-stock days,
-  // older history included (up to 14 months), before "can't be planned yet".
-  let pace: ReturnType<typeof inStockPace> = null;
-  if (!r.enoughData && input.olderSeries?.length) {
+  // Older rows (before the window, up to 14 months) for the in-stock pace fallback (data audit #2).
+  const all = new Map(index);
+  if (input.olderSeries?.length) {
     const start = dayIndex(today) - settings.historyDays;
     const oldest = dayIndex(today) - PACE_LOOKBACK_DAYS;
-    const all = new Map(index);
     for (const row of input.olderSeries) {
       const i = dayIndex(row.day);
       if (i < start && i >= oldest && Number.isFinite(row.sold) && !all.has(i)) all.set(i, row);
     }
-    pace = inStockPace(all, today, settings);
   }
-  const rate = pace ? pace.rate : r.rate;
-  const sigma = pace ? pace.sigma : sigmaDaily(index, today, settings.historyDays);
+  // R4: one-off spikes are capped before the pace and σ are measured (outliers-shared).
+  const capOff = input.noCap === true || !(settings.spikeCapK > 0);
+  const spikes = spikeCap(all, today, { k: settings.spikeCapK, off: capOff });
+  const capped = applyCap(index, spikes.cap);
+
+  // §7.2 rate and σ.
+  const r = salesRate(capped, today, settings);
+  // Data audit #2: out of stock most of the window → the pace of the most recent in-stock days,
+  // older history included (up to 14 months), before "can't be planned yet".
+  let pace: ReturnType<typeof inStockPace> = null;
+  if (!r.enoughData && input.olderSeries?.length) pace = inStockPace(applyCap(all, spikes.cap), today, settings);
+  const ownRate = pace ? pace.rate : r.rate;
+  // σ on de-seasonalised demand, scaled to the protection period's season (R4); else the raw σ.
+  // Used only when it explains part of the variation (de-seasonalised σ below the raw σ): a style
+  // whose own sales don't follow its group's shape — a new collection filling up, a group whose
+  // level is its product count growing — keeps the raw σ instead of one inflated by ÷ level.
+  const levels = !pace && input.levels && input.levels.size ? input.levels : null;
+  const rawSigma = pace ? pace.sigma : sigmaDaily(capped, today, settings.historyDays);
+  const dsSigma = levels && rawSigma !== null ? sigmaDaily(capped, today, settings.historyDays, levels) : null;
+  const sigmaSeasonal = dsSigma !== null && rawSigma !== null && dsSigma < rawSigma;
+  const ownSigma = rawSigma === null ? null : sigmaSeasonal ? dsSigma! * seasonal : rawSigma;
+  // "Plan like…" (R4): a new style borrows a reference pace until it has PLAN_LIKE_DAYS in-stock days.
+  const ownDays = pace ? Math.max(r.inStockDays, pace.inStockDays) : r.inStockDays;
+  const like = input.planLike;
+  let planLike: VariantInputs["planLike"] = null;
+  let rate = ownRate;
+  let sigma = ownSigma;
+  if (like && Number.isFinite(like.rate) && like.rate >= 0 && ownDays < PLAN_LIKE_DAYS) {
+    const w = ownWeight(ownDays);
+    rate = w * (ownRate ?? 0) + (1 - w) * like.rate;
+    // Too few days for its own σ: the Poisson σ of the blended pace.
+    sigma = ownDays >= settings.minInStockDays && ownSigma !== null ? Math.max(ownSigma, Math.sqrt(rate)) : Math.sqrt(rate);
+    planLike = { ...like, weight: 1 - w, ownDays, ownRate };
+  }
+  const spikeDays = cappedSince(spikes.capped, today, pace ? dayIndex(today) - dayIndex(pace.from) : settings.historyDays);
 
   // §7.4 ordering.
   const lead = resolveLeadTime(input.supplierLeadTimeDays, settings);
@@ -302,7 +360,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const z = zForRole(input.role, settings);
   const m = { seasonal, trend, plan };
   const fRate = rate === null ? null : forecastRate(rate, m);
-  const advice = (r.enoughData || pace !== null) && rate !== null && sigma !== null;
+  const advice = (r.enoughData || pace !== null || planLike !== null) && rate !== null && sigma !== null;
 
   // H4 (audit 2026-10-17): periodic review — the stock must cover demand uncertainty until the
   // NEXT order lands, i.e. over lead time + order cycle (the protection period), not lead only.
@@ -373,7 +431,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const status = variantStatus(
     {
       onHand,
-      inStockDays: pace ? Math.max(r.inStockDays, pace.inStockDays) : r.inStockDays,
+      inStockDays: planLike ? Math.max(ownDays, settings.minInStockDays) : ownDays,
       noSaleDays,
       productAgeDays,
       daysLeft: left,
@@ -463,6 +521,9 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       orderNeed,
       sellsWhenOut,
       pace: pace ? { from: pace.from, inStockDays: pace.inStockDays } : null,
+      spikes: { cap: spikes.cap, days: spikeDays.slice(0, 10), count: spikeDays.length, off: capOff && input.noCap === true },
+      sigmaSeasonal: sigmaSeasonal && planLike === null,
+      planLike,
       outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,

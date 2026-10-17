@@ -70,7 +70,7 @@ export async function runAccuracy(shop: string, now: Date = new Date()): Promise
   const today = localDate(now, safeTimeZone(row.timezone));
   const coverage = salesCoverage(readBackfillState(row.backfillState));
   const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
-  const demand = demandScope(locations);
+  const demand = demandScope(locations, readSettings(row.settings).excludedChannels);
   return {
     status: "ok",
     snapshot: await snapshotMonth(shop, today, now, demand, coverage, trendMode),

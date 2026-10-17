@@ -413,7 +413,35 @@ export type ForecastInputsView = {
   leadSigma?: number | null;
   /** Where the seasonal pattern came from; null for rows stored without it. */
   seasonSource?: SeasonSourceView | null;
+  /** R4: unusual (spike) days capped in the pace; null for rows stored without it. */
+  spikes?: SpikesView | null;
+  /** R4: planned like another product / its type; null when not. */
+  planLike?: PlanLikeView | null;
+  /** R4: σ was measured on de-seasonalised demand. */
+  sigmaSeasonal?: boolean;
 };
+
+export type SpikesView = { cap: number | null; count: number; off: boolean; days: { day: string; sold: number; cap: number }[] };
+export type PlanLikeView = { kind: "product" | "productType"; name: string; pct: number; ownDays: number; weight: number };
+
+function readSpikes(raw: unknown): SpikesView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const days = Array.isArray(r.days)
+    ? r.days
+        .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
+        .map((d) => ({ day: typeof d.day === "string" ? d.day : "", sold: n(d.sold) ?? 0, cap: n(d.cap) ?? 0 }))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.day))
+    : [];
+  return { cap: n(r.cap), count: Math.max(days.length, n(r.count) ?? 0), off: r.off === true, days };
+}
+
+function readPlanLike(raw: unknown): PlanLikeView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if ((r.kind !== "product" && r.kind !== "productType") || typeof r.name !== "string") return null;
+  return { kind: r.kind, name: r.name, pct: n(r.pct) ?? 100, ownDays: n(r.ownDays) ?? 0, weight: n(r.weight) ?? 1 };
+}
 
 const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -451,6 +479,9 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     safety,
     leadSigma: n(r.leadSigma),
     seasonSource: readSeasonSource(r.season),
+    spikes: readSpikes(r.spikes),
+    planLike: readPlanLike(r.planLike),
+    sigmaSeasonal: r.sigmaSeasonal === true,
   };
 }
 

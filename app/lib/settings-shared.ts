@@ -32,6 +32,12 @@ export type ShopSettings = {
    * 2026-10-17). Next 13 weeks compares each month's cash out with it. null = none.
    */
   monthlyBudget: number | null;
+   * Sales channels left out of the forecast (SalesDaily channel names, e.g. "Draft Orders"):
+   * their units are not demand for supplier orders. Default none — on the store checked
+   * (docs/ACCURACY.md) draft orders were a steady stream of ~1 item each (service orders that
+   * take stock like any other order); a one-off wholesale burst is handled by the spike cap.
+   */
+  excludedChannels: string[];
   mondayEmail: {
     /** Spec D5: on by default, to the store owner. */
     enabled: boolean;
@@ -64,12 +70,27 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   deadDays: 90,
   trendMode: "off",
   monthlyBudget: null,
+  excludedChannels: [],
   mondayEmail: { enabled: true, recipients: [] },
   alerts: { instant: true, slackWebhook: null, slackMonday: true, slackError: null },
 };
 
 const int = (v: unknown, min: number, max: number, dflt: number) =>
   typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : dflt;
+
+/** Channel names: non-empty strings, trimmed, unique, at most MAX_EXCLUDED_CHANNELS. */
+export const MAX_EXCLUDED_CHANNELS = 50;
+export function readChannels(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x !== "string") continue;
+    const c = x.trim();
+    if (c && c.length <= 200 && !out.includes(c)) out.push(c);
+    if (out.length >= MAX_EXCLUDED_CHANNELS) break;
+  }
+  return out;
+}
 
 /** Merge stored JSON over the defaults, ignoring anything malformed. */
 export function readSettings(raw: unknown): ShopSettings {
@@ -88,6 +109,7 @@ export function readSettings(raw: unknown): ShopSettings {
     trendMode: r.trendMode === "store" ? "store" : "off",
     monthlyBudget:
       typeof r.monthlyBudget === "number" && Number.isFinite(r.monthlyBudget) && r.monthlyBudget > 0 && r.monthlyBudget <= MONTHLY_BUDGET_MAX ? r.monthlyBudget : null,
+    excludedChannels: readChannels(r.excludedChannels),
     mondayEmail: {
       enabled: typeof me.enabled === "boolean" ? me.enabled : DEFAULT_SETTINGS.mondayEmail.enabled,
       recipients: Array.isArray(me.recipients) ? me.recipients.filter((x): x is string => typeof x === "string") : [],
@@ -114,6 +136,8 @@ export type SettingsForm = {
   trendMode: string;
   /** Monthly budget (store currency); empty = none. Absent (older clients) keeps the current one. */
   monthlyBudget?: string;
+  /** Sales channels left out of the forecast; absent keeps the current list. */
+  excludedChannels?: string[];
 };
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
@@ -189,6 +213,7 @@ export function applySettingsForm(
       safetyLevel: isLevel(form.safetyLevel) ? form.safetyLevel : current.safetyLevel,
       trendMode: form.trendMode === "off" || form.trendMode === "store" ? form.trendMode : current.trendMode,
       monthlyBudget,
+      excludedChannels: form.excludedChannels === undefined ? current.excludedChannels : readChannels(form.excludedChannels),
     },
   };
 }
@@ -202,6 +227,7 @@ export function settingsToForm(s: ShopSettings): SettingsForm {
     safetyLevel: s.safetyLevel,
     trendMode: s.trendMode,
     monthlyBudget: s.monthlyBudget === null ? "" : String(s.monthlyBudget),
+    excludedChannels: [...s.excludedChannels],
   };
 }
 

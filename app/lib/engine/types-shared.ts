@@ -20,6 +20,13 @@ export interface DailyRow {
    * out of stock AND sold nothing is a sold-out day (rate-shared soldOutDay).
    */
   outOfStock: boolean;
+  /**
+   * The day it RAN OUT: it sold, then ended at ≤ 0 units after ending the day before with stock.
+   * Its sales are cut short (censored), so the pace counts it at least at the pace of the other
+   * days and σ leaves it out (rate-shared). A day already out that still sold (backorders) is not
+   * partial: its sales are the full demand.
+   */
+  partial?: boolean;
   returned?: number;
   /** Gross sales ÷ units for that day. */
   price?: number | null;
@@ -71,6 +78,11 @@ export interface EngineSettings {
   cashStuckCoverDays: number;
   /** Sold-out page traffic look-back (§7.6). */
   soldOutTrafficDays: number;
+  /**
+   * One-off spike capping (outliers-shared): a day above median + k × robust scale is capped
+   * before the pace and σ are measured. 0 = off.
+   */
+  spikeCapK: number;
 }
 
 export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
@@ -92,6 +104,7 @@ export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
   atRiskDays: 28,
   cashStuckCoverDays: 90,
   soldOutTrafficDays: 30,
+  spikeCapK: 4,
 });
 
 /** Shop overrides on top of ENGINE_DEFAULTS (undefined keys keep the default). */

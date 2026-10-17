@@ -25,13 +25,15 @@ import {
   type SettingsForm,
   type TrendMode,
 } from "../lib/settings-shared";
-import { getShopSettings, saveShopSettings } from "../models/settings.server";
+import { getShopSettings, hasLocationLeftOut, salesChannels, saveShopSettings, type SalesChannelRow } from "../models/settings.server";
 import { storeCurrency } from "../models/suppliers.server";
+import { formatCount } from "../lib/dashboard-shared";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await authenticateApp(request);
-  const [settings, currency] = await Promise.all([getShopSettings(shop), storeCurrency(shop)]);
-  return { form: settingsToForm(settings), currency };
+  const settings = await getShopSettings(shop);
+  const [currency, channels, locationLeftOut] = await Promise.all([storeCurrency(shop), salesChannels(shop, settings.excludedChannels), hasLocationLeftOut(shop)]);
+  return { form: settingsToForm(settings), currency, channels, locationLeftOut };
 };
 
 type ActionData = { ok: true; form: SettingsForm } | { ok: false; errors?: SettingsErrors; notReady?: boolean };
@@ -53,6 +55,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     trendMode: String(body.trendMode ?? ""),
     // Absent (an older page): the budget stays as saved.
     ...(body.monthlyBudget !== undefined ? { monthlyBudget: String(body.monthlyBudget ?? "") } : {}),
+    excludedChannels: Array.isArray(body.excludedChannels) ? body.excludedChannels.map(String) : undefined,
   };
   const current = await getShopSettings(shop);
   const r = applySettingsForm(current, form, new Date());
@@ -68,12 +71,15 @@ type NumberKey = keyof typeof SETTINGS_BOUNDS;
 
 export default function Settings() {
   const { t, locale, setLocale } = useLocale();
-  const { form: initial, currency } = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>() as { form: SettingsForm; currency: string; channels?: SalesChannelRow[]; locationLeftOut?: boolean };
+  const initial = loaded.form;
+  const currency = loaded.currency;
+  const channels = loaded.channels ?? [];
   const fetcher = useFetcher<ActionData>();
   const [form, setForm] = useState<SettingsForm>(initial);
   const [saved, setSaved] = useState<SettingsForm>(initial);
-  // A non-default growth assumption (or a budget) keeps More options open, so it is never a hidden surprise.
-  const [more, setMore] = useState(initial.trendMode === "store" || !!initial.monthlyBudget);
+  // A non-default growth assumption, a budget or a channel left out keeps More options open, so it is never a hidden surprise.
+  const [more, setMore] = useState(initial.trendMode === "store" || !!initial.monthlyBudget || (initial.excludedChannels ?? []).length > 0);
   const saving = fetcher.state !== "idle";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
@@ -90,7 +96,8 @@ export default function Settings() {
     if (!msg) return undefined;
     return key in SETTINGS_BOUNDS ? fill(t(msg), SETTINGS_BOUNDS[key as NumberKey]) : t(msg);
   };
-  const set = (key: keyof SettingsForm, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }));
+  const set = (key: keyof SettingsForm, value: string | boolean | string[]) => setForm((f) => ({ ...f, [key]: value }));
+  const excluded = form.excludedChannels ?? [];
   const save = () => fetcher.submit(form, { method: "post", encType: "application/json" });
 
   const numberField = (key: NumberKey, label: string, details: string) => (
@@ -163,6 +170,29 @@ export default function Settings() {
                 error={err("monthlyBudget")}
                 onInput={(e) => set("monthlyBudget", val(e))}
               />
+              {channels.length > 0 && (
+                <s-stack direction="block" gap="small-200">
+                  <ChoiceListField<string>
+                    label={t("Sales channels in the forecast")}
+                    multiple
+                    choices={channels.map((c) => ({
+                      value: c.name,
+                      label: c.name,
+                      helpText: fill(t("{n} units in the last 12 months"), { n: formatCount(c.units, locale) }),
+                    }))}
+                    selected={channels.filter((c) => !excluded.includes(c.name)).map((c) => c.name)}
+                    onChange={(kept) => set("excludedChannels", channels.map((c) => c.name).filter((n) => !kept.includes(n)))}
+                  />
+                  <s-text color="subdued">
+                    {t("Untick a channel whose stock you order separately, for example wholesale ordered to order. Its sales stop counting as demand for supplier orders. Every channel counts by default.")}
+                  </s-text>
+                  {loaded.locationLeftOut && excluded.length > 0 && (
+                    <s-banner tone="warning">
+                      {t("A location is left out of supplier orders (Settings → Locations), so the forecast uses sales by location. Shopify reports sales by location or by channel, not both, so the channels unticked here aren't applied while a location is left out.")}
+                    </s-banner>
+                  )}
+                </s-stack>
+              )}
             </s-stack>
           </Disclosure>
         </s-stack>

@@ -14,6 +14,7 @@ export default function ConfirmModal({
   destructive = true,
   onConfirm,
   onCancel,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -22,6 +23,8 @@ export default function ConfirmModal({
   destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Optional fields shown under the message (e.g. a percent to confirm with). */
+  children?: React.ReactNode;
 }) {
   const { t } = useLocale();
   return (
@@ -37,6 +40,7 @@ export default function ConfirmModal({
       secondaryActions={<s-button onClick={onCancel}>{t("Cancel")}</s-button>}
     >
       <s-paragraph>{message}</s-paragraph>
+      {children}
     </Modal>
   );
 }

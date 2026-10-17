@@ -20,6 +20,13 @@ vi.mock("../app/models/products.server", () => ({
   setProductSupplierCode: vi.fn(async () => ({ ok: true, count: 3 })),
 }));
 vi.mock("../app/models/reorder.server", () => ({ setNoReorder: vi.fn(async () => ({ ok: true, count: 1 })) }));
+vi.mock("../app/models/forecast-overrides.server", () => ({
+  forecastChoiceFor: vi.fn(async () => ({ noCap: false, like: null, offer: null })),
+  likeTargetExists: vi.fn(async () => true),
+  setNoCap: vi.fn(async () => undefined),
+  setPlanLike: vi.fn(async () => undefined),
+}));
+vi.mock("../app/services/jobs/queue.server", () => ({ enqueueJob: vi.fn(async () => true) }));
 
 import Products, { action as productsAction, type ProductsData } from "../app/routes/app.products";
 import VariantDetailPage, { action as detailAction, type VariantDetailData } from "../app/routes/app.products_.$variantId";
@@ -408,5 +415,70 @@ describe("How the forecast was built: the supplier's delivery spread in safety s
     expect(renderDetail(base)).not.toContain("incl. late deliveries");
     expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12, leadSigma: 4.4 }, 1)!.leadSigma).toBe(4.4);
     expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12 }, 1)!.leadSigma).toBeNull();
+describe("Forecast choices (R4): Don't cap and Plan like", () => {
+  const spikes = { cap: 9, count: 2, off: false, days: [{ day: "2026-10-01", sold: 30, cap: 9 }, { day: "2026-09-14", sold: 300, cap: 9 }] };
+  it("unusual days capped: the largest day, the cap and Don't cap; none → no button", () => {
+    const d = detail(true);
+    const html = renderDetail({ ...d, inputs: { ...d.inputs!, spikes }, choice: { noCap: false, like: null, offer: null } });
+    expect(html).toContain("<s-heading>Forecast choices</s-heading>");
+    expect(html).toContain("2 unusual days capped (largest Sep 14: 300 units, counted as 9)");
+    expect(html).toContain("Don&#x27;t cap this product");
+    const none = renderDetail({ ...d, choice: { noCap: false, like: null, offer: null } });
+    expect(none).toContain("No unusual days in the last 90 days.");
+    expect(none).not.toContain("Don&#x27;t cap this product");
+    const off = renderDetail({ ...d, choice: { noCap: true, like: null, offer: null } });
+    expect(off).toContain("Unusual days are not capped for this product");
+    expect(off).toContain("Cap unusual days again");
+    // Old fixtures without a choice: no card (nothing breaks).
+    expect(renderDetail(d)).not.toContain("Forecast choices");
+  });
+
+  it("a new product: the offer, the type's median suggestion and the search; a chosen reference with Stop", () => {
+    const d = detail(true);
+    const young = { ...d, inputs: { ...d.inputs!, inStockDays: 6 } };
+    const html = renderDetail({ ...young, choice: { noCap: false, like: null, offer: { productType: "Jackets", suggestion: { rate: 2.5, products: 7 } } } });
+    expect(html).toContain("Only 6 days in stock so far: too few to measure its own pace. Plan it like a similar product until it has 28 days in stock.");
+    expect(html).toContain("Suggested: the median Jackets product sells 2.5 a day.");
+    expect(html).toContain("Use this suggestion");
+    expect(html).toContain('label="Similar product"');
+    // No type median (no type, or no product of it with a pace): no suggestion, search only.
+    expect(renderDetail({ ...young, choice: { noCap: false, like: null, offer: { productType: null, suggestion: null } } })).not.toContain("Suggested:");
+    const like = renderDetail({
+      ...d,
+      inputs: { ...d.inputs!, planLike: { kind: "product", name: "Parka Classic", pct: 80, ownDays: 6, weight: 0.79 } },
+      choice: { noCap: false, like: { kind: "product", ref: "gid://shopify/Product/2", name: "Parka Classic", pct: 80, rate: 3 }, offer: { productType: "Jackets", suggestion: null } },
+    });
+    expect(like).toContain("Based on Parka Classic at 80 % until this product has 28 days in stock (now 6).");
+    expect(like).toContain("Stop planning like Parka Classic");
+    expect(like).not.toContain('label="Similar product"');
+    const gone = renderDetail({ ...d, choice: { noCap: false, like: { kind: "productType", ref: "Jackets", name: "Jackets", pct: 100, rate: null }, offer: null } });
+    expect(gone).toContain("Based on the median Jackets product at 100 %");
+    expect(gone).toContain("Jackets has no sales pace yet, so this product is planned on its own sales.");
+  });
+
+  it("actions: noCap, planLike (validated, the reference must exist), planLikeOff; each queues a compute", async () => {
+    const fo = await import("../app/models/forecast-overrides.server");
+    const { enqueueJob } = await import("../app/services/jobs/queue.server");
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "free", features: featureMap("free"), comped: false, checked: true } as never);
+    vi.mocked(getVariantDetail).mockResolvedValue({ variant: { productId: "gid://shopify/Product/1" } } as never);
+    const post = (body: unknown) => ({ request: new Request("https://x/app/products/1", { method: "POST", body: JSON.stringify(body) }), params: { variantId: "1" }, context: {} }) as never;
+    vi.mocked(enqueueJob).mockClear();
+    expect(await detailAction(post({ intent: "noCap", value: true }))).toEqual({ ok: true, count: 1 });
+    expect(fo.setNoCap).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", true);
+    await detailAction(post({ intent: "noCap", value: false }));
+    expect(fo.setNoCap).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", false);
+    expect(await detailAction(post({ intent: "planLike", kind: "product", ref: "gid://shopify/Product/2", pct: 80 }))).toEqual({ ok: true, count: 1 });
+    expect(fo.setPlanLike).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", { kind: "product", ref: "gid://shopify/Product/2", pct: 80 });
+    // Itself, a bad percent, a bad id: refused.
+    for (const bad of [{ kind: "product", ref: "gid://shopify/Product/1", pct: 100 }, { kind: "productType", ref: "Jackets", pct: 5 }, { kind: "product", ref: "x", pct: 100 }]) {
+      expect(await detailAction(post({ intent: "planLike", ...bad }))).toEqual({ ok: false, error: "planLike" });
+    }
+    vi.mocked(fo.likeTargetExists).mockResolvedValueOnce(false);
+    expect(await detailAction(post({ intent: "planLike", kind: "productType", ref: "Nope", pct: 100 }))).toEqual({ ok: false, error: "planLike" });
+    expect(await detailAction(post({ intent: "planLikeOff" }))).toEqual({ ok: true, count: 1 });
+    expect(fo.setPlanLike).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", null);
+    expect(enqueueJob).toHaveBeenCalledTimes(4);
+    expect(enqueueJob).toHaveBeenLastCalledWith("acme.myshopify.com", "compute");
   });
 });

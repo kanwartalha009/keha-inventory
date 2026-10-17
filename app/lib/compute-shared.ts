@@ -76,17 +76,29 @@ export function poolLocationIds(locations: PoolLocation[]): string[] {
 /**
  * Where pool demand comes from (see the header): all channels (the channel view) unless the
  * merchant left a location out; then the location view without those locations.
+ *
+ * Sales channels left out of the forecast (Settings → Defaults, R4): the channel view without
+ * those channels. Shopify's reports the app stores give sales by location OR by channel, never
+ * both, so when a location is ALSO left out the location view is used and the channel choice
+ * can't be applied (`channelsIgnored`; Settings says so). Never the two views added together.
  */
-export type DemandScope = { view: "channel" } | { view: "location"; exclude: string[] };
+export type DemandScope =
+  | { view: "channel"; excludeChannels?: string[] }
+  | { view: "location"; exclude: string[]; channelsIgnored?: string[] };
 
-export function demandScope(locations: readonly PoolLocation[]): DemandScope {
+export function demandScope(locations: readonly PoolLocation[], excludedChannels: readonly string[] = []): DemandScope {
   const exclude = locations.filter((l) => l.onlinePool === false).map((l) => l.id).sort();
-  return exclude.length ? { view: "location", exclude } : { view: "channel" };
+  const channels = [...new Set(excludedChannels.filter((c) => typeof c === "string" && c !== "" && c !== ALL))].sort();
+  if (exclude.length) return channels.length ? { view: "location", exclude, channelsIgnored: channels } : { view: "location", exclude };
+  return channels.length ? { view: "channel", excludeChannels: channels } : { view: "channel" };
 }
 
 /** The SalesDaily filter for pool demand (one view, never both). */
-export function demandWhere(d: DemandScope): { locationKey: string } | { channel: string; locationKey: { notIn: string[] } } {
-  return d.view === "channel" ? { locationKey: ALL } : { channel: ALL, locationKey: { notIn: [ALL, ...d.exclude] } };
+export function demandWhere(
+  d: DemandScope,
+): { locationKey: string } | { locationKey: string; channel: { notIn: string[] } } | { channel: string; locationKey: { notIn: string[] } } {
+  if (d.view === "location") return { channel: ALL, locationKey: { notIn: [ALL, ...d.exclude] } };
+  return d.excludeChannels?.length ? { locationKey: ALL, channel: { notIn: [...d.excludeChannels] } } : { locationKey: ALL };
 }
 
 export function pooledOutOfStock(s: Pick<PooledStockDay, "endUnits" | "reported" | "outReported">): boolean {
@@ -112,7 +124,18 @@ export function buildSeries(poolSales: SalesDay[], stock: PooledStockDay[], pric
   }
   // H1 (audit 2026-10-17): a day that ended at ≤ 0 units but still sold (backorders, continue
   // selling) is NOT a sold-out day — its sales are real demand (engine rate-shared soldOutDay).
-  for (const days of byVariant.values()) for (const r of days.values()) if (r.outOfStock && r.sold > 0) r.outOfStock = false;
+  // R4: when the day before ended WITH stock, this is the day it ran out — a PARTIAL day (sales
+  // cut short; the pace counts it at least at the pace of the other days, σ leaves it out). A day
+  // that follows a day already out (backorders running on) is a full demand day.
+  for (const days of byVariant.values()) {
+    const outBefore = new Map<string, boolean>();
+    for (const r of days.values()) outBefore.set(r.day, r.outOfStock);
+    for (const r of days.values()) {
+      if (!(r.outOfStock && r.sold > 0)) continue;
+      r.outOfStock = false;
+      if (outBefore.get(addDays(r.day, -1)) === false) r.partial = true;
+    }
+  }
   const price = new Map<string, { sold: number; gross: number }>();
   for (const s of priceSales) {
     const k = `${s.variantId}|${s.day}`;
