@@ -127,7 +127,8 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
     ...home,
     renderedAt: NOW.toISOString(),
     actions: actionList(plan, plan === "free" ? { fillers: 12 } : { preorderInstalled: plan === "pro" }),
-    orderPlan: plan === "free" ? { kind: "preview", rows: previewRows(fx) } : { kind: "full", plan: fx },
+    // Free: the teaching lock with the store's own totals, as the loader sends it (limit 2 so the fixture has "more").
+    orderPlan: plan === "free" ? { kind: "preview", rows: previewRows(fx), teaser: lockTeaser(fx, 2), currency: fx.currency } : { kind: "full", plan: fx },
   };
 }
 
