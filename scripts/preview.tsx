@@ -500,7 +500,7 @@ const screens: Screen[] = [
 
   S({ slug: "settings-defaults", screen: "Settings → Defaults", state: "Growth", nav: "settings", url: "/app/settings", plan: "growth", Component: Settings, data: () => ({ form: settingsToForm(DEFAULT_SETTINGS) }), expect: ["How long do your suppliers take?", "App language"] }),
   S({ slug: "settings-suppliers", screen: "Settings → Suppliers", state: "Growth", nav: "settings", url: "/app/settings/suppliers", plan: "growth", Component: Suppliers, data: () => suppliers, expect: ["Add supplier", "Acme Textiles", "Lisbon Linen"] }),
-  S({ slug: "settings-locations", screen: "Settings → Locations", state: "Pro", nav: "settings", url: "/app/settings/locations", plan: "pro", Component: Locations, data: () => locations, expect: ["Counts for online sales", "Main warehouse", "Barcelona"] }),
+  S({ slug: "settings-locations", screen: "Settings → Locations", state: "Pro", nav: "settings", url: "/app/settings/locations", plan: "pro", Component: Locations, data: () => locations, expect: ["Counts in supplier orders", "Main warehouse", "Barcelona"] }),
   S({ slug: "settings-alerts", screen: "Settings → Alerts", state: "Growth, Slack not connected", nav: "settings", url: "/app/settings/alerts", plan: "growth", Component: Alerts, data: () => alerts, expect: ["Send the Monday email", "Slack webhook link"] }),
 
   S({ slug: "plans--unconfirmed", screen: "Plans", state: "Plan not confirmed (fail open)", nav: "plans", url: "/app/plans", plan: "pro", Component: Plans, data: () => ({ plans: PLANS, plan: "pro", billing: null, comped: false, checked: false, manageUrl: "https://admin.shopify.com/x" }), expect: ["All features on", "Compare plans"] }),

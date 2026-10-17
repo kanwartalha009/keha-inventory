@@ -74,7 +74,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
   {
     title: "Locations and stores",
     rows: [
-      { label: "Planning per location and per POS store", hint: "Free and Growth plan all your stock as one pool.", feature: "locations" },
+      { label: "Planning per location and per POS store", hint: "Free and Growth count the stock of all your locations together. Pro plans each warehouse and store on its own.", feature: "locations" },
       { label: "Transfer plan from warehouse to stores, created in Shopify", feature: "transfers" },
     ],
   },

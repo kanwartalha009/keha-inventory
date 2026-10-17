@@ -8,17 +8,12 @@
 import type { Tr } from "./i18n";
 
 export const STORES_TR: Record<string, Tr> = {
-  "Choose each location's role and whether it counts for online sales.": { es: "Elige la función de cada ubicación y si cuenta para las ventas online.", fr: "Choisissez le rôle de chaque emplacement et s'il compte pour les ventes en ligne.", de: "Lege für jeden Standort die Rolle fest und ob er für Online-Verkäufe zählt.", it: "Scegli il ruolo di ogni sede e se conta per le vendite online.", pt: "Escolha a função de cada localização e se conta para as vendas online.", nl: "Kies de rol van elke locatie en of die meetelt voor online verkoop.", pl: "Wybierz rolę każdej lokalizacji i czy liczy się do sprzedaży online." },
   // ---- Location switcher (compact teaching link below Pro) ----
   "Plan per location": { es: "Planificar por ubicación", fr: "Planifier par emplacement", de: "Pro Standort planen", it: "Pianifica per sede", pt: "Planear por localização", nl: "Per locatie plannen", pl: "Planuj według lokalizacji" },
   // ---- Roles and the online pool choice ----
   "Warehouse": { es: "Almacén", fr: "Entrepôt", de: "Lager", it: "Magazzino", pt: "Armazém", nl: "Magazijn", pl: "Magazyn" },
   "Store": { es: "Tienda física", fr: "Magasin", de: "Filiale", it: "Negozio", pt: "Loja física", nl: "Winkel", pl: "Sklep stacjonarny" },
   "Other": { es: "Otra", fr: "Autre", de: "Andere", it: "Altro", pt: "Outra", nl: "Overig", pl: "Inne" },
-  "Follow Shopify (Yes)": { es: "Seguir a Shopify (sí)", fr: "Suivre Shopify (oui)", de: "Wie in Shopify (ja)", it: "Come in Shopify (sì)", pt: "Seguir o Shopify (sim)", nl: "Zoals in Shopify (ja)", pl: "Jak w Shopify (tak)" },
-  "Follow Shopify (No)": { es: "Seguir a Shopify (no)", fr: "Suivre Shopify (non)", de: "Wie in Shopify (nein)", it: "Come in Shopify (no)", pt: "Seguir o Shopify (não)", nl: "Zoals in Shopify (nee)", pl: "Jak w Shopify (nie)" },
-  "Yes, count it": { es: "Sí, contarla", fr: "Oui, l'inclure", de: "Ja, mitzählen", it: "Sì, includerla", pt: "Sim, contar", nl: "Ja, meetellen", pl: "Tak, uwzględnij" },
-  "No, leave it out": { es: "No, dejarla fuera", fr: "Non, l'exclure", de: "Nein, weglassen", it: "No, escluderla", pt: "Não, deixar de fora", nl: "Nee, weglaten", pl: "Nie, pomiń" },
   "Something in the form isn't valid. Reload the page and try again.": {
     es: "Algo del formulario no es válido. Vuelve a cargar la página e inténtalo de nuevo.",
     fr: "Un élément du formulaire n'est pas valide. Rechargez la page et réessayez.",
@@ -37,38 +32,11 @@ export const STORES_TR: Record<string, Tr> = {
     nl: "Een locatie is gewijzigd in Shopify. Laad de pagina opnieuw en probeer het nog eens.",
     pl: "Lokalizacja zmieniła się w Shopify. Odśwież stronę i spróbuj ponownie.",
   },
-  "At least one location must count for online sales.": {
-    es: "Al menos una ubicación debe contar para las ventas online.",
-    fr: "Au moins un emplacement doit compter pour les ventes en ligne.",
-    de: "Mindestens ein Standort muss für Online-Verkäufe zählen.",
-    it: "Almeno una sede deve contare per le vendite online.",
-    pt: "Pelo menos uma localização tem de contar para as vendas online.",
-    nl: "Minstens één locatie moet meetellen voor online verkopen.",
-    pl: "Co najmniej jedna lokalizacja musi liczyć się do sprzedaży online.",
-  },
 
   // ---- Settings → Locations ----
   "Location": { es: "Ubicación", fr: "Emplacement", de: "Standort", it: "Sede", pt: "Localização", nl: "Locatie", pl: "Lokalizacja" },
   "Role": { es: "Función", fr: "Rôle", de: "Rolle", it: "Ruolo", pt: "Função", nl: "Rol", pl: "Rola" },
-  "Counts for online sales": {
-    es: "Cuenta para las ventas online",
-    fr: "Compte pour les ventes en ligne",
-    de: "Zählt für Online-Verkäufe",
-    it: "Conta per le vendite online",
-    pt: "Conta para as vendas online",
-    nl: "Telt mee voor online verkopen",
-    pl: "Liczy się do sprzedaży online",
-  },
   "Role of {location}": { es: "Función de {location}", fr: "Rôle de {location}", de: "Rolle von {location}", it: "Ruolo di {location}", pt: "Função de {location}", nl: "Rol van {location}", pl: "Rola lokalizacji {location}" },
-  "Does {location} count for online sales?": {
-    es: "¿{location} cuenta para las ventas online?",
-    fr: "{location} compte-t-il pour les ventes en ligne ?",
-    de: "Zählt {location} für Online-Verkäufe?",
-    it: "{location} conta per le vendite online?",
-    pt: "{location} conta para as vendas online?",
-    nl: "Telt {location} mee voor online verkopen?",
-    pl: "Czy {location} liczy się do sprzedaży online?",
-  },
   "Fulfils online orders in Shopify": {
     es: "Prepara pedidos online en Shopify",
     fr: "Traite les commandes en ligne dans Shopify",
@@ -95,42 +63,6 @@ export const STORES_TR: Record<string, Tr> = {
     pt: "Localizações guardadas. Os seus números são atualizados após a próxima atualização noturna.",
     nl: "Locaties opgeslagen. Je cijfers worden bijgewerkt na de volgende nachtelijke verversing.",
     pl: "Lokalizacje zapisane. Twoje liczby zaktualizują się po najbliższym nocnym odświeżeniu.",
-  },
-  "Your online stock pool": {
-    es: "Tu stock online conjunto",
-    fr: "Votre stock en ligne commun",
-    de: "Dein Online-Bestandspool",
-    it: "Il tuo stock online comune",
-    pt: "O seu stock online conjunto",
-    nl: "Je gezamenlijke onlinevoorraad",
-    pl: "Twoja wspólna pula zapasów online",
-  },
-  "It is made of the active locations that count for online sales. Sales per day, days left and order advice are worked out for the pool as a whole.": {
-    es: "Lo forman las ubicaciones activas que cuentan para las ventas online. Las ventas por día, los días que quedan y los consejos de pedido se calculan para el conjunto.",
-    fr: "Il regroupe les emplacements actifs qui comptent pour les ventes en ligne. Les ventes par jour, les jours restants et les conseils de commande sont calculés pour l'ensemble.",
-    de: "Er besteht aus den aktiven Standorten, die für Online-Verkäufe zählen. Verkäufe pro Tag, verbleibende Tage und Bestellvorschläge werden für den ganzen Pool berechnet.",
-    it: "È formato dalle sedi attive che contano per le vendite online. Vendite al giorno, giorni rimasti e consigli d'ordine sono calcolati per l'insieme.",
-    pt: "É formado pelas localizações ativas que contam para as vendas online. As vendas por dia, os dias restantes e as sugestões de encomenda são calculados para o conjunto.",
-    nl: "Die bestaat uit de actieve locaties die meetellen voor online verkopen. Verkopen per dag, resterende dagen en besteladvies worden voor het geheel berekend.",
-    pl: "Tworzą ją aktywne lokalizacje, które liczą się do sprzedaży online. Sprzedaż dziennie, pozostałe dni i porady dotyczące zamówień są liczone dla całej puli.",
-  },
-  "Counting for online sales now: {list}.": {
-    es: "Cuentan ahora para las ventas online: {list}.",
-    fr: "Comptent actuellement pour les ventes en ligne : {list}.",
-    de: "Zählen gerade für Online-Verkäufe: {list}.",
-    it: "Contano ora per le vendite online: {list}.",
-    pt: "Contam agora para as vendas online: {list}.",
-    nl: "Tellen nu mee voor online verkopen: {list}.",
-    pl: "Teraz liczą się do sprzedaży online: {list}.",
-  },
-  "No location counts for online sales yet.": {
-    es: "Todavía ninguna ubicación cuenta para las ventas online.",
-    fr: "Aucun emplacement ne compte encore pour les ventes en ligne.",
-    de: "Noch zählt kein Standort für Online-Verkäufe.",
-    it: "Nessuna sede conta ancora per le vendite online.",
-    pt: "Ainda nenhuma localização conta para as vendas online.",
-    nl: "Nog geen enkele locatie telt mee voor online verkopen.",
-    pl: "Żadna lokalizacja nie liczy się jeszcze do sprzedaży online.",
   },
   "On Pro you choose which locations are warehouses and stores, see each store's own sales and days left, and move stock from your warehouse to your stores.": {
     es: "En Pro eliges qué ubicaciones son almacenes y tiendas físicas, ves las ventas y los días que quedan de cada tienda, y mueves stock del almacén a tus tiendas.",
@@ -177,15 +109,6 @@ export const STORES_TR: Record<string, Tr> = {
     pt: "O plano de transferências move stock dos armazéns para as lojas que estão a ficar sem ele.",
     nl: "Het overboekingsplan verplaatst voorraad van magazijnen naar winkels die bijna door hun voorraad heen zijn.",
     pl: "Plan przesunięć przenosi zapasy z magazynów do sklepów, w których się kończą.",
-  },
-  "Locations that count for online sales make up the online stock pool, the default view everywhere.": {
-    es: "Las ubicaciones que cuentan para las ventas online forman el stock online conjunto, la vista por defecto en toda la app.",
-    fr: "Les emplacements qui comptent pour les ventes en ligne forment le stock en ligne commun, la vue par défaut partout.",
-    de: "Standorte, die für Online-Verkäufe zählen, bilden den Online-Bestandspool, die Standardansicht überall.",
-    it: "Le sedi che contano per le vendite online formano lo stock online comune, la vista predefinita ovunque.",
-    pt: "As localizações que contam para as vendas online formam o stock online conjunto, a vista predefinida em toda a app.",
-    nl: "Locaties die meetellen voor online verkopen vormen de gezamenlijke onlinevoorraad, de standaardweergave overal.",
-    pl: "Lokalizacje, które liczą się do sprzedaży online, tworzą wspólną pulę zapasów online — domyślny widok wszędzie.",
   },
 
   // ---- Location switcher (Products, Reorder) ----

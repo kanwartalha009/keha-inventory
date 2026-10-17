@@ -3,9 +3,11 @@
  *
  *  - Role per location: warehouse | store | other. Shopify can't tell us reliably which
  *    locations are POS stores, so every location starts as "other" and the merchant sets it.
- *  - "Counts for online sales" (Location.onlinePool): follow Shopify (null — Shopify's
- *    fulfillsOnlineOrders), yes, or no. The pool rule itself lives in compute-shared
- *    (countsForOnline) and applies on every plan; changing the setting is Pro.
+ *  - "Counts in supplier orders" (Location.onlinePool override): one include / leave-out
+ *    toggle per active location, on EVERY plan (audit 2026-10-17: which stock counts is
+ *    correctness, not a Pro feature). The rule itself lives in compute-shared
+ *    (countsForOnline); the toggle only writes the override (see onlinePoolForInclude).
+ *    Roles (warehouse / store) and per-location planning stay Pro.
  *  - Per-location planning covers ACTIVE locations with the role warehouse or store; their
  *    VariantMetric rows use scope = Location.id (compute-locations).
  *  - The location switcher (`?location=<Location.id>`) on Products and Reorder: only a
@@ -43,12 +45,7 @@ export function roleLabel(role: LocationRole, t: T): string {
 
 // ── "Counts for online sales" ─────────────────────────────────────────────
 
-export const POOL_CHOICES = ["follow", "yes", "no"] as const;
-export type PoolChoice = (typeof POOL_CHOICES)[number];
-
-export function isPoolChoice(v: unknown): v is PoolChoice {
-  return typeof v === "string" && (POOL_CHOICES as readonly string[]).includes(v);
-}
+export type PoolChoice = "follow" | "yes" | "no";
 
 export function poolChoiceOf(onlinePool: boolean | null | undefined): PoolChoice {
   return onlinePool === true ? "yes" : onlinePool === false ? "no" : "follow";
@@ -58,16 +55,14 @@ export function onlinePoolOf(choice: PoolChoice): boolean | null {
   return choice === "yes" ? true : choice === "no" ? false : null;
 }
 
-/** "Follow Shopify (Yes)" — the label carries what Shopify says today. */
-export function poolChoiceLabel(choice: PoolChoice, shopifyOnline: boolean, t: T): string {
-  switch (choice) {
-    case "follow":
-      return shopifyOnline ? t("Follow Shopify (Yes)") : t("Follow Shopify (No)");
-    case "yes":
-      return t("Yes, count it");
-    case "no":
-      return t("No, leave it out");
-  }
+/**
+ * The override to store for the include toggle. Leaving a location out writes `false`.
+ * Including it keeps the current override when the location already counts (so an
+ * untouched row keeps following the default rule), else writes `true`.
+ */
+export function onlinePoolForInclude(include: boolean, current: Omit<PoolLocation, "id">): boolean | null {
+  if (!include) return false;
+  return countsForOnline(current) ? (current.onlinePool ?? null) : true;
 }
 
 // ── Settings → Locations ─────────────────────────────────────────────────
@@ -104,30 +99,34 @@ export function sortLocations<L extends { name: string; id: string; role: string
 
 export type LocationUpdate = { id: string; role: LocationRole; onlinePool: boolean | null };
 
-export type LocationsFormError = "invalid" | "unknown" | "emptyPool";
+export type LocationsFormError = "invalid" | "unknown" | "emptyPool" | "rolesLocked";
 
 /** At most this many rows per save (Shopify allows far fewer active locations). */
 const MAX_ROWS = 500;
 
 /**
- * The posted rows → updates. Every row must be one of `active` (this shop's active
- * locations) with a known role and pool choice. Refuses a save that leaves no active
- * location counting for online sales (the online stock pool would be empty and every
- * online number would disappear). Locations not posted keep their settings.
+ * The posted rows `{ id, role, include }` → updates. Every row must be one of `active`
+ * (this shop's active locations) with a known role and a boolean include. Below Pro
+ * (`rolesAllowed` false) a row's role must stay what it is ("rolesLocked" otherwise); the
+ * include toggle works on every plan. Refuses a save that leaves no active location
+ * counted (every number would disappear). Locations not posted keep their settings.
  */
 export function validateLocationsForm(
   raw: unknown,
-  active: readonly PoolLocation[],
+  active: readonly (PoolLocation & { role?: string })[],
+  opts: { rolesAllowed: boolean } = { rolesAllowed: true },
 ): { ok: true; updates: LocationUpdate[] } | { ok: false; error: LocationsFormError } {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_ROWS) return { ok: false, error: "invalid" };
   const byId = new Map(active.map((l) => [l.id, l]));
   const updates = new Map<string, LocationUpdate>();
   for (const r of raw) {
     if (!r || typeof r !== "object") return { ok: false, error: "invalid" };
-    const { id, role, pool } = r as Record<string, unknown>;
-    if (typeof id !== "string" || !isLocationRole(role) || !isPoolChoice(pool)) return { ok: false, error: "invalid" };
-    if (!byId.has(id)) return { ok: false, error: "unknown" };
-    updates.set(id, { id, role, onlinePool: onlinePoolOf(pool) });
+    const { id, role, include } = r as Record<string, unknown>;
+    if (typeof id !== "string" || !isLocationRole(role) || typeof include !== "boolean") return { ok: false, error: "invalid" };
+    const current = byId.get(id);
+    if (!current) return { ok: false, error: "unknown" };
+    if (!opts.rolesAllowed && role !== readRole(current.role)) return { ok: false, error: "rolesLocked" };
+    updates.set(id, { id, role, onlinePool: onlinePoolForInclude(include, current) });
   }
   const after = active.map((l) => {
     const u = updates.get(l.id);
@@ -144,7 +143,9 @@ export function locationsErrorText(error: LocationsFormError, t: T): string {
     case "unknown":
       return t("A location changed in Shopify. Reload the page and try again.");
     case "emptyPool":
-      return t("At least one location must count for online sales.");
+      return t("At least one location must count in supplier orders.");
+    case "rolesLocked":
+      return t("Warehouse and store roles are on the Pro plan.");
   }
 }
 

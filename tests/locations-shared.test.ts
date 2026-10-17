@@ -9,7 +9,7 @@ import {
   onlinePoolOf,
   parseLocationParam,
   planningLocations,
-  poolChoiceLabel,
+  onlinePoolForInclude,
   poolChoiceOf,
   readRole,
   resolveScope,
@@ -53,10 +53,13 @@ describe("roles and pool choices", () => {
     expect(onlinePoolOf("no")).toBe(false);
   });
 
-  it("'follow Shopify' says what Shopify says today", () => {
-    const t = (s: string) => s;
-    expect(poolChoiceLabel("follow", true, t)).toBe("Follow Shopify (Yes)");
-    expect(poolChoiceLabel("follow", false, t)).toBe("Follow Shopify (No)");
+  it("include toggle → override: leave out writes false; include keeps a counting row's override, else writes true", () => {
+    expect(onlinePoolForInclude(false, { active: true, online: true, onlinePool: null })).toBe(false);
+    expect(onlinePoolForInclude(true, { active: true, online: true, onlinePool: null })).toBeNull(); // untouched
+    expect(onlinePoolForInclude(true, { active: true, online: false, onlinePool: true })).toBe(true);
+    expect(onlinePoolForInclude(true, { active: true, online: true, onlinePool: false })).toBe(true);
+    // A POS store that doesn't count yet: including it writes true, whatever the default rule is.
+    expect(onlinePoolForInclude(true, { active: true, online: false, onlinePool: null })).toBe(true);
   });
 
   it("settings rows: counts reflects the override; sorted warehouses, stores, others", () => {
@@ -76,15 +79,15 @@ describe("roles and pool choices", () => {
 
 describe("Settings → Locations validation", () => {
   const active = [
-    { id: "W", active: true, online: true, onlinePool: null },
-    { id: "S", active: true, online: false, onlinePool: null },
+    { id: "W", active: true, online: true, onlinePool: null, role: "other" },
+    { id: "S", active: true, online: false, onlinePool: null, role: "other" },
   ];
 
-  it("accepts known locations, roles and choices", () => {
+  it("accepts known locations, roles and include toggles", () => {
     const r = validateLocationsForm(
       [
-        { id: "W", role: "warehouse", pool: "follow" },
-        { id: "S", role: "store", pool: "no" },
+        { id: "W", role: "warehouse", include: true },
+        { id: "S", role: "store", include: false },
       ],
       active,
     );
@@ -98,35 +101,45 @@ describe("Settings → Locations validation", () => {
   });
 
   it("refuses bad values and locations that aren't this shop's active ones", () => {
-    expect(validateLocationsForm([{ id: "W", role: "shop", pool: "follow" }], active)).toEqual({ ok: false, error: "invalid" });
-    expect(validateLocationsForm([{ id: "W", role: "store", pool: "maybe" }], active)).toEqual({ ok: false, error: "invalid" });
+    expect(validateLocationsForm([{ id: "W", role: "shop", include: true }], active)).toEqual({ ok: false, error: "invalid" });
+    expect(validateLocationsForm([{ id: "W", role: "store", include: "yes" }], active)).toEqual({ ok: false, error: "invalid" });
+    expect(validateLocationsForm([{ id: "W", role: "store", pool: "follow" }], active)).toEqual({ ok: false, error: "invalid" });
     expect(validateLocationsForm("nope", active)).toEqual({ ok: false, error: "invalid" });
     expect(validateLocationsForm([], active)).toEqual({ ok: false, error: "invalid" });
-    expect(validateLocationsForm([{ id: "X", role: "store", pool: "yes" }], active)).toEqual({ ok: false, error: "unknown" });
+    expect(validateLocationsForm([{ id: "X", role: "store", include: true }], active)).toEqual({ ok: false, error: "unknown" });
   });
 
-  it("refuses leaving no location counting for online sales", () => {
+  it("refuses leaving no location counted", () => {
     expect(
       validateLocationsForm(
         [
-          { id: "W", role: "warehouse", pool: "no" },
-          { id: "S", role: "store", pool: "no" },
+          { id: "W", role: "warehouse", include: false },
+          { id: "S", role: "store", include: false },
         ],
         active,
       ),
     ).toEqual({ ok: false, error: "emptyPool" });
     // The store counts by default now, so leaving the warehouse out alone is fine.
-    expect(validateLocationsForm([{ id: "W", role: "warehouse", pool: "no" }], active).ok).toBe(true);
-    // …but moving the pool to the store is fine.
+    expect(validateLocationsForm([{ id: "W", role: "warehouse", include: false }], active).ok).toBe(true);
+    // …and moving it to the store is fine.
     expect(
       validateLocationsForm(
         [
-          { id: "W", role: "warehouse", pool: "no" },
-          { id: "S", role: "store", pool: "yes" },
+          { id: "W", role: "warehouse", include: false },
+          { id: "S", role: "store", include: true },
         ],
         active,
       ).ok,
     ).toBe(true);
+  });
+
+  it("below Pro: the include toggle works, a role change is refused", () => {
+    const opts = { rolesAllowed: false };
+    expect(validateLocationsForm([{ id: "S", role: "other", include: true }], active, opts)).toEqual({
+      ok: true,
+      updates: [{ id: "S", role: "other", onlinePool: true }],
+    });
+    expect(validateLocationsForm([{ id: "S", role: "store", include: true }], active, opts)).toEqual({ ok: false, error: "rolesLocked" });
   });
 });
 

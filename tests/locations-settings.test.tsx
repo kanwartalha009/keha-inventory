@@ -1,8 +1,7 @@
 /**
- * Settings → Locations (Phase 3, Pro `locations`): the save on Pro (roles and "counts for
- * online sales", this shop's locations only), the refusal below Pro (403 upgrade JSON),
- * validation (bad values, foreign locations, an empty online pool), and SSR of the tab:
- * editable on Pro, read-only with the one-pool teaching text on Growth.
+ * Settings → Locations: the include toggle ("Counts in supplier orders") on every plan, roles
+ * on Pro (a role change below Pro: 403 upgrade JSON), this shop's locations only,
+ * validation (bad values, foreign locations, nothing counted), and SSR of the tab.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
@@ -64,12 +63,12 @@ beforeEach(() => {
 });
 
 describe("Settings → Locations action", () => {
-  it("Pro: saves roles and the online-pool choice", async () => {
+  it("Pro: saves roles and the include toggle", async () => {
     const r = await post({
       intent: "save",
       locations: [
-        { id: W, role: "warehouse", pool: "follow" },
-        { id: S, role: "store", pool: "yes" },
+        { id: W, role: "warehouse", include: true },
+        { id: S, role: "store", include: true },
       ],
     });
     expect(r).toEqual({ status: 200, json: { ok: true, saved: 2 } });
@@ -78,20 +77,20 @@ describe("Settings → Locations action", () => {
   });
 
   it("refuses another shop's location and leaves it alone", async () => {
-    const r = await post({ intent: "save", locations: [{ id: FOREIGN, role: "store", pool: "no" }] });
+    const r = await post({ intent: "save", locations: [{ id: FOREIGN, role: "store", include: false }] });
     expect(r.json).toEqual({ ok: false, error: "unknown" });
     expect(loc(FOREIGN)).toMatchObject({ role: "other", onlinePool: null });
   });
 
-  it("refuses an inactive location, bad values and an empty online pool", async () => {
-    expect((await post({ intent: "save", locations: [{ id: "gid://shopify/Location/3", role: "store", pool: "no" }] })).json).toEqual({
+  it("refuses an inactive location, bad values and leaving nothing counted", async () => {
+    expect((await post({ intent: "save", locations: [{ id: "gid://shopify/Location/3", role: "store", include: false }] })).json).toEqual({
       ok: false,
       error: "unknown",
     });
-    expect((await post({ intent: "save", locations: [{ id: W, role: "pos", pool: "follow" }] })).json).toEqual({ ok: false, error: "invalid" });
+    expect((await post({ intent: "save", locations: [{ id: W, role: "pos", include: true }] })).json).toEqual({ ok: false, error: "invalid" });
     // Every active location counts by default, so leaving out both is what empties the pool.
     expect(
-      (await post({ intent: "save", locations: [{ id: W, role: "warehouse", pool: "no" }, { id: S, role: "store", pool: "no" }] })).json,
+      (await post({ intent: "save", locations: [{ id: W, role: "warehouse", include: false }, { id: S, role: "store", include: false }] })).json,
     ).toEqual({
       ok: false,
       error: "emptyPool",
@@ -99,9 +98,12 @@ describe("Settings → Locations action", () => {
     expect(loc(W)).toMatchObject({ role: "other", onlinePool: null });
   });
 
-  it("Growth: refused on the server with the upgrade JSON", async () => {
+  it("Growth: the include toggle saves (every plan); a role change is refused with the upgrade JSON", async () => {
     m.locations = false;
-    const r = await post({ intent: "save", locations: [{ id: S, role: "store", pool: "follow" }] });
+    const ok = await post({ intent: "save", locations: [{ id: S, role: "other", include: true }] });
+    expect(ok).toEqual({ status: 200, json: { ok: true, saved: 1 } });
+    expect(loc(S)).toMatchObject({ role: "other", onlinePool: true });
+    const r = await post({ intent: "save", locations: [{ id: S, role: "store", include: true }] });
     expect(r.status).toBe(403);
     expect(r.json).toMatchObject({ ok: false, upgrade: { feature: "locations" } });
     expect(loc(S).role).toBe("other");
@@ -128,29 +130,32 @@ const rows: LocationsData["locations"] = [
 ];
 
 describe("Settings → Locations SSR", () => {
-  it("Pro: each location with its role and online-pool choice, editable, and Save", () => {
+  it("Pro: each location with its include toggle and role, editable, saved through the save bar", () => {
     const html = render({ locations: rows, enabled: true });
     expect(html).toContain("Main warehouse");
     expect(html).toContain("Barcelona");
     expect(html).toContain("Fulfils online orders in Shopify");
     expect(html).toContain("Doesn&#x27;t fulfil online orders in Shopify");
-    for (const s of ["Role", "Counts for online sales", "Warehouse", "Store", "Other", "Follow Shopify (Yes)", "Follow Shopify (No)"]) expect(html).toContain(s);
-    expect(html).toContain("Save");
+    for (const s of ["Role", "Counts in supplier orders", "Warehouse", "Store", "Other"]) expect(html).toContain(s);
+    expect(html).toMatch(/<s-checkbox[^>]*accessibilityLabel="Does Main warehouse count in supplier orders\?"[^>]*checked=/);
+    expect(html).not.toMatch(/<s-checkbox[^>]*Barcelona[^>]*checked=/);
     expect(html).not.toContain("disabled");
     expect(html).not.toContain("See plans");
     expectSettingsAnatomy(html, { cards: ["Locations", "How this is used"], saveBar: "keha-settings-locations" });
-    expect(html).toContain("Choose each location&#x27;s role and whether it counts for online sales.");
+    expect(html).toContain("Counted in supplier orders now: Main warehouse.");
+    expect(html).not.toContain("Free and Growth plan all your stock as one pool.");
   });
 
-  it("Growth: read-only, teaches the one stock pool, Upgrade", () => {
+  it("Growth: the include toggle is editable (save bar), the role is locked with the plan name", () => {
     const html = render({ locations: rows, enabled: false });
-    expect(html).toContain("Free and Growth plan all your stock as one pool.");
-    expect(html).toContain("Counting for online sales now: Main warehouse.");
-    expect(html).toContain("Locations and stores");
+    expect(html).not.toContain("Free and Growth plan all your stock as one pool.");
+    expect(html).toContain("POS stores count too, unless you leave them out.");
+    expect(html).toContain("Pro plan"); // lock badge on the Role column
     expect(html).toContain("See plans");
-    expect(html).toContain("disabled");
-    // Read-only: nothing to save, so no save bar.
-    expectSettingsAnatomy(html, { cards: ["Your online stock pool", "Locations", "How this is used"] });
+    // Only the role selects are disabled; the checkboxes are not.
+    expect(html).not.toMatch(/<s-checkbox[^>]*disabled/);
+    expect((html.match(/<s-select[^>]*disabled/g) ?? []).length).toBe(2);
+    expectSettingsAnatomy(html, { cards: ["Locations", "How this is used"], saveBar: "keha-settings-locations" });
   });
 
   it("empty state", () => {
