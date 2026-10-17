@@ -102,10 +102,55 @@ export function poArrival(
 export const DRAFT_EXPIRY_DAYS = 14;
 
 /** Does this order's quantity still net off suggestions? Sent/confirmed always; drafts only while fresh. */
-export function poCountsAsOrdered(po: { status: string; createdAt: Date }, now: Date): boolean {
+export function poCountsAsOrdered(po: { status: string; createdAt?: Date | null }, now: Date): boolean {
   if (po.status === "sent" || po.status === "confirmed") return true;
   if (po.status !== "draft") return false;
+  // No creation time known (old fixtures): it counts, as before the expiry rule.
+  if (!po.createdAt) return true;
   return now.getTime() - po.createdAt.getTime() < DRAFT_EXPIRY_DAYS * DAY_MS;
+}
+
+/** Units still to arrive on a line (ordered − received; partial receiving). */
+export const lineRemaining = (l: { qty: number; received?: number }) => Math.max(0, l.qty - (l.received ?? 0));
+
+/** A purchase order as the on-order netting reads it. */
+export type OnOrderPo = {
+  status: string;
+  createdAt?: Date | null;
+  confirmedShipDate: Date | null;
+  expectedDate: Date | null;
+  supplierId: string | null;
+  lines: readonly { variantId: string; qty: number; received?: number }[];
+};
+
+/**
+ * THE on-order rule, one place for every reader (compute's Keha incoming, Order now, the forward
+ * plan, Products, the planner, Sidekick): per variant, the REMAINING units (ordered − received)
+ * of orders that still count as ordered (poCountsAsOrdered: sent / confirmed, drafts under
+ * DRAFT_EXPIRY_DAYS), and the earliest arrival DAY (poArrival: confirmed ship date + the
+ * supplier's transit days, else the lead-time estimate). Arrival columns hold calendar days at
+ * UTC midnight, so the UTC date part is the store-local day.
+ */
+export function onOrderByVariant(
+  orders: readonly OnOrderPo[],
+  opts: { now: Date; transitOf: (supplierId: string) => number | null | undefined; variantIds?: ReadonlySet<string> | null },
+): Map<string, { qty: number; arrival: string | null }> {
+  const out = new Map<string, { qty: number; arrival: string | null }>();
+  for (const o of orders) {
+    if (!poCountsAsOrdered(o, opts.now)) continue;
+    const at = poArrival(o, o.supplierId ? opts.transitOf(o.supplierId) : null);
+    const arrival = at ? at.toISOString().slice(0, 10) : null;
+    for (const l of o.lines) {
+      if (opts.variantIds && !opts.variantIds.has(l.variantId)) continue;
+      const left = lineRemaining(l);
+      if (!left) continue;
+      const cur = out.get(l.variantId) ?? { qty: 0, arrival: null };
+      cur.qty += left;
+      if (arrival && (!cur.arrival || arrival < cur.arrival)) cur.arrival = arrival;
+      out.set(l.variantId, cur);
+    }
+  }
+  return out;
 }
 
 /** A store-currency amount in the supplier's currency (null when the rate is unknown). */

@@ -452,6 +452,20 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect((metric(B).inputs as { arrivals: unknown[] }).arrivals).toEqual([{ day: "2026-11-10", units: 30 }]);
   });
 
+  it("netting: Keha on order is the remaining units of partly received lines, dated at ship + transit (one rule with Order now)", async () => {
+    db.tables.supplier = [{ id: "S1", shop: S, name: "Acme", leadTimeDays: 40, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: [], transitDays: 21 }];
+    db.tables.purchaseOrder = [
+      // 30 ordered, 12 received by hand: 18 still to come, landing 20 Oct + 21 days.
+      { id: "po1", shop: S, supplierId: "S1", source: "keha", status: "confirmed", createdAt: new Date("2026-10-01T09:00:00Z"), sentAt: new Date("2026-10-10T09:00:00Z"), confirmedShipDate: d("2026-10-20"), expectedDate: d("2026-11-10"), lines: [{ variantId: B, qty: 30, received: 12, baseOnHand: 12 }] },
+      // A draft is not ordered yet: compute never counts it (Order now nets fresh drafts itself).
+      { id: "po2", shop: S, supplierId: "S1", source: "keha", status: "draft", createdAt: new Date("2026-10-14T09:00:00Z"), sentAt: null, confirmedShipDate: null, expectedDate: null, lines: [{ variantId: B, qty: 99 }] },
+    ];
+    await computeShop(S, { now: () => NOW });
+    const b = metric(B).inputs as { kehaOnOrder: number; arrivals: unknown[] };
+    expect(b.kehaOnOrder).toBe(18);
+    expect(b.arrivals).toEqual([{ day: "2026-11-10", units: 18 }]);
+  });
+
   it("'Don't reorder' variants: status and stock as usual, no order quantity, no order-by, no reorder action", async () => {
     db.tables.variant.find((v) => v.id === B)!.noReorder = true;
     await computeShop(S, { now: () => NOW });

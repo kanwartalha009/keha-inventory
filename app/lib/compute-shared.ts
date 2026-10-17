@@ -31,7 +31,7 @@ import { DONE_REOPEN_DAYS, dedupeKey } from "./actions-shared";
 import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
 import type { MoneyRefresh } from "./plan-shared";
-import { poArrival } from "./supplier-shared";
+import { lineRemaining, poArrival } from "./supplier-shared";
 import { ALL } from "./sync/facts-shared";
 
 export const SCOPE_ONLINE = "online";
@@ -253,7 +253,7 @@ export function kehaOpenUnits(pos: readonly { lines: { variantId: string; qty: n
   const out = new Map<string, number>();
   for (const po of pos)
     for (const l of po.lines) {
-      const open = Math.max(0, l.qty - (l.received ?? 0));
+      const open = lineRemaining(l);
       if (open > 0) out.set(l.variantId, (out.get(l.variantId) ?? 0) + open);
     }
   return out;
@@ -308,7 +308,7 @@ export function withLandedEstimate<P extends OpenPo>(pos: readonly P[], facts: L
   out.forEach((po, order) => {
     if (po.source !== "keha" || !po.sentDay) return;
     for (const line of po.lines) {
-      const open = Math.max(0, line.qty - (line.received ?? 0));
+      const open = lineRemaining(line);
       const now = facts.onHand.get(line.variantId);
       const base = line.baseOnHand ?? facts.baseline(line.variantId, po.sentDay);
       if (open <= 0 || now === undefined || base === undefined) continue;
@@ -346,7 +346,7 @@ export function datedIncoming(
   for (const po of pos) {
     if (!po.arrival) continue;
     for (const l of po.lines) {
-      const open = Math.max(0, l.qty - (l.received ?? 0));
+      const open = lineRemaining(l);
       if (open <= 0) continue;
       const list = out.get(l.variantId) ?? [];
       list.push({ arrival: po.arrival, units: open });
@@ -364,7 +364,7 @@ export function poArrivals(
   for (const po of pos) {
     if (!po.arrival) continue;
     for (const l of po.lines) {
-      const open = Math.max(0, l.qty - (l.received ?? 0));
+      const open = lineRemaining(l);
       if (open <= 0) continue;
       const cur = out.get(l.variantId);
       if (!cur) out.set(l.variantId, { arrival: po.arrival, units: open });

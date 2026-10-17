@@ -122,7 +122,8 @@ describe("open Keha units (ordering audit 2026-10-17)", () => {
     const days = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
     fake.tables.purchaseOrder = [po("old", { status: "draft", createdAt: days(20) }), po("new", { status: "draft", createdAt: days(3) }), po("sent", { createdAt: days(40) })];
     expect((await kehaOnOrder(S, ["draft", "sent", "confirmed"], undefined, { now: NOW })).get(V1)!.qty).toBe(20);
-    expect((await kehaOnOrder(S, ["draft", "sent", "confirmed"])).get(V1)!.qty).toBe(30); // without `now`: as before
+    // One rule for every reader (no opt-in any more): 12 days later the 3-day draft is 15 days old too.
+    expect((await kehaOnOrder(S, ["draft", "sent", "confirmed"], undefined, { now: days(-12) })).get(V1)!.qty).toBe(10);
     expect(await staleDraftCount(S, NOW)).toBe(1);
   });
 });

@@ -13,7 +13,7 @@
  * Shopify is their source of truth.
  */
 import { toCsv } from "./products-shared";
-import type { PoLine } from "./supplier-shared";
+import { lineRemaining, type PoLine } from "./supplier-shared";
 
 type T = (s: string) => string;
 
@@ -263,8 +263,8 @@ export function autoReceivedLines(lines: readonly PoLine[], received: Record<str
 
 // ── Receiving, editing, re-opening (audit 2026-10-17) ─────────────────────
 
-/** Units still to arrive on a line. */
-export const lineRemaining = (l: Pick<PoLine, "qty" | "received">) => Math.max(0, l.qty - (l.received ?? 0));
+/** Units still to arrive on a line (one rule: supplier-shared lineRemaining). */
+export { lineRemaining };
 
 export function poProgress(lines: readonly Pick<PoLine, "qty" | "received">[]): { ordered: number; received: number; remaining: number } {
   let ordered = 0;

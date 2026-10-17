@@ -1,6 +1,6 @@
 /** Supplier assignment, case packs and PO lines (spec §5.3, §5.5). */
 import { describe, expect, it } from "vitest";
-import { casePackFor, poArrival, readPoLines, supplierFor, type SupplierLite } from "../app/lib/supplier-shared";
+import { casePackFor, lineRemaining, onOrderByVariant, poArrival, readPoLines, supplierFor, type SupplierLite } from "../app/lib/supplier-shared";
 
 const sup = (id: string, name: string, vendorMatch: string[], extra: Partial<SupplierLite> = {}): SupplierLite => ({
   id,
@@ -91,5 +91,43 @@ describe("arrival, drafts and currency (audit 2026-10-17)", () => {
     expect(toSupplierCurrency(92, 0.92)).toBeCloseTo(100);
     expect(toStoreCurrency(100, null)).toBeNull();
     expect(toStoreCurrency(null, 1)).toBeNull();
+  });
+});
+
+describe("onOrderByVariant: the one on-order rule (integration 2026-10-17)", () => {
+  const NOW = new Date("2026-10-17T12:00:00Z");
+  const days = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+  const day = (s: string) => new Date(`${s}T00:00:00Z`);
+  const transit = new Map([["far", 21]]);
+  const opts = { now: NOW, transitOf: (id: string) => transit.get(id) };
+
+  it("remaining units of partly received lines, arrival = ship date + transit, stale drafts out", () => {
+    const out = onOrderByVariant(
+      [
+        // Confirmed, ships 20 Oct + 21 days at sea; 4 of 10 already received.
+        { status: "confirmed", createdAt: days(30), confirmedShipDate: day("2026-10-20"), expectedDate: day("2026-10-25"), supplierId: "far", lines: [{ variantId: "a", qty: 10, received: 4 }] },
+        // Sent, no confirmation: the lead-time estimate; fully received line adds nothing.
+        { status: "sent", createdAt: days(5), confirmedShipDate: null, expectedDate: day("2026-11-30"), supplierId: null, lines: [{ variantId: "a", qty: 5 }, { variantId: "b", qty: 3, received: 3 }] },
+        // A draft from 3 days ago counts; one from 20 days ago doesn't.
+        { status: "draft", createdAt: days(3), confirmedShipDate: null, expectedDate: null, supplierId: null, lines: [{ variantId: "c", qty: 7 }] },
+        { status: "draft", createdAt: days(20), confirmedShipDate: null, expectedDate: null, supplierId: null, lines: [{ variantId: "c", qty: 100 }] },
+        // Received / cancelled never count.
+        { status: "received", createdAt: days(3), confirmedShipDate: null, expectedDate: null, supplierId: null, lines: [{ variantId: "a", qty: 50 }] },
+      ],
+      opts,
+    );
+    expect(out.get("a")).toEqual({ qty: 11, arrival: "2026-11-10" });
+    expect(out.has("b")).toBe(false);
+    expect(out.get("c")).toEqual({ qty: 7, arrival: null });
+  });
+
+  it("filters to the wanted variants", () => {
+    const po = { status: "sent", createdAt: NOW, confirmedShipDate: null, expectedDate: null, supplierId: null, lines: [{ variantId: "a", qty: 2 }, { variantId: "b", qty: 3 }] };
+    expect([...onOrderByVariant([po], { ...opts, variantIds: new Set(["b"]) }).keys()]).toEqual(["b"]);
+  });
+
+  it("lineRemaining never goes below zero", () => {
+    expect(lineRemaining({ qty: 3, received: 5 })).toBe(0);
+    expect(lineRemaining({ qty: 3 })).toBe(3);
   });
 });

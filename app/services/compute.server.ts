@@ -85,7 +85,7 @@ import { resolveLeadTime } from "../lib/engine/order-shared";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
-import { OPEN_PO_STATUSES, casePackFor, readPoLines, supplierFor } from "../lib/supplier-shared";
+import { OPEN_PO_STATUSES, casePackFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { loadSeasonContext } from "./season.server";
 import { readSettings } from "../lib/settings-shared";
@@ -270,11 +270,13 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // units: the Reorder screen nets drafts against it, and landed units are in on-hand.
   const openPoRows = await prisma.purchaseOrder.findMany({
     where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
-    select: { source: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
+    select: { source: true, status: true, createdAt: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
   });
   // H2: a confirmed SHIP date lands `transitDays` later (the supplier's freight time).
   const transitOf = new Map(suppliers.map((x) => [x.id, x.transitDays ?? null]));
-  const rawPos: OpenPo[] = openPoRows.map((po) => ({
+  // The one on-order rule (supplier-shared onOrderByVariant): orders that count as ordered, the
+  // remaining units of each line, arrival = ship date + transit.
+  const rawPos: OpenPo[] = openPoRows.filter((po) => poCountsAsOrdered(po, startedAt)).map((po) => ({
     source: po.source,
     arrival: arrivalDay(po, po.supplierId ? (transitOf.get(po.supplierId) ?? null) : null),
     sentDay: po.sentAt ? localDate(po.sentAt, tz) : null,

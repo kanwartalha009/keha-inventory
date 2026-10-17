@@ -28,7 +28,7 @@ import prisma from "../db.server";
 import { readSettings } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
-import { readPoLines, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
+import { readPoLines, lineRemaining, onOrderByVariant, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
 import { buildOrderNow, type ReorderGroup } from "../lib/reorder-shared";
 import { thisWeek } from "../lib/order-plan-shared";
 import { todayIn } from "../lib/dashboard-shared";
@@ -115,8 +115,8 @@ export async function supplierTransit(shop: string): Promise<Map<string, number 
  * Units on open Keha orders per variant (ordered − received) and the earliest
  * arrival (confirmed ship date + the supplier's transit days, else the lead-time
  * estimate). `statuses`: draft/sent/confirmed for the order plan; sent/confirmed
- * for Products ("On order with Keha"). With `opts.now`, drafts older than
- * DRAFT_EXPIRY_DAYS no longer count (poCountsAsOrdered).
+ * for Products ("On order with Keha"). Drafts older than DRAFT_EXPIRY_DAYS (at `opts.now`,
+ * default now) no longer count. The rule itself: supplier-shared onOrderByVariant.
  */
 export async function kehaOnOrder(
   shop: string,
@@ -124,8 +124,7 @@ export async function kehaOnOrder(
   variantIds?: string[],
   opts: { now?: Date } = {},
 ): Promise<Map<string, { qty: number; arrival: string | null }>> {
-  const out = new Map<string, { qty: number; arrival: string | null }>();
-  if (variantIds && !variantIds.length) return out;
+  if (variantIds && !variantIds.length) return new Map();
   const [orders, transit] = await Promise.all([
     prisma.purchaseOrder.findMany({
       where: { shop, source: "keha", status: { in: [...statuses] } },
@@ -133,27 +132,16 @@ export async function kehaOnOrder(
     }),
     supplierTransit(shop),
   ]);
-  const wanted = variantIds ? new Set(variantIds) : null;
-  for (const o of orders) {
-    if (opts.now && o.createdAt && !poCountsAsOrdered({ status: o.status, createdAt: o.createdAt }, opts.now)) continue;
-    const arrival = dayOf(poArrival(o, o.supplierId ? transit.get(o.supplierId) : null));
-    for (const l of readPoLines(o.lines)) {
-      if (wanted && !wanted.has(l.variantId)) continue;
-      const left = Math.max(0, l.qty - (l.received ?? 0));
-      if (!left) continue;
-      const cur = out.get(l.variantId) ?? { qty: 0, arrival: null };
-      cur.qty += left;
-      if (arrival && (!cur.arrival || arrival < cur.arrival)) cur.arrival = arrival;
-      out.set(l.variantId, cur);
-    }
-  }
-  return out;
+  return onOrderByVariant(
+    orders.map((o) => ({ ...o, lines: readPoLines(o.lines) })),
+    { now: opts.now ?? new Date(), transitOf: (id) => transit.get(id), variantIds: variantIds ? new Set(variantIds) : null },
+  );
 }
 
 /** Keha drafts nobody sent for DRAFT_EXPIRY_DAYS: they no longer net off the order plan. */
 export async function staleDraftCount(shop: string, now: Date): Promise<number> {
   const drafts = await prisma.purchaseOrder.findMany({ where: { shop, source: "keha", status: "draft" }, select: { status: true, createdAt: true, lines: true } });
-  return drafts.filter((d) => d.createdAt && !poCountsAsOrdered({ status: d.status, createdAt: d.createdAt }, now) && readPoLines(d.lines).some((l) => l.qty - (l.received ?? 0) > 0)).length;
+  return drafts.filter((d) => d.createdAt && !poCountsAsOrdered({ status: d.status, createdAt: d.createdAt }, now) && readPoLines(d.lines).some((l) => lineRemaining(l) > 0)).length;
 }
 
 export type OpenOrderRow = {
