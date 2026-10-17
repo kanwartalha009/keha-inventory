@@ -2,9 +2,10 @@
 
 Two parts: **A** is what Kanwar pastes into the Partner Dashboard "Testing instructions" field;
 **B** is the checklist for Kanwar before pressing Submit. Every step was written from the code
-on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro stores, for the Order plan
-and for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
-this week", Done in the action menu); labels are the app's English strings.
+on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro stores, for the Order plan,
+for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
+this week", Done in the action menu) and for the merged build (Order now = the next 7 days,
+editable drafts, receiving per line, re-open); labels are the app's English strings.
 
 ---
 
@@ -18,7 +19,8 @@ Monday email. It has no storefront part and stores no shopper data.
 
 **Test store requirements.**
 
-1. Products with **Track quantity** on, at least one location that fulfils online orders.
+1. Products with **Track quantity** on, at least one active location (every active location's
+   stock counts in supplier orders unless it is left out in Settings → Locations).
 2. **Sales history:** the numbers come from Shopify's own analytics (ShopifyQL), so a brand-new
    store with no orders shows the empty state "Your first order plan needs 14 days of sales —
    we'll show it here on <date>". To see numbers and actions, use our demo store below, or a
@@ -73,17 +75,27 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
    minimum per item applies to each size/colour or to each product (split across sizes by
    sales), a minimum order value in the supplier's currency, and — when that currency differs
    from the store's — the exchange rate.
-9. **Order plan → Order now:** what to order today, grouped by supplier with order-by dates →
-   **Create order** → confirm (a draft; nothing is sent) → on the order: **Download PDF**,
-   **Download CSV**, **Email supplier** (or **Copy link**).
+9. **Order plan → Order now:** everything due in the next 7 days (overdue included), grouped by
+   supplier, each line on its own order-by date, with case packs and the supplier's minimums →
+   **Create order** → confirm (a draft; nothing is sent). On the draft: change quantities or
+   remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
+   **Download CSV**, **Email supplier** (or **Copy link**), or **Mark as sent**. A draft not sent
+   within 14 days stops counting as ordered (a banner says so).
 10. **Order plan → Next 90 days:** every order for the next 13 weeks by week and supplier, with
     units, cash per week (a line without a cost price shows "—" and is counted, never 0) and
     order-by dates; open a week → a supplier → **Create order** opens Order now with those lines
     (the order is still created only after the confirm there). **Download CSV** exports the plan.
 11. Open the supplier link from the email (no login): pick a date → **Confirm ship date**. Back
-    in the app **Order plan → Open orders** shows the confirmed date, and **Products** shows "On
-    order with Keha".
-12. **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
+    in the app **Order plan → Open orders** shows the ship date and the arrival (ship date + the
+    supplier's transit time), sorted by arrival, and **Products** shows "On order with Keha".
+    On the order, **Receive items** records a delivery per line ("Received 8 of 20 · 12 still to
+    come"; only the rest counts as on order), or closes the rest as short. A received or
+    cancelled order can be re-opened within 30 days (**Re-open order**). An order whose stock
+    landed is received automatically (and says so, with the date).
+12. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
+    **More options**: Order cycle, Too much stock after, Dead after, **Safety level** (Lean /
+    Balanced / Safe) and **Growth assumption** (off and recommended by default, or add the store's
+    year-on-year growth). **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
     incoming-webhook link → **Send a test message**. The Monday email opens with **Order this
     week** (one line per supplier with units, cash and order-by date, **Review order**), and its
     subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").
@@ -125,7 +137,8 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 
 Sidekick answers from the app's data (order-by dates, days of stock left, expected arrivals)
 and links to the matching page in the app. These tools only read: nothing changes in the store,
-and purchase orders are still created and sent from the Reorder page after a confirm. Each plan
+and purchase orders are still created and sent from the Order plan after a confirm. Open
+purchase orders show the units still to come and the expected arrival. Each plan
 gets what its own screens show (on Free: the 10 most urgent products of the order-plan preview, and no purchase-order list).
 
 **Why each permission (one line each).**
@@ -134,7 +147,7 @@ gets what its own screens show (on Free: the 10 most urgent products of the orde
 |---|---|
 | `read_products` | Products and variants (titles, SKUs, vendors, collections, prices, costs) — what the store sells. |
 | `read_inventory` | Stock per location now and per day — in stock, running low, sold out. |
-| `read_locations` | The store's locations: which are active and which fulfil online orders, so their stock is counted in supplier orders. |
+| `read_locations` | The store's locations: which are active (their stock counts in supplier orders unless the merchant leaves one out) and which fulfil online orders. |
 | `read_locales` | The store's primary language, so owner emails, the supplier page and the admin open in it. |
 | `read_reports` | ShopifyQL analytics: daily sales totals per variant / location / channel, stock history, sessions per landing page. |
 | `read_inventory_purchase_orders` | Shopify purchase orders, so stock already ordered counts as incoming. |
