@@ -449,7 +449,7 @@ export function withoutIncoming(
 /**
  * ForwardVariantInput from a stored VariantMetric (online pool or a location). Rows written
  * before the forward plan existed (no safety / seasonCurve / arrivals in inputs) still plan:
- * safety from z × σ × √lead time, flat seasonality, undated incoming. `removed`: units on order
+ * safety from z × σ × √(lead time + cycle), flat seasonality, undated incoming. `removed`: units on order
  * at the run that will no longer arrive (H2, lib/keha-since-run-shared): out of the incoming,
  * and the stored need grows by them.
  */
@@ -466,8 +466,11 @@ export function forwardInputFromMetric(
 ): ForwardVariantInput {
   const inputs = m.inputs && typeof m.inputs === "object" ? (m.inputs as Record<string, unknown>) : {};
   const lead = numIn(inputs, "leadTimeDays") ?? 0;
+  const cycle = numIn(inputs, "cycleDays") ?? 0;
   const z = numIn(inputs, "z");
-  const safety = numIn(inputs, "safety") ?? (z !== null && finite(m.sigma) ? safetyStock(z, m.sigma, lead) : null);
+  // L3: rows saved before `safety` was stored protect lead time + cycle, as the engine and the
+  // product page (products-shared readForecastInputs) do — not the lead time alone.
+  const safety = numIn(inputs, "safety") ?? (z !== null && finite(m.sigma) ? safetyStock(z, m.sigma, lead + cycle) : null);
   const rawCurve = Array.isArray(inputs.seasonCurve) ? (inputs.seasonCurve as unknown[]) : null;
   const rawArrivals = Array.isArray(inputs.arrivals) ? (inputs.arrivals as unknown[]) : [];
   const arrivals: { day: DayKey; units: number }[] = [];
@@ -491,7 +494,7 @@ export function forwardInputFromMetric(
     curve: rawCurve ? rawCurve.map((v) => (finite(v) ? v : null)) : null,
     safety,
     leadTimeDays: lead,
-    cycleDays: numIn(inputs, "cycleDays") ?? 0,
+    cycleDays: cycle,
     onHand: numIn(inputs, "onHand") ?? 0,
     incoming: cut ? cut.incoming : storedIncoming,
     arrivals: cut ? cut.arrivals : arrivals,

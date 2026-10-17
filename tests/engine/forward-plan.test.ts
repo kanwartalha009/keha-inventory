@@ -161,6 +161,17 @@ describe("planVariant — what can't be planned", () => {
   });
 });
 
+describe("rows saved before the plan stored safety (L3)", () => {
+  it("safety falls back to z × σ × √(lead time + cycle), as the engine and the product page compute it", () => {
+    const m = { status: "healthy", rate: 2, sigma: 3, orderQty: 10, inputs: { leadTimeDays: 14, cycleDays: 14, z: 1.28, onHand: 40, incoming: 0, orderNeed: 20 } };
+    const input = forwardInputFromMetric(m, { today: "2026-10-16", pack: null, moq: null, notCounted: 0, days: 91 });
+    expect(input.safety).toBeCloseTo(safetyStock(1.28, 3, 28));
+    expect(input.safety).not.toBeCloseTo(safetyStock(1.28, 3, 14));
+    // A stored safety always wins.
+    expect(forwardInputFromMetric({ ...m, inputs: { ...m.inputs, safety: 7 } }, { today: "2026-10-16", pack: null, moq: null, notCounted: 0, days: 91 }).safety).toBe(7);
+  });
+});
+
 describe("events, weeks and suppliers", () => {
   const plan = planVariant(steady({ onHand: 5 }));
   const ev = eventsOf(plan, { variantId: "v1", productId: "p1", supplierKey: "supplier:s1", unitCost: 2.5 });
