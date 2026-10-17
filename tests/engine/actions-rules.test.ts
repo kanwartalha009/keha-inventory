@@ -124,6 +124,14 @@ describe("bridge", () => {
     expect(bridgeGap(v({ daysLeft: 10, orderBy: "2026-10-20", incoming: 50 }), TODAY)).toBeNull();
   });
 
+  it("out of stock now with undated stock on order: bridged until one lead time from today (the forward plan's assumption)", () => {
+    // The forward order-by date counts the undated units, so it has not passed.
+    const g = bridgeGap(v({ status: "out", onHand: 0, daysLeft: 0, orderBy: "2026-10-23", incoming: 24 }), TODAY)!;
+    expect(g).toMatchObject({ gapDays: 14, arrival: "2026-10-30", arrivalSource: "lead_time" });
+    // A dated order wins over the assumption.
+    expect(bridgeGap(v({ status: "out", onHand: 0, daysLeft: 0, orderBy: "2026-10-23", incoming: 24, incomingDated: 24, arrival: "2026-10-20" }), TODAY)!.arrival).toBe("2026-10-20");
+  });
+
   it("order-by passed but the stock still lasts the lead time: no gap", () => {
     expect(bridgeGap(v({ daysLeft: 15, orderBy: "2026-10-15" }), TODAY)).toBeNull();
   });

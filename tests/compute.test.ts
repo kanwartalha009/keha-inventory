@@ -19,6 +19,7 @@ import * as dbModule from "../app/db.server";
 import { computeShop } from "../app/services/compute.server";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
 import type { MoneyBasisJson } from "../app/lib/money-shared";
+import { forwardInputFromMetric, planVariant } from "../app/lib/engine/forward-plan-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -364,6 +365,30 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     // days left = 100 ÷ (2 × 2 × 2).
     expect(a.daysLeft).toBeCloseTo(12.5, 10);
     expect(a.status).toBe("running_low");
+  });
+
+  it("stores the forward plan's inputs and takes the order-by date from it (one date for every screen)", async () => {
+    seedLastYear();
+    await computeShop(S, { now: () => NOW });
+    const a = metric(A);
+    const inputs = a.inputs as { seasonCurve: (number | null)[] | null; safety: number; arrivals: unknown[]; caseQty: number | null; minOrder: number | null };
+    // The index was applied → its weekly shape (LY units/day ÷ the same base) is kept, ≥ the 13 weeks + horizon.
+    expect(Array.isArray(inputs.seasonCurve)).toBe(true);
+    expect(inputs.seasonCurve!.length).toBeGreaterThanOrEqual(Math.ceil((91 + 28) / 7));
+    expect(typeof inputs.safety).toBe("number"); // z × σ × √lead (σ is 0 for a steady 2 a day)
+    expect(inputs.arrivals).toEqual([]);
+    const fwd = planVariant(
+      forwardInputFromMetric(
+        { status: a.status as string, rate: a.rate as number, sigma: a.sigma as number, orderQty: a.orderQty as number | null, inputs: a.inputs },
+        { today: "2026-10-16", pack: inputs.caseQty, moq: inputs.minOrder, notCounted: 0, days: 0 },
+      ),
+    );
+    expect((a.orderBy as Date).toISOString().slice(0, 10)).toBe(fwd.deadline);
+  });
+
+  it("no seasonal index → no seasonal shape (the forward plan stays flat)", async () => {
+    await computeShop(S, { now: () => NOW });
+    expect((metric(A).inputs as { seasonCurve: unknown }).seasonCurve).toBeNull();
   });
 
   it("takes lead time and case pack from the supplier matched by vendor; z from the safety level", async () => {

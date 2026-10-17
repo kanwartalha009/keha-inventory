@@ -133,3 +133,29 @@ export function orderQuantity(input: OrderQtyInput): number | null {
   if (input.minOrder && input.minOrder > q) q = roundUpTo(input.minOrder, pack);
   return q;
 }
+
+const packOf = (pack: number | null | undefined) => (pack && pack > 1 ? Math.floor(pack) : 1);
+
+/**
+ * One order line's quantity (Order now, the forward plan, the planner): the need rounded up to
+ * the case pack, then raised to the per-variant minimum (itself rounded up to the pack).
+ * A need ≤ 0 stays 0.
+ */
+export function lineQuantity(need: number, pack: number | null, moq: number | null): number {
+  if (!(need > 0)) return 0;
+  const p = packOf(pack);
+  let q = roundUpTo(Math.ceil(need - 1e-9), p);
+  if (moq && moq > q) q = roundUpTo(moq, p);
+  return q;
+}
+
+/**
+ * Today's need after open Keha orders compute did not count yet (drafts, orders sent since the
+ * last run): the unrounded need (VariantMetric.inputs.orderNeed) minus those units, never below
+ * 0. Rows computed before orderNeed existed fall back to orderQty.
+ */
+export function netNeed(rawNeed: number | null | undefined, orderQty: number | null | undefined, notCounted: number): number {
+  const extra = Math.max(0, Number.isFinite(notCounted) ? notCounted : 0);
+  if (typeof rawNeed === "number" && Number.isFinite(rawNeed)) return Math.max(0, rawNeed - extra);
+  return Math.max(0, (orderQty ?? 0) - extra);
+}

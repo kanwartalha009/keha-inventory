@@ -50,3 +50,21 @@ export function toDayKey(value: string): DayKey {
   dayIndex(day); // validate
   return day;
 }
+
+/** Day of week, 0 = Sunday … 6 = Saturday. */
+export function weekday(day: DayKey): number {
+  return new Date(`${toDayKey(day)}T00:00:00Z`).getUTCDay();
+}
+
+/** Monday of the ISO week a day falls in. */
+export function weekStart(day: DayKey): DayKey {
+  return addDays(day, -((weekday(day) + 6) % 7));
+}
+
+/** ISO week label "2026-W46" (the ISO year is the year of the week's Thursday). */
+export function isoWeek(day: DayKey): string {
+  const thursday = addDays(weekStart(day), 3);
+  const year = thursday.slice(0, 4);
+  const week = Math.floor(daysBetween(`${year}-01-01`, thursday) / 7) + 1;
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}

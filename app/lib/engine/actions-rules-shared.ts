@@ -239,7 +239,9 @@ export function bridgeGap(v: RuleVariant, today: DayKey): BridgeGap | null {
   if (v.arrival) {
     arrival = dayIndex(v.arrival) < t ? today : v.arrival;
     source = "purchase_order";
-  } else if (orderByPassed) {
+  } else if (orderByPassed || (v.daysLeft <= 0 && finite(v.incoming) && v.incoming > (finite(v.incomingDated) ? v.incomingDated : 0))) {
+    // Out of stock now with stock on order but no date: the forward order plan assumes it lands
+    // one lead time from today (its order-by date counts it), so the gap is bridged until then.
     arrival = addDays(today, Math.max(0, Math.round(v.leadTimeDays)));
     source = "lead_time";
   } else return null;

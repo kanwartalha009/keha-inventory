@@ -34,7 +34,10 @@
  *  - Demand per collection: a variant counts in every collection it belongs to, so collection
  *    totals overlap; the store total counts each variant once.
  */
-import { addDays, daysBetween, toDayKey, type DayKey } from "./engine/dates-shared";
+import { addDays, daysBetween, isoWeek, toDayKey, weekStart, weekday, type DayKey } from "./engine/dates-shared";
+
+// Week helpers live with the other day maths (the forward order plan uses them too).
+export { isoWeek, weekStart, weekday };
 import { orderByDate, resolveLeadTime, safetyStock } from "./engine/order-shared";
 import { resolveSettings } from "./engine/types-shared";
 import {
@@ -101,10 +104,6 @@ export function readDay(v: unknown): DayKey | null {
   }
 }
 
-/** Day of week, 0 = Sunday … 6 = Saturday. */
-export function weekday(day: DayKey): number {
-  return new Date(`${toDayKey(day)}T00:00:00Z`).getUTCDay();
-}
 
 /** Black Friday: the Friday after the 4th Thursday of November. */
 export function blackFriday(year: number): DayKey {
@@ -132,18 +131,6 @@ export function eventPeriod(event: ScenarioEvent, today: DayKey): { start: DayKe
   return p.end >= today ? p : make(year + 1);
 }
 
-/** Monday of the ISO week a day falls in. */
-export function weekStart(day: DayKey): DayKey {
-  return addDays(day, -((weekday(day) + 6) % 7));
-}
-
-/** ISO week label "2026-W46" (the ISO year is the year of the week's Thursday). */
-export function isoWeek(day: DayKey): string {
-  const thursday = addDays(weekStart(day), 3);
-  const year = thursday.slice(0, 4);
-  const week = Math.floor(daysBetween(`${year}-01-01`, thursday) / 7) + 1;
-  return `${year}-W${String(week).padStart(2, "0")}`;
-}
 
 /** The part of a period still ahead: from max(start, today). */
 export function effectiveStart(start: DayKey, today: DayKey): DayKey {

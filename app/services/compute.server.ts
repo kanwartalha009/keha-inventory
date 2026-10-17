@@ -18,6 +18,12 @@
  *  - the action list (§7.7, engine/actions-rules-shared) is written with the money cards, on the
  *    same cadence (Free: monthly, paid: daily), so Free's € figures refresh monthly everywhere.
  *
+ * Forward order plan (Order plan, 2026-10-17): VariantMetric.orderBy (online pool) is the order-by
+ * date of engine/forward-plan-shared — the function Order now, the 90-day calendar and the Dashboard
+ * use — so every screen shows one date. inputs also keeps what the plan needs: safety, the dated
+ * incoming (`arrivals`) and the seasonal index's weekly shape (`seasonCurve`, only when the index
+ * was applied). Location metrics keep the engine's flat order-by formula.
+ *
  * Phase 3 (Pro `locations`): after the online pool, one call to syncLocationMetrics writes a
  * VariantMetric per variant × warehouse / store (scope = Location.id) from that location's
  * own sales and stock, reusing the roles, suppliers and seasonal × trend built here. The pool
@@ -68,6 +74,7 @@ import {
 } from "../lib/compute-shared";
 import { generateActions, type RuleProduct, type RuleVariant } from "../lib/engine/actions-rules-shared";
 import { resolveLeadTime } from "../lib/engine/order-shared";
+import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
 import { OPEN_PO_STATUSES, casePackFor, poArrival, readPoLines, supplierFor } from "../lib/supplier-shared";
@@ -272,7 +279,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     poolKeys,
     variants: variants.filter((v) => !v.isBundle).map((v) => ({ id: v.id, collections: v.collections ?? [] })),
     coverage,
-    maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1),
+    // + the forward plan's seasonal shape (seasonCurve) beyond the horizon, for collection series.
+    maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1) + FORWARD_CURVE_DAYS + 7,
   });
 
   // Plan: per-location planning (Pro) and the money cadence. Plan checks fail open (I-6).
@@ -290,6 +298,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   );
   const results: VariantResult[] = [];
   const seasonOf = new Map<string, VariantSeason>();
+  const forwardOf = new Map<string, { seasonCurve: (number | null)[] | null; arrivals: { day: string; units: number }[] }>();
   for (const { v, supplier, horizon } of plans) {
     const stockNowRow = onHand.get(v.id) ?? { onHand: 0, incoming: 0 };
     const season = seasonCtx.forVariant(v.collections ?? [], horizon);
@@ -315,7 +324,37 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       cost: numOrNull(v.cost),
       settings: overrides,
     });
-    if (r) results.push(r);
+    if (r) {
+      // Order-by date from the forward plan (engine/forward-plan-shared): the same function the
+      // Order now screen, the 90-day calendar and the Dashboard use, so there is one date per
+      // variant. It adds dated incoming and last year's seasonal shape to the flat formula.
+      const curve = seasonCtx.curveFor(season, Math.ceil((FORWARD_CURVE_DAYS + horizon) / 7));
+      const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
+      const fwd = planVariant({
+        today,
+        status: r.status,
+        rate: r.rate,
+        seasonal: r.seasonal,
+        trend: r.trend,
+        plan: r.plan,
+        curve,
+        safety: r.safety,
+        leadTimeDays: r.inputs.leadTimeDays,
+        cycleDays: r.inputs.cycleDays,
+        onHand: r.onHand,
+        incoming: r.incoming,
+        arrivals,
+        need: r.inputs.orderNeed,
+        orderQty: r.orderQty,
+        notCounted: 0,
+        pack: r.inputs.caseQty,
+        moq: r.inputs.minOrder,
+        days: 0,
+      });
+      r.orderBy = fwd.deadline;
+      forwardOf.set(v.id, { seasonCurve: curve, arrivals });
+      results.push(r);
+    }
   }
 
   const supplierIdOf = new Map(plans.map((p) => [p.v.id, p.supplier?.id ?? null]));
@@ -331,6 +370,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         supplierId: supplierIdOf.get(r.id) ?? null,
         kehaOnOrder: kehaRaw.get(r.id) ?? 0,
         kehaLanded: Math.max(0, (kehaRaw.get(r.id) ?? 0) - (kehaOpen.get(r.id) ?? 0)),
+        // Forward order plan inputs (forward-plan-shared forwardInputFromMetric).
+        safety: r.safety,
+        seasonCurve: forwardOf.get(r.id)?.seasonCurve ?? null,
+        arrivals: forwardOf.get(r.id)?.arrivals ?? [],
       });
       return {
         variantId: r.id,

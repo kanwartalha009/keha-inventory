@@ -192,6 +192,32 @@ export function trendFactor(s: UnitsSeries, today: DayKey): TrendResult {
   return out("ok", (current.unitsPerDay ?? 0) / lastYear.unitsPerDay);
 }
 
+/** Longest seasonal curve kept (weeks): every week of it must lie fully in the past last year. */
+export const CURVE_MAX_WEEKS = 50;
+
+/**
+ * Weekly seasonal shape for the forward order plan (forward-plan-shared): for week k starting
+ * today (days 7k … 7k+6), units/day over the same calendar dates one year back ÷ units/day over
+ * the seasonal index's own base (the 28 days ending yesterday, one year back). Unclamped,
+ * rounded to 3 decimals; a week with < 80 % covered days is null. Null when the base itself is
+ * unusable. Only used when the seasonal index was applied, with the same source (store or
+ * collection) as the index, so it never introduces data the index didn't use.
+ */
+export function seasonCurve(s: UnitsSeries, today: DayKey, weeks: number): (number | null)[] | null {
+  const t = toDayKey(today);
+  const baseTo = shiftYears(addDays(t, -1), -1);
+  const base = spanStats(s, addDays(baseTo, -(SEASON.baseDays - 1)), baseTo);
+  if (base.coverage < SEASON.minCoverage || !base.unitsPerDay || base.unitsPerDay <= 0) return null;
+  const from = shiftYears(t, -1);
+  const n = Math.max(1, Math.min(CURVE_MAX_WEEKS, Math.ceil(Number.isFinite(weeks) ? weeks : 1)));
+  const out: (number | null)[] = [];
+  for (let k = 0; k < n; k++) {
+    const w = spanStats(s, addDays(from, 7 * k), addDays(from, 7 * k + 6));
+    out.push(w.coverage >= SEASON.minCoverage && w.unitsPerDay !== null ? Math.round((w.unitsPerDay / base.unitsPerDay) * 1000) / 1000 : null);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Store vs collection
 // ---------------------------------------------------------------------------
@@ -257,7 +283,18 @@ export function createSeasonContext(input: {
     if (!r) trendMemo.set(key, (r = trendFactor(s, input.today)));
     return r;
   };
+  const curveMemo = new Map<string, (number | null)[] | null>();
   return {
+    /** The weekly seasonal shape from the same source as `season` (seasonCurve); null when its index wasn't applied. */
+    curveFor(season: VariantSeason, weeks: number): (number | null)[] | null {
+      if (!season.seasonalResult.applied) return null;
+      const key = `${season.collectionId ?? ""}|${weeks}`;
+      if (curveMemo.has(key)) return curveMemo.get(key)!;
+      const s = seriesOf(season.level === "collection" ? season.collectionId : null);
+      const c = s ? seasonCurve(s, input.today, weeks) : null;
+      curveMemo.set(key, c);
+      return c;
+    },
     forVariant(collections: readonly string[], horizonDays: number): VariantSeason {
       const choice = chooseSeasonSource(collections, input.units12m);
       if (choice.level === "collection") {

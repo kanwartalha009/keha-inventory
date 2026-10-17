@@ -12,22 +12,17 @@
  *    the minimum. The merchant may edit below it: a warning, never a block.
  */
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
+import { lineQuantity, netNeed } from "./engine/order-shared";
 
 type T = (s: string) => string;
 
 // ── Minimums ───────────────────────────────────────────────────────────────
 
-const roundUp = (q: number, pack: number) => Math.ceil(q / pack) * pack;
 const packOf = (pack: number | null | undefined) => (pack && pack > 1 ? Math.floor(pack) : 1);
 
-/** One line's quantity: need rounded up to the pack, then raised to the MOQ (rounded to the pack). 0 stays 0. */
-export function lineQuantity(need: number, pack: number | null, moq: number | null): number {
-  if (!(need > 0)) return 0;
-  const p = packOf(pack);
-  let q = roundUp(Math.ceil(need - 1e-9), p);
-  if (moq && moq > q) q = roundUp(moq, p);
-  return q;
-}
+// lineQuantity (case pack, then MOQ) and netNeed (open Keha units netted from the need) live in
+// the engine so Order now and the forward order plan use the very same functions.
+export { lineQuantity, netNeed };
 
 export type TopUpLine = { qty: number; pack: number | null; weight: number };
 
@@ -105,6 +100,11 @@ export type ReorderMetricIn = {
    * Absent on rows computed before it existed: orderQty is used instead.
    */
   need?: number | null;
+  /**
+   * False when the forward plan can't plan the variant (dead, not enough data, no sales):
+   * it is then not listed unless asked for. Absent = plannable (older callers).
+   */
+  plannable?: boolean;
 };
 
 export type ReorderSupplierIn = SupplierLite & { currency: string | null; hasEmail: boolean };
@@ -201,11 +201,9 @@ export function buildReorderGroups(input: BuildReorderInput): ReorderGroup[] {
     // (drafts, and orders sent since compute last ran) — from the UNROUNDED need when compute
     // stored it, then round (case pack, MOQ): need 3, MOQ 50, a 3-unit draft → nothing (review fix).
     const notCounted = Math.max(0, onOrder - Math.max(0, m?.kehaCounted ?? 0));
-    const rawNeed = m?.need;
-    const need =
-      typeof rawNeed === "number" && Number.isFinite(rawNeed)
-        ? Math.max(0, rawNeed - notCounted)
-        : Math.max(0, (m?.orderQty ?? 0) - notCounted);
+    // Not plannable (dead, not enough data, no sales): the forward plan has no order for it,
+    // so Order now doesn't list it either (one rule for both, forward-plan-shared).
+    const need = m?.plannable === false ? 0 : netNeed(m?.need, m?.orderQty, notCounted);
     const plannedQty = input.planned?.get(v.id);
     const isSel = selected.has(v.id) || plannedQty !== undefined;
     if (need <= 0 && !isSel) continue;
