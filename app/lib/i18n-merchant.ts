@@ -175,4 +175,23 @@ export const MERCHANT_TR: Record<string, Tr> = {
     nl: "1 regel zonder kostprijs zit niet in de totalen.",
     pl: "1 pozycja bez ceny zakupu nie jest wliczona w sumy.",
   },
+  // ── "Why this quantity": sales the order can't serve (not "missed while sold out") ──
+  "Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}": {
+    es: "Previsión de los próximos {n} días: {demand} (ventas al día {rate}, temporada ×{season}) + seguridad {safety} − en stock {onHand} − pedido {onOrder} − ventas que no puede cubrir (agotado antes de que llegue) {missed} = {need}",
+    fr: "Prévision des {n} prochains jours : {demand} (ventes par jour {rate}, saison ×{season}) + sécurité {safety} − en stock {onHand} − en commande {onOrder} − ventes qu'elle ne peut pas couvrir (rupture avant son arrivée) {missed} = {need}",
+    de: "Prognose für die nächsten {n} Tage: {demand} (Verkäufe pro Tag {rate}, Saison ×{season}) + Sicherheit {safety} − Bestand {onHand} − bestellt {onOrder} − Verkäufe, die sie nicht abdecken kann (ausverkauft, bevor sie ankommt) {missed} = {need}",
+    it: "Previsione per i prossimi {n} giorni: {demand} (vendite al giorno {rate}, stagione ×{season}) + sicurezza {safety} − in stock {onHand} − in ordine {onOrder} − vendite che non può coprire (esaurito prima che arrivi) {missed} = {need}",
+    pt: "Previsão para os próximos {n} dias: {demand} (vendas por dia {rate}, temporada ×{season}) + segurança {safety} − em stock {onHand} − encomendado {onOrder} − vendas que não consegue cobrir (esgotado antes de chegar) {missed} = {need}",
+    nl: "Prognose voor de komende {n} dagen: {demand} (verkopen per dag {rate}, seizoen ×{season}) + veiligheid {safety} − op voorraad {onHand} − besteld {onOrder} − verkopen die ze niet kan dekken (uitverkocht voordat ze aankomt) {missed} = {need}",
+    pl: "Prognoza na najbliższe {n} dni: {demand} (sprzedaż dziennie {rate}, sezon ×{season}) + zapas {safety} − na stanie {onHand} − zamówione {onOrder} − sprzedaż, której nie pokryje (brak towaru przed dostawą) {missed} = {need}",
+  },
+  "Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}": {
+    es: "Previsión de los {n} días desde este pedido: {demand} (ventas al día {rate}, temporada ×{season}) + seguridad {safety} − stock previsto entonces {onHand} − pedido {onOrder} − ventas que no puede cubrir (agotado antes de que llegue) {missed} = {need}",
+    fr: "Prévision des {n} jours à partir de cette commande : {demand} (ventes par jour {rate}, saison ×{season}) + sécurité {safety} − stock prévu alors {onHand} − en commande {onOrder} − ventes qu'elle ne peut pas couvrir (rupture avant son arrivée) {missed} = {need}",
+    de: "Prognose für die {n} Tage ab dieser Bestellung: {demand} (Verkäufe pro Tag {rate}, Saison ×{season}) + Sicherheit {safety} − dann erwarteter Bestand {onHand} − bestellt {onOrder} − Verkäufe, die sie nicht abdecken kann (ausverkauft, bevor sie ankommt) {missed} = {need}",
+    it: "Previsione per i {n} giorni da questo ordine: {demand} (vendite al giorno {rate}, stagione ×{season}) + sicurezza {safety} − stock previsto allora {onHand} − in ordine {onOrder} − vendite che non può coprire (esaurito prima che arrivi) {missed} = {need}",
+    pt: "Previsão para os {n} dias a partir desta encomenda: {demand} (vendas por dia {rate}, temporada ×{season}) + segurança {safety} − stock previsto nessa altura {onHand} − encomendado {onOrder} − vendas que não consegue cobrir (esgotado antes de chegar) {missed} = {need}",
+    nl: "Prognose voor de {n} dagen vanaf deze bestelling: {demand} (verkopen per dag {rate}, seizoen ×{season}) + veiligheid {safety} − dan verwachte voorraad {onHand} − besteld {onOrder} − verkopen die ze niet kan dekken (uitverkocht voordat ze aankomt) {missed} = {need}",
+    pl: "Prognoza na {n} dni od tego zamówienia: {demand} (sprzedaż dziennie {rate}, sezon ×{season}) + zapas {safety} − przewidywany wtedy stan {onHand} − zamówione {onOrder} − sprzedaż, której nie pokryje (brak towaru przed dostawą) {missed} = {need}",
+  },
 };

@@ -457,13 +457,15 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
     need: nf(Math.max(0, why.need), locale),
   };
   // Data audit #1: sales missed while sold out before the order lands are lost, not ordered back.
+  // Merchant audit 2026-10-18: worded as what they are — future sales this order can't serve —
+  // not "missed while sold out" (read as sales already lost).
   const missed = (why.missed ?? 0) > 1e-6;
   const out = [
     fill(
       missed
         ? first
-          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − missed while sold out {missed} = {need}")
-          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − missed while sold out {missed} = {need}")
+          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}")
+          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}")
         : first
           ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}")
           : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} = {need}"),
