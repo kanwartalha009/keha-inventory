@@ -1,6 +1,7 @@
 /**
  * Settings (/app/settings), spec §5.5. The Defaults tab: lead time (with
- * order cycle and thresholds under "More options") and the app language. The
+ * order cycle, thresholds, safety level and the growth assumption under
+ * "More options") and the app language. The
  * Monday email, Slack and instant alerts live on the Alerts tab
  * (app.settings_.alerts.tsx); suppliers and locations on their own tabs.
  * At most 8 visible fields per section (spec §5.5); everything has a default.
@@ -13,7 +14,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
-import { SelectField, val } from "../components/wc";
+import { ChoiceListField, SelectField, val } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
 import {
   SETTINGS_BOUNDS,
@@ -22,6 +23,7 @@ import {
   type SafetyLevel,
   type SettingsErrors,
   type SettingsForm,
+  type TrendMode,
 } from "../lib/settings-shared";
 import { getShopSettings, saveShopSettings } from "../models/settings.server";
 
@@ -47,6 +49,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     tooMuchDays: String(body.tooMuchDays ?? ""),
     deadDays: String(body.deadDays ?? ""),
     safetyLevel: String(body.safetyLevel ?? ""),
+    trendMode: String(body.trendMode ?? ""),
   };
   const current = await getShopSettings(session.shop);
   const r = applySettingsForm(current, form, new Date());
@@ -66,7 +69,8 @@ export default function Settings() {
   const fetcher = useFetcher<ActionData>();
   const [form, setForm] = useState<SettingsForm>(initial);
   const [saved, setSaved] = useState<SettingsForm>(initial);
-  const [more, setMore] = useState(false);
+  // A non-default growth assumption keeps More options open, so it is never a hidden surprise.
+  const [more, setMore] = useState(initial.trendMode === "store");
   const saving = fetcher.state !== "idle";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
@@ -131,6 +135,19 @@ export default function Settings() {
                 ]}
                 onChange={(v) => set("safetyLevel", v)}
                 details={t("Extra stock for surprises in demand: Safe runs out less often but ties up more cash, Lean the opposite.")}
+              />
+              <ChoiceListField<TrendMode>
+                label={t("Growth assumption")}
+                choices={[
+                  { value: "off", label: t("Off (recommended)"), helpText: t("Use today's sales pace and season.") },
+                  {
+                    value: "store",
+                    label: t("Add the store's year-on-year growth"),
+                    helpText: t("Today's sales pace already includes recent growth, so adding it again usually orders too much."),
+                  },
+                ]}
+                selected={[form.trendMode as TrendMode]}
+                onChange={(v) => v[0] && set("trendMode", v[0])}
               />
             </s-stack>
           </Disclosure>

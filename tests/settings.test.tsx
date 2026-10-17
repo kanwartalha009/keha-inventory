@@ -51,6 +51,17 @@ describe("settings form", () => {
     const bad = applySettingsForm(lean, { ...settingsToForm(lean), safetyLevel: "reckless" }, now);
     expect(bad.ok && bad.settings.safetyLevel).toBe("lean");
   });
+
+  it("growth assumption: off by default, saves 'store', an unknown value keeps the current mode", () => {
+    expect(settingsToForm(DEFAULT_SETTINGS).trendMode).toBe("off");
+    const on = applySettingsForm(DEFAULT_SETTINGS, { ...settingsToForm(DEFAULT_SETTINGS), trendMode: "store" }, now);
+    expect(on.ok && on.settings.trendMode).toBe("store");
+    const store = { ...DEFAULT_SETTINGS, trendMode: "store" as const };
+    const bad = applySettingsForm(store, { ...settingsToForm(store), trendMode: "double" }, now);
+    expect(bad.ok && bad.settings.trendMode).toBe("store");
+    const off = applySettingsForm(store, { ...settingsToForm(store), trendMode: "off" }, now);
+    expect(off.ok && off.settings.trendMode).toBe("off");
+  });
 });
 
 describe("Settings page", () => {
@@ -63,6 +74,19 @@ describe("Settings page", () => {
     expect(html).toContain("More options");
     expect(html).toContain("App language");
     expect(html).toMatch(/<s-number-field[^>]*value="14"/);
+    expect(html).not.toContain("Growth assumption"); // in More options, collapsed while it is off
+  });
+
+  it("a store that turned the growth assumption on sees it (More options open), with the honest note", () => {
+    const data = { form: settingsToForm({ ...DEFAULT_SETTINGS, trendMode: "store" }) };
+    const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
+    const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expect(html).toContain("Growth assumption");
+    expect(html).toContain("Off (recommended)");
+    expect(html).toContain("Use today&#x27;s sales pace and season.");
+    expect(html).toMatch(/<s-choice value="store" selected=/);
+    expect(html).not.toMatch(/<s-choice value="off" selected=/);
+    expect(html).toContain("adding it again usually orders too much");
   });
 
   it("same anatomy as every tab: cards with a heading and a one-line description, Save in the save bar", () => {

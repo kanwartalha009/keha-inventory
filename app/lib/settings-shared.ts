@@ -102,6 +102,8 @@ export type SettingsForm = {
   deadDays: string;
   /** "lean" | "balanced" | "safe"; anything else keeps the current level. */
   safetyLevel: string;
+  /** Growth assumption: "off" | "store"; anything else keeps the current mode. */
+  trendMode: string;
 };
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
@@ -164,6 +166,7 @@ export function applySettingsForm(
       tooMuchDays,
       deadDays,
       safetyLevel: isLevel(form.safetyLevel) ? form.safetyLevel : current.safetyLevel,
+      trendMode: form.trendMode === "off" || form.trendMode === "store" ? form.trendMode : current.trendMode,
     },
   };
 }
@@ -175,6 +178,7 @@ export function settingsToForm(s: ShopSettings): SettingsForm {
     tooMuchDays: String(s.tooMuchDays),
     deadDays: String(s.deadDays),
     safetyLevel: s.safetyLevel,
+    trendMode: s.trendMode,
   };
 }
 
