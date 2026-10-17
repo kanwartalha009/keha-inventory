@@ -4,7 +4,7 @@
  * (services/sync/catalog.server upsertLocation writes name / active / online only).
  */
 import prisma from "../db.server";
-import { POOL_LOCATION_SELECT } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, countsInSupplierOrders } from "../lib/compute-shared";
 import {
   planningLocations,
   sortLocations,
@@ -40,6 +40,7 @@ export async function saveLocationSettings(shop: string, updates: readonly Locat
 
 /** Active warehouses and stores: the switcher's choices and the transfer plan's ends. */
 export async function listPlanningLocations(shop: string): Promise<PlanningLocation[]> {
-  const rows = await prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true, role: true } });
-  return planningLocations(rows);
+  const rows = await prisma.location.findMany({ where: { shop }, select: { id: true, name: true, active: true, role: true, online: true, onlinePool: true } });
+  const inPool = new Set(rows.filter((l) => countsInSupplierOrders(l)).map((l) => l.id));
+  return planningLocations(rows).map((l) => ({ ...l, inPool: inPool.has(l.id) }));
 }

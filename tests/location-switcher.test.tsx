@@ -197,6 +197,14 @@ describe("SSR: the switcher", () => {
     expect(html).toContain("No numbers for this location yet.");
   });
 
+  it("R4: a warehouse that counts in supplier orders says its sales are a stock share of online sales (no fulfilment location)", () => {
+    const html = render("/app/products?location=1", "products", Products, products({ location: { ...WH, inPool: true } }));
+    expect(html).toContain("Shopify doesn&#x27;t report which warehouse shipped an online order, so its sales per day are its share of online sales by the stock it holds.");
+    expect(html).not.toContain("Sales per day are this location&#x27;s own sales");
+    // Left out of supplier orders: its own sales, as before.
+    expect(render("/app/products?location=1", "products", Products, products({ location: { ...WH, inPool: false } }))).toContain("Sales per day are this location&#x27;s own sales");
+  });
+
   it("Pro without warehouses or stores: points to Settings → Locations", () => {
     const html = render("/app/products", "products", Products, products({ locations: [] }));
     expect(html).toContain('href="/app/settings/locations"');

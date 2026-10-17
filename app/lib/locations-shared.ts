@@ -151,7 +151,17 @@ export function locationsErrorText(error: LocationsFormError, t: T): string {
 
 // ── Planning locations and the switcher ──────────────────────────────────
 
-export type PlanningLocation = { id: string; name: string; role: LocationRole };
+export type PlanningLocation = {
+  id: string;
+  name: string;
+  role: LocationRole;
+  /**
+   * Counts in supplier orders (R4): a warehouse that does is planned as one pool with the others,
+   * its sales per day being its stock share of online demand (compute-locations-shared), because
+   * Shopify's sales reports don't say which warehouse shipped an online order. Absent = unknown.
+   */
+  inPool?: boolean;
+};
 
 /** Active warehouses and stores (the ones with their own plan). */
 export function planningLocations(rows: readonly { id: string; name: string; active: boolean; role: string }[]): PlanningLocation[] {

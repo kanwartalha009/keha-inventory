@@ -163,7 +163,9 @@ export default function Products() {
       heading={t("Products")}
       intro={
         location
-          ? `${t("One row per variant this location carries. Sales per day are this location's own sales, counted only on the days it had the variant in stock.")} ${stockScope}`
+          ? location.role === "warehouse" && location.inPool
+            ? `${t("One row per variant this warehouse carries. Shopify doesn't report which warehouse shipped an online order, so its sales per day are its share of online sales by the stock it holds. Supplier orders are planned once for every warehouse they count.")} ${stockScope}`
+            : `${t("One row per variant this location carries. Sales per day are this location's own sales, counted only on the days it had the variant in stock.")} ${stockScope}`
           : `${t("One row per variant. Sales per day count only the days the variant was in stock.")} ${stockScope}`
       }
       secondaryActions={[<CsvButton key="csv" enabled={data.csv} filters={filters} location={location} />]}
