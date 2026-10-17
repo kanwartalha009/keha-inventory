@@ -133,3 +133,17 @@ describe("reviewer instructions", () => {
     expect(rows).toEqual(scopes);
   });
 });
+
+describe("reviewer notes match the app (launch re-audit 2026-10-17)", () => {
+  const reviewer = read("docs/listing/REVIEWER.md");
+  const checklist = read("docs/listing/SUBMISSION-CHECKLIST.md");
+  it("say Free shows a top-10 preview of the order plan and how to see Growth", () => {
+    expect(reviewer).toMatch(/On Free, the order plan is a top-10 preview/);
+    expect(reviewer).toMatch(/pick \*\*Growth\*\* on Shopify's\s+plan page/);
+  });
+  it("quote the Dashboard's current empty-state copy, not a retired one", () => {
+    expect(checklist).not.toContain("We need at least 14 days of sales to give advice.");
+    expect(checklist).toContain("Your first order plan needs 14 days of sales — we'll show it here on {date}.");
+    expect(reviewer).not.toMatch(/preorder bridge/i);
+  });
+});

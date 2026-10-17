@@ -38,11 +38,15 @@ staff login: **[Kanwar to provide]**. Storefront password (if asked): **[Kanwar 
 **Growth** (or **Pro**) — on a development / test store there is no charge. Free works too and
 shows locked features with an explanation and an **Upgrade** button (nothing is hidden). To
 switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's plan page).
+**On Free, the order plan is a top-10 preview:** the Dashboard and **Order plan → Order now** show
+the 10 most urgent products (days left, order-by date, suggested quantity), read only. To see the
+whole plan (Order now by supplier, Next 13 weeks, purchase orders), pick **Growth** on Shopify's
+plan page (**Plans → Choose plan**; no charge on a development store) — the screens update at once.
 
 | Plan | Unlocks |
 |---|---|
 | Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
-| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
+| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, what to do while a best seller is sold out (back-in-stock sign-ups; the **Bridge** tab of the actions), Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
 | Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
 **Steps (Growth plan, store with history).**

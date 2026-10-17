@@ -162,7 +162,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 
 | Requirement | Where in the docs | Status | Evidence | Fix |
 |---|---|---|---|---|
-| UI works on install, no web errors, on an empty store | pass-app-review ("UI must work on install") | ✅ / ⚠️ | Home shows "Reading your store…" with progress, then "We need at least 14 days of sales to give advice." (`app/routes/app._index.tsx:181`, `tests/home-ssr.test.tsx:87`); empty states in Products, Reorder, Planner, Transfers SSR tests | Live on a fresh dev store (owner action 12) |
+| UI works on install, no web errors, on an empty store | pass-app-review ("UI must work on install") | ✅ / ⚠️ | The Dashboard shows the Setup guide and "Reading your store…" with progress per dataset; with fewer than 14 days of sales, "Not enough sales yet to advise — Your first order plan needs 14 days of sales — we'll show it here on {date}." (`app/routes/app._index.tsx:142`, `tests/home-ssr.test.tsx:110,144`); nothing tracked: "No stock tracked yet" with **Open products in Shopify** (`app/routes/app._index.tsx:154`); Order now, Next 13 weeks, the Monday email and Sidekick say why there is nothing to order yet; empty states in Products, Order plan, Season plan, Transfers SSR tests | Live on a fresh dev store (owner action 12) |
 | Onboarding that guides core setup | BFS 4.2.2 (reference) | ✅ | Setup guide ticked from real state, hidden once done (`app/routes/app._index.tsx:91,233`) | — |
 
 ## Built for Shopify (reference — after 50 installs and 5 reviews)
