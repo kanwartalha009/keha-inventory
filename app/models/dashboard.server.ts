@@ -23,12 +23,15 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
   if (!row) return { shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 };
 
   const tracked = { shop, tracked: true, isBundle: false } as const;
-  const [money, trackedVariants, variantsWithCost, days] = await Promise.all([
+  const [money, trackedVariants, variantsWithCost, days, supplierCount, vendors] = await Promise.all([
     prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" } }),
     prisma.variant.count({ where: tracked }),
     prisma.variant.count({ where: { ...tracked, cost: { not: null } } }),
     // GROUP BY day … LIMIT 14: we only need to know whether 14 distinct days exist.
     prisma.salesDaily.groupBy({ by: ["day"], where: { shop }, orderBy: { day: "desc" }, take: MIN_SALES_DAYS }),
+    // Setup guide "Suppliers": suppliers kept (Growth+) / vendors found (Free).
+    prisma.supplier.count({ where: { shop } }),
+    prisma.variant.groupBy({ by: ["vendor"], where: { shop, vendor: { not: null } }, orderBy: { vendor: "asc" }, take: 1000 }),
   ]);
 
   return {
@@ -46,6 +49,8 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     trackedVariants,
     variantsWithCost,
     salesDays: days.length,
+    supplierCount,
+    vendorCount: vendors.filter((v) => !!v.vendor?.trim()).length,
   };
 }
 

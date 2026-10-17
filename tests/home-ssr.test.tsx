@@ -53,6 +53,41 @@ describe("Home", () => {
     expect(html).toContain("Order this week");
     expect(html).toContain("Your order plan appears here once your products, stock and sales are read.");
     expect(html).toContain("Setup guide");
+    // First 10 minutes: the setup guide first, then the sync progress, then the order block.
+    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Reading your store…"));
+    expect(html.indexOf("Reading your store…")).toBeLessThan(html.indexOf("Order this week"));
+    // Suppliers step (Growth): what suppliers are for.
+    expect(html).toContain("Add your suppliers&#x27; lead times and case packs — they set every order-by date.");
+  });
+
+  it("first sync: the real update time once any computation finished, before the first nightly", () => {
+    const raw = homeRaw();
+    raw.shop!.lastNightlyAt = null;
+    const html = home(raw);
+    expect(html).not.toContain("First sync in progress");
+    expect(html).toContain("Updated Oct 15, 05:20"); // basis.computedAt 03:20Z in Madrid
+    // Both known: the later one.
+    const both = homeRaw();
+    both.shop!.lastNightlyAt = new Date("2026-10-14T01:00:00Z");
+    expect(home(both)).toContain("Updated Oct 15, 05:20");
+    const none = homeRaw();
+    none.shop!.lastNightlyAt = null;
+    none.money = null;
+    expect(home(none)).toContain("First sync in progress");
+  });
+
+  it("setup guide Suppliers step: Growth adds suppliers (done once one exists); Free sees the vendors found", () => {
+    const growth = homeRaw();
+    expect(home(growth)).toContain('href="/app/settings/suppliers"');
+    growth.supplierCount = 3;
+    const set = home(growth);
+    expect(set).toContain("3 suppliers set up.");
+    const free = homeRaw();
+    free.vendorCount = 7;
+    const fhtml = home(free, "free");
+    expect(fhtml).toContain("Vendors found: 7");
+    expect(fhtml).toContain("Add suppliers · Growth plan");
+    expect(fhtml).toContain('href="/app/plans?upgrade=suppliers"');
   });
 
   it("ready: four cards from the latest row, a null card shows a dash, popovers end with 'Based on:'", () => {
@@ -71,9 +106,9 @@ describe("Home", () => {
     expect(count(html, "Based on: ")).toBe(4);
     expect(html).toContain("Assumes stock on order arrives within 28 days");
     expect(html).toContain("Valued at retail price");
-    // Free plan: money refreshes weekly now (audit 2026-10-17); the monthly note (and its upgrade
-    // link) is gone until Home shows the weekly one (forecastNotes().refreshedWeekly).
-    expect(html).not.toContain("Refreshed monthly on Free");
+    // Free plan: weekly refresh with an upgrade link.
+    expect(html).toContain("Refreshed weekly on Free");
+    expect(html).toContain('href="/app/plans"');
     // Older months still loading: bars stay, with the partial note.
     expect(html).toContain("Older months are still loading.");
     expect(count(html, "<s-progress")).toBe(4);
@@ -83,8 +118,8 @@ describe("Home", () => {
     expect(html).not.toContain("Data is late");
   });
 
-  it("paid plans don't show the monthly note", () => {
-    expect(home(homeRaw(), "growth")).not.toContain("Refreshed monthly on Free");
+  it("paid plans don't show the Free refresh note", () => {
+    expect(home(homeRaw(), "growth")).not.toContain("Refreshed weekly on Free");
   });
 
   it("ready but nothing computed yet says so instead of inventing numbers", () => {
@@ -99,7 +134,8 @@ describe("Home", () => {
     const raw = homeRaw();
     raw.salesDays = 9;
     const html = home(raw);
-    expect(html).toContain("We need at least 14 days of sales to give advice.");
+    // 9 of 14 days: 5 more nights of sales from today (16 Oct in Madrid) → 21 Oct.
+    expect(html).toContain("Your first order plan needs 14 days of sales — we&#x27;ll show it here on Oct 21, 2026.");
     expect(html).not.toContain("Sales at risk (next 28 days)");
   });
 
@@ -120,7 +156,7 @@ describe("Home", () => {
     expect(html).toContain("Data is late — no action needed, we&#x27;re retrying.");
   });
 
-  it("setup guide: steps ticked from real state, hidden when all three are done", () => {
+  it("setup guide: steps ticked from real state, hidden when all four are done", () => {
     const html = home(homeRaw());
     expect(html).toContain("How long do your suppliers take?");
     expect(html).toContain("Product costs found for 50% of products");
@@ -131,6 +167,7 @@ describe("Home", () => {
     const raw = homeRaw();
     raw.shop!.settings = { leadTimeConfirmedAt: "2026-10-01T00:00:00Z", mondayEmail: { enabled: true, recipients: ["ops@acme.test"] } };
     raw.variantsWithCost = 190;
+    raw.supplierCount = 1;
     const done = home(raw);
     expect(done).not.toContain("Setup guide");
 

@@ -7,7 +7,10 @@
  *     linking to Order plan · Next 90 days. Free: the read-only top-10 preview and the teaching
  *     lock instead (suppliers, purchase orders and the calendar are Growth).
  *  2. Money at stake (4 cards, each with "How we got this").
- *  3. The setup guide while incomplete, sync progress per dataset and the empty states.
+ *  3. The setup guide while incomplete (Lead times, Suppliers, Product costs, Monday email),
+ *     sync progress per dataset and the empty states. First 10 minutes (audit 2026-10-17):
+ *     before the store is ready the setup guide comes FIRST, then the sync progress, so the
+ *     merchant has something to do while we read the store.
  *  4. "This week's actions" (task 2.3) once the store is ready.
  * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
  * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
@@ -38,6 +41,7 @@ import { ActionList } from "../components/action-list";
 import type { ActionListView } from "../lib/action-list-shared";
 import { AppPage, FormCard, HeaderLabel } from "../components/ui";
 import { useLinkProps } from "../components/wc";
+import { planTag } from "../components/plan";
 import { fill, useLocale } from "../lib/i18n";
 import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
 import {
@@ -89,21 +93,33 @@ const SHOPIFY_PRODUCTS = "shopify://admin/products";
 export default function Home() {
   const { t, locale } = useLocale();
   const data = useLoaderData<typeof loader>() as HomeLoaderData;
-  const updated = updatedLabel(data.lastNightlyAt, data.timezone, locale, data.renderedAt ? new Date(data.renderedAt) : new Date(), t);
+  // The real update time as soon as any computation finished (the first one runs before the first nightly).
+  const updated = updatedLabel(data.updatedAt ?? data.lastNightlyAt, data.timezone, locale, data.renderedAt ? new Date(data.renderedAt) : new Date(), t);
+  const ready = data.state === "ready";
 
   return (
     <AppPage heading={t("Dashboard")} intro={updated}>
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 
+      {/* Not ready yet: something to do first (setup), then how far the reading is. */}
+      {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
+      {data.state === "syncing" && !data.sync.done && <SyncProgress data={data} />}
+
       <OrderThisWeek data={data} />
 
-      {data.state === "ready" && <MoneyAtStake data={data} />}
+      {ready && <MoneyAtStake data={data} />}
 
-      {data.state === "ready" && data.actions && <ActionList list={data.actions} timezone={data.timezone} />}
+      {ready && data.actions && <ActionList list={data.actions} timezone={data.timezone} />}
 
       {data.state === "noSales" && (
         <s-section heading={t("Not enough sales yet to advise")}>
-          <s-paragraph>{t("We need at least 14 days of sales to give advice.")}</s-paragraph>
+          <s-paragraph>
+            {data.noSalesReadyOn
+              ? fill(t("Your first order plan needs 14 days of sales — we'll show it here on {date}."), {
+                  date: formatDay(data.noSalesReadyOn, locale),
+                })
+              : t("Your first order plan needs 14 days of sales.")}
+          </s-paragraph>
         </s-section>
       )}
 
@@ -120,9 +136,9 @@ export default function Home() {
         </s-section>
       )}
 
-      {!data.sync.done && <SyncProgress data={data} />}
+      {data.state !== "syncing" && !data.sync.done && <SyncProgress data={data} />}
 
-      {!data.setup.allDone && <SetupGuide data={data} />}
+      {data.state !== "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
     </AppPage>
   );
 }
@@ -279,9 +295,9 @@ function MoneyAtStake({ data }: { data: HomeData }) {
             </s-grid>
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text color="subdued">{fill(t("Numbers from {day}"), { day: fmt.day(money.day) })}</s-text>
-              {data.refresh === "monthly" && (
+              {data.refresh !== "daily" && (
                 <>
-                  <s-text color="subdued">· {t("Refreshed monthly on Free")}</s-text>
+                  <s-text color="subdued">· {t("Refreshed weekly on Free")}</s-text>
                   <s-link {...link("/app/plans")}>{t("Upgrade")}</s-link>
                 </>
               )}
@@ -392,7 +408,7 @@ function SetupStep({
 }
 
 function SetupGuide({ data }: { data: HomeData }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const link = useLinkProps();
   const s = data.setup;
   const to = s.mondayRecipients.length > 0 ? s.mondayRecipients.join(", ") : t("the store owner");
@@ -411,6 +427,31 @@ function SetupGuide({ data }: { data: HomeData }) {
             <s-button variant="secondary" {...link("/app/settings")}>
               {s.leadTimeDone ? t("Change") : t("Set lead time")}
             </s-button>
+          }
+        />
+        <s-divider />
+        <SetupStep
+          done={s.suppliersDone}
+          title={t("Suppliers")}
+          sub={
+            s.suppliersEnabled
+              ? s.supplierCount > 0
+                ? fill(s.supplierCount === 1 ? t("1 supplier set up.") : t("{n} suppliers set up."), { n: formatCount(s.supplierCount, locale) })
+                : t("Add your suppliers' lead times and case packs — they set every order-by date.")
+              : s.vendorCount === null
+                ? t("We'll group your orders by vendor once your products are read.")
+                : fill(t("Vendors found: {n}"), { n: formatCount(s.vendorCount, locale) })
+          }
+          action={
+            s.suppliersEnabled ? (
+              <s-button variant="secondary" {...link("/app/settings/suppliers")}>
+                {s.supplierCount > 0 ? t("Change") : t("Add suppliers")}
+              </s-button>
+            ) : (
+              <s-button variant="secondary" icon="lock" {...link("/app/plans?upgrade=suppliers")}>
+                {`${t("Add suppliers")} · ${planTag("suppliers", t)}`}
+              </s-button>
+            )
           }
         />
         <s-divider />

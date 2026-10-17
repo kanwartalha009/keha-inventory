@@ -4,7 +4,7 @@
  * pass `now`), no fake numbers: anything unknown stays null and renders "—".
  */
 import { MONEY_CARDS, type MoneyBasisJson, type MoneyCardKey, type MoneySnapshot } from "./money-shared";
-import { MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "./plan-shared";
+import { hasFeature, MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { readSettings } from "./settings-shared";
 import {
   DATASETS,
@@ -54,6 +54,10 @@ export type HomeRaw = {
   variantsWithCost: number;
   /** Distinct days with at least one SalesDaily row (capped at MIN_SALES_DAYS by the query). */
   salesDays: number;
+  /** Suppliers in Settings → Suppliers (setup guide step "Suppliers"); undefined = not read. */
+  supplierCount?: number;
+  /** Distinct, non-blank vendors in the catalog (Free's "Vendors found"); undefined = not read. */
+  vendorCount?: number;
 };
 
 export type DatasetBar = { key: Dataset; percent: number; failed: boolean };
@@ -62,6 +66,13 @@ export type HomeData = {
   storeName: string;
   timezone: string | null;
   lastNightlyAt: string | null;
+  /**
+   * When the numbers were last worked out: the later of the last nightly run and the latest
+   * money-at-stake computation (the first compute runs before the first nightly). Null = never.
+   */
+  updatedAt: string | null;
+  /** "noSales": the earliest day the first order plan can appear (14 days of sales); else null. */
+  noSalesReadyOn: string | null;
   dataLate: boolean;
   state: HomeState;
   refresh: MoneyRefresh;
@@ -75,6 +86,13 @@ export type HomeData = {
     costsDone: boolean;
     mondayEnabled: boolean;
     mondayRecipients: string[];
+    /** Growth and Pro keep suppliers; Free plans by vendor. */
+    suppliersEnabled: boolean;
+    supplierCount: number;
+    /** null = the catalog isn't read yet. */
+    vendorCount: number | null;
+    /** Growth+: at least one supplier. Free: vendors stand in for suppliers, so nothing to do. */
+    suppliersDone: boolean;
     allDone: boolean;
   };
 };
@@ -138,6 +156,29 @@ export function toMoneySnapshot(row: HomeRaw["money"], fallbackCurrency: string)
   };
 }
 
+/** The later of two ISO / Date times (either may be missing or invalid). */
+function latestIso(...vals: Array<Date | string | null | undefined>): string | null {
+  let best: number | null = null;
+  for (const v of vals) {
+    if (!v) continue;
+    const t = new Date(v).getTime();
+    if (Number.isFinite(t) && (best === null || t > best)) best = t;
+  }
+  return best === null ? null : new Date(best).toISOString();
+}
+
+/**
+ * The earliest day the first order plan can show: SalesDaily holds yesterday and older
+ * (I-12), so each missing day of sales lands the night after — today + the days still
+ * missing. Days without any sale push it later (the plan simply appears once 14 days exist).
+ */
+export function firstPlanDay(today: string, salesDays: number): string {
+  const missing = Math.max(1, MIN_SALES_DAYS - Math.max(0, Math.floor(salesDays)));
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + missing);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Everything Home renders, from the raw database facts. */
 export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
   const settings = readSettings(raw.shop?.settings);
@@ -157,11 +198,17 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
   const leadTimeDone = !!settings.leadTimeConfirmedAt;
   const costsDone = pct !== null && pct >= COSTS_DONE_PCT;
   const mondayEnabled = settings.mondayEmail.enabled;
+  const suppliersEnabled = hasFeature(plan, "suppliers");
+  const supplierCount = raw.supplierCount ?? 0;
+  const suppliersDone = suppliersEnabled ? supplierCount > 0 : true;
   const last = raw.shop?.lastNightlyAt ?? null;
+  const computedAt = readMoneyBasis(raw.money?.basis)?.computedAt ?? null;
   return {
     storeName: raw.shop ? storeLabel(raw.shop.domain) : "",
     timezone: raw.shop?.timezone || null,
     lastNightlyAt: last ? new Date(last).toISOString() : null,
+    updatedAt: raw.shop ? latestIso(last, computedAt) : null,
+    noSalesReadyOn: state === "noSales" ? firstPlanDay(todayIn(raw.shop?.timezone, now), raw.salesDays) : null,
     dataLate: isDataLate(last, now),
     state,
     refresh: MONEY_REFRESH[plan],
@@ -182,7 +229,11 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
       costsDone,
       mondayEnabled,
       mondayRecipients: settings.mondayEmail.recipients,
-      allDone: leadTimeDone && costsDone && mondayEnabled,
+      suppliersEnabled,
+      supplierCount,
+      vendorCount: raw.vendorCount ?? (catalogDone ? 0 : null),
+      suppliersDone,
+      allDone: leadTimeDone && suppliersDone && costsDone && mondayEnabled,
     },
   };
 }

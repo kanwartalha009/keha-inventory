@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  firstPlanDay,
   COSTS_DONE_PCT,
   basisLines,
   buildHome,
@@ -90,7 +91,31 @@ describe("buildHome", () => {
     raw.shop!.settings = { leadTimeConfirmedAt: "2026-10-01T00:00:00Z", mondayEmail: { enabled: true, recipients: [] } };
     raw.variantsWithCost = 95;
     raw.trackedVariants = 100;
+    // Growth: the Suppliers step needs one supplier; Free plans by vendor, nothing to do.
+    expect(buildHome(raw, "growth", NOW).setup).toMatchObject({ suppliersEnabled: true, suppliersDone: false, allDone: false });
+    expect(buildHome(raw, "free", NOW).setup).toMatchObject({ suppliersEnabled: false, suppliersDone: true, allDone: true });
+    raw.supplierCount = 2;
     expect(buildHome(raw, "growth", NOW).setup.allDone).toBe(true);
+  });
+
+  it("first order plan day: today + the days of sales still missing (at least tomorrow)", () => {
+    expect(firstPlanDay("2026-10-16", 9)).toBe("2026-10-21");
+    expect(firstPlanDay("2026-10-16", 0)).toBe("2026-10-30");
+    expect(firstPlanDay("2026-12-30", 12)).toBe("2027-01-01");
+    expect(firstPlanDay("2026-10-16", 14)).toBe("2026-10-17");
+    const raw = homeRaw();
+    raw.salesDays = 9;
+    expect(buildHome(raw, "growth", NOW).noSalesReadyOn).toBe("2026-10-21");
+    expect(buildHome(homeRaw(), "growth", NOW).noSalesReadyOn).toBeNull();
+  });
+
+  it("updatedAt: the later of the last nightly run and the last money computation", () => {
+    const raw = homeRaw();
+    expect(buildHome(raw, "growth", NOW).updatedAt).toBe("2026-10-16T04:10:00.000Z");
+    raw.shop!.lastNightlyAt = null;
+    expect(buildHome(raw, "growth", NOW).updatedAt).toBe("2026-10-15T03:20:00.000Z");
+    raw.money = null;
+    expect(buildHome(raw, "growth", NOW).updatedAt).toBeNull();
   });
 
   it("flags late data after 36 hours", () => {
