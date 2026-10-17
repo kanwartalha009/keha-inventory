@@ -208,7 +208,7 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
         tables[table] = keep;
         return { count };
       },
-      aggregate: async (args: { where?: Row; _max?: Record<string, boolean>; _min?: Record<string, boolean> }) => {
+      aggregate: async (args: { where?: Row; _max?: Record<string, boolean>; _min?: Record<string, boolean>; _sum?: Record<string, boolean>; _count?: Record<string, boolean> | boolean }) => {
         log("aggregate", args);
         const list = rows().filter((r) => matches(r, args.where));
         const agg = (fields: Record<string, boolean> | undefined, pickFn: (a: unknown, b: unknown) => boolean) => {
@@ -221,10 +221,14 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
           }
           return out;
         };
-        return {
+        const out: Row = {
           _max: agg(args._max, (a, b) => (a as number) > (b as number)),
           _min: agg(args._min, (a, b) => (a as number) < (b as number)),
         };
+        if (args._sum) out._sum = Object.fromEntries(Object.keys(args._sum).map((f) => [f, list.length ? list.reduce((a, r) => a + Number(norm(r[f]) ?? 0), 0) : null]));
+        if (args._count === true) out._count = list.length;
+        else if (args._count) out._count = Object.fromEntries(Object.keys(args._count).map((f) => [f, f === "_all" ? list.length : list.filter((r) => r[f] != null).length]));
+        return out;
       },
       groupBy: async (args: {
         by: string[];

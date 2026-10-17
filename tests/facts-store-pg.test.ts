@@ -118,6 +118,16 @@ run("facts store on Postgres = the in-memory store", () => {
     expect(Number(psql(DB, `SELECT sum(cardinality("endUnits")) AS n FROM "StockMonth"`)[0]!.n)).toBe(rows * 31);
   });
 
+  it("routes every row to its month's partition", () => {
+    for (const [t, col] of [["SalesFact", "day"], ["StockMonth", "month"], ["SessionsFact", "day"]] as const) {
+      const wrong = psql(DB, `SELECT count(*) AS n FROM "${t}" s WHERE s.tableoid::regclass::text <> '"${t}_p' || to_char(s."${col}", 'YYYYMM') || '"'`)[0]!.n;
+      expect(wrong, t).toBe("0");
+      expect(Number(psql(DB, `SELECT count(DISTINCT s.tableoid) AS n FROM "${t}" s`)[0]!.n), t).toBeGreaterThanOrEqual(3);
+    }
+    // StockMonth rows start on the 1st and carry 31 days.
+    expect(psql(DB, `SELECT count(*) AS n FROM "StockMonth" WHERE extract(day from "month") <> 1 OR cardinality("endUnits") <> 31`)[0]!.n).toBe("0");
+  });
+
   it("sales reads: channel view, pool view, store totals, first / last days", async () => {
     await both((s) => s.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop: A, locationKey: "all", variantId: { in: ids }, day: range }, _sum: { sold: true, gross: true, returned: true } }));
     await both((s) => s.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop: A, channel: "all", locationKey: { notIn: ["all", L(2)] }, variantId: { in: ids }, day: range }, _sum: { sold: true } }));
@@ -153,7 +163,11 @@ run("facts store on Postgres = the in-memory store", () => {
     await both((s) => s.stockDaily.aggregate({ where: { shop: A, variantId: V(2) }, _max: { day: true }, _min: { day: true } }));
     await both((s) => s.stockDaily.count({ where: { shop: B, outOfStock: true } }));
     await both((s) => s.stockDaily.groupBy({ by: ["locationId"], where: { shop: A, endUnits: { lte: 0 } }, _count: { _all: true } }));
-    expect(seen).toEqual({ reads: 30, nonEmpty: 29 }); // V(3) is not carried at L(2): null on both
+    // Shapes outside the fast in-memory path (OR at the top level, NOT): the day-by-day evaluator.
+    await both((s) => s.stockDaily.groupBy({ by: ["locationId"], where: { shop: A, OR: [{ endUnits: { gte: 15 } }, { outOfStock: true }] }, _count: { _all: true }, _max: { endUnits: true } }));
+    await both((s) => s.stockDaily.findMany({ where: { shop: B, variantId: V(1), NOT: { locationId: L(1) }, day: { gt: d(addDays(TODAY, -6)) } }, select: { day: true, endUnits: true } }));
+    await both((s) => s.stockDaily.aggregate({ where: { shop: A, variantId: { in: ids }, day: { in: [d(addDays(TODAY, -2)), d(addDays(TODAY, -40))] } }, _sum: { endUnits: true }, _min: { endUnits: true }, _count: { _all: true } }));
+    expect(seen).toEqual({ reads: 33, nonEmpty: 32 }); // V(3) is not carried at L(2): null on both
   });
 
   it("visits reads", async () => {

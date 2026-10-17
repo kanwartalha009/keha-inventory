@@ -407,6 +407,57 @@ function aggList(table: FactTableName, op: { _sum?: AggFields; _min?: AggFields;
   return cols;
 }
 
+/** Does a stock read take the firstDay / lastDay shortcut in buildRead (no unnest, no fetch)? */
+export function stockShortcut(op: ReadOp): boolean {
+  if (!stockKeysOnly(op.where)) return false;
+  if (op.op === "groupBy" || op.op === "aggregate") {
+    const onlyDayMinMax = !op._sum && !op._count && Object.keys({ ...op._min, ...op._max }).every((k) => k === "day") && !!(op._min?.day || op._max?.day);
+    return onlyDayMinMax && (op.op === "aggregate" || op.by.every((b) => b === "variantId" || b === "locationId"));
+  }
+  if (op.op === "findMany") {
+    const o = order(op.orderBy);
+    return op.take === 1 && !!op.select && Object.entries(op.select).every(([k, on]) => !on || k === "day") && o.length === 1 && o[0]![0] === "day";
+  }
+  return false;
+}
+
+/**
+ * The StockMonth rows a stock read can match, for evaluating it in memory (lib/facts-eval-shared):
+ * the shop, the top-level variant and location conditions and the months of the day bounds —
+ * index work only; every condition is applied again on the expanded days.
+ */
+export function buildStockFetch(where: Where | undefined, r: Resolved): { sql: string; params: unknown[] } {
+  const p = new Params();
+  const conds: string[] = [`s."shopNum" = ${p.push(String(r.shopNum))}::int4`];
+  const pushKeys = (field: string) => {
+    const c = where?.[field];
+    if (c === undefined) return;
+    const f = STOCK_FIELDS[field]!;
+    if (typeof c === "string" || (isOpObject(c) && Object.keys(c).every((k) => k === "in" || k === "notIn" || k === "equals"))) {
+      const s = condition(field, f, c, r, p);
+      if (s) conds.push(s);
+    }
+  };
+  pushKeys("variantId");
+  pushKeys("locationId");
+  const { lo, hi } = dayBounds(where);
+  if (lo !== null) conds.push(`s."month" >= ${p.push(monthOf(lo))}::date`);
+  if (hi !== null) conds.push(`s."month" <= ${p.push(hi)}::date`);
+  return {
+    sql: `SELECT s."variantNum", s."locNum", s."month", s."outMask", s."endUnits" FROM "StockMonth" s WHERE ${conds.join(" AND ")}`,
+    params: p.list,
+  };
+}
+
+/** The latest stock day of one month for a keys-only where (the newest-month-first probe). */
+export function buildStockLatestInMonth(where: Where | undefined, month: string, r: Resolved): { sql: string; params: unknown[] } {
+  const p = new Params();
+  const conds: string[] = [`s."shopNum" = ${p.push(String(r.shopNum))}::int4`, `s."month" = ${p.push(month)}::date`];
+  const w = whereSql("stockDaily", where, r, p);
+  if (w) conds.push(w);
+  return { sql: `SELECT max(s."month" + (s."lastDay" - 1)) AS "f_day" FROM "StockMonth" s WHERE ${conds.join(" AND ")}`, params: p.list };
+}
+
 /**
  * One read as SQL. `single`: the result is one object (aggregate, count) instead of a list.
  * Stock min / max of `day` with no condition but shop, variants and locations read firstDay /
@@ -712,9 +763,15 @@ export { monthSegments };
 /** Rows deleted per purge statement (short transactions on large stores). */
 export const PURGE_BATCH = 50_000;
 
-/** The partitions of `parent` holding rows of shop $1 (one index probe per partition). */
-export function purgePartitionsSql(parent: string): string {
-  return `SELECT DISTINCT s.tableoid::regclass::text AS "part" FROM "${parent.replace(/"/g, '""')}" s WHERE s."shopNum" = $1::int4`;
+/** Of these partitions, the ones holding a row of shop $1 (one index probe each); rows { part }. null = none to probe. */
+export function purgeProbeSql(partitions: readonly string[]): string | null {
+  if (!partitions.length) return null;
+  return partitions
+    .map((p) => {
+      const t = `"${p.replace(/"/g, '""')}"`;
+      return `SELECT '${p.replace(/'/g, "''")}'::text AS "part" WHERE EXISTS (SELECT 1 FROM ${t} WHERE "shopNum" = $1::int4)`;
+    })
+    .join("\nUNION ALL\n");
 }
 
 /** Deletes up to PURGE_BATCH of a shop's rows from one partition ($1 = shopNum). Repeat until 0. */
