@@ -52,11 +52,13 @@ vi.mock("../../app/db.server", async () => {
 });
 
 import * as dbModule from "../../app/db.server";
+import { useFakeFacts } from "../helpers/fake-facts";
 import { createShopifyqlClient } from "../../app/services/sync/shopifyql.server";
 import { storeSales, storeStock } from "../../app/services/sync/facts.server";
 import { syncErrorCode } from "../../app/lib/sync/errors-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const TODAY = "2026-10-16";
 const SEPT: DayRange = { since: "2026-09-01", until: "2026-09-30" };

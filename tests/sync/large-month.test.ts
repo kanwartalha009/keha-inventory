@@ -56,6 +56,13 @@ vi.mock("../../app/db.server", () => {
 });
 
 import { STOCK_CHUNK_ROWS, storeStock } from "../../app/services/sync/facts.server";
+import { setFactsStore, type FactsStore } from "../../app/services/facts-store.server";
+
+// The facts store counts each part written (no rows kept), as the Prisma stand-in above did.
+const counting: Pick<FactsStore, "replaceStock"> = {
+  replaceStock: async (_shop, range, rows) => void w.writes.push({ since: range.since, until: range.until, rows: rows.length }),
+};
+setFactsStore(counting as FactsStore);
 import { createShopifyqlClient } from "../../app/services/sync/shopifyql.server";
 
 const TODAY = "2026-10-16";

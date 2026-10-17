@@ -21,6 +21,7 @@
  *  - accuracyDetail: the scorecard's engine vs naive figures, re-read from those rows.
  */
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import {
   INSTOCK_PREFIX,
   STORE_ROW,
@@ -170,12 +171,12 @@ async function gradeOneMonth(
   const days = { gte: dayDate(month), lte: dayDate(end) };
   const rank = rankingWindow(month);
   const [unitsG, revenueG] = await Promise.all([
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { shop, ...demandWhere(demand), day: days },
       _sum: { sold: true },
     }),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { shop, locationKey: ALL, day: { gte: dayDate(rank.from), lte: dayDate(rank.to) } },
       _sum: { gross: true },
@@ -234,9 +235,9 @@ async function inStockShares(
   const out = new Map<string, number>();
   if (!ids.length || !pool.length) return out;
   const [stockG, outG, soldG] = await Promise.all([
-    prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days }, _sum: { endUnits: true }, _count: { _all: true } }),
-    prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days, outOfStock: true }, _count: { _all: true } }),
-    prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...demandWhere(demand), day: days }, _sum: { sold: true } }),
+    facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days }, _sum: { endUnits: true }, _count: { _all: true } }),
+    facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: pool }, day: days, outOfStock: true }, _count: { _all: true } }),
+    facts.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...demandWhere(demand), day: days }, _sum: { sold: true } }),
   ]);
   const want = new Set(ids);
   const outN = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
@@ -263,7 +264,7 @@ export async function accuracyDetail(shop: string, month: string): Promise<Month
   const rows = await prisma.forecastSnapshot.findMany({ where: { shop, month: dayDate(month) }, select: { variantId: true, predicted: true, actual: true } });
   if (!rows.length) return null;
   const rank = rankingWindow(month);
-  const revenueG = await prisma.salesDaily.groupBy({
+  const revenueG = await facts.salesDaily.groupBy({
     by: ["variantId"],
     where: { shop, locationKey: ALL, day: { gte: dayDate(rank.from), lte: dayDate(rank.to) } },
     _sum: { gross: true },

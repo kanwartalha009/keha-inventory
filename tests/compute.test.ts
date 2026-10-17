@@ -16,6 +16,7 @@ vi.mock("../app/db.server", async () => {
 vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "growth" }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { computeShop } from "../app/services/compute.server";
 import { applyDays } from "../app/services/sync/fact-days.server";
 import { collectStock, newCollector } from "../app/lib/sync/fact-days-shared";
@@ -24,6 +25,7 @@ import type { MoneyBasisJson } from "../app/lib/money-shared";
 import { forwardInputFromMetric, planVariant } from "../app/lib/engine/forward-plan-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const NOW = Date.parse("2026-10-16T08:00:00Z"); // 10:00 Madrid → today 2026-10-16
 const d = (day: string) => new Date(`${day}T00:00:00.000Z`);

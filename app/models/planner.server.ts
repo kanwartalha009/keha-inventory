@@ -9,6 +9,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { accuracyDetail } from "../services/accuracy.server";
 import type { MonthScore } from "../lib/engine/accuracy-shared";
 import { canAddScenario, SCENARIO_LIMIT, type PlanCode } from "../lib/plan-shared";
@@ -191,7 +192,7 @@ export async function loadGoals(shop: string, ctx: Pick<PlannerShop, "today" | "
   const [collections, variants, revenueG, metrics, actions] = await Promise.all([
     prisma.collection.findMany({ where: { shop, id: { in: goals.map((g) => g.collectionId) } }, select: { id: true, title: true, handle: true } }),
     prisma.variant.findMany({ where: { shop }, select: { id: true, productId: true, productTitle: true, collections: true } }),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { shop, locationKey: ALL, day: { gte: dayDate(from), lte: dayDate(to) } },
       _sum: { gross: true },
@@ -271,7 +272,7 @@ export async function loadScorecard(shop: string, today: string): Promise<Scorec
   const month = dayOf(latest.month);
   const [snapshot, revenueG] = await Promise.all([
     prisma.forecastSnapshot.findMany({ where: { shop, month: dayDate(month) }, select: { variantId: true, predicted: true, actual: true } }),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       // The ranking the accuracy job graded with: the month before (rankingWindow, no look-ahead).
       where: { shop, locationKey: ALL, day: { gte: dayDate(rankingWindow(month).from), lte: dayDate(rankingWindow(month).to) } },

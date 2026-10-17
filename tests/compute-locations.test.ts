@@ -14,10 +14,12 @@ vi.mock("../app/db.server", async () => {
 vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "pro" }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { computeShop } from "../app/services/compute.server";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const NOW = Date.parse("2026-10-16T08:00:00Z");
 const d = (day: string) => new Date(`${day}T00:00:00.000Z`);

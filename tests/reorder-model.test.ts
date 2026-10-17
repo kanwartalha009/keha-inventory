@@ -28,6 +28,7 @@ vi.mock("../app/db.server", async () => {
 vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn(async () => { throw new Error("offline"); }) } }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import {
   deleteDraft,
   insertWithNumber,
@@ -49,6 +50,7 @@ import { documentFor } from "../app/services/po-document.server";
 import { getOrder } from "../app/models/reorder.server";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(fake);
 const S = "acme.myshopify.com";
 const V1 = "gid://shopify/ProductVariant/1";
 const WH = "gid://shopify/Location/1";

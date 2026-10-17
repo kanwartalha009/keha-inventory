@@ -115,6 +115,7 @@ const DEFAULT_KEYS: Record<string, string[]> = {
   variantLocationDays: ["shop", "variantId", "locationKey"],
   stockDaily: ["shop", "day", "variantId", "locationId"],
   salesDaily: ["shop", "day", "variantId", "locationKey", "channel"],
+  sessionsDaily: ["shop", "day", "landingPath", "trafficType"],
 };
 
 /** `keys[table]` = the columns of its primary / unique key, used by createMany skipDuplicates. */
@@ -232,6 +233,8 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
         _max?: Record<string, boolean>;
         _min?: Record<string, boolean>;
         _count?: Record<string, boolean> | boolean;
+        orderBy?: Row | Row[];
+        take?: number;
       }) => {
         log("groupBy", args);
         const groups = new Map<string, Row[]>();
@@ -239,7 +242,7 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
           const k = JSON.stringify(args.by.map((b) => norm(r[b])));
           (groups.get(k) ?? groups.set(k, []).get(k)!).push(r);
         }
-        return [...groups.values()].map((list) => {
+        const grouped = [...groups.values()].map((list) => {
           const out: Row = {};
           for (const b of args.by) out[b] = list[0][b];
           if (args._sum) {
@@ -275,6 +278,9 @@ export function createFakePrisma(keysIn: Record<string, string[]> = {}, updatedA
           }
           return out;
         });
+        // orderBy (by fields) and take, as Prisma applies them after grouping.
+        const ordered = args.orderBy ? sortRows(grouped, args.orderBy) : grouped;
+        return args.take !== undefined ? ordered.slice(0, args.take) : ordered;
       },
     };
   }

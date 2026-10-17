@@ -20,6 +20,7 @@
  *    CHANNEL view (locationKey "all", every channel). The two views are never added together.
  */
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import {
   computeScenario,
   createPlannerSeason,
@@ -188,8 +189,8 @@ async function plannerSeason(
   const windows = seasonWindows(today, input.start, input.end);
   const pool = { shop, ...demandWhere(ctx.demand) };
   const [storeG, units12G] = await Promise.all([
-    Promise.all(windows.map((r) => prisma.salesDaily.groupBy({ by: ["day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } }))),
-    prisma.salesDaily.groupBy({
+    Promise.all(windows.map((r) => facts.salesDaily.groupBy({ by: ["day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } }))),
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { ...pool, day: { gte: dayDate(addDays(today, -SEASON.units12mDays)), lte: dayDate(yesterday) } },
       _sum: { sold: true },
@@ -211,7 +212,7 @@ async function plannerSeason(
   const groupSeries = new Map<string, UnitsSeries>();
   if (collections.length) {
     const rows = (
-      await Promise.all(windows.map((r) => prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } })))
+      await Promise.all(windows.map((r) => facts.salesDaily.groupBy({ by: ["variantId", "day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } })))
     ).flat();
     const byVariant = new Map<string, Map<string, number>>();
     for (const g of rows) {
@@ -237,7 +238,7 @@ async function lastYearFigures(shop: string, ctx: PlannerShop, start: string, en
   const span = lastYearSpan(ctx.today, effectiveStart(start, ctx.today), end);
   const coverage = spanStats({ units: new Map(), coverage: ctx.coverage }, span.from, span.to).coverage;
   if (coverage < SEASON.minCoverage) return { from: span.from, to: span.to, units: null, revenue: null, coverage };
-  const days = await prisma.salesDaily.groupBy({
+  const days = await facts.salesDaily.groupBy({
     by: ["day"],
     where: { shop, locationKey: ALL, day: { gte: dayDate(span.from), lte: dayDate(span.to) } },
     _sum: { sold: true, gross: true },

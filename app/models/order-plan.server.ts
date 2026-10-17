@@ -27,6 +27,7 @@
  * line is unknown ("—", counted) — never the whole order.
  */
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { addDays, type DayKey } from "../lib/engine/dates-shared";
 import {
   forwardInputFromMetric,
@@ -465,14 +466,14 @@ async function addLastYear(
     if (s.to > hi) hi = s.to;
   }
   const [rows, first, storeFirst] = await Promise.all([
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId", "day"],
       where: { shop, variantId: { in: ids }, locationKey: ALL, day: { gte: dayDate(lo), lt: dayDate(hi) } },
       _sum: { sold: true },
     }),
     // First channel-view sale per variant: stored days, not the whole history (DB scale #3).
     firstSaleRows(shop, ids),
-    prisma.salesDaily.aggregate({ where: { shop, locationKey: ALL }, _min: { day: true } }),
+    facts.salesDaily.aggregate({ where: { shop, locationKey: ALL }, _min: { day: true } }),
   ]);
   const dayKey = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : typeof d === "string" ? d.slice(0, 10) : null);
   const sold = new Map<string, { day: DayKey; sold: number }[]>();

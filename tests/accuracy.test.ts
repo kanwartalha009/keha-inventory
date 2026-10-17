@@ -13,10 +13,12 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { accuracyDetail, runAccuracy, runAccuracyAllShops } from "../app/services/accuracy.server";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const L1 = "gid://shopify/Location/1";
 const A = "gid://shopify/ProductVariant/1";

@@ -55,6 +55,7 @@ vi.mock("../app/services/entitlements.server", () => ({
 }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { loader, withDeadline } from "../app/routes/api.sidekick.$tool";
 import { SIDEKICK_TOOLS, MSG } from "../app/lib/sidekick-shared";
 import { loader as reorderLoader, type ReorderPageData } from "../app/routes/app.reorder";
@@ -64,6 +65,7 @@ import { bySupplier, cashTotals } from "../app/lib/engine/forward-plan-shared";
 import { safetyStock } from "../app/lib/engine/order-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const SHOP = "acme.myshopify.com";
 const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
 const P = (n: number) => `gid://shopify/Product/${n}`;

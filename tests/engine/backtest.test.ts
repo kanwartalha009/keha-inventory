@@ -344,7 +344,8 @@ describe("backtest script arguments", async () => {
       { shop: S, day, variantId: "v", locationKey: "L2", channel: "all", sold: 3, gross: 0 },
       { shop: S, day, variantId: "v", locationKey: "L3", channel: "all", sold: 30, gross: 0 },
     ];
-    const data = await load(db.client as never, S, "2026-07-01", "2026-07-31");
+    const { delegateFactsStore } = await import("../helpers/fake-facts");
+    const data = await load(db.client as never, S, "2026-07-01", "2026-07-31", delegateFactsStore(db.client));
     expect(data.stock).toEqual([{ variantId: "v", day: "2026-07-10", endUnits: 11, reported: 2, outReported: 0 }]);
     expect(data.poolSales).toEqual([{ variantId: "v", day: "2026-07-10", sold: 3, gross: 0 }]);
   });

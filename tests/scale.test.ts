@@ -30,6 +30,7 @@ vi.mock("../app/db.server", async () => {
 vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "pro" }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { DB_CONNECTION_LIMIT, DB_POOL_TIMEOUT_S, withPoolSettings } from "../app/lib/db-url-shared";
 import { MAX_IN_IDS, listProducts } from "../app/models/products.server";
 import { storeSales } from "../app/services/sync/facts.server";
@@ -44,6 +45,7 @@ import { startWorkers } from "../app/services/jobs/worker.server";
 import { FX_NOW, FX_SHOP, seedScaleFixture } from "./fixtures/scale-compute-fixture";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "scale.myshopify.com";
 
 beforeEach(() => {

@@ -4,6 +4,7 @@
  * A missing Shop row (first load before the sync created it) is "syncing".
  */
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { buildHome, MIN_SALES_DAYS, planReadiness, type HomeData, type HomeRaw, type PlanReadiness } from "../lib/dashboard-shared";
 import type { PlanCode } from "../lib/plan-shared";
 import { readReviewAsk, reviewMoment, shouldAskForReview, type ReviewMoment } from "../lib/review-ask-shared";
@@ -29,7 +30,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     prisma.variant.count({ where: tracked }),
     prisma.variant.count({ where: { ...tracked, cost: { not: null } } }),
     // GROUP BY day … LIMIT 14: we only need to know whether 14 distinct days exist.
-    prisma.salesDaily.groupBy({ by: ["day"], where: { shop }, orderBy: { day: "desc" }, take: MIN_SALES_DAYS }),
+    facts.salesDaily.groupBy({ by: ["day"], where: { shop }, orderBy: { day: "desc" }, take: MIN_SALES_DAYS }),
     // Setup guide "Suppliers": suppliers kept (Growth+) / vendors found (Free).
     prisma.supplier.count({ where: { shop } }),
     prisma.variant.groupBy({ by: ["vendor"], where: { shop, vendor: { not: null } }, orderBy: { vendor: "asc" }, take: 1000 }),

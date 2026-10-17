@@ -15,6 +15,7 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { computeOrderPlan, loadOrderPlan } from "../app/models/order-plan.server";
 import { createOrderFromGroup, kehaOnOrder, loadReorder, scenarioPlanned, setNoReorder } from "../app/models/reorder.server";
 import { listProducts, setProductCaseSize } from "../app/models/products.server";
@@ -27,6 +28,7 @@ import { orderTotals } from "../app/lib/reorder-shared";
 import { RESULT_VERSION } from "../app/lib/planner-shared";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(fake);
 const S = "acme.myshopify.com";
 const WH = "gid://shopify/Location/1";
 const V = (n: number) => `gid://shopify/ProductVariant/${n}`;

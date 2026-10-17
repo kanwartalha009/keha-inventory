@@ -2,9 +2,10 @@
  * One dataset × date range: ShopifyQL → daily fact tables (task 1.4b). Shared by the
  * backfill and the nightly job.
  *
- * Idempotent: each range is written as "delete the shop's rows in [since, until], insert
- * the fresh rows" in one transaction, so re-running a month yields identical rows and a
- * correction from Shopify replaces the old figure.
+ * Idempotent: each range is written as "the shop's rows in [since, until] become the fresh rows"
+ * in one transaction (services/facts-store.server: rows no longer there are deleted, changed rows
+ * updated, unchanged rows left alone — DB scale "before 1,000 stores"), so re-running a month
+ * yields identical rows and a correction from Shopify replaces the old figure.
  *
  * Complete or nothing (audit 2026-10-17 C1 / M10): every client read pages through ALL rows
  * (unique ORDER BY key + LIMIT / OFFSET, de-duplicated); RESPONSE_TOO_LARGE first shrinks the
@@ -19,6 +20,7 @@
  * the range is dropped — invariant I-12).
  */
 import prisma from "../../db.server";
+import { factsStore } from "../facts-store.server";
 import type { ShopifyqlClient } from "./shopifyql.server";
 import {
   ShopifyqlParseError,
@@ -52,7 +54,6 @@ import { retentionCutoff } from "../../lib/sync/store-time-shared";
 import { collectSales, collectStock, type DaysCollector } from "../../lib/sync/fact-days-shared";
 import { applyDays, collectorFor, fixDaysAfterRetention } from "./fact-days.server";
 
-const INSERT_BATCH = 5000;
 /**
  * Stock rows held before the complete days are written (DB scale #1). A large store's month of
  * stock (millions of rows: variants × locations × days) is written a few days at a time; memory
@@ -97,12 +98,6 @@ async function chunked<T>(
   return { rows, skipped, unattributed };
 }
 
-function batches<T>(rows: T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < rows.length; i += INSERT_BATCH) out.push(rows.slice(i, i + INSERT_BATCH));
-  return out;
-}
-
 const dayWhere = (shop: string, range: DayRange) => ({
   shop,
   day: { gte: dayDate(range.since), lte: dayDate(range.until) },
@@ -118,8 +113,8 @@ export async function loadLocations(shop: string): Promise<LocationRef[]> {
  * Stock history: ending units and out-of-stock flag per variant × location × day.
  *
  * Streamed (DB scale #1): the read hands complete days over every STOCK_CHUNK_ROWS rows and each
- * part is written at once — its own transaction, "delete the shop's rows in that part's days,
- * insert the fresh rows" — so the month is never held in memory and a month of 3.7 M rows
+ * part is written at once — its own transaction, "the shop's rows in that part's days become the
+ * fresh rows" — so the month is never held in memory and a month of 3.7 M rows
  * finishes. A part is complete in itself (every page of those days read, de-duplicated); a
  * failure later in the month leaves the earlier parts written, and the retry rewrites them
  * (idempotent). RESPONSE_TOO_LARGE or the row cap split the date range (forEachChunk); a single
@@ -142,12 +137,7 @@ export async function storeStock(
     assertColumns("stock", r, ["ending_inventory_units_at_location", "days_out_of_stock_at_location"]);
     const { facts, unmapped: u } = stockFacts(r.rows, part, index);
     for (const name of u) unmapped.add(name);
-    await prisma.$transaction([
-      prisma.stockDaily.deleteMany({ where: dayWhere(shop, part) }),
-      ...batches(facts).map((b) =>
-        prisma.stockDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
-      ),
-    ]);
+    await factsStore().replaceStock(shop, part, facts);
     if (days) collectStock(days, part, facts);
     rows += facts.length;
     skipped += r.skipped;
@@ -250,12 +240,7 @@ async function storeSalesRange(
   reconcileSales(shop, "sales by channel", byChannel, expected, range);
   const loc = salesByLocationFacts(byLocation.rows, range, locationNameIndex(locations));
   const facts = [...loc.facts, ...salesByChannelFacts(byChannel.rows, range)];
-  await prisma.$transaction([
-    prisma.salesDaily.deleteMany({ where: dayWhere(shop, range) }),
-    ...batches(facts).map((b) =>
-      prisma.salesDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
-    ),
-  ]);
+  await factsStore().replaceSales(shop, range, facts);
   if (days) collectSales(days, range, facts);
   return { rows: facts.length, skipped: byLocation.skipped + byChannel.skipped, unmapped: loc.unmapped };
 }
@@ -298,12 +283,7 @@ export async function storeVisits(shop: string, ql: ShopifyqlClient, range: DayR
     ["landing_page_path", "sessions", "sessions_that_completed_checkout"],
   );
   const facts = sessionsFacts(rows, range);
-  await prisma.$transaction([
-    prisma.sessionsDaily.deleteMany({ where: dayWhere(shop, range) }),
-    ...batches(facts).map((b) =>
-      prisma.sessionsDaily.createMany({ data: b.map((f) => ({ shop, ...f, day: dayDate(f.day) })) }),
-    ),
-  ]);
+  await factsStore().replaceSessions(shop, range, facts);
   return { rows: facts.length, skipped, unmapped: [] };
 }
 
@@ -331,20 +311,17 @@ export async function storeHistory(
 }
 
 /**
- * Retention (spec §8): daily facts older than 25 months are deleted.
+ * Retention (spec §8): sales and visits are kept 25 months, stock 430 days (lib/partitions-shared).
+ * The compact fact tables drop whole months in the partition-maintenance job; here the shop's
+ * store totals older than 25 months are deleted and the stored first days older than what each
+ * dataset still holds are moved up (DB scale #3). Returns the rows deleted now.
  * TODO(phase 2): roll them up monthly before deleting.
  */
 export async function applyRetention(shop: string, today: string): Promise<number> {
   const cutoff = retentionCutoff(today);
-  const where = { shop, day: { lt: dayDate(cutoff) } };
-  const r = await prisma.$transaction([
-    prisma.salesDaily.deleteMany({ where }),
-    prisma.stockDaily.deleteMany({ where }),
-    prisma.sessionsDaily.deleteMany({ where }),
-    prisma.shopDaily.deleteMany({ where }),
-  ]);
-  const removed = r.reduce((a, x) => a + x.count, 0);
-  // Stored first days older than the cutoff move to the first remaining row (DB scale #3).
-  if (removed) await fixDaysAfterRetention(shop, cutoff);
-  return removed;
+  const totals = await prisma.shopDaily.deleteMany({ where: { shop, day: { lt: dayDate(cutoff) } } });
+  const r = await factsStore().applyRetention(shop, today);
+  // Stored first days older than the first day still held move to the first remaining row.
+  await fixDaysAfterRetention(shop, r.from);
+  return totals.count + r.removed;
 }

@@ -14,10 +14,12 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { listProducts } from "../app/models/products.server";
 import { createOrderFromGroup, loadReorder } from "../app/models/reorder.server";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(fake);
 const S = "acme.myshopify.com";
 const WH = "gid://shopify/Location/1";
 const STORE = "gid://shopify/Location/2";

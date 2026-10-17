@@ -16,7 +16,8 @@ function migratedColumns(): Set<string> {
   const folders = readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   for (const f of folders) {
     const sql = readFileSync(join(dir, f, "migration.sql"), "utf8");
-    for (const m of sql.matchAll(/CREATE TABLE "(\w+)" \(([\s\S]*?)\n\);/g)) {
+    // A partitioned table ends `\n) PARTITION BY RANGE ("day");` (DB scale: monthly partitions).
+    for (const m of sql.matchAll(/CREATE TABLE "(\w+)" \(([\s\S]*?)\n\)(?: PARTITION BY [^;]*)?;/g)) {
       for (const line of m[2].split("\n")) {
         const col = line.trim().match(/^"(\w+)"\s/);
         if (col) out.add(`${m[1]}.${col[1]}`);

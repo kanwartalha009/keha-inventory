@@ -37,6 +37,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import {
   abcRoles,
   cashStuck,
@@ -255,9 +256,9 @@ async function loadOlderSeries(
   for (let i = 0; i < x.ids.length; i += 500) {
     const ids = x.ids.slice(i, i + 500);
     const [salesG, stockG, outG] = await Promise.all([
-      prisma.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...x.demandFilter, variantId: { in: ids }, day: range }, _sum: { sold: true } }),
-      prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range }, _sum: { endUnits: true }, _count: { _all: true } }),
-      prisma.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range, outOfStock: true }, _count: { _all: true } }),
+      facts.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...x.demandFilter, variantId: { in: ids }, day: range }, _sum: { sold: true } }),
+      facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range }, _sum: { endUnits: true }, _count: { _all: true } }),
+      facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range, outOfStock: true }, _count: { _all: true } }),
     ]);
     const out = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
     for (const g of salesG) sales.push({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 });
@@ -336,7 +337,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
 
   // ---- shop-wide inputs (one read each, no per-day rows) ----
   // ABC roles need every variant's 90-day revenue (channel view) before any chunk is planned.
-  const revenueG = await prisma.salesDaily.groupBy({
+  const revenueG = await facts.salesDaily.groupBy({
     by: ["variantId"],
     where: { shop, locationKey: ALL, day: range },
     _sum: { gross: true },
@@ -411,7 +412,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   const aheadCovered =
     aheadTo < today && spanStats({ units: new Map(), coverage }, aheadFrom, aheadTo).coverage >= SEASON.minCoverage;
   const aheadG = aheadCovered
-    ? await prisma.salesDaily.groupBy({
+    ? await facts.salesDaily.groupBy({
         by: ["variantId"],
         where: { shop, ...demandFilter, day: { gte: dayDate(aheadFrom), lte: dayDate(aheadTo) } },
         _sum: { sold: true },
@@ -435,7 +436,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   let landing: { landingPath: string; day: string; sessions: number; checkouts: number }[] = [];
   if (moneyIsDue) {
     const [sessionsG, shopDays] = await Promise.all([
-      prisma.sessionsDaily.groupBy({
+      facts.sessionsDaily.groupBy({
         by: ["landingPath", "day"],
         where: { shop, day: trafficRange },
         _sum: { sessions: true, checkouts: true },
@@ -477,21 +478,21 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     const [channelG, poolSalesG, stockG, outG, days, stockNow] = await allLimit(COMPUTE_QUERY_CONCURRENCY, [
       // Channel view: unit price, returns, 28-day revenue.
       () =>
-        prisma.salesDaily.groupBy({
+        facts.salesDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, locationKey: ALL, variantId: inChunk, day: range },
           _sum: { sold: true, gross: true, returned: true },
         }),
       // Pool demand (one SalesDaily view): units sold for the supplier-order pool.
       () =>
-        prisma.salesDaily.groupBy({
+        facts.salesDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, ...demandFilter, variantId: inChunk, day: range },
           _sum: { sold: true },
         }),
       () =>
         pool.length
-          ? prisma.stockDaily.groupBy({
+          ? facts.stockDaily.groupBy({
               by: ["variantId", "day"],
               where: { shop, locationId: { in: pool }, variantId: inChunk, day: range },
               _sum: { endUnits: true },
@@ -500,7 +501,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
           : Promise.resolve([]),
       () =>
         pool.length
-          ? prisma.stockDaily.groupBy({
+          ? facts.stockDaily.groupBy({
               by: ["variantId", "day"],
               where: { shop, locationId: { in: pool }, variantId: inChunk, day: range, outOfStock: true },
               _count: { _all: true },
@@ -798,7 +799,7 @@ async function writeActions(
   const lyTo = addDays(today, -1 - SEASON.trendShiftDays);
   const lyCovered = spanStats({ units: new Map(), coverage: x.coverage }, lyFrom, lyTo).coverage >= SEASON.minCoverage;
   const lyG = lyCovered
-    ? await prisma.salesDaily.groupBy({
+    ? await facts.salesDaily.groupBy({
         by: ["variantId"],
         where: { shop, locationKey: ALL, day: { gte: dayDate(lyFrom), lte: dayDate(lyTo) } },
         _sum: { gross: true },
@@ -938,14 +939,14 @@ async function landedFacts(
   const baseDays = [...new Set(sent.filter((p) => p.lines.some((l) => l.baseOnHand === undefined)).map((p) => addDays(p.sentDay!, -1)))];
   const [baseG, soldG] = await Promise.all([
     baseDays.length
-      ? prisma.stockDaily.groupBy({
+      ? facts.stockDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, variantId: { in: ids }, locationId: { in: pool }, day: { in: baseDays.map(dayDate) } },
           _sum: { endUnits: true },
         })
       : Promise.resolve([]),
     firstSent <= yesterday
-      ? prisma.salesDaily.groupBy({
+      ? facts.salesDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, variantId: { in: ids }, ...demandFilter, day: { gte: dayDate(firstSent), lte: dayDate(yesterday) } },
           _sum: { sold: true },

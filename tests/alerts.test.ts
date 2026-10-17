@@ -30,11 +30,13 @@ vi.mock("../app/services/slack.server", () => ({ deliverSlack: (...a: unknown[])
 vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn(async () => { throw new Error("no Admin API in tests"); }) } }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { runAlertsAllShops, runAlertsForShop, type AlertsShopRow } from "../app/services/alerts.server";
 import { fireFlowTrigger, type AdminGraphql } from "../app/services/flow.server";
 import { MAX_FLOW_PER_TICK } from "../app/lib/flow-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const NOW = new Date("2026-10-16T10:00:00Z"); // 12:00 in Madrid, store day 2026-10-16
 const HOUR = 60 * 60 * 1000;

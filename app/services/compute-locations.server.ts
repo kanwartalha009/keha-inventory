@@ -15,6 +15,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import { POOL_LOCATION_SELECT, SCOPE_ONLINE, buildSeries, countsForOnline, metricRow, type SalesDay } from "../lib/compute-shared";
 import {
   carriedAt,
@@ -128,7 +129,7 @@ export async function locationMetricsChunk(shop: string, run: LocationRun, input
   if (poolWh.length) {
     const [salesG, nowRows] = await Promise.all([
       chunked(ids, (chunk) =>
-        prisma.salesDaily.groupBy({
+        facts.salesDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, channel: ALL, locationKey: { in: ["online", ...poolWh] }, variantId: { in: chunk }, day: input.range },
           _sum: { sold: true },
@@ -209,14 +210,14 @@ async function computeLocation(
   const [salesG, stockRows, stored, stockNow] = await Promise.all([
     // Location view only: this location's POS sales.
     chunked(ids, (chunk) =>
-      prisma.salesDaily.groupBy({
+      facts.salesDaily.groupBy({
         by: ["variantId", "day"],
         where: { shop, channel: ALL, locationKey: locationId, variantId: { in: chunk }, day: x.range },
         _sum: { sold: true },
       }),
     ),
     chunked(ids, (chunk) =>
-      prisma.stockDaily.findMany({
+      facts.stockDaily.findMany({
         where: { shop, locationId, variantId: { in: chunk }, day: x.range },
         select: { variantId: true, day: true, endUnits: true, outOfStock: true },
       }),

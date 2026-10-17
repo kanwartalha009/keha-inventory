@@ -13,8 +13,10 @@
  *                              (the compliance forward itself)
  *   - shop/redact + purge-uninstalled → purgeShopData (hard-delete every table
  *                              with a `shop` column, derived from the Prisma
- *                              schema, plus Shop by domain); a reinstall cancels
- *                              the pending 48h purge
+ *                              schema, plus Shop by domain, plus the compact
+ *                              fact tables keyed by Shop.num — first, while the
+ *                              Shop row still gives the number); a reinstall
+ *                              cancels the pending 48h purge
  */
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -23,6 +25,7 @@ import { sendEmail, emailTransportConfigured } from "./email.server";
 import { getShopContact } from "./shop-contact.server";
 import { cancelPendingPurge } from "./purge-stamp.server";
 import { logPersonalDataAccess } from "./pii-log.server";
+import { factsStore } from "./facts-store.server";
 
 export { cancelPendingPurge } from "./purge-stamp.server";
 
@@ -172,6 +175,9 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
   const quoted = JSON.stringify(shop); // exact JSON string match, e.g. "a.myshopify.com"
   const client = prisma as unknown as Record<string, DeleteManyDelegate>;
 
+  // The compact daily facts (SalesFact, StockMonth, SessionsFact) carry Shop.num, not the domain:
+  // purged first (partition by partition, in batches), while the Shop row still holds the number.
+  await del("facts", async () => ({ count: await factsStore().purgeShop(shop) }));
   const plan = purgePlan();
   const session = plan.pop()!; // Session is last in the plan
   for (const { model, key } of plan) {

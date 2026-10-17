@@ -17,6 +17,7 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { applyDays, buildFactDays, fillVariantDays, fixDaysAfterRetention } from "../app/services/sync/fact-days.server";
 import { collectSales, collectStock, mergeFirst, mergeLast, newCollector, partsContiguous, RECOMPUTE, lastSaleBefore } from "../app/lib/sync/fact-days-shared";
 import { firstSaleRows } from "../app/models/fact-days.server";
@@ -26,6 +27,7 @@ import type { SalesFact, StockFact } from "../app/lib/sync/facts-shared";
 import { addDays, type DayRange } from "../app/lib/sync/shopifyql-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "days.myshopify.com";
 const VARIANTS = ["gid://shopify/ProductVariant/1", "gid://shopify/ProductVariant/2", "gid://shopify/ProductVariant/3", "gid://shopify/ProductVariant/4"];
 const LOCS = ["gid://shopify/Location/1", "gid://shopify/Location/2"];

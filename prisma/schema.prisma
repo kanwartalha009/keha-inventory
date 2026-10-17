@@ -156,6 +156,9 @@ model Shop {
   /// from the facts; the sync keeps them current from then on. null = not built yet: readers use
   /// the facts (DB scale #3).
   factDaysAt    DateTime?
+  /// Small integer key of the shop in the compact fact tables (SalesFact, StockMonth, SessionsFact).
+  /// Assigned once (SERIAL), never reused: a reinstall after a purge gets a new number.
+  num           Int       @unique @default(autoincrement())
 }
 
 model Location {
@@ -209,7 +212,9 @@ model Variant {
   @@index([shop, productId])
 }
 
-model SalesDaily {
+/// LEGACY (DB scale "before 1,000", 2026-10-18): replaced by SalesFact. No longer written or read;
+/// its rows were copied by the 20261018000000 migration. A later cleanup migration drops it.
+model LegacySalesDaily {
   shop        String
   day         DateTime @db.Date
   variantId   String
@@ -221,9 +226,11 @@ model SalesDaily {
 
   @@id([shop, day, variantId, locationKey, channel])
   @@index([shop, variantId, day])
+  @@map("SalesDaily")
 }
 
-model StockDaily {
+/// LEGACY: replaced by StockMonth (see LegacySalesDaily).
+model LegacyStockDaily {
   shop       String
   day        DateTime @db.Date
   variantId  String
@@ -233,6 +240,52 @@ model StockDaily {
 
   @@id([shop, day, variantId, locationId])
   @@index([shop, variantId, day])
+  @@map("StockDaily")
+}
+
+/// Dictionary of the string keys the compact facts carry (location ids, "online", "all",
+/// "pos:<name>", sales channels, traffic types) → small integers. 0 = "all", 1 = "online".
+/// Append-only: a key keeps its number for ever (services/facts-store.server caches it).
+model FactKey {
+  num Int    @id @default(autoincrement())
+  key String @unique
+}
+
+/// Daily sales (spec §8) in compact form: written and read only through services/facts-store.server,
+/// which speaks the app's ids (GIDs, location keys, channel names). Two views as before (lib/sync/
+/// facts-shared): location view (locNum = location key, channelNum = 0 "all") and channel view
+/// (locNum = 0 "all"). variantNum = the number in gid://shopify/ProductVariant/<n>; gross in cents.
+/// Monthly RANGE partitions on day (raw SQL, services/partitions.server); purged per partition.
+model SalesFact {
+  variantNum BigInt
+  grossCents BigInt
+  shopNum    Int
+  day        DateTime @db.Date
+  locNum     Int
+  channelNum Int
+  sold       Int
+  returned   Int
+
+  @@id([shopNum, variantNum, locNum, channelNum, day])
+  @@index([shopNum, day])
+}
+
+/// Daily stock (ending units, out-of-stock flag per variant × location × day) as ONE row per
+/// variant × location × month: endUnits[d] for day d of the month (NULL = no stock row that day),
+/// bit d-1 of outMask = out of stock on day d, firstDay / lastDay = first / last day with data.
+/// Read and written only through services/facts-store.server (which presents daily rows).
+/// Monthly RANGE partitions on month.
+model StockMonth {
+  variantNum BigInt
+  shopNum    Int
+  month      DateTime @db.Date
+  locNum     Int
+  outMask    Int
+  firstDay   Int      @db.SmallInt
+  lastDay    Int      @db.SmallInt
+  endUnits   Int[]
+
+  @@id([shopNum, variantNum, locNum, month])
 }
 
 /// Per variant × location first stock day and last sale day (DB scale #3): what per-location
@@ -250,7 +303,8 @@ model VariantLocationDays {
   @@id([shop, variantId, locationKey])
 }
 
-model SessionsDaily {
+/// LEGACY: replaced by SessionsFact (see LegacySalesDaily).
+model LegacySessionsDaily {
   shop        String
   day         DateTime @db.Date
   landingPath String
@@ -259,6 +313,20 @@ model SessionsDaily {
   checkouts   Int
 
   @@id([shop, day, landingPath, trafficType])
+  @@map("SessionsDaily")
+}
+
+/// Store visits by landing page and traffic type per day, compact (shopNum, trafficNum = FactKey).
+/// Through services/facts-store.server only. Monthly RANGE partitions on day.
+model SessionsFact {
+  shopNum     Int
+  day         DateTime @db.Date
+  trafficNum  Int
+  sessions    Int
+  checkouts   Int
+  landingPath String
+
+  @@id([shopNum, day, landingPath, trafficNum])
 }
 
 /// Store-level daily totals for AOV and conversion (spec §7.6 sold-out page traffic).

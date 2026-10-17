@@ -7,7 +7,7 @@
  * (Prisma $queryRawUnsafe in the app, psql in the tests).
  */
 import type { DemandScope } from "./compute-shared";
-import { ALL } from "./sync/facts-shared";
+import { KEY_ALL, VARIANT_GID_PREFIX } from "./ids-shared";
 
 export type RawQuery = (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>;
 
@@ -37,16 +37,20 @@ export function productTypeSeriesQuery(input: ProductTypeSeriesInput): { sql: st
   if (!types.length || !windows.length) return null;
   const params: unknown[] = [input.shop];
   const p = (v: unknown) => (params.push(v), `$${params.length}`);
+  // The compact SalesFact (services/facts-store.server): shop and location keys are numbers
+  // (Shop.num, FactKey), the variant is the number in its GID; "all" is FactKey 0.
   const demand =
     input.demand.view === "channel"
-      ? `s."locationKey" = ${p(ALL)}`
-      : `s."channel" = ${p(ALL)} AND s."locationKey" NOT IN (${[ALL, ...input.demand.exclude].map(p).join(", ")})`;
+      ? `s."locNum" = ${KEY_ALL}`
+      : `s."channelNum" = ${KEY_ALL} AND s."locNum" <> ${KEY_ALL}${
+          input.demand.exclude.length ? ` AND s."locNum" NOT IN (SELECT k."num" FROM "FactKey" k WHERE k."key" IN (${input.demand.exclude.map(p).join(", ")}))` : ""
+        }`;
   const typeList = types.map(p).join(", ");
   const days = windows.map((w) => `(s."day" >= ${p(w.from)}::date AND s."day" <= ${p(w.to)}::date)`).join(" OR ");
   const sql = `SELECT v."productType" AS "productType", to_char(s."day", 'YYYY-MM-DD') AS "day", SUM(s."sold")::bigint AS "sold"
-FROM "SalesDaily" s
-JOIN "Variant" v ON v."id" = s."variantId" AND v."shop" = s."shop"
-WHERE s."shop" = $1
+FROM "SalesFact" s
+JOIN "Variant" v ON v."id" = '${VARIANT_GID_PREFIX}' || s."variantNum"::text AND v."shop" = $1
+WHERE s."shopNum" = (SELECT sh."num" FROM "Shop" sh WHERE sh."domain" = $1)
   AND (${days})
   AND ${demand}
   AND v."isBundle" = false${input.plannedOnly ? ` AND v."tracked" = true AND v."status" = 'ACTIVE'` : ""}

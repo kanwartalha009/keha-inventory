@@ -5,6 +5,7 @@
  * column is not known yet (null), so results never depend on whether the days exist.
  */
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { mapLimit, slices } from "../lib/concurrency-shared";
 
@@ -34,7 +35,7 @@ export async function firstSaleRows(shop: string, ids: readonly string[]): Promi
     }
   }
   for (const chunk of slices(unknown, READ_CHUNK)) {
-    out.push(...(await prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL }, _min: { day: true } })));
+    out.push(...(await facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL }, _min: { day: true } })));
   }
   return out;
 }
@@ -66,7 +67,7 @@ export type SalesViewWhere = { locationKey: string } | { channel: string; locati
  */
 export async function lastSaleBefore(shop: string, ids: readonly string[], from: string, view: SalesViewWhere): Promise<Map<string, string | null>> {
   const days = await mapLimit(ids, LOOKUP_CONCURRENCY, async (variantId) => {
-    const r = await prisma.salesDaily.findFirst({
+    const r = await facts.salesDaily.findFirst({
       where: { shop, variantId, ...view, sold: { gt: 0 }, day: { lt: dayDate(from) } },
       orderBy: { day: "desc" },
       select: { day: true },
@@ -91,9 +92,9 @@ export async function legacyDays(
   const dataSince = new Map<string, string | null>(ids.map((id) => [id, null]));
   for (const chunk of slices(ids, READ_CHUNK)) {
     const [lastG, sinceG] = await Promise.all([
-      prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, ...x.view, sold: { gt: 0 }, day: { lt: dayDate(x.from) } }, _max: { day: true } }),
+      facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, ...x.view, sold: { gt: 0 }, day: { lt: dayDate(x.from) } }, _max: { day: true } }),
       x.locations.length
-        ? prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationId: { in: [...x.locations] } }, _min: { day: true } })
+        ? facts.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationId: { in: [...x.locations] } }, _min: { day: true } })
         : Promise.resolve([] as { variantId: string; _min: { day: Date | null } }[]),
     ]);
     for (const g of lastG) lastSale.set(g.variantId, iso(g._max.day));

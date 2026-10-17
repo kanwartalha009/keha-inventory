@@ -32,6 +32,8 @@ import { POOL_LOCATION_SELECT, demandScope, demandWhere, engineSettingsFrom, poo
 import { readSettings } from "../app/lib/settings-shared";
 import { readBackfillState } from "../app/lib/sync/backfill-shared";
 import { ALL, dayDate } from "../app/lib/sync/facts-shared";
+import { pgFactsStore, type FactsStore } from "../app/services/facts-store.server";
+import { prismaRunnerFor } from "../app/services/db/sql.server";
 
 /** History each replay reads: last year's base and trend windows (≈ 400 days) plus margin. */
 const LOOKBACK_DAYS = 430;
@@ -56,7 +58,14 @@ const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const numOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
-export async function load(prisma: PrismaClient, shop: string, from: string, to: string): Promise<BacktestData> {
+export async function load(
+  prisma: PrismaClient,
+  shop: string,
+  from: string,
+  to: string,
+  // The daily facts live in the compact tables (services/facts-store.server), read through this client.
+  facts: FactsStore = pgFactsStore(prismaRunnerFor(prisma)),
+): Promise<BacktestData> {
   const shopRow = await prisma.shop.findUnique({
     where: { domain: shop },
     select: { currency: true, settings: true, backfillState: true },
@@ -96,18 +105,18 @@ export async function load(prisma: PrismaClient, shop: string, from: string, to:
   const range = { gte: dayDate(from), lte: dayDate(to) };
 
   const [poolG, channelG, stockG, outG, lastSaleG, firstStockG, sessionsG, shopDays] = await Promise.all([
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId", "day"],
       where: { shop, ...demand, day: range },
       _sum: { sold: true },
     }),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId", "day"],
       where: { shop, locationKey: ALL, day: range },
       _sum: { sold: true, gross: true },
     }),
     pool.length
-      ? prisma.stockDaily.groupBy({
+      ? facts.stockDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, locationId: { in: pool }, day: range },
           _sum: { endUnits: true },
@@ -115,21 +124,21 @@ export async function load(prisma: PrismaClient, shop: string, from: string, to:
         })
       : Promise.resolve([]),
     pool.length
-      ? prisma.stockDaily.groupBy({
+      ? facts.stockDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, locationId: { in: pool }, day: range, outOfStock: true },
           _count: { _all: true },
         })
       : Promise.resolve([]),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { shop, ...demand, sold: { gt: 0 }, day: { lt: dayDate(from) } },
       _max: { day: true },
     }),
     pool.length
-      ? prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, locationId: { in: pool } }, _min: { day: true } })
+      ? facts.stockDaily.groupBy({ by: ["variantId"], where: { shop, locationId: { in: pool } }, _min: { day: true } })
       : Promise.resolve([]),
-    prisma.sessionsDaily.groupBy({ by: ["landingPath", "day"], where: { shop, day: range }, _sum: { sessions: true, checkouts: true } }),
+    facts.sessionsDaily.groupBy({ by: ["landingPath", "day"], where: { shop, day: range }, _sum: { sessions: true, checkouts: true } }),
     prisma.shopDaily.findMany({ where: { shop, day: range }, select: { day: true, orders: true, gross: true } }),
   ]);
   const outCount = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));

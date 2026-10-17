@@ -7,8 +7,8 @@
  *    (Shop.factDaysAt); before that nothing is kept and the build reads everything.
  *  - buildFactDays: the one-time build from the facts (compute runs it when Shop.factDaysAt is
  *    null), in variant chunks, then sets Shop.factDaysAt.
- *  - fixDaysAfterRetention: retention deletes facts older than 25 months; first days older than
- *    the cutoff move to the first remaining row (a 7-day window read, then single-variant
+ *  - fixDaysAfterRetention: retention drops facts past their dataset's cutoff (sales 25 months,
+ *    stock 430 days); first days older than the cutoff move to the first remaining row (a 7-day window read, then single-variant
  *    lookups for the rest), last sales older than the cutoff become null — as a fresh scan
  *    would read them.
  *  - fillVariantDays: compute's lazy fill of null Variant columns (variants the catalog created
@@ -21,6 +21,7 @@
  * applyDays failing marks the shop not built (factDaysAt = null) so the next compute rebuilds.
  */
 import prisma from "../../db.server";
+import { facts } from "../facts-store.server";
 import {
   RECOMPUTE,
   locKey,
@@ -108,7 +109,7 @@ type Lookup = { col: VariantCol | LocCol; variantId: string; locationKey?: strin
 /** The current first / last day of one variant's facts for a column (exact: reads what is stored now). */
 async function lookup(shop: string, q: Lookup): Promise<string | null> {
   if (q.col === "firstStockDay") {
-    const r = await prisma.stockDaily.findFirst({
+    const r = await facts.stockDaily.findFirst({
       where: { shop, variantId: q.variantId, ...(q.locationKey ? { locationId: q.locationKey } : {}) },
       orderBy: { day: "asc" },
       select: { day: true },
@@ -116,11 +117,11 @@ async function lookup(shop: string, q: Lookup): Promise<string | null> {
     return iso(r?.day);
   }
   if (q.col === "firstSaleDay") {
-    const r = await prisma.salesDaily.findFirst({ where: { shop, variantId: q.variantId, locationKey: ALL }, orderBy: { day: "asc" }, select: { day: true } });
+    const r = await facts.salesDaily.findFirst({ where: { shop, variantId: q.variantId, locationKey: ALL }, orderBy: { day: "asc" }, select: { day: true } });
     return iso(r?.day);
   }
   const view = q.locationKey ? { channel: ALL, locationKey: q.locationKey } : { locationKey: ALL };
-  const r = await prisma.salesDaily.findFirst({ where: { shop, variantId: q.variantId, ...view, sold: { gt: 0 } }, orderBy: { day: "desc" }, select: { day: true } });
+  const r = await facts.salesDaily.findFirst({ where: { shop, variantId: q.variantId, ...view, sold: { gt: 0 } }, orderBy: { day: "desc" }, select: { day: true } });
   return iso(r?.day);
 }
 
@@ -243,10 +244,10 @@ export async function buildFactDays(shop: string, now: Date = new Date()): Promi
   for (const chunk of slices(all.map((v) => v.id), BUILD_CHUNK)) {
     const ids = { in: chunk };
     const [stockG, firstSaleG, lastSaleG, locSaleG] = await Promise.all([
-      prisma.stockDaily.groupBy({ by: ["variantId", "locationId"], where: { shop, variantId: ids }, _min: { day: true } }),
-      prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: ids, locationKey: ALL }, _min: { day: true } }),
-      prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: ids, locationKey: ALL, sold: { gt: 0 } }, _max: { day: true } }),
-      prisma.salesDaily.groupBy({ by: ["variantId", "locationKey"], where: { shop, variantId: ids, channel: ALL, sold: { gt: 0 } }, _max: { day: true } }),
+      facts.stockDaily.groupBy({ by: ["variantId", "locationId"], where: { shop, variantId: ids }, _min: { day: true } }),
+      facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: ids, locationKey: ALL }, _min: { day: true } }),
+      facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: ids, locationKey: ALL, sold: { gt: 0 } }, _max: { day: true } }),
+      facts.salesDaily.groupBy({ by: ["variantId", "locationKey"], where: { shop, variantId: ids, channel: ALL, sold: { gt: 0 } }, _max: { day: true } }),
     ]);
     const firstStock = new Map<string, string>();
     const rows = new Map<string, { firstStockDay: string | null; lastSaleDay: string | null }>();
@@ -288,14 +289,17 @@ export async function buildFactDays(shop: string, now: Date = new Date()): Promi
 // ---------------------------------------------------------------------------
 
 /**
- * After retention deleted facts before `cutoff`: stored days older than the cutoff are set to what
- * the remaining facts say. Last sales before the cutoff have no row left → null. First days move
- * to the first remaining row: one grouped read of the RETENTION_WINDOW_DAYS days from the cutoff
- * (stock is daily, so nearly every variant is found there), single lookups for the rest.
+ * After retention deleted facts before the cutoff — one day for every dataset, or the first day
+ * stock and sales each still hold (they are kept for different lengths, lib/partitions-shared):
+ * stored days older than the cutoff are set to what the remaining facts say. Last sales before
+ * the sales cutoff have no row left → null. First days move to the first remaining row: one
+ * grouped read of the RETENTION_WINDOW_DAYS days from the cutoff (stock is daily, so nearly every
+ * variant is found there), single lookups for the rest.
  */
-export async function fixDaysAfterRetention(shop: string, cutoff: string): Promise<number> {
+export async function fixDaysAfterRetention(shop: string, cutoff: string | { stock: string; sales: string }): Promise<number> {
+  const c = typeof cutoff === "string" ? { stock: cutoff, sales: cutoff } : cutoff;
   try {
-    return await fixAfterRetention(shop, cutoff);
+    return await fixAfterRetention(shop, c);
   } catch (e) {
     console.error(`[sync/days] ${shop}: moving the stored first days past the retention cutoff failed; they will be rebuilt`, e);
     await prisma.shop.update({ where: { domain: shop }, data: { factDaysAt: null } }).catch(() => {});
@@ -303,45 +307,46 @@ export async function fixDaysAfterRetention(shop: string, cutoff: string): Promi
   }
 }
 
-async function fixAfterRetention(shop: string, cutoff: string): Promise<number> {
+async function fixAfterRetention(shop: string, cutoff: { stock: string; sales: string }): Promise<number> {
   const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { factDaysAt: true } });
   if (!row?.factDaysAt) return 0;
-  const before = { lt: dayDate(cutoff) };
-  const window = { gte: dayDate(cutoff), lte: dayDate(addDays(cutoff, RETENTION_WINDOW_DAYS - 1)) };
+  const beforeStock = { lt: dayDate(cutoff.stock) };
+  const beforeSales = { lt: dayDate(cutoff.sales) };
+  const windowOf = (from: string) => ({ gte: dayDate(from), lte: dayDate(addDays(from, RETENTION_WINDOW_DAYS - 1)) });
   const [variants, locs] = await Promise.all([
     prisma.variant.findMany({
-      where: { shop, OR: [{ firstStockDay: before }, { firstSaleDay: before }, { lastSaleDay: before }] },
+      where: { shop, OR: [{ firstStockDay: beforeStock }, { firstSaleDay: beforeSales }, { lastSaleDay: beforeSales }] },
       select: { id: true, firstStockDay: true, firstSaleDay: true, lastSaleDay: true },
     }),
     prisma.variantLocationDays.findMany({
-      where: { shop, OR: [{ firstStockDay: before }, { lastSaleDay: before }] },
+      where: { shop, OR: [{ firstStockDay: beforeStock }, { lastSaleDay: beforeSales }] },
       select: { variantId: true, locationKey: true, firstStockDay: true, lastSaleDay: true },
     }),
   ]);
   const vWrites = new Writes<VariantCol>();
   const lWrites = new Writes<LocCol>();
   const lookups: { q: Lookup; apply: (day: string | null) => void }[] = [];
-  const old = (d: Date | null) => d !== null && iso(d)! < cutoff;
+  const old = (d: Date | null, before: string) => d !== null && iso(d)! < before;
 
-  for (const v of variants) if (old(v.lastSaleDay)) vWrites.set("lastSaleDay", null, v.id);
-  for (const l of locs) if (old(l.lastSaleDay)) lWrites.set("lastSaleDay", null, locKey(l.variantId, l.locationKey));
+  for (const v of variants) if (old(v.lastSaleDay, cutoff.sales)) vWrites.set("lastSaleDay", null, v.id);
+  for (const l of locs) if (old(l.lastSaleDay, cutoff.sales)) lWrites.set("lastSaleDay", null, locKey(l.variantId, l.locationKey));
 
-  const stockIds = variants.filter((v) => old(v.firstStockDay)).map((v) => v.id);
-  const saleIds = variants.filter((v) => old(v.firstSaleDay)).map((v) => v.id);
-  const locStock = locs.filter((l) => old(l.firstStockDay));
+  const stockIds = variants.filter((v) => old(v.firstStockDay, cutoff.stock)).map((v) => v.id);
+  const saleIds = variants.filter((v) => old(v.firstSaleDay, cutoff.sales)).map((v) => v.id);
+  const locStock = locs.filter((l) => old(l.firstStockDay, cutoff.stock));
   const stockFound = new Map<string, string>();
   const saleFound = new Map<string, string>();
   const locFound = new Map<string, string>();
   for (const chunk of slices(stockIds, DAYS_READ_CHUNK)) {
-    for (const g of await prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, day: window }, _min: { day: true } }))
+    for (const g of await facts.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, day: windowOf(cutoff.stock) }, _min: { day: true } }))
       if (g._min.day) stockFound.set(g.variantId, iso(g._min.day)!);
   }
   for (const chunk of slices(saleIds, DAYS_READ_CHUNK)) {
-    for (const g of await prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL, day: window }, _min: { day: true } }))
+    for (const g of await facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL, day: windowOf(cutoff.sales) }, _min: { day: true } }))
       if (g._min.day) saleFound.set(g.variantId, iso(g._min.day)!);
   }
   for (const chunk of slices([...new Set(locStock.map((l) => l.variantId))], DAYS_READ_CHUNK)) {
-    for (const g of await prisma.stockDaily.groupBy({ by: ["variantId", "locationId"], where: { shop, variantId: { in: chunk }, day: window }, _min: { day: true } }))
+    for (const g of await facts.stockDaily.groupBy({ by: ["variantId", "locationId"], where: { shop, variantId: { in: chunk }, day: windowOf(cutoff.stock) }, _min: { day: true } }))
       if (g._min.day) locFound.set(locKey(g.variantId, g.locationId), iso(g._min.day)!);
   }
   for (const id of stockIds) {
@@ -388,15 +393,15 @@ export async function fillVariantDays(
   };
   const w = new Writes<VariantCol>();
   for (const chunk of slices(missing.firstStockDay, DAYS_READ_CHUNK)) {
-    const g = new Map((await prisma.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk } }, _min: { day: true } })).map((r) => [r.variantId, iso(r._min.day)]));
+    const g = new Map((await facts.stockDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk } }, _min: { day: true } })).map((r) => [r.variantId, iso(r._min.day)]));
     for (const id of chunk) put(id, "firstStockDay", g.get(id) ?? null);
   }
   for (const chunk of slices(missing.firstSaleDay, DAYS_READ_CHUNK)) {
-    const g = new Map((await prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL }, _min: { day: true } })).map((r) => [r.variantId, iso(r._min.day)]));
+    const g = new Map((await facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL }, _min: { day: true } })).map((r) => [r.variantId, iso(r._min.day)]));
     for (const id of chunk) put(id, "firstSaleDay", g.get(id) ?? null);
   }
   for (const chunk of slices(missing.lastSaleDay, DAYS_READ_CHUNK)) {
-    const g = new Map((await prisma.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL, sold: { gt: 0 } }, _max: { day: true } })).map((r) => [r.variantId, iso(r._max.day)]));
+    const g = new Map((await facts.salesDaily.groupBy({ by: ["variantId"], where: { shop, variantId: { in: chunk }, locationKey: ALL, sold: { gt: 0 } }, _max: { day: true } })).map((r) => [r.variantId, iso(r._max.day)]));
     for (const id of chunk) put(id, "lastSaleDay", g.get(id) ?? null);
   }
   for (const [id, v] of out) for (const col of ["firstStockDay", "firstSaleDay", "lastSaleDay"] as const) if (v[col]) w.set(col, v[col]!, id);

@@ -14,13 +14,16 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { loadSeasonContext } from "../app/services/season.server";
 import { productTypeSeriesQuery, readProductTypeSeries, type RawQuery } from "../app/lib/season-sql-shared";
 import { seasonGroupsOf } from "../app/lib/engine/season-shared";
 import { addDays } from "../app/lib/engine/dates-shared";
+import { seedSales } from "./helpers/pg-facts";
 import { PG_AVAILABLE, bind, dropDb, freshDb, psql } from "./helpers/pg";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const SHOP = "groups.myshopify.com";
 const TODAY = "2026-10-17";
 const COVERAGE = { from: "2024-09-01", to: addDays(TODAY, -1) };
@@ -142,7 +145,7 @@ describe("productTypeSeriesQuery", () => {
       windows: [{ from: "2025-01-01", to: "2025-03-31" }, { from: "2026-09-01", to: "2026-09-30" }],
       plannedOnly: true,
     })!;
-    expect(q.params).toEqual([SHOP, "all", "all", "gid://shopify/Location/9", "A", "B", "2025-01-01", "2025-03-31", "2026-09-01", "2026-09-30"]);
+    expect(q.params).toEqual([SHOP, "gid://shopify/Location/9", "A", "B", "2025-01-01", "2025-03-31", "2026-09-01", "2026-09-30"]);
     expect(q.params.every((p) => typeof p === "string")).toBe(true);
     expect(q.sql).toMatch(/GROUP BY v\."productType", s\."day"/);
     expect(q.sql).toContain(`v."tracked" = true AND v."status" = 'ACTIVE'`);
@@ -157,27 +160,32 @@ const PGDB = "keha_season_groups_test";
 describe.skipIf(!PG_AVAILABLE)("productTypeSeriesQuery on Postgres", () => {
   beforeAll(() => {
     freshDb(PGDB);
+    // Variant GIDs: the compact SalesFact keys a variant by the number in its GID.
+    const G: Record<string, string> = { j1: "101", j2: "102", s1: "103", n1: "104", jb: "105", jd: "106" };
+    const gid = (id: string) => `gid://shopify/ProductVariant/${G[id]}`;
     const v = (id: string, type: string | null, extra = "") =>
-      `('${id}', '${SHOP}', 'p-${id}', 'P', 'V', 'h', ${type === null ? "NULL" : `'${type}'`}, ARRAY[]::text[], ${extra || "true, false, 'ACTIVE'"}, now())`;
+      `('${gid(id)}', '${SHOP}', 'p-${id}', 'P', 'V', 'h', ${type === null ? "NULL" : `'${type}'`}, ARRAY[]::text[], ${extra || "true, false, 'ACTIVE'"}, now())`;
     psql(
       PGDB,
       `INSERT INTO "Variant" ("id","shop","productId","productTitle","variantTitle","handle","productType","collections","tracked","isBundle","status","updatedAt") VALUES
         ${v("j1", "Jackets")}, ${v("j2", "Jackets")}, ${v("s1", "Shirts")}, ${v("n1", null)},
         ${v("jb", "Jackets", "true, true, 'ACTIVE'")}, ${v("jd", "Jackets", "true, false, 'DRAFT'")}`,
     );
-    const sale = (day: string, id: string, loc: string, channel: string, sold: number) => `('${SHOP}', '${day}', '${id}', '${loc}', '${channel}', ${sold}, 0, 0)`;
-    psql(
-      PGDB,
-      `INSERT INTO "SalesDaily" ("shop","day","variantId","locationKey","channel","sold","returned","gross") VALUES
-        ${sale("2025-01-10", "j1", "all", "Online Store", 3)}, ${sale("2025-01-10", "j1", "all", "Point of Sale", 2)},
-        ${sale("2025-01-10", "j2", "all", "Online Store", 4)}, ${sale("2025-01-10", "s1", "all", "Online Store", 7)},
-        ${sale("2025-01-10", "n1", "all", "Online Store", 9)}, ${sale("2025-01-10", "jb", "all", "Online Store", 50)},
-        ${sale("2025-01-10", "jd", "all", "Online Store", 1)},
-        ${sale("2025-01-10", "j1", "online", "all", 3)}, ${sale("2025-01-10", "j1", "gid://shopify/Location/9", "all", 2)},
-        ${sale("2025-06-01", "j1", "all", "Online Store", 100)},
-        ${sale("2026-09-05", "j1", "all", "Online Store", 6)},
-        ('other.myshopify.com', '2025-01-10', 'j1', 'all', 'Online Store', 80, 0, 0)`,
-    );
+    const sale = (day: string, id: string, locationKey: string, channel: string, sold: number, shop = SHOP) => ({ shop, day, variantId: gid(id), locationKey, channel, sold });
+    seedSales(PGDB, [
+      sale("2025-01-10", "j1", "all", "Online Store", 3),
+      sale("2025-01-10", "j1", "all", "Point of Sale", 2),
+      sale("2025-01-10", "j2", "all", "Online Store", 4),
+      sale("2025-01-10", "s1", "all", "Online Store", 7),
+      sale("2025-01-10", "n1", "all", "Online Store", 9),
+      sale("2025-01-10", "jb", "all", "Online Store", 50),
+      sale("2025-01-10", "jd", "all", "Online Store", 1),
+      sale("2025-01-10", "j1", "online", "all", 3),
+      sale("2025-01-10", "j1", "gid://shopify/Location/9", "all", 2),
+      sale("2025-06-01", "j1", "all", "Online Store", 100),
+      sale("2026-09-05", "j1", "all", "Online Store", 6),
+      sale("2025-01-10", "j1", "all", "Online Store", 80, "other.myshopify.com"),
+    ]);
   });
   afterAll(() => dropDb(PGDB));
 

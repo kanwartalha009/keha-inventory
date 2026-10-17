@@ -16,6 +16,7 @@
  */
 import { Prisma } from "@prisma/client";
 import prisma from "../../db.server";
+import { facts } from "../facts-store.server";
 import type { AdminGraphqlClient } from "../../models/shop.server";
 import { gql, type SyncDeps } from "./catalog.server";
 import { newConfirmToken, poolStock } from "../../models/reorder.server";
@@ -216,13 +217,13 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
     const [stock, baseRows, sold] = await Promise.all([
       poolStock(shop, ids),
       needBaseline.length
-        ? prisma.stockDaily.groupBy({
+        ? facts.stockDaily.groupBy({
             by: ["variantId"],
             where: { shop, variantId: { in: needBaseline }, locationId: { in: pool }, day: dayDate(addDays(from, -1)) },
             _sum: { endUnits: true },
           })
         : Promise.resolve([]),
-      prisma.salesDaily.groupBy({
+      facts.salesDaily.groupBy({
         by: ["variantId"],
         // Pool demand: the same SalesDaily view compute reads (demandWhere; never both views).
         where: { shop, variantId: { in: ids }, ...demandWhere(demandScope(locations)), day: { gte: dayDate(from) } },

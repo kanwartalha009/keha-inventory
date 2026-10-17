@@ -26,6 +26,7 @@ vi.mock("../app/services/entitlements.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { action } from "../app/routes/app.reorder_.season";
 import {
   createScenario,
@@ -43,6 +44,7 @@ import { computeScenarioFor } from "../app/services/planner.server";
 import { RESULT_VERSION, type ScenarioInput } from "../app/lib/planner-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const SHOP = "acme.myshopify.com";
 const OTHER = "other.myshopify.com";
 const NOW = new Date("2026-10-16T10:00:00Z");

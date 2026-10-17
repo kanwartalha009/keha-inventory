@@ -22,6 +22,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
@@ -424,13 +425,13 @@ export async function getVariantDetail(
       _sum: { onHand: true, incoming: true },
     }),
     // Channel view only (locationKey "all"): one row per channel, never the location view too.
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["day"],
       where: { shop, variantId, locationKey: ALL, day: { gte: since, lt: until } },
       _sum: { sold: true },
       orderBy: { day: "asc" },
     }),
-    prisma.stockDaily.findMany({
+    facts.stockDaily.findMany({
       where: { shop, variantId, locationId: { in: pool }, day: { gte: since, lt: until } },
       select: { day: true, outOfStock: true },
     }),

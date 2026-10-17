@@ -14,9 +14,11 @@ vi.mock("../../app/db.server", async () => {
 });
 
 import * as dbModule from "../../app/db.server";
+import { useFakeFacts } from "../helpers/fake-facts";
 import { storeSales } from "../../app/services/sync/facts.server";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const V = "gid://shopify/ProductVariant/1";
 const RANGE: DayRange = { since: "2026-10-14", until: "2026-10-15" };

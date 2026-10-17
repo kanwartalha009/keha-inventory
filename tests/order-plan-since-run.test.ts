@@ -20,6 +20,7 @@ vi.mock("../app/services/entitlements.server", () => ({
 }));
 
 import * as dbModule from "../app/db.server";
+import { useFakeFacts } from "./helpers/fake-facts";
 import { clearOrderPlanCache, loadOrderPlan } from "../app/models/order-plan.server";
 import { deleteDraft, loadReorder, receiveOrder, transitionOrder } from "../app/models/reorder.server";
 import { listProducts } from "../app/models/products.server";
@@ -30,6 +31,7 @@ import { featureMap } from "../app/lib/plan-shared";
 import { demand, safetyStock } from "../app/lib/engine/order-shared";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(fake);
 const S = "acme.myshopify.com";
 const V1 = "gid://shopify/ProductVariant/1";
 const NOW = new Date("2026-10-16T10:00:00Z");

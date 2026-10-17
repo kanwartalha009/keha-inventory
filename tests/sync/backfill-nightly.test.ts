@@ -38,11 +38,13 @@ const cat = vi.hoisted(() => ({
 vi.mock("../../app/services/sync/catalog.server", () => cat);
 
 import * as dbModule from "../../app/db.server";
+import { useFakeFacts } from "../helpers/fake-facts";
 import { runBackfill, withShopLock, type DataJobDeps } from "../../app/services/sync/backfill.server";
 import { nightlyRange, runNightly } from "../../app/services/sync/nightly.server";
 import { readBackfillState } from "../../app/lib/sync/backfill-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
+useFakeFacts(db);
 const S = "acme.myshopify.com";
 const TZ = "Europe/Madrid";
 const V = "gid://shopify/ProductVariant/1";
@@ -404,14 +406,19 @@ describe("runNightly", () => {
     expect(next.calls.find((c) => c.kind === "stock")?.range).toEqual({ since: "2026-10-17", until: "2026-10-17" });
   });
 
-  it("deletes daily facts older than 25 months", async () => {
+  it("deletes sales older than 25 months and stock older than 430 days", async () => {
     await finishedShop();
     db.tables.salesDaily.push({ shop: S, day: new Date("2024-09-15T00:00:00Z"), variantId: V, locationKey: "all", channel: "x", sold: 1, returned: 0, gross: 1 });
-    db.tables.stockDaily.push({ shop: S, day: new Date("2024-09-17T00:00:00Z"), variantId: V, locationId: "L", endUnits: 1, outOfStock: false });
+    db.tables.salesDaily.push({ shop: S, day: new Date("2024-09-17T00:00:00Z"), variantId: V, locationKey: "all", channel: "x", sold: 1, returned: 0, gross: 1 });
+    // Stock is kept 430 days (the out-of-stock pace fallback reads 427 days back): cutoff 2025-08-13.
+    db.tables.stockDaily.push({ shop: S, day: new Date("2025-08-12T00:00:00Z"), variantId: V, locationId: "L", endUnits: 1, outOfStock: false });
+    db.tables.stockDaily.push({ shop: S, day: new Date("2025-08-13T00:00:00Z"), variantId: V, locationId: "L", endUnits: 1, outOfStock: false });
     const { ql } = fakeQl();
     await runNightly(S, deps(ql, { now: () => Date.parse("2026-10-17T01:10:00Z") }));
     expect(db.tables.salesDaily.some((r) => iso(r.day) === "2024-09-15")).toBe(false); // cutoff 2024-09-17
-    expect(db.tables.stockDaily.some((r) => iso(r.day) === "2024-09-17")).toBe(true);
+    expect(db.tables.salesDaily.some((r) => iso(r.day) === "2024-09-17")).toBe(true);
+    expect(db.tables.stockDaily.some((r) => iso(r.day) === "2025-08-12")).toBe(false);
+    expect(db.tables.stockDaily.some((r) => iso(r.day) === "2025-08-13")).toBe(true);
   });
 
   it("nightlyRange catches up missed days, capped", () => {

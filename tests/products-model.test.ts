@@ -79,6 +79,12 @@ vi.mock("../app/db.server", () => ({
 }));
 
 import { getVariantDetail, listProducts } from "../app/models/products.server";
+import * as dbModule from "../app/db.server";
+import { delegateFactsStore } from "./helpers/fake-facts";
+import { setFactsStore } from "../app/services/facts-store.server";
+
+// The daily facts through the facts store: this file's hand-written delegates.
+setFactsStore(delegateFactsStore(dbModule.default as unknown as Record<string, unknown>));
 import { dailySeries } from "../app/lib/products-shared";
 
 const SHOP = "acme.myshopify.com";

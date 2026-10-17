@@ -74,6 +74,8 @@ vi.mock("../app/services/shop-contact.server", () => ({
   getShopContact: async () => ({ name: "Acme", contactEmail: "hello@acme.com", ownerEmail: "owner@acme.com" }),
 }));
 
+import { setFactsStore } from "../app/services/facts-store.server";
+import { delegateFactsStore } from "./helpers/fake-facts";
 import {
   purgeDueShops,
   purgeShopData,
@@ -84,6 +86,10 @@ import {
 import { emailForms } from "../app/lib/gdpr-shared";
 import { Prisma } from "@prisma/client";
 import { PURGE_KEEP, PurgeIncompleteError, delegateName, purgePlan } from "../app/services/gdpr.server";
+
+// The compact facts (keyed by Shop.num) are purged through the facts store: here, its in-memory
+// form over this file's fake (salesDaily / stockDaily / sessionsDaily rows keyed by shop).
+setFactsStore(delegateFactsStore(fakeDb as Record<string, unknown>));
 
 const S = "acme.myshopify.com";
 const OLD = new Date(Date.now() - 49 * 60 * 60 * 1000);

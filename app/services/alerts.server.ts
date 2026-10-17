@@ -22,6 +22,7 @@
  * as "flow_rejected" and retried after 24 h, at most 7 times in 30 days.
  */
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import { enqueueJob } from "./jobs/queue.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
@@ -181,14 +182,14 @@ async function startedSellOuts(shop: string, timezone: string, catalog: Map<stri
   const candidates = [...catalog].filter(([, p]) => fullyOut(p.variantIds, outNow));
   if (!candidates.length) return new Map();
 
-  const last = await prisma.stockDaily.findFirst({
+  const last = await facts.stockDaily.findFirst({
     where: { shop, locationId: { in: pool } },
     orderBy: { day: "desc" },
     select: { day: true },
   });
   if (!last) return new Map();
   const variantIds = candidates.flatMap(([, p]) => p.variantIds);
-  const prevRows = await prisma.stockDaily.findMany({
+  const prevRows = await facts.stockDaily.findMany({
     where: { shop, day: last.day, locationId: { in: pool }, variantId: { in: variantIds } },
     select: { variantId: true, endUnits: true, outOfStock: true },
   });
@@ -204,7 +205,7 @@ async function startedSellOuts(shop: string, timezone: string, catalog: Map<stri
 
   // Landing sessions over the last 7 store-local days (up to yesterday).
   const today = localDate(now, safeTimeZone(timezone));
-  const sessionRows = await prisma.sessionsDaily.findMany({
+  const sessionRows = await facts.sessionsDaily.findMany({
     where: { shop, day: { gte: dayDate(addDays(today, -7)), lte: dayDate(addDays(today, -1)) }, landingPath: { contains: "/products/" } },
     select: { landingPath: true, sessions: true },
   });

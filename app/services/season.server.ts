@@ -9,6 +9,7 @@
  * collection, and ONE grouped statement for every qualifying product type (season-sql-shared).
  */
 import prisma from "../db.server";
+import { facts } from "./facts-store.server";
 import {
   SEASON,
   buildSeasonGroups,
@@ -61,12 +62,12 @@ export async function loadSeasonContext(
   const pool = { shop, ...demandWhere(input.demand) };
 
   const [storeG, units12G] = await Promise.all([
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["day"],
       where: { ...pool, day: { gte: dayDate(from), lte: dayDate(yesterday) } },
       _sum: { sold: true },
     }),
-    prisma.salesDaily.groupBy({
+    facts.salesDaily.groupBy({
       by: ["variantId"],
       where: { ...pool, day: { gte: dayDate(addDays(today, -SEASON.units12mDays)), lte: dayDate(yesterday) } },
       _sum: { sold: true },
@@ -92,7 +93,7 @@ export async function loadSeasonContext(
     for (const w of dayWindows) {
       const day = { gte: dayDate(w.from), lte: dayDate(w.to) };
       for (let i = 0; i < ids.length; i += MEMBER_CHUNK) {
-        const rows = await prisma.salesDaily.groupBy({
+        const rows = await facts.salesDaily.groupBy({
           by: ["day"],
           where: { ...pool, variantId: { in: ids.slice(i, i + MEMBER_CHUNK) }, day },
           _sum: { sold: true },
