@@ -64,7 +64,7 @@ export default function PlansPage() {
   return (
     <AppPage
       heading={t("Plans & billing")}
-      intro={t("Start free and see the money at stake. Move to Growth to act on every item, and to Pro to plan per store.")}
+      intro={t("Start free with your 10 most urgent orders. Growth plans every order by supplier, with purchase orders and the cash per week. Pro plans each warehouse and store.")}
     >
       {comped && <s-banner tone="success">{t("Your plan is comped — no charge.")}</s-banner>}
 
@@ -102,7 +102,7 @@ export default function PlansPage() {
         </FormCard>
       ) : (
         <>
-          <s-stack direction="inline" justifyContent="center">
+          <s-stack direction="block" gap="small-200" alignItems="center">
             <Segmented
               label={t("Billing period")}
               value={interval}
@@ -112,6 +112,7 @@ export default function PlansPage() {
                 { value: "ANNUAL", label: t("Annual (2 months free)") },
               ]}
             />
+            <s-text color="subdued">{t("No revenue tiers or SKU limits.")}</s-text>
           </s-stack>
 
           {/* One row per plan: name, price and button on the left, what it includes on the
@@ -131,7 +132,7 @@ export default function PlansPage() {
                         {isCurrent ? (
                           <s-badge tone="success">{t("Current")}</s-badge>
                         ) : code === "growth" ? (
-                          <s-badge tone="info">{t("Most popular")}</s-badge>
+                          <s-badge tone="info">{t("Recommended")}</s-badge>
                         ) : null}
                       </span>
                       <s-text color="subdued">{t(PLAN_PITCH[code] ?? "")}</s-text>

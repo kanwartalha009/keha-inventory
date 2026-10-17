@@ -15,13 +15,13 @@ type T = (s: string) => string;
 export function featureCopy(feature: Feature, t: T): { title: string; body: string } {
   switch (feature) {
     case "dailyRefresh":
-      return { title: t("Daily numbers"), body: t("Your money-at-stake numbers refresh every night instead of once a month.") };
+      return { title: t("Daily numbers"), body: t("Your money-at-stake numbers refresh every night instead of once a week.") };
     case "fullActionList":
-      return { title: t("Every action, every week"), body: t("See the whole ranked list of what to reorder, push, fix and clear, not just the top 10.") };
+      return { title: t("Every action, every week"), body: t("See the whole ranked list of what to reorder, promote, fix and clear, not just the top 10.") };
     case "forecast":
       return { title: t("Days of stock left"), body: t("See how many days each variant will last and how many to order.") };
     case "reorderPlan":
-      return { title: t("Reorder plan"), body: t("Know what to order from each supplier, how much, and by which date.") };
+      return { title: t("Order plan"), body: t("Know what to order from each supplier, how much, and by which date.") };
     case "orderCalendar":
       return { title: t("90-day order calendar"), body: t("Every order for the next 13 weeks, by week and supplier, with the cash you need each week.") };
     case "suppliers":

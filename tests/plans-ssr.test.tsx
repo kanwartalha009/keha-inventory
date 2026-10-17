@@ -41,7 +41,14 @@ describe("Plans page", () => {
     expect(html).toContain("$49.00");
     expect(html).toContain("$99.00");
     expect(html).toContain("14-day free trial");
-    expect(html).toContain("Most popular");
+    expect(html).toContain("Recommended");
+    expect(html).not.toContain("Most popular");
+    expect(html).toContain("No revenue tiers or SKU limits.");
+    expect(html).toContain("Start free with your 10 most urgent orders.");
+    // The order plan leads the comparison.
+    expect(html.indexOf("What to order, how much and by when")).toBeLessThan(html.indexOf("How often the numbers refresh"));
+    expect(html).toContain("Full order plan by supplier, with purchase orders");
+    expect(html).not.toContain("Reorder plan");
     expect(html).toContain("Compare plans");
     expect(html).toContain("Planning per location and per POS store");
     expect(html).toContain("Choose plan");
