@@ -73,7 +73,7 @@ function day(d: string | null, locale: Locale): string {
 export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
   const tr = (key: string) => translate(input.locale, key);
   const s = (t: string) => pdfSafe(t);
-  const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: `${input.number}`, Producer: "Keha Inventory Intelligence" } });
+  const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: `${input.number}`, Producer: "Keha Inventory Planner" } });
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
     doc.on("data", (c: Buffer) => chunks.push(c));

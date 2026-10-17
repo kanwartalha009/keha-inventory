@@ -84,7 +84,7 @@ export default function EmailUnsubscribe() {
 
   return (
     <main lang={data.locale} style={page}>
-      <p style={{ margin: 0, color: "#616161", fontSize: 13 }}>Keha Inventory Intelligence</p>
+      <p style={{ margin: 0, color: "#616161", fontSize: 13 }}>Keha Inventory Planner</p>
       {data.state === "confirm" ? (
         <>
           <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>

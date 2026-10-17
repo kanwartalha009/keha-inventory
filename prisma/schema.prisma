@@ -1,4 +1,4 @@
-// Keha Inventory Intelligence — Prisma schema (PostgreSQL on Railway, private network).
+// Keha Inventory Planner — Prisma schema (PostgreSQL on Railway, private network).
 // Schema changes go through real migrations (`prisma migrate`), never `db push`
 // (spec §8, decision D6). Add-only: never drop or rename a column without a
 // written impact note and Kanwar's approval.
@@ -98,7 +98,7 @@ model PersonalDataAccessLog {
 }
 
 // ======================================================================
-// Keha Inventory Intelligence data (spec §8). Every table carries `shop`
+// Keha Inventory Planner data (spec §8). Every table carries `shop`
 // (the purge key). Daily fact tables store only yesterday and older.
 // Money: Decimal(18,2) for amounts, Decimal(18,4) for unit cost / price.
 // ======================================================================

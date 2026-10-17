@@ -24,7 +24,7 @@ name = "Keha Inventory for Sidekick"
 handle = "keha-inventory-sidekick"
 uid = "09a5f0cf-5f3b-54eb-a8a6-ff76d7fe43f006799907"
 type = "ui_extension"
-description = "Answers stock questions from Keha Inventory Intelligence: what to reorder, from which supplier, by which order-by date and the cash needed over the next 90 days; when a product runs out; open purchase orders and arrivals; this week's stock actions; money at stake in low, too much and dead stock; forecast accuracy."
+description = "Answers stock questions from Keha Inventory Planner: what to reorder, from which supplier, by which order-by date and the cash needed over the next 90 days; when a product runs out; open purchase orders and arrivals; this week's stock actions; money at stake in low, too much and dead stock; forecast accuracy."
 
 [[extensions.targeting]]
 target = "admin.app.tools.data"

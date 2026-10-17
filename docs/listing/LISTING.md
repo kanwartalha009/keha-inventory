@@ -1,13 +1,10 @@
-# App Store listing — Keha Inventory Intelligence
+# App Store listing — Keha Inventory Planner
 
-> **Recommendation for Kanwar (owner's call, not applied):** rename the app to
-> **"Keha Inventory Planner"** (22 characters). The marketing audit of 2026-10-17 found that
-> "Intelligence" says nothing about the job, while "Planner" matches what merchants search for
-> (inventory planning, purchase orders) and what the app leads with (the order plan). Changing it
-> means `shopify.app.toml` `name`, this file and the Partner Dashboard listing in one go
-> (`tests/listing.test.ts` holds name = toml). Everything below keeps the current name.
+> **Name:** "Keha Inventory Planner" (22 characters), chosen by Kanwar on 2026-10-17 after the marketing
+> audit ("Planner" matches what merchants search for and what the app leads with). It must equal
+> `shopify.app.toml` `name` and the Partner Dashboard app name (`tests/listing.test.ts`).
 
-Partner Dashboard → Apps → Keha Inventory Intelligence → Distribution → Manage listing.
+Partner Dashboard → Apps → Keha Inventory Planner → Distribution → Manage listing.
 English is the primary listing. Every claim below is something the code does today
 (checked 2026-10-16, task 2.7; rewritten 2026-10-17 from the marketing audit: the order plan leads,
 no plan names in the text, no other Keha app named); `tests/listing.test.ts` enforces the limits,
@@ -24,7 +21,7 @@ or plan names in the text (prices and plans live in the plan cards).
 ## App name
 
 ```text
-Keha Inventory Intelligence
+Keha Inventory Planner
 ```
 
 ## App card subtitle

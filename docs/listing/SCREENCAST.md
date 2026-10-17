@@ -1,4 +1,4 @@
-# Screencast script — Keha Inventory Intelligence (review video)
+# Screencast script — Keha Inventory Planner (review video)
 
 Target: **about 7½ minutes** (Shopify asks for 3–8; trim the Pro part first if it runs long), English voice-over, 1600 × 900 or 1920 × 1080,
 no music needed. Record it **last**: on the final handle `keha-inventory`, on the released app
@@ -15,7 +15,7 @@ channel connected, the Monday email of the latest Monday in the inbox.
 
 | Time | On screen | Voice-over |
 |---|---|---|
-| 0:00 | Shopify admin, App Store listing, click **Install** | "This is Keha Inventory Intelligence. It plans your stock orders: what to order, from which supplier, by when, and the cash it takes. Every Monday it also ranks what to reorder, promote, fix or clear. Let's install it." |
+| 0:00 | Shopify admin, App Store listing, click **Install** | "This is Keha Inventory Planner. It plans your stock orders: what to order, from which supplier, by when, and the cash it takes. Every Monday it also ranks what to reorder, promote, fix or clear. Let's install it." |
 | 0:20 | OAuth screen: the permissions list | "It asks to read products, stock, locations and Shopify's analytics reports. It never asks for orders or customers: sales come in as daily totals per product, so no shopper data is stored. It can create a discount, or on Pro a draft stock transfer, but only when you press confirm." |
 | 0:45 | Shopify's plan page: Free / Growth / Pro; pick **Growth** (test store) | "Pricing is on Shopify's own plan page. Free shows the money, the top ten actions and a read-only preview of the ten most urgent orders. I'll pick Growth for the full order plan." |
 | 1:00 | Dashboard: "First sync in progress", "Reading your store…" with a progress bar per dataset | "There's nothing to set up. Keha reads your products, stock history, sales history and store visits. The newest ninety days come first, so numbers appear quickly; older months fill in behind." |
@@ -35,7 +35,7 @@ channel connected, the Monday email of the latest Monday in the inbox.
 | 6:15 | **Products** with the location switcher on a store; **Order plan → Order now** → "Transfers: warehouse → stores" → **Create transfer in Shopify** → confirm → **Open the transfer in Shopify** | "Each store shows its own sales per day and days left. When a store runs low and the warehouse can spare stock, Keha proposes a transfer. After I confirm, it's created in Shopify as a draft; nothing moves until I mark it ready to ship." |
 | 6:50 | Settings → **Alerts**: Monday email recipients, instant alerts, Slack connected → **Send a test message** | "Alerts: the Monday email goes to the store owner by default. Instant alerts warn when a best seller will run out before new stock can arrive. On Growth and Pro the same summary goes to Slack." |
 | 7:10 | The Monday email in the inbox | "And this is the Monday email: the four numbers with the change since last week, the top five actions with buttons straight into the app, and how accurate last month's forecast was." |
-| 7:30 | Back on the Dashboard | "On Free you still get the four numbers, the top ten actions and the top ten orders to place; paid features show what they do and an Upgrade button. That's Keha Inventory Intelligence. Thanks for reviewing." |
+| 7:30 | Back on the Dashboard | "On Free you still get the four numbers, the top ten actions and the top ten orders to place; paid features show what they do and an Upgrade button. That's Keha Inventory Planner. Thanks for reviewing." |
 
 Checklist after recording:
 

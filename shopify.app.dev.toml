@@ -1,4 +1,4 @@
-# Keha Inventory Intelligence — DEVELOPMENT app config (a separate dev app in
+# Keha Inventory Planner — DEVELOPMENT app config (a separate dev app in
 # the Partner Dashboard, so `shopify app dev` never touches production URLs).
 # Use: shopify app config use shopify.app.dev.toml && shopify app dev
 # Keep scopes, webhooks and api_version identical to shopify.app.toml.
@@ -70,4 +70,4 @@ automatically_update_urls_on_dev = true
 
 [sidekick]
 # Same as shopify.app.toml (tests/sidekick-extension.test.ts).
-extensions_summary = "Look up stock planning data from Keha Inventory Intelligence: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."
+extensions_summary = "Look up stock planning data from Keha Inventory Planner: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."

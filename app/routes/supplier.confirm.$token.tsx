@@ -26,7 +26,7 @@ export type ConfirmPageData =
   | { state: "invalid"; locale: Locale }
   | { state: "limited"; locale: Locale };
 
-export const meta: MetaFunction = () => [{ name: "robots", content: "noindex, nofollow" }, { title: "Keha Inventory Intelligence" }];
+export const meta: MetaFunction = () => [{ name: "robots", content: "noindex, nofollow" }, { title: "Keha Inventory Planner" }];
 
 export const headers: HeadersFunction = () => ({
   "Cache-Control": "no-store",
@@ -92,7 +92,7 @@ export default function SupplierConfirm() {
   if (d.state === "invalid" || d.state === "limited") {
     return (
       <main lang={d.locale} style={page}>
-        <p style={{ margin: 0, color: "#616161", fontSize: 13 }}>Keha Inventory Intelligence</p>
+        <p style={{ margin: 0, color: "#616161", fontSize: 13 }}>Keha Inventory Planner</p>
         {d.state === "invalid" ? (
           <>
             <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>{tr("This link isn't valid any more")}</h1>

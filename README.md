@@ -1,4 +1,4 @@
-# Keha Inventory Intelligence
+# Keha Inventory Planner
 
 Shopify app: *Keha turns a store's sales and stock into an order plan — what to order from each supplier, how many, the last day to order and the cash each week needs — plus a Monday to-do list (reorder, promote, fix, clear) ranked by money at stake.*
 

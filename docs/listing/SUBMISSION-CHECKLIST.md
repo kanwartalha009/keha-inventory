@@ -1,4 +1,4 @@
-# App Store submission checklist — Keha Inventory Intelligence
+# App Store submission checklist — Keha Inventory Planner
 
 Checked 2026-10-17 against the live shopify.dev pages, requirement by requirement:
 
@@ -117,7 +117,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | Requirement | Where in the docs | Status | Evidence | Fix |
 |---|---|---|---|---|
 | Same name in Dev Dashboard and submission form | 4.1.1 | ✅ / 🧑 | `shopify.app.toml` `name` = listing name, ≤ 30 chars (`tests/config.test.ts`, `tests/listing.test.ts:39`) | Type it exactly in the form |
-| Unique name leading with a brand identifier | 4.1.2 | ✅ | "Keha Inventory Intelligence" starts with the brand | — |
+| Unique name leading with a brand identifier | 4.1.2 | ✅ | "Keha Inventory Planner" starts with the brand | — |
 | Complete pricing info (trial, charges) | 4.2.1 | 🧑 | `LISTING.md` → Pricing (`tests/listing.test.ts:76`) | Owner action 5 |
 | No pricing in images (incl. icon) | 4.2.2 | 🧑 | `SCREENSHOTS.md` rules (Plans page never shot) | Owner action 10 |
 | Pricing only in Pricing details | 4.2.3 | ✅ | `tests/listing.test.ts:60` (no price in listing text) | — |

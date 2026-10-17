@@ -1,7 +1,7 @@
 /**
  * GDPR / privacy-law compliance (spec §10, §14).
  *
- * Keha Inventory Intelligence stores NO shopper personal data: sales, stock and
+ * Keha Inventory Planner stores NO shopper personal data: sales, stock and
  * visits are aggregated by variant, day and location (ShopifyQL), and the app
  * requests no order or customer scopes. The handlers still do their job:
  *
@@ -46,7 +46,7 @@ export function dataRequestEmailText(shop: string, customer: GdprCustomer | null
     "",
     `Customer: ${who}`,
     "",
-    "Keha Inventory Intelligence stores no personal data about this customer. It only keeps",
+    "Keha Inventory Planner stores no personal data about this customer. It only keeps",
     "sales, stock and store-visit totals per product, day and location, with no customer details.",
     "You don't need to send the customer anything from this app.",
   ].join("\n");
@@ -75,7 +75,7 @@ export async function deliverDataRequest(
     const reqId = req.data_request?.id != null ? String(req.data_request.id) : null;
     const r = await sendEmail({
       to,
-      subject: `Customer data request — Keha Inventory Intelligence (${shop})`,
+      subject: `Customer data request — Keha Inventory Planner (${shop})`,
       text: dataRequestEmailText(shop, req.customer, reqId),
     });
     if (!r.ok) console.error(`[gdpr] data_request email failed: ${r.reason}`);

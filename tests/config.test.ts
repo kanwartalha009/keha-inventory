@@ -41,7 +41,7 @@ describe("config contracts", () => {
 
   it("sets the final name and handle, and never auto-updates production URLs", () => {
     const name = tomlValue(prod, "name") ?? "";
-    expect(name).toBe("Keha Inventory Intelligence");
+    expect(name).toBe("Keha Inventory Planner");
     expect(name.length).toBeLessThanOrEqual(30);
     expect(tomlValue(prod, "handle")).toBe("keha-inventory");
     expect(prod).toMatch(/^automatically_update_urls_on_dev = false/m);

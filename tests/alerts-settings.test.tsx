@@ -219,7 +219,7 @@ describe("Alerts action", () => {
     expect(await post({ intent: "test" })).toEqual({ ok: true, intent: "test" });
     const [shop, , message] = deliverSlack.mock.calls[0] as [string, unknown, { text: string }];
     expect(shop).toBe("acme.myshopify.com");
-    expect(message.text).toContain("Keha Inventory Intelligence está conectada para Acme Shoes");
+    expect(message.text).toContain("Keha Inventory Planner está conectada para Acme Shoes");
     deliverSlack.mockResolvedValueOnce({ ok: false, code: "channel_not_found", permanent: true });
     expect(await post({ intent: "test" })).toEqual({ ok: false, slackFailed: { code: "channel_not_found", permanent: true } });
   });

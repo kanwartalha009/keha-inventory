@@ -575,7 +575,7 @@ function page(s: Screen, locale: Locale, body: string, appCss: string): string {
   const saveBar = body.includes("<ui-save-bar");
   const label = `<div class="pv-label"><a href="index.html">All screens</a><b>${esc(s.screen)}</b><span>${esc(s.state)}</span><span class="pv-pill">${locale}</span><span class="pv-pill">plan: ${s.plan}</span><span class="pv-pill">${esc(s.url.length > 60 ? s.url.slice(0, 57) + "…" : s.url)}</span>${saveBar ? '<span class="pv-pill">save bar: Save / Discard (in the admin top bar)</span>' : ""}${other.map((l) => `<a href="${fileName(s, l)}">${l}</a>`).join(" ")}</div>`;
   const admin = s.nav !== "public";
-  const nav = `<nav class="pv-nav" aria-label="Admin app nav (preview)"><div class="pv-nav__app">Keha Inventory Intelligence</div><ol>${NAV.map((n) => `<li${n.id === s.nav ? ' class="pv-on"' : ""}>${esc(translate(locale, n.label))}</li>`).join("")}</ol></nav>`;
+  const nav = `<nav class="pv-nav" aria-label="Admin app nav (preview)"><div class="pv-nav__app">Keha Inventory Planner</div><ol>${NAV.map((n) => `<li${n.id === s.nav ? ' class="pv-on"' : ""}>${esc(translate(locale, n.label))}</li>`).join("")}</ol></nav>`;
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -603,7 +603,7 @@ function indexPage(rows: { s: Screen; files: string[] }[]): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Keha admin preview</title>
 <style>body{margin:0;padding:24px;background:#f1f1f1;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#303030}table{border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}th,td{text-align:left;padding:8px 14px;border-bottom:1px solid #ebebeb}th{background:#f7f7f7;font-weight:600}a{color:#005bd3}</style>
 </head><body>
-<h1>Keha Inventory Intelligence — admin preview</h1>
+<h1>Keha Inventory Planner — admin preview</h1>
 <p>Static server render with fixture data (${screens.length} screens × ${LOCALES.length} languages). Polaris loads from the Shopify CDN; the app is in a 1000px frame (the admin iframe at a 1280px screen).</p>
 <table><thead><tr><th>Screen</th><th>State</th><th>Plan</th><th>Open</th></tr></thead><tbody>
 ${items}

@@ -73,8 +73,8 @@ export const MIME = {
 // ── Neutral messages (never a plan or upgrade mention) ──────────────────────
 
 export const MSG = {
-  notAvailable: "This information isn't available for this store in Keha Inventory Intelligence.",
-  syncing: "Keha Inventory Intelligence is still reading this store's data. The numbers appear once the first read is done.",
+  notAvailable: "This information isn't available for this store in Keha Inventory Planner.",
+  syncing: "Keha Inventory Planner is still reading this store's data. The numbers appear once the first read is done.",
   noTracked: "No products in this store track their stock quantity, so there is nothing to plan yet.",
   noSales: "There are fewer than 14 days of sales so far, so there is no advice yet.",
   nothingToOrder: "Nothing needs to be ordered in this period.",
@@ -84,8 +84,8 @@ export const MSG = {
   noOrders: "No purchase orders are open.",
   noAccuracy: "No month has been graded yet. The first grade appears after the first full month of forecasts.",
   emptyQuery: "Give a product title, variant name or SKU to look up.",
-  failed: "Keha Inventory Intelligence could not load this right now.",
-  slow: "Keha Inventory Intelligence took too long to answer. Try again in a moment.",
+  failed: "Keha Inventory Planner could not load this right now.",
+  slow: "Keha Inventory Planner took too long to answer. Try again in a moment.",
 } as const;
 
 /**
@@ -95,7 +95,7 @@ export const MSG = {
 export function notReadyMessage(r: PlanNotReady, today: string): string {
   switch (r.state) {
     case "syncing":
-      return `Order suggestions aren't ready yet: Keha Inventory Intelligence is still reading this store's data (${r.percent}% done). This doesn't mean nothing needs ordering.`;
+      return `Order suggestions aren't ready yet: Keha Inventory Planner is still reading this store's data (${r.percent}% done). This doesn't mean nothing needs ordering.`;
     case "noSales": {
       const when = r.readyOn ? dayLabel(r.readyOn, today) : null;
       return `Order suggestions aren't ready yet: the first ones need 14 days of sales${when ? `, expected on ${when}` : ""}. This doesn't mean nothing needs ordering.`;

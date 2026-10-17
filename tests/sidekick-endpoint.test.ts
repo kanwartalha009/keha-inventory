@@ -438,7 +438,7 @@ describe("empty store", () => {
     db.tables.shop![0]!.backfillState = { first90Ready: false, datasets: { products: { done: 1, total: 1 }, stock: { done: 6, total: 13 }, sales: { done: 4, total: 13 }, visits: { done: 0, total: 13 } } };
     const plan = await body("get_order_plan");
     expect(plan.ready).toBe(false);
-    expect(plan.message).toMatch(/^Order suggestions aren't ready yet: Keha Inventory Intelligence is still reading this store's data \(\d+% done\)\./);
+    expect(plan.message).toMatch(/^Order suggestions aren't ready yet: Keha Inventory Planner is still reading this store's data \(\d+% done\)\./);
   });
 });
 

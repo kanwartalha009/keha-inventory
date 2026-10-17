@@ -1,4 +1,4 @@
-# Keha Inventory Intelligence — session anchor
+# Keha Inventory Planner — session anchor
 
 Before any development work in this repo:
 

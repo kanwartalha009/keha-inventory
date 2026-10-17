@@ -113,7 +113,7 @@ export async function createTransfer(
   if (lines.some((l) => !items.has(l.variantId))) return { ok: false, error: "gone" };
 
   const locale = toSupportedLocale(ctx.locale);
-  const note = translate(locale, "Planned with Keha Inventory Intelligence.");
+  const note = translate(locale, "Planned with Keha Inventory Planner.");
   const res = await admin.graphql(TRANSFER_CREATE, {
     variables: {
       idempotencyKey: key,

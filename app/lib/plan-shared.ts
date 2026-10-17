@@ -1,5 +1,5 @@
 /**
- * Keha Inventory Intelligence plans: Free / Growth $49 / Pro $99 (spec §3,
+ * Keha Inventory Planner plans: Free / Growth $49 / Pro $99 (spec §3,
  * KEHA-INVENTORY-INTELLIGENCE-SPEC-v1-2026-10-16). Pure helpers, shared by
  * server and UI.
  *

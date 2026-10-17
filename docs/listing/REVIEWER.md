@@ -1,4 +1,4 @@
-# App review — testing instructions (Keha Inventory Intelligence)
+# App review — testing instructions (Keha Inventory Planner)
 
 Two parts: **A** is what Kanwar pastes into the Partner Dashboard "Testing instructions" field;
 **B** is the checklist for Kanwar before pressing Submit. Every step was written from the code
@@ -100,7 +100,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
     week** (one line per supplier with units, cash and order-by date, **Review order**), and its
     subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").
 13. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
-    went dead** (Keha Inventory Intelligence). The app fires them from its hourly job, once per
+    went dead** (Keha Inventory Planner). The app fires them from its hourly job, once per
     product per episode, so a test workflow may need up to an hour after a product qualifies.
 14. **Season plan (Growth):** **Order plan → Season plan** (`/app/reorder/season`) → **New scenario** → pick an event (Black
     Friday, Christmas or custom dates) and a target (grow X %, a revenue target, or keep pace) →

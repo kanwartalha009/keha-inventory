@@ -32,12 +32,12 @@ export default function Privacy() {
         background: "#ffffff",
       }}
     >
-      <h1>Keha Inventory Intelligence — Privacy Policy</h1>
+      <h1>Keha Inventory Planner — Privacy Policy</h1>
       <p>
         <em>Last updated: {UPDATED}</em>
       </p>
       <p>
-        Keha Inventory Intelligence (“the App”) gives Shopify merchants stock
+        Keha Inventory Planner (“the App”) gives Shopify merchants stock
         advice from their own store data. {who} (“we”) operates the App. This
         policy explains what information the App collects, why, who processes
         it, how long it is kept, and how to reach us.

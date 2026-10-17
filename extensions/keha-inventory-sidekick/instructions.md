@@ -1,6 +1,6 @@
-# Keha Inventory Intelligence tools
+# Keha Inventory Planner tools
 
-These tools read the store's stock planning data from the Keha Inventory Intelligence app. They are read-only: they never change the store.
+These tools read the store's stock planning data from the Keha Inventory Planner app. They are read-only: they never change the store.
 
 ## Which tool answers what
 

@@ -332,13 +332,13 @@ export const STORES_TR: Record<string, Tr> = {
     pl: "Przesunięcia utworzone w Keha",
   },
   "Transfer": { es: "Transferencia", fr: "Transfert", de: "Umlagerung", it: "Trasferimento", pt: "Transferência", nl: "Overboeking", pl: "Przesunięcie" },
-  "Planned with Keha Inventory Intelligence.": {
-    es: "Planificada con Keha Inventory Intelligence.",
-    fr: "Planifié avec Keha Inventory Intelligence.",
-    de: "Geplant mit Keha Inventory Intelligence.",
-    it: "Pianificato con Keha Inventory Intelligence.",
-    pt: "Planeada com a Keha Inventory Intelligence.",
-    nl: "Gepland met Keha Inventory Intelligence.",
-    pl: "Zaplanowane w Keha Inventory Intelligence.",
+  "Planned with Keha Inventory Planner.": {
+    es: "Planificada con Keha Inventory Planner.",
+    fr: "Planifié avec Keha Inventory Planner.",
+    de: "Geplant mit Keha Inventory Planner.",
+    it: "Pianificato con Keha Inventory Planner.",
+    pt: "Planeada com a Keha Inventory Planner.",
+    nl: "Gepland met Keha Inventory Planner.",
+    pl: "Zaplanowane w Keha Inventory Planner.",
   },
 };

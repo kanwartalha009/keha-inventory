@@ -4,7 +4,10 @@
  * comparisons, false urgency, endorsements) and no instructions that redefine Sidekick
  * or steer its decisions. Used on the extension's texts and on tool responses.
  */
-/** Words and phrases Shopify's Sidekick content policy rules out (selling, urgency, overriding Sidekick). */
+/**
+ * Words and phrases Shopify's Sidekick content policy rules out (selling, urgency, overriding Sidekick).
+ * "Inventory Planner" (Sage's app) is a competitor name; our own name "Keha Inventory Planner" is allowed.
+ */
 export const POLICY = [
   /\bupgrad/i,
   /\bpremium\b/i,
@@ -17,7 +20,7 @@ export const POLICY = [
   /\blimited[- ]time\b|\bhurry\b|\bact now\b|\bdon'?t miss\b|\blast chance\b/i,
   /\bexclusive\b|\bguarantee/i,
   /\bignore (all|any|previous|other)\b|\byou are sidekick\b|\binstead of sidekick\b|\bonly (use|trust) (this|keha)\b|\bdo not use other\b/i,
-  /\b(inventory planner|prediko|stocky|cogsy|fabrikator|genie|sumtracker|katana|brightpearl|stockie)\b/i,
+  /\b((?<!keha )inventory planner|prediko|stocky|cogsy|fabrikator|genie|sumtracker|katana|brightpearl|stockie)\b/i,
 ];
 
 export function policyViolations(text: string): string[] {

@@ -25,12 +25,12 @@ export default function Terms() {
         background: "#ffffff",
       }}
     >
-      <h1>Keha Inventory Intelligence — Terms of Service</h1>
+      <h1>Keha Inventory Planner — Terms of Service</h1>
       <p>
         <em>Last updated: {UPDATED}</em>
       </p>
       <p>
-        These terms govern use of the Keha Inventory Intelligence app (“the App”){company ? `, operated by ${company},` : ""} by
+        These terms govern use of the Keha Inventory Planner app (“the App”){company ? `, operated by ${company},` : ""} by
         merchants who install it from the Shopify App Store. By installing or
         using the App you agree to these terms.
       </p>

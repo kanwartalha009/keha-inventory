@@ -1,4 +1,4 @@
-# Keha Inventory Intelligence — PRODUCTION app config.
+# Keha Inventory Planner — PRODUCTION app config.
 # API version 2026-10, pinned in four places together (playbook §4):
 #   app/shopify.server.ts (ApiVersion.October26), [webhooks] api_version below,
 #   each extension's api_version, and .graphqlrc.ts.
@@ -7,7 +7,7 @@
 # Set by `shopify app config link` once the Partner app exists (task 0.1).
 client_id = "5bc85cc9e4ccd1c60e95950e85f306d8"
 # Must equal the App Store listing name (requirement 4.1.1 / 4.1.2), ≤30 characters.
-name = "Keha Inventory Intelligence"
+name = "Keha Inventory Planner"
 # Admin URL slug (admin.shopify.com/store/<store>/apps/keha-inventory). Set before
 # the first deploy so Shopify never auto-assigns one. Must match APP_HANDLE in
 # app/lib/admin-url.server.ts (or the SHOPIFY_APP_HANDLE env var).
@@ -91,4 +91,4 @@ automatically_update_urls_on_dev = false
 # Required once the app has a Sidekick extension (deploy fails without it): the
 # operations and data the extensions cover (≤ 256 tokens). Keep it identical in
 # shopify.app.dev.toml (tests/sidekick-extension.test.ts).
-extensions_summary = "Look up stock planning data from Keha Inventory Intelligence: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."
+extensions_summary = "Look up stock planning data from Keha Inventory Planner: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."

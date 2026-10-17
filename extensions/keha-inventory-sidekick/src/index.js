@@ -1,12 +1,12 @@
 /**
- * Keha Inventory Intelligence — Sidekick data tools (admin.app.tools.data).
+ * Keha Inventory Planner — Sidekick data tools (admin.app.tools.data).
  * Runs headless in Shopify's sandbox. Every tool is read-only: it fetches
  * /api/sidekick/<tool> on the app's own domain (relative URLs resolve against
  * the app URL, and Shopify adds the session token) and returns the JSON as is.
  * Tool names and inputs: ../tools.json. Server: app/routes/api.sidekick.$tool.tsx.
  */
 
-const FAILED = { results: [], message: "Keha Inventory Intelligence could not load this right now." };
+const FAILED = { results: [], message: "Keha Inventory Planner could not load this right now." };
 
 /** GET /api/sidekick/<tool>?<inputs>; empty inputs are left out. */
 async function call(tool, input) {

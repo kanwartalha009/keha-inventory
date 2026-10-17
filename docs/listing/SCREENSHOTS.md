@@ -1,4 +1,4 @@
-# Screenshots and feature image — Keha Inventory Intelligence
+# Screenshots and feature image — Keha Inventory Planner
 
 Rules (shopify.dev App Store requirements checklist, playbook §8):
 

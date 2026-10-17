@@ -441,7 +441,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     accuracy,
     openLabel: tr("Open Keha"),
     openAction: tr("Open"),
-    footer: fill(tr("You get this email every Monday because Keha Inventory Intelligence is installed on {store}."), {
+    footer: fill(tr("You get this email every Monday because Keha Inventory Planner is installed on {store}."), {
       store: storeName,
     }),
     unsubscribe: tr("Unsubscribe"),

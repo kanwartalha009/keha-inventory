@@ -1,4 +1,4 @@
-# Protected customer data — DRAFT answers (Keha Inventory Intelligence)
+# Protected customer data — DRAFT answers (Keha Inventory Planner)
 
 **DRAFT.** These are statements the company makes to Shopify. Claude drafted them on
 2026-10-16 from the code (task 2.7) and from nothing else. Every line marked

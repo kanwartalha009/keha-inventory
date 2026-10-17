@@ -1,4 +1,4 @@
-# Change control — Keha Inventory Intelligence
+# Change control — Keha Inventory Planner
 
 Classify every change before coding:
 
