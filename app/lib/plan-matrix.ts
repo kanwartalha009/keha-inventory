@@ -60,7 +60,8 @@ export const PLAN_MATRIX: MatrixGroup[] = [
       { label: "Ranked list of what to reorder, promote, fix and clear", values: { free: "Top 10", growth: "All", pro: "All" } },
       { label: "Monday email", hint: "On by default, to the store owner.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
       { label: "Missing sizes, weak product pages, high returns and falling best sellers", feature: "fixDetails", hint: "Free shows how many there are." },
-      { label: "Take preorders or collect sign-ups before stock arrives", feature: "bridge" },
+      // Pricing audit 2026-10-17: without a preorder app this is the back-in-stock how-to — say that, no preorder promise.
+      { label: "What to do while a best seller is sold out", hint: "Until its stock arrives: how to collect back-in-stock sign-ups on the product page.", feature: "bridge" },
       { label: "Clear dead stock with a Shopify discount", feature: "clearance", hint: "Nothing changes in your store until you confirm." },
     ],
   },
@@ -107,7 +108,7 @@ export const PLAN_POINTS: Record<PlanCode, string[]> = {
     "Full order plan by supplier, with purchase orders",
     "13-week order calendar with cash per week",
     "Numbers refreshed daily, and every action",
-    "Preorder bridge and dead-stock discounts",
+    "What to do while a best seller is sold out, and dead-stock discounts",
     "Season plan (1 scenario) and forecast accuracy",
     "Slack and Shopify Flow",
   ],

@@ -136,7 +136,7 @@ keep).
 - Shipped — Full order plan by supplier, with purchase orders
 - Shipped — 13-week order calendar with cash per week
 - Shipped — Numbers refreshed daily, and every action
-- Shipped — Preorder bridge and dead-stock discounts
+- Shipped — What to do while a best seller is sold out, and dead-stock discounts
 - Shipped — Season plan (1 scenario) and forecast accuracy
 - Shipped — Slack and Shopify Flow
 

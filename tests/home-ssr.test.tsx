@@ -283,10 +283,12 @@ describe("Home: this week's actions (task 2.3)", () => {
     // Bridge and Clear stay, locked: disabled button, plan badge, upgrade link.
     expect(html).toContain("Bridge Boots");
     expect(html).toContain("Clear Cardigan");
-    expect(html).toContain('<s-button disabled="true">Bridge the gap</s-button>');
+    expect(html).toContain('<s-button disabled="true">Collect back-in-stock sign-ups</s-button>');
+    expect(html).not.toContain("Bridge the gap");
     expect(html).toContain('<s-button disabled="true">Create discount</s-button>');
     expect(html).toContain("Growth plan");
-    expect(html).not.toContain(">Collect back-in-stock sign-ups</s-button>");
+    // No working sign-ups button on Free: the only one is the locked one above.
+    expect(html.split(">Collect back-in-stock sign-ups</s-button>").length - 1).toBe(1);
     // The rows past the top 10 are counted.
     expect(html).toMatch(/6 more actions worth €[\d,]+ on the Growth plan/);
     expect(html).toContain('href="/app/plans"');

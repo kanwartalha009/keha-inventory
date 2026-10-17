@@ -312,7 +312,7 @@ function LockedButton({ feature }: { feature: "bridge" | "clearance" }) {
   const link = useLinkProps();
   return (
     <s-stack direction="inline" gap="small-200" alignItems="center">
-      <s-button disabled>{feature === "bridge" ? t("Bridge the gap") : t("Create discount")}</s-button>
+      <s-button disabled>{feature === "bridge" ? t("Collect back-in-stock sign-ups") : t("Create discount")}</s-button>
       <s-badge>{planTag(feature, t)}</s-badge>
       <s-button variant="tertiary" {...link("/app/plans")}>
         {t("Upgrade")}

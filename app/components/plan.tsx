@@ -31,7 +31,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "supplierConfirm":
       return { title: t("Supplier confirmation"), body: t("Your supplier confirms the ship date through a link, with no login.") };
     case "bridge":
-      return { title: t("Bridge the gap"), body: t("Take preorders or collect back-in-stock sign-ups while you wait for new stock.") };
+      return { title: t("What to do while a best seller is sold out"), body: t("Until its stock arrives: how to collect back-in-stock sign-ups on the product page.") };
     case "clearance":
       return { title: t("Clear dead stock"), body: t("Create a Shopify discount for products that don't sell, and see the cash it frees.") };
     case "fixDetails":
