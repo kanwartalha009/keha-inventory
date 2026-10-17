@@ -335,6 +335,8 @@ export type ActionListView = {
   counts: Record<ActionTab, number>;
   /** Free: ranked rows beyond the top-10 limit (not sent to the browser). */
   hiddenCount: number;
+  /** Free: the money those hidden rows are worth (their € figures summed, on the server); null when none. */
+  hiddenAmount: number | null;
   /** Free: Fix rows shown only as a count (not sent to the browser). */
   fixCount: number;
   /** Clearances still running (end date not passed). */
@@ -472,11 +474,17 @@ export function buildActionList(input: {
       currency: c.currency || input.currency,
     }));
 
+  // The rows beyond the plan's limit: only their count and total value reach the browser.
+  const shownIds = new Set(shown.map((a) => a.id));
+  const hidden = detailed.filter((a) => !shownIds.has(a.id));
+  const hiddenAmount = hidden.length ? Math.round(hidden.reduce((sum, a) => sum + a.amount, 0) * 100) / 100 : null;
+
   return {
     currency: input.currency,
     rows,
     counts,
-    hiddenCount: detailed.length - shown.length,
+    hiddenCount: hidden.length,
+    hiddenAmount,
     fixCount,
     clearances,
   };

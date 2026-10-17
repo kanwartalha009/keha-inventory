@@ -185,7 +185,7 @@ describe("Home: this week's actions (task 2.3)", () => {
   it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
     const html = withActions("growth", actionList("growth"));
     expect(html).toContain("This week&#x27;s actions");
-    for (const tab of ["All (8)", "Reorder (1)", "Bridge (1)", "Push (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
+    for (const tab of ["All (8)", "Reorder (1)", "Bridge (1)", "Promote (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
     expect(html).toContain("€8,200");
     expect(html).toContain("€3,400");
     // Ranked by € across groups: Clear (8,200) first, Reorder (3,400) next.
@@ -195,7 +195,7 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(html).toContain("Runs out in 1 days");
     expect(html).toContain("S, M");
     // Buttons per kind (spec §7.7).
-    expect(html).toContain("Add to reorder plan");
+    expect(html).toContain("Add to order plan");
     expect(html).toContain(`href="/app/reorder?variants=${encodeURIComponent("gid://shopify/ProductVariant/11,gid://shopify/ProductVariant/12")}"`);
     expect(html).toContain(">Collect back-in-stock sign-ups</s-button>");
     expect(html).toContain("Show how");
@@ -210,13 +210,16 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(count(html, "<s-menu")).toBe(8);
     expect(html).toContain("Snooze 7 days");
     expect(html).toContain("Dismiss");
+    // Done is in every row's menu, first (the endpoint takes op "done").
+    expect(count(html, ">Mark as done</s-button>")).toBe(8);
+    expect(html).toMatch(/<s-menu[^>]*><s-button>Mark as done<\/s-button><s-button>Snooze 7 days<\/s-button>/);
     expect(html).toContain(">Why<");
     // Keha Preorder isn't installed: never named or linked (Shopify 2.2.6).
     expect(html).not.toContain("keha-preorder");
     expect(html).not.toContain("Take preorders");
     // Nothing locked on Growth.
     expect(html).not.toContain("Product details to fix:");
-    expect(html).not.toContain("More actions on the Growth plan");
+    expect(html).not.toContain("more actions worth");
   });
 
   it("Growth with Keha Preorder installed: the bridge opens its pre-filled form top-level", () => {
@@ -268,7 +271,7 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(html).toContain("Growth plan");
     expect(html).not.toContain(">Collect back-in-stock sign-ups</s-button>");
     // The rows past the top 10 are counted.
-    expect(html).toContain("More actions on the Growth plan: 6");
+    expect(html).toMatch(/6 more actions worth €[\d,]+ on the Growth plan/);
     expect(html).toContain('href="/app/plans"');
   });
 

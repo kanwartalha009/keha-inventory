@@ -1,7 +1,7 @@
 /**
  * Home "This week's actions" (spec §5.1, §7.7, §4 J4 + J5): tabs, ranked rows
- * with one primary button each, the "…" menu (snooze 7 days, dismiss, why),
- * the bridge / push how-to dialogs, the Clear confirm dialog and the
+ * with one primary button each, the "…" menu (mark as done, snooze 7 days,
+ * dismiss, why), the bridge / promote how-to dialogs, the Clear confirm dialog and the
  * "Clearances running" list. Data comes from lib/action-list-shared.ts; writes
  * go to POST /app/actions.
  */
@@ -46,7 +46,7 @@ export function tabLabel(tab: ActionTab, t: T): string {
     case "bridge":
       return t("Bridge");
     case "push":
-      return t("Push");
+      return t("Promote");
     case "fix":
       return t("Fix");
     case "clear":
@@ -80,7 +80,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
   const [tab, setTab] = useState<ActionTab>(() => parseTab(params.get("tab")));
   const [limit, setLimit] = useState(TAB_PAGE_SIZE);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [notice, setNotice] = useState<{ op: "snooze" | "dismiss" | "clear"; id: string } | null>(null);
+  const [notice, setNotice] = useState<{ op: "snooze" | "dismiss" | "done" | "clear"; id: string } | null>(null);
   const fetcher = useFetcher<ActionsResult>();
 
   const urlTab = params.get("tab");
@@ -90,7 +90,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
 
   const rows = useMemo(() => rowsForTab(list.rows, tab), [list.rows, tab]);
   const money = (v: number | null, currency: string) => formatAmount(v, currency, locale);
-  const send = (op: "snooze" | "dismiss" | "undo", id: string) => {
+  const send = (op: "snooze" | "dismiss" | "done" | "undo", id: string) => {
     fetcher.submit({ op, id }, { method: "post", action: ENDPOINT, encType: "application/json" });
     setNotice(op === "undo" ? null : { op, id });
   };
@@ -105,7 +105,13 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
         {notice && notice.op !== "clear" && (
           <s-banner tone="info" dismissible onDismiss={() => setNotice(null)}>
             <s-stack direction="inline" gap="small-200" alignItems="center">
-              <s-text>{notice.op === "snooze" ? t("Snoozed for 7 days.") : t("Dismissed. It comes back if the amount doubles.")}</s-text>
+              <s-text>
+                {notice.op === "snooze"
+                  ? t("Snoozed for 7 days.")
+                  : notice.op === "done"
+                    ? t("Marked as done.")
+                    : t("Dismissed. It comes back if the amount doubles.")}
+              </s-text>
               <s-button variant="tertiary" onClick={() => send("undo", notice.id)}>
                 {t("Undo")}
               </s-button>
@@ -143,6 +149,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
                     money={money}
                     onSnooze={() => send("snooze", row.id)}
                     onDismiss={() => send("dismiss", row.id)}
+                    onDone={() => send("done", row.id)}
                     onOpen={(type) => setDialog({ type, row })}
                   />
                 ))}
@@ -173,7 +180,14 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
             )}
             {showHidden && (
               <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-text color="subdued">{fill(t("More actions on the Growth plan: {n}"), { n: formatCount(list.hiddenCount, locale) })}</s-text>
+                <s-text color="subdued">
+                  {list.hiddenAmount != null
+                    ? fill(t("{n} more actions worth {money} on the Growth plan"), {
+                        n: formatCount(list.hiddenCount, locale),
+                        money: money(list.hiddenAmount, list.currency),
+                      })
+                    : fill(t("{n} more actions on the Growth plan"), { n: formatCount(list.hiddenCount, locale) })}
+                </s-text>
                 <s-link {...link("/app/plans")}>{t("Upgrade")}</s-link>
               </s-stack>
             )}
@@ -206,6 +220,7 @@ function ActionRow({
   money,
   onSnooze,
   onDismiss,
+  onDone,
   onOpen,
 }: {
   row: ActionRowView;
@@ -213,6 +228,7 @@ function ActionRow({
   money: (v: number | null, currency: string) => string;
   onSnooze: () => void;
   onDismiss: () => void;
+  onDone: () => void;
   onOpen: (type: Dialog["type"]) => void;
 }) {
   const { t, locale } = useLocale();
@@ -239,6 +255,7 @@ function ActionRow({
           <PrimaryButton row={row} onOpen={onOpen} />
           <s-button variant="tertiary" icon="menu-horizontal" commandFor={menuId} accessibilityLabel={`${t("More actions")}: ${title}`} />
           <s-menu id={menuId} accessibilityLabel={t("More actions")}>
+            <s-button onClick={onDone}>{t("Mark as done")}</s-button>
             <s-button onClick={onSnooze}>{t("Snooze 7 days")}</s-button>
             <s-button onClick={onDismiss}>{t("Dismiss")}</s-button>
             <s-button onClick={() => onOpen("why")}>{t("Why")}</s-button>
@@ -255,7 +272,7 @@ function PrimaryButton({ row, onOpen }: { row: ActionRowView; onOpen: (type: Dia
   const b = row.button;
   switch (b.kind) {
     case "reorder":
-      return <s-button {...link(b.href)}>{t("Add to reorder plan")}</s-button>;
+      return <s-button {...link(b.href)}>{t("Add to order plan")}</s-button>;
     case "preorder":
       return (
         <s-button href={b.href} target="_top">
@@ -330,7 +347,7 @@ function PushDialog({ row, onClose }: { row: ActionRowView | null; onClose: () =
     <Modal
       open={!!row}
       onClose={onClose}
-      heading={t("How to push this product")}
+      heading={t("How to promote this product")}
       primaryAction={
         url ? (
           <s-button variant="primary" href={url} target="_top">

@@ -222,6 +222,8 @@ describe("buildActionList", () => {
     expect(list.fixCount).toBe(2);
     expect(list.counts.fix).toBe(2);
     expect(list.hiddenCount).toBe(4);
+    // r8–r11 (992 + 991 + 990 + 989): the value of what Growth would add, summed on the server.
+    expect(list.hiddenAmount).toBe(3962);
     expect(list.counts.all).toBe(10);
     expect(list.rows.find((r) => r.id === "c1")!.button).toEqual({ kind: "locked", feature: "clearance" });
     expect(list.rows.find((r) => r.id === "b1")!.button).toEqual({ kind: "locked", feature: "bridge" });
@@ -233,6 +235,7 @@ describe("buildActionList", () => {
     expect(list.rows[0]!.id).toBe("f1");
     expect(list.fixCount).toBe(0);
     expect(list.hiddenCount).toBe(0);
+    expect(list.hiddenAmount).toBeNull();
     expect(list.counts).toEqual({ all: 16, reorder: 12, bridge: 1, push: 0, fix: 2, clear: 1 });
   });
 

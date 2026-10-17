@@ -164,6 +164,8 @@ export async function getActionList(
     }
   }
 
+  // Free: rows beyond the top 10 never reach the browser — only their count and the money
+  // they are worth (hiddenAmount, summed here on the server inside buildActionList).
   return buildActionList({
     actions,
     variants,

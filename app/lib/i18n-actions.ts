@@ -12,7 +12,6 @@ export const ACTIONS_TR: Record<string, Tr> = {
   // ---- List, tabs and notices ----
   "This week's actions": { es: "Acciones de esta semana", fr: "Actions de la semaine", de: "Aufgaben dieser Woche", it: "Azioni di questa settimana", pt: "Ações desta semana", nl: "Acties van deze week", pl: "Działania na ten tydzień" },
   "Bridge": { es: "Puente", fr: "Relais", de: "Überbrücken", it: "Ponte", pt: "Ponte", nl: "Overbruggen", pl: "Pomost" },
-  "Push": { es: "Impulsar", fr: "Promouvoir", de: "Pushen", it: "Spingere", pt: "Promover", nl: "Pushen", pl: "Promuj" },
   "Fix": { es: "Corregir", fr: "Corriger", de: "Beheben", it: "Correggere", pt: "Corrigir", nl: "Oplossen", pl: "Popraw" },
   "Clear": { es: "Liquidar", fr: "Écouler", de: "Abverkaufen", it: "Smaltire", pt: "Escoar", nl: "Opruimen", pl: "Wyprzedaj" },
   "Snoozed for 7 days.": { es: "Pospuesta 7 días.", fr: "Reportée de 7 jours.", de: "Für 7 Tage zurückgestellt.", it: "Rimandata di 7 giorni.", pt: "Adiada por 7 dias.", nl: "7 dagen uitgesteld.", pl: "Odłożone na 7 dni." },
@@ -24,7 +23,6 @@ export const ACTIONS_TR: Record<string, Tr> = {
   "Show more ({n} left)": { es: "Mostrar más (quedan {n})", fr: "Afficher plus ({n} restantes)", de: "Mehr anzeigen (noch {n})", it: "Mostra altro (ne restano {n})", pt: "Mostrar mais (faltam {n})", nl: "Meer tonen (nog {n})", pl: "Pokaż więcej (zostało {n})" },
   "Product details to fix: {n}": { es: "Detalles de producto por corregir: {n}", fr: "Détails produit à corriger : {n}", de: "Produktdetails zu beheben: {n}", it: "Dettagli prodotto da correggere: {n}", pt: "Detalhes de produto a corrigir: {n}", nl: "Productdetails om op te lossen: {n}", pl: "Szczegóły produktów do poprawy: {n}" },
   "Upgrade to see them": { es: "Mejora tu plan para verlos", fr: "Changez de forfait pour les voir", de: "Upgrade, um sie zu sehen", it: "Passa a un piano superiore per vederli", pt: "Mude de plano para os ver", nl: "Upgrade om ze te zien", pl: "Zmień plan, aby je zobaczyć" },
-  "More actions on the Growth plan: {n}": { es: "Más acciones en el plan Growth: {n}", fr: "Autres actions avec le forfait Growth : {n}", de: "Weitere Aufgaben im Growth-Tarif: {n}", it: "Altre azioni con il piano Growth: {n}", pt: "Mais ações no plano Growth: {n}", nl: "Meer acties met Growth: {n}", pl: "Więcej działań w planie Growth: {n}" },
 
   // ---- Row ----
   "+{n} more": { es: "+{n} más", fr: "+{n} de plus", de: "+{n} weitere", it: "+{n} altre", pt: "+{n} mais", nl: "+{n} meer", pl: "+{n} więcej" },
@@ -47,7 +45,6 @@ export const ACTIONS_TR: Record<string, Tr> = {
   "Based on: {facts}": { es: "Basado en: {facts}", fr: "Basé sur : {facts}", de: "Grundlage: {facts}", it: "Basato su: {facts}", pt: "Com base em: {facts}", nl: "Gebaseerd op: {facts}", pl: "Na podstawie: {facts}" },
 
   // ---- Push how-to ----
-  "How to push this product": { es: "Cómo impulsar este producto", fr: "Comment mettre ce produit en avant", de: "So pushst du dieses Produkt", it: "Come spingere questo prodotto", pt: "Como promover este produto", nl: "Zo push je dit product", pl: "Jak promować ten produkt" },
   "Open product in Shopify": { es: "Abrir el producto en Shopify", fr: "Ouvrir le produit dans Shopify", de: "Produkt in Shopify öffnen", it: "Apri il prodotto in Shopify", pt: "Abrir o produto no Shopify", nl: "Product openen in Shopify", pl: "Otwórz produkt w Shopify" },
   "Close": { es: "Cerrar", fr: "Fermer", de: "Schließen", it: "Chiudi", pt: "Fechar", nl: "Sluiten", pl: "Zamknij" },
   "Feature it on your home page, for example in a featured product section.": { es: "Destácalo en tu página de inicio, por ejemplo en una sección de producto destacado.", fr: "Mettez-le en avant sur votre page d'accueil, par exemple dans une section produit vedette.", de: "Zeig es auf deiner Startseite, zum Beispiel in einem Abschnitt für ein hervorgehobenes Produkt.", it: "Mettilo in evidenza nella home page, ad esempio in una sezione prodotto in primo piano.", pt: "Destaque-o na página inicial, por exemplo numa secção de produto em destaque.", nl: "Zet het op je homepage, bijvoorbeeld in een sectie met een uitgelicht product.", pl: "Pokaż go na stronie głównej, np. w sekcji z wyróżnionym produktem." },
