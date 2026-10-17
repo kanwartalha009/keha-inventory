@@ -1,0 +1,96 @@
+[
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_order_plan",
+    "description": "What to reorder and from whom: products to order grouped by supplier (or by vendor when no supplier is set), with order quantities after case packs and supplier minimums, the order-by date from each supplier's lead time, units and cost per supplier, and the cash needed per currency. Use for 'what do I need to reorder', 'what should I order from <supplier>' and 'how much cash do I need for stock next month'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "supplier": {
+          "type": "string",
+          "description": "Supplier or vendor name, or part of it. Leave out for all suppliers."
+        },
+        "within_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90,
+          "description": "Only lines whose order-by date is within this many days from today; overdue lines are always included. 7 for this week, 30 for next month. Default 14."
+        }
+      }
+    }
+  },
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_product_stock",
+    "description": "Stock and forecast for products matching a search: status (Out, Running low, Healthy, Too much, Dead, Not enough data), stock on hand, incoming, units on order with Keha and their arrival date, sales per day while in stock, days of stock left, the order-by date and the suggested order quantity, per variant. Use for 'when does <product> run out', 'how much <product> do I have' and 'should I reorder <product>'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Product title, variant name (such as a color or size) or SKU. Several words narrow the match, for example 'blue hoodie'."
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_action_list",
+    "description": "This week's stock actions, ranked by money at stake: reorder (order more stock), bridge (take preorders or back-in-stock sign-ups while sold out), push (promote products with healthy stock), fix (missing sizes, weak product pages, high returns, falling sales) and clear (discount slow or dead stock). Each action has the product, the amount at stake in the store currency and the reason in one sentence. Use for 'what should I do this week' or 'which products need attention'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["reorder", "bridge", "push", "fix", "clear"],
+          "description": "Only this kind of action. Leave out for all kinds."
+        }
+      }
+    }
+  },
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_money_at_stake",
+    "description": "The store's money at stake from its stock, in the store currency, with how each number was calculated: sales at risk in the next 28 days, sales lost to sell-outs in the last 90 days, cash stuck in too much stock and dead stock, sold-out page visits in the last 30 days, and the value of dead stock on its own. Use for 'what is my dead stock worth', 'how much cash is tied up in stock' and 'how much am I losing to stockouts'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_purchase_orders",
+    "description": "Open purchase orders: drafts, sent and confirmed orders made in Keha, and Shopify purchase orders that are ordered but not received. Each has the order number, supplier, status, expected arrival date, units and value. Use for 'which purchase orders are still open' and 'when does my order from <supplier> arrive'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["draft", "sent", "confirmed"],
+          "description": "Only orders with this status. Leave out for all open orders."
+        },
+        "supplier": {
+          "type": "string",
+          "description": "Supplier name, or part of it. Leave out for all suppliers."
+        }
+      }
+    }
+  },
+  {
+    "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
+    "name": "get_forecast_accuracy",
+    "description": "How accurate the sales forecasts were in recent months: the error of the store-total forecast and of the top 20 products, in percent (lower is better), from comparing each month's saved forecast with what really sold. Use for 'how accurate are the forecasts' or 'can I trust the reorder suggestions'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "months": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "How many recent graded months to return. Default 3."
+        }
+      }
+    }
+  }
+]

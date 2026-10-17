@@ -1,0 +1,32 @@
+# Shopify Sidekick app data extension (target admin.app.tools.data, headless).
+# Sidekick (the admin assistant) calls these read-only tools to answer a
+# merchant's stock questions from Keha's own data. Docs:
+#   shopify.dev/docs/apps/build/sidekick/build-app-data
+#   shopify.dev/docs/api/admin-extensions/<version>/targets/app-tools
+#
+# Files: src/index.js registers the tools; tools.json describes them (names
+# ≤ 64 characters, descriptions ≤ 512, ≤ 20 tools per app); instructions.md
+# tells Sidekick how they fit together (≤ 2,048 tokens). The tools fetch
+# /api/sidekick/<tool> on the app's own domain (app/routes/api.sidekick.$tool.tsx),
+# so Shopify adds the session token itself. The extension `description` below
+# (≤ 256 tokens) is how Sidekick decides when the app is relevant; the app-level
+# summary is [sidekick] extensions_summary in shopify.app.toml (deploy fails
+# without it). tests/sidekick-extension.test.ts holds every limit and the
+# content policy (no selling, no plan or upgrade talk, no urgency words).
+# No package.json on purpose: the module has no imports, and a package.json
+# here would join the root npm workspace (package-lock.json would change).
+#
+# API version 2026-10, pinned with the rest of the app (shopify.app.toml header).
+api_version = "2026-10"
+
+[[extensions]]
+name = "Keha Inventory for Sidekick"
+handle = "keha-inventory-sidekick"
+type = "ui_extension"
+description = "Answers questions about this store's stock from Keha Inventory Intelligence: what to reorder, from which supplier and by which order-by date, suggested order quantities and the cash they need; when a product runs out (days of stock left, stock on hand, incoming, sales per day); open purchase orders and expected arrivals; this week's stock actions (reorder, preorder gap, promote, fix, clear); money at stake (sales at risk, cash stuck in too much or dead stock); forecast accuracy."
+
+[[extensions.targeting]]
+target = "admin.app.tools.data"
+module = "./src/index.js"
+tools = "./tools.json"
+instructions = "./instructions.md"

@@ -67,3 +67,7 @@ uri = "/webhooks/shop/redact"
 [build]
 # Dev only: the CLI points the dev app at the tunnel.
 automatically_update_urls_on_dev = true
+
+[sidekick]
+# Same as shopify.app.toml (tests/sidekick-extension.test.ts).
+extensions_summary = "Look up stock planning data from Keha Inventory Intelligence: reorder plans by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."
