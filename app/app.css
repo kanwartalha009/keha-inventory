@@ -628,11 +628,14 @@
 .keha-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: var(--keha-space-200); width: 100%; min-width: 0; }
 .keha-toolbar__search { width: 100%; min-width: 0; }
 .keha-toolbar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--keha-space-200); width: 100%; min-width: 0; }
-.keha-toolbar__filters > * { flex: 1 1 180px; min-width: 160px; max-width: 320px; }
-.keha-toolbar__filters > .keha-switcher { flex-basis: 220px; }
-.keha-toolbar__filters > .keha-switcher--link { flex: 0 0 auto; max-width: none; }
+.keha-toolbar__filters > .keha-toolbar__item { flex: 1 1 180px; min-width: 160px; max-width: 320px; }
+.keha-toolbar__item:empty { display: none; }
+.keha-toolbar__item > *:not(.keha-switcher) { display: block; width: 100%; }
+.keha-toolbar__item > .keha-switcher { width: 100%; max-width: none; }
+.keha-toolbar__filters > .keha-toolbar__item:has(> .keha-switcher) { flex-basis: 220px; }
+.keha-toolbar__filters > .keha-toolbar__item:has(> .keha-switcher--link) { flex: 0 0 auto; max-width: none; }
 @media (max-width: 600px) {
-  .keha-toolbar__filters > *, .keha-toolbar__filters > .keha-switcher { flex: 1 1 100%; max-width: none; }
+  .keha-toolbar__filters > .keha-toolbar__item { flex: 1 1 100%; max-width: none; }
 }
 
 /* Location switcher (components/location-switcher.tsx): a compact select, or

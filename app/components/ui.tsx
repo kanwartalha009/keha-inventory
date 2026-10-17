@@ -4,7 +4,7 @@
  * @shopify/polaris-icons SVGs (the same icon set `<s-icon>` draws) so they can
  * take the tile's colour; everything else in the admin is an `<s-*>` element.
  */
-import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { SaveBar } from "@shopify/app-bridge-react";
 import { useLinkProps } from "./wc";
 import { UpgradeFromQuery } from "./plan";
@@ -610,10 +610,24 @@ export function DaysLeft({ id, daysLeft, neverRunsOut }: { id: string; daysLeft:
 }
 
 export function Toolbar({ search, filters, slot }: { search?: ReactNode; filters?: ReactNode; slot?: string }) {
+  // Polaris web components (s-select, s-search-field) ignore flex sizing set on their host, so
+  // every filter sits in our own box (.keha-toolbar__item) and the box is what gets sized
+  // (live admin 2026-10-17: without it each select took a full row).
+  const items = Children.toArray(
+    isValidElement(filters) && filters.type === Fragment ? (filters.props as { children?: ReactNode }).children : filters,
+  );
   return (
     <div className="keha-toolbar" slot={slot}>
       {search && <div className="keha-toolbar__search">{search}</div>}
-      {filters && <div className="keha-toolbar__filters">{filters}</div>}
+      {items.length > 0 && (
+        <div className="keha-toolbar__filters">
+          {items.map((item, i) => (
+            <div className="keha-toolbar__item" key={isValidElement(item) && item.key != null ? item.key : i}>
+              {item}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

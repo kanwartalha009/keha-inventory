@@ -37,13 +37,13 @@ describe(".keha-toolbar", () => {
     const group = rule(".keha-toolbar__filters");
     expect(group["flex-wrap"]).toBe("wrap");
     expect(group.width).toBe("100%");
-    const item = rule(".keha-toolbar__filters > *");
+    const item = rule(".keha-toolbar__filters > .keha-toolbar__item");
     expect(item.flex).toBe("1 1 180px");
     expect(item["min-width"]).toBe("160px");
   });
 
   it("three filters fit one row at the admin's widths (with or without the Sidekick panel)", () => {
-    const min = px(rule(".keha-toolbar__filters > *")["min-width"]);
+    const min = px(rule(".keha-toolbar__filters > .keha-toolbar__item")["min-width"]);
     const fits = (width: number, n: number) => n * min + (n - 1) * GAP <= width;
     expect(fits(880 - 32, 3)).toBe(true); // full admin width
     expect(fits(560 - 32, 3)).toBe(true); // Sidekick panel open

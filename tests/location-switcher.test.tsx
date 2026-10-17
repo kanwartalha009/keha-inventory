@@ -224,7 +224,7 @@ describe("SSR: the switcher", () => {
 
   it("Pro: the select sits in the toolbar's filter group", () => {
     const html = render("/app/products", "products", Products, products());
-    expect(html).toMatch(/<div class="keha-toolbar__filters"><div class="keha-switcher"><s-select/);
+    expect(html).toMatch(/<div class="keha-toolbar__filters"><div class="keha-toolbar__item"><div class="keha-switcher"><s-select/);
   });
 
   it("Reorder store view: the store's needs, with the switcher", () => {
