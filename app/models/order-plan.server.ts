@@ -103,6 +103,12 @@ async function productCount(shop: string, variantIds: string[]): Promise<number>
   return new Set(rows.map((r) => r.productId)).size;
 }
 
+/** Products with a variant marked "Don't reorder" (tracked, not bundles: the plan's population). */
+async function noReorderProducts(shop: string): Promise<number> {
+  const rows = await prisma.variant.findMany({ where: { shop, noReorder: true, tracked: true, isBundle: false }, select: { productId: true } });
+  return new Set(rows.map((r) => r.productId)).size;
+}
+
 const SUPPLIER_SELECT = {
   id: true,
   name: true,
@@ -222,10 +228,13 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const missing = [...new Set(metricRows.flatMap((m) => (readKehaShares(m.inputs) ?? []).map((x) => x.po)))].filter((id) => !kehaOrders.has(id));
   for (const o of await kehaOrdersById(shop, missing)) kehaOrders.set(o.id, o);
   const kehaByVariant = kehaOrdersByVariant([...kehaOrders.values()]);
-  const [variantRows, noData, dead] = await Promise.all([
+  const [variantRows, noData, dead, notReordered] = await Promise.all([
     ids.length ? prisma.variant.findMany({ where: { shop, id: { in: ids }, tracked: true, isBundle: false }, select: VARIANT_SELECT }) : Promise.resolve([]),
     productCount(shop, unplannable.filter((m) => m.status === "not_enough_data").map((m) => m.variantId)),
     productCount(shop, unplannable.filter((m) => m.status === "dead").map((m) => m.variantId)),
+    // L1: counted from the catalog, not from the metrics read above — compute gives a "Don't
+    // reorder" variant no order and no order-by date, so its metric is never read here.
+    noReorderProducts(shop),
   ]);
   const variants = [...variantRows];
 
@@ -256,7 +265,6 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const rules: Record<string, PlanSupplierRules> = {};
   const specs: PlanVariantSpec[] = [];
   const byId = new Map(variants.map((v) => [v.id, v]));
-  const notReordered = new Set<string>();
   const storeCur = basics.currency.toUpperCase();
   for (const v of variants) {
     const m = metrics.get(v.id);
@@ -264,7 +272,6 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     const supplier = supplierFor(v, supplierRows);
     const key = supplier ? supplierGroupKey(supplier.id) : vendorGroupKey(v.vendor);
     if (v.noReorder) {
-      notReordered.add(v.productId);
       state.set(v.id, { deadline: null, skip: null, supplierKey: key, noReorder: true });
       continue;
     }
@@ -389,7 +396,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       cantPlan: { noData, dead },
       batches: plan.batches,
       staleDrafts,
-      notReordered: notReordered.size,
+      notReordered,
     },
     state,
     suppliers: supplierRows,

@@ -186,6 +186,18 @@ describe("ordering audit 2026-10-17", () => {
     expect((await kehaOnOrder(S, ["sent", "confirmed"])).get(V(2))).toEqual({ qty: 10, arrival: "2026-11-10" });
   });
 
+  it("L1: Don't reorder is still counted after the nightly run (compute gives it no order and no order-by date)", async () => {
+    // As compute writes a "Don't reorder" variant: no order quantity, no order-by date.
+    fake.tables.variant = [variant(1, { noReorder: true }), variant(2), variant(7, { productId: "P1", noReorder: true })];
+    fake.tables.variantMetric = [metric(1, 10, { orderQty: null, orderBy: null }, { noReorder: true }), metric(2, 80)];
+    const plan = await loadOrderPlan(S, NOW);
+    expect(plan.events.some((e) => e.variantId === V(1))).toBe(false);
+    // Products, not variants (the copy says "N products are set to Don't reorder").
+    expect(plan.notReordered).toBe(1);
+    fake.tables.variant.push(variant(8, { productId: "P8", noReorder: true }), variant(9, { productId: "P9", noReorder: true, tracked: false }));
+    expect((await loadOrderPlan(S, NOW)).notReordered).toBe(2);
+  });
+
   it("Don't reorder: out of the plan, Order now and Products' To order (Not reordered), counted; Sidekick has no quantity", async () => {
     expect(await setNoReorder(S, { productId: "P1" }, true)).toEqual({ ok: true, count: 1 });
     const plan = await loadOrderPlan(S, NOW);
