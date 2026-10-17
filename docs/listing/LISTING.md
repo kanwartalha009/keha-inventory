@@ -2,7 +2,7 @@
 
 Partner Dashboard → Apps → Keha Inventory Intelligence → Distribution → Manage listing.
 English is the primary listing. Every claim below is something the code does today
-(checked 2026-10-16, task 2.7; rechecked 2026-10-17 after the Planner and Pro stores merged); `tests/listing.test.ts` enforces the limits, the name and the
+(checked 2026-10-16, task 2.7; rechecked 2026-10-17 after the Planner and Pro stores merged, and for the Order plan, which now leads the app); `tests/listing.test.ts` enforces the limits, the name and the
 pricing table. Edit a value only inside its ```text block, then run `npx vitest run tests/listing.test.ts`.
 
 Limits used (shopify.dev "App Store requirements checklist", playbook §8):
@@ -20,24 +20,26 @@ Keha Inventory Intelligence
 ## App card subtitle
 
 ```text
-Know what to reorder, push, fix and clear, every Monday
+Know what to order, from whom, by when and the cash it takes
 ```
 
 ## App introduction
 
 ```text
-See what your stock is costing you in money, and get a ranked to-do list every Monday.
+Plan what to order, from which supplier, by when and the cash it takes, from your own Shopify sales.
 ```
 
 ## App details
 
 ```text
-Keha reads your own Shopify sales, stock and store visits and puts a money figure on four problems: sales at risk, sales lost to sell-outs, cash stuck and visits to sold-out pages. Every Monday you get a ranked list of what to reorder, push, fix and clear. Sales per day count only in-stock days, so sell-outs never drag a forecast down. Send purchase orders that suppliers confirm through a link, plan a season's orders and cash per week, and on Pro plan each warehouse and POS store.
+Keha plans your stock orders from your Shopify sales and stock: what to order, from which supplier, by when, and the cash each week needs over the next 90 days. Sales per day count only in-stock days, so sell-outs never drag a forecast down. It puts a money figure on sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits, ranks what to reorder, push, fix and clear every Monday, and sends purchase orders suppliers confirm by link. On Pro, plan each warehouse and POS store.
 ```
 
 ## Feature list
 
 ```text
+Order plan: what to order, from whom, by when, and the cash needed each week
+A 90-day order calendar by week and supplier, with the cash needed per week
 Money at stake: sales at risk, lost to sell-outs, cash stuck, sold-out visits
 A weekly to-do list to reorder, push, fix and clear, ranked by money at stake
 Forecasts ignore sold-out days and use seasonality once 13 months exist
@@ -52,15 +54,17 @@ Where each claim lives in the code:
 
 | Claim | Code |
 |---|---|
-| Four money numbers | `app/lib/engine/money-shared.ts`, Home cards |
-| Ranked to-do list (reorder, push, fix, clear, bridge) | `app/lib/engine/actions-rules-shared.ts`, Home tabs |
+| Order plan: what, from whom, by when, cash per week | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
+| 90-day order calendar, cash per week | Order plan → Next 90 days (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth) |
+| Four money numbers | `app/lib/engine/money-shared.ts`, Dashboard cards |
+| Ranked to-do list (reorder, push, fix, clear, bridge) | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs |
 | Sold-out days ignored; seasonality from 13 months | `app/lib/engine/rate-shared.ts`, `season-shared.ts` |
 | Purchase orders PDF / CSV / email, ship-date link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
 | Discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Monday email translated, Slack, Flow | `app/services/monday.server.ts`, `slack.server.ts`, `flow.server.ts` (Slack, Flow: Growth) |
-| Season planner: order list, order-by dates, cash per week (also collection goals, accuracy scorecard) | `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
-| Plan per warehouse and POS store | `app/routes/app.settings_.locations.tsx` (roles), location switcher on Products and Reorder (Pro) |
-| Draft transfers in Shopify | Reorder → "Transfers: warehouse → stores", `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
+| Season planner: order list, order-by dates, cash per week (also collection goals, accuracy scorecard) | Order plan → Season plan, `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
+| Plan per warehouse and POS store | `app/routes/app.settings_.locations.tsx` (roles), location switcher on Products and Order plan → Order now (Pro) |
+| Draft transfers in Shopify | Order plan → Order now → "Transfers: warehouse → stores" (shown when the store plans two or more locations), `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks
