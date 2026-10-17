@@ -25,6 +25,7 @@ import {
   listSuppliers,
   otherSupplierNames,
   saveSupplier,
+  storeCurrency,
   supplierContext,
   supplierForm,
   type SupplierListRow,
@@ -34,11 +35,12 @@ import { AppPage, Disclosure, EmptyState, FormCard, FormSaveBar, sameValues } fr
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
-import { ChoiceListField, flag, isChecked, useLinkProps, val } from "../components/wc";
+import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
-import { formatCount } from "../lib/dashboard-shared";
+import { formatAmount, formatCount } from "../lib/dashboard-shared";
 import {
   SUPPLIER_BOUNDS,
+  needsExchangeRate,
   newSupplierForm,
   productIdsFrom,
   readSupplierForm,
@@ -48,6 +50,7 @@ import {
   type SupplierForm,
   type SupplierNumberKey,
 } from "../lib/suppliers-shared";
+import type { MinOrderScope } from "../lib/supplier-shared";
 
 export type SuppliersData = {
   suppliers: SupplierListRow[];
@@ -91,7 +94,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   switch (body.intent) {
     case "save": {
       const form = readSupplierForm(body.form);
-      const v = validateSupplierForm(form, await otherSupplierNames(shop, id));
+      const [taken, currency] = await Promise.all([otherSupplierNames(shop, id), storeCurrency(shop)]);
+      const v = validateSupplierForm(form, taken, currency);
       if (!v.ok) return { ok: false, errors: v.errors } satisfies SuppliersAction;
       // Supplier emails are stored encrypted only; never in the clear (lib/crypto.server).
       if (v.input.email && !secretsWritable()) return { ok: false, errors: { email: "emailStorage" } } satisfies SuppliersAction;
@@ -203,6 +207,7 @@ export default function SuppliersSettings() {
                 <SupplierRow
                   key={s.id}
                   s={s}
+                  storeCurrency={data.currency}
                   enabled={data.enabled}
                   onEdit={() => navigate(`/app/settings/suppliers?edit=${encodeURIComponent(s.id)}`)}
                   onAssign={(productIds) => post({ intent: "assign", id: s.id, productIds })}
@@ -240,6 +245,7 @@ export default function SuppliersSettings() {
 
 function SupplierRow({
   s,
+  storeCurrency,
   enabled,
   onEdit,
   onAssign,
@@ -247,6 +253,7 @@ function SupplierRow({
   onClear,
 }: {
   s: SupplierListRow;
+  storeCurrency: string;
   enabled: boolean;
   onEdit: () => void;
   onAssign: (productIds: string[]) => void;
@@ -257,8 +264,13 @@ function SupplierRow({
   const shopify = useAppBridge();
   const menuId = `keha-supplier-menu-${s.id}`;
   const minimums = [
-    s.minOrder ? fill(t("{n} per item"), { n: formatCount(s.minOrder, locale) }) : null,
+    s.minOrder
+      ? fill(s.minOrderScope === "product" ? t("{n} per product") : t("{n} per item"), { n: formatCount(s.minOrder, locale) })
+      : null,
     s.minOrderTotal ? fill(t("{n} per order"), { n: formatCount(s.minOrderTotal, locale) }) : null,
+    s.minOrderValue
+      ? fill(t("{money} minimum"), { money: formatAmount(s.minOrderValue, s.currency ?? storeCurrency, locale) })
+      : null,
     s.casePack ? fill(t("cases of {n}"), { n: formatCount(s.casePack, locale) }) : null,
   ].filter(Boolean);
   const pick = async () => {
@@ -279,7 +291,12 @@ function SupplierRow({
         </s-stack>
       </s-table-cell>
       <s-table-cell>
-        <span className="keha-num">{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</span>
+        <s-stack direction="block" gap="none">
+          <span className="keha-num">{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</span>
+          {s.transitDays ? (
+            <s-text color="subdued">{fill(t("{n} days in transit"), { n: formatCount(s.transitDays, locale) })}</s-text>
+          ) : null}
+        </s-stack>
       </s-table-cell>
       <s-table-cell>{minimums.length ? minimums.join(" · ") : "—"}</s-table-cell>
       <s-table-cell>
@@ -339,7 +356,12 @@ function SupplierEditor({
 }) {
   const { t } = useLocale();
   const [form, setForm] = useState<SupplierForm>(initial);
+  // More options opens by itself when one of its fields has an error after a save.
+  const moreHasError = !!(errors.minOrderValue || errors.exchangeRate || errors.currency);
   const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (moreHasError) setMore(true);
+  }, [moreHasError]);
   // A new supplier counts as changed from the start, so Save is there as soon as it opens.
   const dirty = id === null || !sameValues(form, initial);
   const set = <K extends keyof SupplierForm>(key: K, value: SupplierForm[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -362,6 +384,9 @@ function SupplierEditor({
       onInput={(e) => set(key, val(e))}
     />
   );
+  // The currency this supplier bills in (empty = the store's).
+  const supplierCurrency = form.currency.trim().toUpperCase() || storeCurrency;
+  const showRate = needsExchangeRate(form.currency, storeCurrency);
   // Vendors already matched but no longer in the catalog stay selectable.
   const vendorChoices = [...new Set([...vendors, ...form.vendorMatch])].map((v) => ({ value: v, label: v }));
   return (
@@ -390,7 +415,13 @@ function SupplierEditor({
           error={err("email")}
           onInput={(e) => set("email", val(e))}
         />
-        {numberField("leadTimeDays", t("Lead time"), t("Days from placing an order to the stock arriving."), t("days"))}
+        {numberField("leadTimeDays", t("Lead time"), t("Total days from placing the order to stock arriving."), t("days"))}
+        {numberField(
+          "transitDays",
+          t("Transit time"),
+          t("Days from ship date to arrival — sea or air freight. Part of the lead time. Leave empty if the supplier delivers directly."),
+          t("days"),
+        )}
         {numberField("minOrder", t("Minimum per item"), t("The fewest units the supplier takes of one variant. Leave empty for none."))}
         {numberField("minOrderTotal", t("Minimum order total"), t("The fewest units for the whole order. Suggested orders are topped up to reach it."))}
         {numberField("casePack", t("Case pack"), t("Units per case. Quantities are rounded up to whole cases. A product's own case size wins."))}
@@ -408,6 +439,28 @@ function SupplierEditor({
         {errors.vendorMatch && <s-text tone="critical">{err("vendorMatch")}</s-text>}
         <Disclosure id="supplier-more" title={t("More options")} open={more} onToggle={() => setMore((m) => !m)}>
           <s-stack direction="block" gap="base">
+            <SelectField<MinOrderScope>
+              label={t("Minimum per item applies to")}
+              value={form.minOrderScope}
+              options={[
+                { value: "variant", label: t("Each size/colour") },
+                { value: "product", label: t("Each product (split across sizes by sales)") },
+              ]}
+              onChange={(v) => set("minOrderScope", v)}
+            />
+            <s-number-field
+              label={t("Minimum order value")}
+              details={fill(t("The smallest order this supplier accepts, in {currency}. Leave empty for none."), {
+                currency: supplierCurrency,
+              })}
+              value={form.minOrderValue}
+              suffix={supplierCurrency}
+              inputMode="decimal"
+              min={0}
+              step={0.01}
+              error={err("minOrderValue")}
+              onInput={(e) => set("minOrderValue", val(e))}
+            />
             <s-text-field
               label={t("Currency")}
               details={fill(t("The currency you pay this supplier in. Leave empty for your store currency ({currency})."), {
@@ -418,6 +471,23 @@ function SupplierEditor({
               error={err("currency")}
               onInput={(e) => set("currency", val(e).toUpperCase())}
             />
+            {showRate && (
+              <s-number-field
+                label={fill(t("Exchange rate: 1 {supplierCurrency} = ? {storeCurrency}"), {
+                  supplierCurrency,
+                  storeCurrency,
+                })}
+                details={t("Used to convert order values between the two currencies. Leave empty if you don't know it yet.")}
+                value={form.exchangeRate}
+                prefix={`1 ${supplierCurrency} =`}
+                suffix={storeCurrency}
+                inputMode="decimal"
+                min={0}
+                step={0.0001}
+                error={err("exchangeRate")}
+                onInput={(e) => set("exchangeRate", val(e))}
+              />
+            )}
             <s-checkbox
               label={t("Hide prices from the supplier")}
               details={t("The order PDF, CSV, email and confirmation page show no unit costs.")}

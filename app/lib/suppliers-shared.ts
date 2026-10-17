@@ -4,6 +4,8 @@
  * turns them into translated text with `supplierErrorText`.
  */
 
+import { readMinOrderScope, type MinOrderScope } from "./supplier-shared";
+
 type T = (s: string) => string;
 
 /** What the merchant edits. Numbers stay strings so a half-typed field round-trips. */
@@ -16,6 +18,14 @@ export type SupplierForm = {
   /** Minimum total units for the whole order. Empty = none. */
   minOrderTotal: string;
   casePack: string;
+  /** Days from the supplier's ship date to arrival (sea or air freight). Empty = none. */
+  transitDays: string;
+  /** Minimum order value in the supplier's currency. Empty = none. */
+  minOrderValue: string;
+  /** What "Minimum per item" applies to: "variant" (each size/colour) or "product" (split across sizes by sales). */
+  minOrderScope: MinOrderScope;
+  /** 1 supplier-currency unit in store currency. Only kept when the supplier currency differs from the store's. */
+  exchangeRate: string;
   /** ISO 4217 code; empty = the store currency. */
   currency: string;
   hidePrices: boolean;
@@ -30,12 +40,27 @@ export type SupplierInput = {
   minOrder: number | null;
   minOrderTotal: number | null;
   casePack: number | null;
+  transitDays: number | null;
+  minOrderValue: number | null;
+  minOrderScope: MinOrderScope;
+  exchangeRate: number | null;
   currency: string | null;
   hidePrices: boolean;
   vendorMatch: string[];
 };
 
-export type SupplierErrorCode = "name" | "nameLong" | "nameTaken" | "email" | "emailStorage" | "range" | "currency" | "vendors";
+export type SupplierErrorCode =
+  | "name"
+  | "nameLong"
+  | "nameTaken"
+  | "email"
+  | "emailStorage"
+  | "range"
+  | "currency"
+  | "vendors"
+  | "transit"
+  | "money"
+  | "rate";
 export type SupplierErrors = Partial<Record<keyof SupplierForm, SupplierErrorCode>>;
 
 export const SUPPLIER_BOUNDS = {
@@ -43,12 +68,18 @@ export const SUPPLIER_BOUNDS = {
   minOrder: { min: 1, max: 100_000 },
   minOrderTotal: { min: 1, max: 1_000_000 },
   casePack: { min: 1, max: 10_000 },
+  transitDays: { min: 0, max: 365 },
 } as const;
 export type SupplierNumberKey = keyof typeof SUPPLIER_BOUNDS;
 
 export const SUPPLIER_NAME_MAX = 100;
 export const VENDOR_MATCH_MAX = 50;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Minimum order value: up to 2 decimals, at most this much. */
+export const MIN_ORDER_VALUE_MAX = 100_000_000;
+/** Exchange rate: positive, up to 6 decimals (Supplier.exchangeRate is Decimal(18, 6)). */
+export const EXCHANGE_RATE_MAX = 1_000_000;
 
 export const EMPTY_SUPPLIER_FORM: SupplierForm = {
   name: "",
@@ -57,6 +88,10 @@ export const EMPTY_SUPPLIER_FORM: SupplierForm = {
   minOrder: "",
   minOrderTotal: "",
   casePack: "",
+  transitDays: "",
+  minOrderValue: "",
+  minOrderScope: "variant",
+  exchangeRate: "",
   currency: "",
   hidePrices: false,
   vendorMatch: [],
@@ -74,11 +109,15 @@ export function supplierToForm(s: {
   minOrder: number | null;
   minOrderTotal: number | null;
   casePack: number | null;
+  transitDays?: number | null;
+  minOrderValue?: number | null;
+  minOrderScope?: string | null;
+  exchangeRate?: number | null;
   currency: string | null;
   hidePrices: boolean;
   vendorMatch: string[];
 }): SupplierForm {
-  const str = (n: number | null) => (n === null ? "" : String(n));
+  const str = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
   return {
     name: s.name,
     email: s.email ?? "",
@@ -86,6 +125,10 @@ export function supplierToForm(s: {
     minOrder: str(s.minOrder),
     minOrderTotal: str(s.minOrderTotal),
     casePack: str(s.casePack),
+    transitDays: str(s.transitDays),
+    minOrderValue: str(s.minOrderValue),
+    minOrderScope: readMinOrderScope(s.minOrderScope),
+    exchangeRate: str(s.exchangeRate),
     currency: s.currency ?? "",
     hidePrices: s.hidePrices,
     vendorMatch: [...s.vendorMatch],
@@ -103,6 +146,10 @@ export function readSupplierForm(raw: unknown): SupplierForm {
     minOrder: s("minOrder"),
     minOrderTotal: s("minOrderTotal"),
     casePack: s("casePack"),
+    transitDays: s("transitDays"),
+    minOrderValue: s("minOrderValue"),
+    minOrderScope: readMinOrderScope(r.minOrderScope),
+    exchangeRate: s("exchangeRate"),
     currency: s("currency"),
     hidePrices: r.hidePrices === true,
     vendorMatch: Array.isArray(r.vendorMatch) ? r.vendorMatch.filter((v): v is string => typeof v === "string") : [],
@@ -123,13 +170,30 @@ export function cleanVendors(list: readonly string[]): string[] {
   return out;
 }
 
+/** A decimal with at most `places` decimals, in (0, max]; null when it isn't one. Accepts "1,08" too. */
+export function parseDecimal(raw: string, places: number, max: number): number | null {
+  const x = raw.trim().replace(",", ".");
+  if (!new RegExp(`^\\d+(\\.\\d{1,${places}})?$`).test(x)) return null;
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+}
+
+/** Does this supplier bill in another currency than the store's (so an exchange rate applies)? */
+export function needsExchangeRate(supplierCurrency: string, storeCurrency: string): boolean {
+  const c = supplierCurrency.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(c) && c !== storeCurrency.trim().toUpperCase();
+}
+
 /**
  * Validate the form. `takenNames` are the other suppliers' names (a name is
- * unique per store, case-insensitive).
+ * unique per store, case-insensitive). `storeCurrency` decides whether the
+ * exchange rate applies (it is dropped when the supplier bills in the store
+ * currency); without it, a rate is kept whenever a currency is set.
  */
 export function validateSupplierForm(
   form: SupplierForm,
   takenNames: readonly string[] = [],
+  storeCurrency?: string,
 ): { ok: true; input: SupplierInput } | { ok: false; errors: SupplierErrors } {
   const errors: SupplierErrors = {};
   const name = form.name.trim();
@@ -158,9 +222,25 @@ export function validateSupplierForm(
   const minOrder = num("minOrder", false);
   const minOrderTotal = num("minOrderTotal", false);
   const casePack = num("casePack", false);
+  const transitDays = num("transitDays", false);
+  // Lead time is the total from order to arrival, so the freight part can't be longer.
+  if (transitDays !== null && leadTimeDays !== null && transitDays > leadTimeDays) errors.transitDays = "transit";
+
+  let minOrderValue: number | null = null;
+  if (String(form.minOrderValue).trim()) {
+    minOrderValue = parseDecimal(String(form.minOrderValue), 2, MIN_ORDER_VALUE_MAX);
+    if (minOrderValue === null) errors.minOrderValue = "money";
+  }
 
   const currency = form.currency.trim().toUpperCase();
   if (currency && !/^[A-Z]{3}$/.test(currency)) errors.currency = "currency";
+
+  const rateApplies = storeCurrency === undefined ? !!currency : needsExchangeRate(currency, storeCurrency);
+  let exchangeRate: number | null = null;
+  if (rateApplies && String(form.exchangeRate).trim()) {
+    exchangeRate = parseDecimal(String(form.exchangeRate), 6, EXCHANGE_RATE_MAX);
+    if (exchangeRate === null) errors.exchangeRate = "rate";
+  }
 
   const vendorMatch = cleanVendors(form.vendorMatch);
   if (vendorMatch.length > VENDOR_MATCH_MAX) errors.vendorMatch = "vendors";
@@ -176,6 +256,10 @@ export function validateSupplierForm(
       minOrderTotal,
       // A case pack of 1 is no case pack.
       casePack: casePack && casePack > 1 ? casePack : null,
+      transitDays: transitDays || null,
+      minOrderValue,
+      minOrderScope: readMinOrderScope(form.minOrderScope),
+      exchangeRate,
       currency: currency || null,
       hidePrices: form.hidePrices,
       vendorMatch,
@@ -202,6 +286,12 @@ export function supplierErrorText(code: SupplierErrorCode, t: T): string {
       return t("Use a 3-letter currency code, like EUR.");
     case "vendors":
       return t("Pick up to 50 vendors.");
+    case "transit":
+      return t("Transit can't be longer than the lead time, which already includes it.");
+    case "money":
+      return t("Enter an amount like 500 or 499.99.");
+    case "rate":
+      return t("Enter a rate above 0, like 1.08.");
   }
 }
 

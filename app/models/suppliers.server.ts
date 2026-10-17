@@ -8,6 +8,7 @@
 import prisma from "../db.server";
 import { decryptSecret, encryptSecret } from "../lib/crypto.server";
 import { readSettings } from "../lib/settings-shared";
+import { readMinOrderScope, type MinOrderScope } from "../lib/supplier-shared";
 import { supplierToForm, type SupplierForm, type SupplierInput } from "../lib/suppliers-shared";
 
 export type SupplierListRow = {
@@ -18,6 +19,11 @@ export type SupplierListRow = {
   minOrder: number | null;
   minOrderTotal: number | null;
   casePack: number | null;
+  transitDays: number | null;
+  /** In the supplier's currency. */
+  minOrderValue: number | null;
+  minOrderScope: MinOrderScope;
+  exchangeRate: number | null;
   currency: string | null;
   hidePrices: boolean;
   vendorMatch: string[];
@@ -33,10 +39,21 @@ const LIST_SELECT = {
   minOrder: true,
   minOrderTotal: true,
   casePack: true,
+  transitDays: true,
+  minOrderValue: true,
+  minOrderScope: true,
+  exchangeRate: true,
   currency: true,
   hidePrices: true,
   vendorMatch: true,
 } as const;
+
+/** Decimal columns (Prisma.Decimal) → plain numbers for the page. */
+const dec = (v: { toString(): string } | null): number | null => (v === null ? null : Number(v.toString()));
+
+function plain<T extends { minOrderValue: { toString(): string } | null; exchangeRate: { toString(): string } | null; minOrderScope: string }>(s: T) {
+  return { ...s, minOrderValue: dec(s.minOrderValue), exchangeRate: dec(s.exchangeRate), minOrderScope: readMinOrderScope(s.minOrderScope) };
+}
 
 export async function listSuppliers(shop: string): Promise<SupplierListRow[]> {
   const [rows, assigned] = await Promise.all([
@@ -45,14 +62,14 @@ export async function listSuppliers(shop: string): Promise<SupplierListRow[]> {
   ]);
   const products = new Map<string, number>();
   for (const a of assigned) if (a.supplierId) products.set(a.supplierId, (products.get(a.supplierId) ?? 0) + 1);
-  return rows.map(({ email, ...s }) => ({ ...s, hasEmail: !!email, products: products.get(s.id) ?? 0 }));
+  return rows.map(({ email, ...s }) => ({ ...plain(s), hasEmail: !!email, products: products.get(s.id) ?? 0 }));
 }
 
 /** One supplier as an edit form (email decrypted); null when not this shop's. */
 export async function supplierForm(shop: string, id: string): Promise<SupplierForm | null> {
   const s = await prisma.supplier.findFirst({ where: { id, shop }, select: LIST_SELECT });
   if (!s) return null;
-  return supplierToForm({ ...s, email: s.email ? decryptSecret(s.email) || null : null });
+  return supplierToForm({ ...plain(s), email: s.email ? decryptSecret(s.email) || null : null });
 }
 
 /** The other suppliers' names (unique-name check). */
@@ -69,6 +86,10 @@ function data(input: SupplierInput) {
     minOrder: input.minOrder,
     minOrderTotal: input.minOrderTotal,
     casePack: input.casePack,
+    transitDays: input.transitDays,
+    minOrderValue: input.minOrderValue,
+    minOrderScope: input.minOrderScope,
+    exchangeRate: input.exchangeRate,
     currency: input.currency,
     hidePrices: input.hidePrices,
     vendorMatch: input.vendorMatch,
@@ -114,6 +135,12 @@ export async function assignProducts(shop: string, supplierId: string, productId
 export async function clearProducts(shop: string, supplierId: string): Promise<number> {
   const r = await prisma.variant.updateMany({ where: { shop, supplierId }, data: { supplierId: null } });
   return r.count;
+}
+
+/** The store's currency (decides whether a supplier's exchange rate applies). */
+export async function storeCurrency(shop: string): Promise<string> {
+  const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { currency: true } });
+  return row?.currency ?? "USD";
 }
 
 /** The store's vendors (vendor-match choices) and defaults for a new supplier. */

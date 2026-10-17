@@ -36,6 +36,7 @@ const SAME_WORD: Record<string, string[]> = {
   Variant: ["nl"],
   Collection: ["fr"],
   Actions: ["fr"],
+  "{n} per product": ["nl"],
 };
 
 function files(dir: string): string[] {

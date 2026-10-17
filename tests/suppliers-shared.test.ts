@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_SUPPLIER_FORM,
   cleanVendors,
+  needsExchangeRate,
   newSupplierForm,
+  parseDecimal,
   productIdsFrom,
   readSupplierForm,
   supplierErrorText,
@@ -38,11 +40,49 @@ describe("validateSupplierForm", () => {
         minOrder: 10,
         minOrderTotal: 200,
         casePack: 6,
+        transitDays: null,
+        minOrderValue: null,
+        minOrderScope: "variant",
+        exchangeRate: null,
         currency: "USD",
         hidePrices: true,
         vendorMatch: ["Acme", "Acme Kids"],
       },
     });
+  });
+
+  it("transit days, a money minimum, the minimum scope and the exchange rate", () => {
+    const r = validateSupplierForm(
+      form({ leadTimeDays: "45", transitDays: "30", minOrderValue: "1500,5", minOrderScope: "product", currency: "usd", exchangeRate: "0.9215" }),
+      [],
+      "EUR",
+    );
+    expect(r.ok && r.input).toMatchObject({ transitDays: 30, minOrderValue: 1500.5, minOrderScope: "product", currency: "USD", exchangeRate: 0.9215 });
+    // Transit is part of the lead time, so it can't be longer.
+    expect(validateSupplierForm(form({ leadTimeDays: "10", transitDays: "20" }))).toEqual({ ok: false, errors: { transitDays: "transit" } });
+    expect(validateSupplierForm(form({ transitDays: "400" }))).toEqual({ ok: false, errors: { transitDays: "range" } });
+    // Amounts: up to 2 decimals, above 0.
+    for (const bad of ["0", "-5", "12.345", "abc"]) {
+      expect(validateSupplierForm(form({ minOrderValue: bad }))).toEqual({ ok: false, errors: { minOrderValue: "money" } });
+    }
+    // A rate only applies when the supplier bills in another currency; otherwise it is dropped.
+    const same = validateSupplierForm(form({ currency: "EUR", exchangeRate: "1.2" }), [], "EUR");
+    expect(same.ok && same.input.exchangeRate).toBeNull();
+    const none = validateSupplierForm(form({ currency: "", exchangeRate: "1.2" }), [], "EUR");
+    expect(none.ok && none.input.exchangeRate).toBeNull();
+    expect(validateSupplierForm(form({ currency: "USD", exchangeRate: "0" }), [], "EUR")).toEqual({ ok: false, errors: { exchangeRate: "rate" } });
+    // Transit 0 means none; an unknown scope reads as each size/colour.
+    const zero = validateSupplierForm({ ...form({ transitDays: "0" }), minOrderScope: "style" as never });
+    expect(zero.ok && zero.input).toMatchObject({ transitDays: null, minOrderScope: "variant" });
+  });
+
+  it("needsExchangeRate: only a different, valid currency", () => {
+    expect(needsExchangeRate("usd", "EUR")).toBe(true);
+    expect(needsExchangeRate("EUR", "EUR")).toBe(false);
+    expect(needsExchangeRate("", "EUR")).toBe(false);
+    expect(needsExchangeRate("US", "EUR")).toBe(false);
+    expect(parseDecimal("1.0825", 6, 10)).toBe(1.0825);
+    expect(parseDecimal("1e3", 2, 1e9)).toBeNull();
   });
 
   it("leaves optional fields empty (null) and treats a case pack of 1 as none", () => {
@@ -85,6 +125,10 @@ describe("validateSupplierForm", () => {
       minOrder: null,
       minOrderTotal: 50,
       casePack: null,
+      transitDays: 5,
+      minOrderValue: 250.5,
+      minOrderScope: "product" as const,
+      exchangeRate: null,
       currency: null,
       hidePrices: false,
       vendorMatch: ["Acme"],
@@ -100,7 +144,7 @@ describe("validateSupplierForm", () => {
   });
 
   it("has text for every error code", () => {
-    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors"];
+    const codes: SupplierErrorCode[] = ["name", "nameLong", "nameTaken", "email", "range", "currency", "vendors", "transit", "money", "rate"];
     for (const c of codes) expect(supplierErrorText(c, (s) => s).length).toBeGreaterThan(5);
   });
 

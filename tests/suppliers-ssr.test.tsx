@@ -10,6 +10,7 @@ const saveSupplier = vi.hoisted(() => vi.fn(async () => "s9"));
 vi.mock("../app/models/suppliers.server", async (orig) => ({
   ...(await orig<typeof import("../app/models/suppliers.server")>()),
   otherSupplierNames: async () => [],
+  storeCurrency: async () => "EUR",
   saveSupplier,
 }));
 
@@ -27,8 +28,8 @@ function render(path: string, id: string, Component: React.ComponentType, data: 
 
 const suppliers = (over: Partial<SuppliersData> = {}): SuppliersData => ({
   suppliers: [
-    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
-    { id: "s2", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
+    { id: "s1", name: "Acme Textiles", hasEmail: true, leadTimeDays: 30, minOrder: 10, minOrderTotal: 200, casePack: 6, transitDays: 21, minOrderValue: 1500, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], products: 3 },
+    { id: "s2", name: "Beta", hasEmail: false, leadTimeDays: 7, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: 0.92, currency: "USD", hidePrices: true, vendorMatch: [], products: 0 },
   ],
   vendors: ["Acme", "Beta"],
   currency: "EUR",
@@ -43,7 +44,8 @@ describe("Settings → Suppliers", () => {
     expect(html).toContain("Suppliers"); // the tab
     expect(html).toContain("Acme Textiles");
     expect(html).toContain("30 days");
-    expect(html).toContain("10 per item · 200 per order · cases of 6");
+    expect(html).toContain("10 per item · 200 per order · €1,500 minimum · cases of 6");
+    expect(html).toContain("21 days in transit");
     expect(html).toContain("Vendors: Acme");
     expect(html).toContain("Products picked: 3");
     expect(html).toContain("Email saved");
@@ -60,11 +62,14 @@ describe("Settings → Suppliers", () => {
       suppliers({ editing: { id: null, form: newSupplierForm(14, "EUR") } }),
     );
     expect(html).toContain("New supplier");
-    for (const f of ["Supplier name", "Supplier email", "Lead time", "Minimum per item", "Minimum order total", "Case pack", "Products from these vendors"]) {
+    for (const f of ["Supplier name", "Supplier email", "Lead time", "Transit time", "Minimum per item", "Minimum order total", "Case pack", "Products from these vendors"]) {
       expect(html).toContain(f);
     }
     expect(html).toContain("More options");
+    expect(html).toContain("Total days from placing the order to stock arriving.");
+    expect(html).toContain("Days from ship date to arrival — sea or air freight.");
     expect(html).not.toContain("Hide prices from the supplier"); // collapsed
+    expect(html).not.toContain("Minimum order value"); // collapsed
     const visible = (html.match(/<s-(text|email|number)-field/g) ?? []).length + (html.match(/<s-choice-list/g) ?? []).length;
     expect(visible).toBeLessThanOrEqual(8);
   });
@@ -94,6 +99,46 @@ describe("Settings → Suppliers", () => {
     const html = render("/app/settings/suppliers", "suppliers", SuppliersSettings, suppliers({ enabled: false }));
     expect(html).toContain("Keep lead times, minimum orders and case packs for each supplier.");
     expect(html).toContain("Growth plan");
+  });
+});
+
+describe("Settings → Suppliers: per-style minimum, money minimum, exchange rate", () => {
+  it("a minimum per product reads 'per product' in the list", () => {
+    const base = suppliers();
+    const html = render(
+      "/app/settings/suppliers",
+      "suppliers",
+      SuppliersSettings,
+      suppliers({ suppliers: [{ ...base.suppliers[0]!, minOrderScope: "product", minOrderValue: null }] }),
+    );
+    expect(html).toContain("10 per product · 200 per order · cases of 6");
+  });
+
+  it("saves transit, value minimum, scope and the rate (store currency read on the server)", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    saveSupplier.mockClear();
+    const form = {
+      ...newSupplierForm(30, "EUR"),
+      name: "Acme Textiles",
+      transitDays: "21",
+      minOrderValue: "1500.50",
+      minOrderScope: "product",
+      currency: "USD",
+      exchangeRate: "0.92",
+    };
+    const res = await action({
+      request: new Request("https://x/app/settings/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intent: "save", form }) }),
+      params: {},
+      context: {},
+    } as never);
+    expect(res).toMatchObject({ ok: true });
+    expect(saveSupplier).toHaveBeenCalledWith(
+      "acme.myshopify.com",
+      null,
+      expect.objectContaining({ transitDays: 21, minOrderValue: 1500.5, minOrderScope: "product", currency: "USD", exchangeRate: 0.92 }),
+    );
+    saveSupplier.mockClear();
   });
 });
 

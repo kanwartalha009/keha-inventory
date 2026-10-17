@@ -562,15 +562,6 @@ export const REORDER_TR: Record<string, Tr> = {
     nl: "Hierheen sturen we inkooporders. Versleuteld opgeslagen.",
     pl: "Tu wysyłamy zamówienia zakupu. Przechowywany w formie zaszyfrowanej.",
   },
-  "Days from placing an order to the stock arriving.": {
-    es: "Días desde que haces el pedido hasta que llega el stock.",
-    fr: "Jours entre la commande et l'arrivée du stock.",
-    de: "Tage von der Bestellung bis zur Ankunft der Ware.",
-    it: "Giorni dall'ordine all'arrivo dello stock.",
-    pt: "Dias desde a encomenda até à chegada do stock.",
-    nl: "Dagen tussen het plaatsen van een bestelling en de aankomst van de voorraad.",
-    pl: "Dni od złożenia zamówienia do dotarcia towaru.",
-  },
   "Minimum per item": { es: "Mínimo por artículo", fr: "Minimum par article", de: "Mindestmenge pro Artikel", it: "Minimo per articolo", pt: "Mínimo por artigo", nl: "Minimum per artikel", pl: "Minimum na pozycję" },
   "The fewest units the supplier takes of one variant. Leave empty for none.": {
     es: "Las unidades mínimas que el proveedor acepta de una variante. Déjalo vacío si no hay mínimo.",
