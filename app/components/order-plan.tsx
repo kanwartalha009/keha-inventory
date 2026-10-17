@@ -239,6 +239,7 @@ export function WhyPopover({
   lastYear,
   qty,
   today,
+  days,
 }: {
   id: string;
   title: string;
@@ -247,10 +248,12 @@ export function WhyPopover({
   qty: number;
   /** Store-local today: a line adding up several orders dates each one (whySum). */
   today?: string;
+  /** The days those orders were added over (default: the next 7 days). */
+  days?: number;
 }) {
   const { t, locale } = useLocale();
   const high = aboveLastYear(qty, lastYear);
-  const sum = today ? whySum(whys, today, t, locale) : { summary: null, headings: [] as (string | null)[] };
+  const sum = today ? whySum(whys, today, t, locale, days) : { summary: null, headings: [] as (string | null)[] };
   return (
     <>
       <s-button variant="tertiary" icon="info" commandFor={id} accessibilityLabel={`${t("Why this quantity")}: ${title}`} />

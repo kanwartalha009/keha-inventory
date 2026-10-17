@@ -412,11 +412,19 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
  * days) says so — "Orders due in the next 7 days (2), added together: 30 + 43 = 73" — and each
  * order's terms get its date ("Order due 16 Oct:"). One order: nothing extra.
  */
-export function whySum(whys: readonly OrderWhy[], today: DayKey, t: T, locale: string): { summary: string | null; headings: (string | null)[] } {
+export function whySum(
+  whys: readonly OrderWhy[],
+  today: DayKey,
+  t: T,
+  locale: string,
+  /** The window the orders were added over (the supplier order builder: up to the end of the cycle). */
+  days: number = ORDER_NOW_DAYS,
+): { summary: string | null; headings: (string | null)[] } {
   if (whys.length < 2) return { summary: null, headings: whys.map(() => null) };
   const parts = whys.map((w) => w.rounded + w.topUp);
   return {
-    summary: fill(t("Orders due in the next 7 days ({n}), added together: {parts} = {total}"), {
+    summary: fill(days === ORDER_NOW_DAYS ? t("Orders due in the next 7 days ({n}), added together: {parts} = {total}") : t("Orders due in the next {days} days ({n}), added together: {parts} = {total}"), {
+      days: nf(days, locale, 0),
       n: nf(whys.length, locale, 0),
       parts: parts.map((p) => nf(p, locale, 0)).join(" + "),
       total: nf(parts.reduce((a, b) => a + b, 0), locale, 0),

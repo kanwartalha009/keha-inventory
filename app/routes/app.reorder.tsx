@@ -9,8 +9,11 @@
  * supplier (unassigned products by vendor), lines by product then size, each with its real
  * deadline ("Due 27 Oct", "Overdue since 12 Oct"), "Why this quantity" and last year's sales in
  * the same weeks. Under each supplier, "Can join this order": its lines due before its next
- * order. "Create order" (with a confirm showing units and cost) saves a Draft for one group and
- * opens it (/app/reorder/:id) — nothing is sent until the merchant emails it or marks it sent.
+ * order, and "Build supplier order" — the supplier order builder (/app/reorder/build: one
+ * purchase order with everything due within the supplier's order cycle, topped up to its
+ * minimums, products added by hand; one button per supplier card). "Create order" (with a
+ * confirm showing units and cost) saves a Draft for one group and opens it (/app/reorder/:id) —
+ * nothing is sent until the merchant emails it or marks it sent.
  *
  * Links: `?supplier=<key>&from=&to=` (Dashboard, Next 13 weeks: that supplier's planned orders in
  * the range, resolved here — never truncated), `?scenario=<id>&group=<key>` (Season plan: its
@@ -64,6 +67,7 @@ import {
   type ReorderLine,
 } from "../lib/reorder-shared";
 import { formatPrice } from "../lib/purchase-order-shared";
+import { builderLink } from "../lib/supplier-order-shared";
 import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 
@@ -347,6 +351,7 @@ function money(store: number | null, supplier: number | null, group: Pick<Reorde
 
 function GroupCard({ group, location, today }: { group: ReorderGroup; location: PlanningLocation | null; today: string }) {
   const { t, locale } = useLocale();
+  const link = useLinkProps();
   const navigate = useNavigate();
   const fetcher = useFetcher<ReorderAction>();
   const noReorder = useFetcher<ReorderAction>();
@@ -486,7 +491,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             })}
           </s-table-body>
         </s-table>
-        {joinable.length > 0 && <JoinList lines={joinable} group={group} today={today} onJoin={join} />}
+        {joinable.length > 0 && <JoinList lines={joinable} group={group} today={today} onJoin={join} builder={!location} />}
         {warn.belowTotal && (
           <s-banner tone="warning">
             {fill(t("Below {supplier}'s minimum of {min} units."), { supplier: title, min: formatCount(group.minOrderTotal, locale) })}
@@ -517,9 +522,17 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
               <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(totals.missingCost, locale) })}</s-text>
             )}
           </s-stack>
-          <s-button variant="primary" disabled={flag(totals.units === 0)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
-            {t("Create order")}
-          </s-button>
+          <span className="keha-inline">
+            {/* The supplier order builder (online plan): here when there is no "Can join this order" list to carry it. */}
+            {!location && joinable.length === 0 && (
+              <s-button variant="secondary" {...link(builderLink(group.key))}>
+                {t("Build supplier order")}
+              </s-button>
+            )}
+            <s-button variant="primary" disabled={flag(totals.units === 0)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
+              {t("Create order")}
+            </s-button>
+          </span>
         </s-stack>
       </s-stack>
       <ConfirmModal
@@ -561,21 +574,32 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
   );
 }
 
-/** "Can join this order": the supplier's lines due before its next order, collapsed. */
-function JoinList({ lines, group, today, onJoin }: { lines: ReorderLine[]; group: ReorderGroup; today: string; onJoin: (l: ReorderLine) => void }) {
+/**
+ * "Can join this order": the supplier's lines due before its next order, collapsed — and the way
+ * into the supplier order builder (one order for the whole cycle), next to the disclosure.
+ */
+function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine[]; group: ReorderGroup; today: string; onJoin: (l: ReorderLine) => void; builder: boolean }) {
   const { t, locale } = useLocale();
+  const link = useLinkProps();
   const [open, setOpen] = useState(false);
   const id = `keha-join-${group.key}`;
   return (
     <s-box padding="small" border="base" borderRadius="base">
       <s-stack direction="block" gap="small-200">
-        <button type="button" className="keha-disclosure" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
-          <s-stack direction="block" gap="none">
-            <s-text fontWeight="medium">{fill(t("Can join this order ({n})"), { n: formatCount(lines.length, locale) })}</s-text>
-            <s-text color="subdued">{t("Due before this supplier's next order — add them to send one order instead of two.")}</s-text>
-          </s-stack>
-          <s-icon type={open ? "chevron-up" : "chevron-down"} />
-        </button>
+        <div className="keha-row-between">
+          <button type="button" className="keha-disclosure keha-disclosure--grow" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+            <s-stack direction="block" gap="none">
+              <s-text fontWeight="medium">{fill(t("Can join this order ({n})"), { n: formatCount(lines.length, locale) })}</s-text>
+              <s-text color="subdued">{t("Due before this supplier's next order — add them to send one order instead of two.")}</s-text>
+            </s-stack>
+            <s-icon type={open ? "chevron-up" : "chevron-down"} />
+          </button>
+          {builder && (
+            <s-button variant="secondary" {...link(builderLink(group.key))}>
+              {t("Build supplier order")}
+            </s-button>
+          )}
+        </div>
         {open && (
           <div id={id}>
             <s-table>

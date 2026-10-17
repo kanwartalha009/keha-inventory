@@ -10,7 +10,9 @@
  * week is Order now. Every line has "Why this quantity" and last year's sales in the same weeks.
  * "Create order" opens Order now with that supplier's orders of the week (a supplier + date
  * range the Order now loader resolves — nothing is cut off) — the purchase order is only created
- * after the merchant confirms there. Unknown costs are "—" and counted, never 0. Free keeps the
+ * after the merchant confirms there. "Build supplier order" opens the supplier order builder for
+ * that supplier-week (/app/reorder/build: the week's orders plus everything due within the
+ * supplier's order cycle after it, in one purchase order). Unknown costs are "—" and counted, never 0. Free keeps the
  * tab bar and sees what the tab does, with its own plan in numbers.
  */
 import { useState } from "react";
@@ -31,6 +33,7 @@ import { formatAmount, formatCount, formatDay, type PlanReadiness } from "../lib
 import { variantName } from "../lib/products-shared";
 import { cashTotals, dueDay, type PlanEvent, type PlanSupplierWeek, type PlanWeek } from "../lib/engine/forward-plan-shared";
 import { toSupplierCurrency } from "../lib/supplier-shared";
+import { builderLink } from "../lib/supplier-order-shared";
 import {
   EMPTY_ORDER_PLAN,
   formatDayRange,
@@ -222,9 +225,14 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
               <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(s.missingCost, locale) })}</s-text>
             )}
           </s-stack>
-          <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
-            {t("Create order")}
-          </s-button>
+          <span className="keha-inline">
+            <s-button variant="secondary" {...link(builderLink(s.supplierKey, { from: s.orderByFrom, to: s.orderByTo }))}>
+              {t("Build supplier order")}
+            </s-button>
+            <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
+              {t("Create order")}
+            </s-button>
+          </span>
         </div>
         <s-table>
           <s-table-header-row>

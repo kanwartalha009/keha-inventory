@@ -576,6 +576,7 @@
 /* Disclosure card (More options) */
 .keha-disclosure { appearance: none; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; width: 100%; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .keha-disclosure:focus-visible { outline: 2px solid var(--keha-accent); outline-offset: 4px; border-radius: 6px; }
+.keha-disclosure--grow { flex: 1 1 280px; width: auto; min-width: 0; }
 .keha-adv { display: flex; flex-direction: column; margin-top: 16px; }
 .keha-adv__group { display: flex; flex-direction: column; gap: 10px; padding: 16px 0; border-top: 1px solid var(--keha-border-secondary); }
 .keha-adv__group:last-child { padding-bottom: 0; }

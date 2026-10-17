@@ -151,11 +151,12 @@ export const PAGE_FEATURE: { path: string; feature: Feature }[] = [
 ];
 
 /**
- * The Order plan tabs (Order now · Next 13 weeks · Season plan · Open orders) gate themselves:
- * they keep the tab bar and teach inside the tab (Free sees Order now as a read-only preview).
+ * The Order plan tabs (Order now · Next 13 weeks · Season plan · Open orders) and the supplier
+ * order builder gate themselves: they keep the tab bar (the builder: its breadcrumb) and teach
+ * inside the page with the store's own numbers (Free sees Order now as a read-only preview).
  * Everything else under PAGE_FEATURE (a purchase order page) shows the plan page instead.
  */
-export const ORDER_PLAN_PATHS = ["/app/reorder", "/app/reorder/calendar", "/app/reorder/orders", "/app/reorder/season"] as const;
+export const ORDER_PLAN_PATHS = ["/app/reorder", "/app/reorder/calendar", "/app/reorder/orders", "/app/reorder/season", "/app/reorder/build"] as const;
 
 export function lockedPageFeature(pathname: string, plan: PlanCode | "none"): Feature | null {
   const p = plan === "none" ? "free" : plan;
