@@ -1,7 +1,7 @@
 /**
  * Order plan tabs (Kanwar 2026-10-17): Order now · Next 90 days · Season plan · Open orders.
  * Each tab is its own route — the URLs emails, Slack, Flow and supplier links already use keep
- * working (/app/reorder, /app/planner) — and this strip links them, like the Settings tabs.
+ * working (/app/reorder; /app/planner redirects to /app/reorder/season) — and this strip links them.
  */
 import { useNavigate } from "react-router";
 import { useLocale } from "../lib/i18n";
@@ -10,7 +10,7 @@ import { Tabs } from "./wc";
 export const ORDER_PLAN_TABS = [
   { id: "now", path: "/app/reorder" },
   { id: "calendar", path: "/app/reorder/calendar" },
-  { id: "season", path: "/app/planner" },
+  { id: "season", path: "/app/reorder/season" },
   { id: "orders", path: "/app/reorder/orders" },
 ] as const;
 export type OrderPlanTabId = (typeof ORDER_PLAN_TABS)[number]["id"];

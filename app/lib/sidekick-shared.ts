@@ -598,7 +598,7 @@ export function accuracyResponse(rows: readonly AccuracyIn[]): SidekickResponse 
   const base = {
     how_we_got_this:
       "Each month the forecast for the next month is saved, then compared with what really sold. Error = how far the forecast was from actual units sold, in percent (lower is better).",
-    url: appUrl("/app/planner"),
+    url: appUrl("/app/reorder/season"),
   };
   if (!rows.length) return { ...base, message: MSG.noAccuracy };
   return {

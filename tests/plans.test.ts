@@ -93,10 +93,11 @@ describe("spec §3 feature table", () => {
 describe("locked pages", () => {
   it("locks a purchase order page on Free; the Order plan tabs teach inside the tab instead", () => {
     // Kanwar 2026-10-17: Free sees Order now as a read-only preview; the other tabs keep the tab bar.
-    for (const path of ["/app/reorder", "/app/reorder/", "/app/reorder/calendar", "/app/reorder/orders", "/app/planner"])
+    for (const path of ["/app/reorder", "/app/reorder/", "/app/reorder/calendar", "/app/reorder/orders", "/app/reorder/season", "/app/reorder/season/"])
       expect(lockedPageFeature(path, "free"), path).toBeNull();
     expect(lockedPageFeature("/app/reorder/po_123", "free")).toBe("reorderPlan");
-    expect(lockedPageFeature("/app/planner/new", "none")).toBe("planner");
+    // Season plan lives under /app/reorder (nav highlight); a sub-page needs `planner`, not `reorderPlan`.
+    expect(lockedPageFeature("/app/reorder/season/new", "none")).toBe("planner");
     expect(lockedPageFeature("/app/reorder", "growth")).toBeNull();
     expect(lockedPageFeature("/app/products", "free")).toBeNull();
     expect(lockedPageFeature("/app", "free")).toBeNull();

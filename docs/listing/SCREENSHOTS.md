@@ -34,7 +34,7 @@ own history, so it must have history before the shots are taken:
 6. In the app: plan **Growth** (shots 1–5; **Pro** for shot 6); Settings → Suppliers: two suppliers ("Northwind Textiles", 21-day
    lead time; "Atlas Leather", 35 days of which 25 in transit) assigned by vendor, both with an
    email; one purchase order sent to Northwind and its confirmation link opened (shot 5); Settings → Alerts: Monday email on;
-   Order plan → Season plan: one scenario "Black Friday 2026" (event Black Friday, target grow 20 %), saved and
+   Order plan → Season plan (`/app/reorder/season`): one scenario "Black Friday 2026" (event Black Friday, target grow 20 %), saved and
    calculated; one collection goal; for shot 6, Settings → Locations: Warehouse = Warehouse,
    the two shops = Store. For shots 1–3, leave one supplier's best seller overdue (so "Order this
    week" shows an Overdue badge) and give one product no cost (the "lines without a cost price"

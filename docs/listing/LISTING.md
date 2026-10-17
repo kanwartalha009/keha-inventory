@@ -74,7 +74,7 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 | Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
 | Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Plan each warehouse and POS store, draft transfers | `app/routes/app.settings_.locations.tsx` (roles), location switcher, `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
-| Season plan: order list, order-by dates, cash per week | Order plan → Season plan, `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
+| Season plan: order list, order-by dates, cash per week | Order plan → Season plan, `app/routes/app.reorder_.season.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks

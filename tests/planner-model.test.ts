@@ -26,7 +26,7 @@ vi.mock("../app/services/entitlements.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
-import { action } from "../app/routes/app.planner";
+import { action } from "../app/routes/app.reorder_.season";
 import {
   createScenario,
   deleteGoal,
@@ -158,7 +158,7 @@ describe("scenario limit (checked on the server)", () => {
 
 describe("planner action (server-side plan checks)", () => {
   const post = async (body: unknown) => {
-    const request = new Request("https://app.test/app/planner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const request = new Request("https://app.test/app/reorder/season", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const r = (await action({ request, params: {}, context: {} } as never)) as unknown;
     return r instanceof Response ? { status: r.status, body: await r.json() } : { status: 200, body: r };
   };

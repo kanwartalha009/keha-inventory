@@ -102,7 +102,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 13. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
     went dead** (Keha Inventory Intelligence). The app fires them from its hourly job, once per
     product per episode, so a test workflow may need up to an hour after a product qualifies.
-14. **Season plan (Growth):** **Order plan → Season plan** → **New scenario** → pick an event (Black
+14. **Season plan (Growth):** **Order plan → Season plan** (`/app/reorder/season`) → **New scenario** → pick an event (Black
     Friday, Christmas or custom dates) and a target (grow X %, a revenue target, or keep pace) →
     **Save and calculate**. The scenario shows demand per collection, the order list with
     order-by dates, and **Cash needed per week** (chart and table). Below: **Collection goals**

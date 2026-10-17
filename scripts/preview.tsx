@@ -96,7 +96,7 @@ const { orderPlanFixture, PLAN_TODAY } = await import("../tests/order-plan-fixtu
 const { default: Home } = await import("../app/routes/app._index");
 const { default: Reorder } = await import("../app/routes/app.reorder");
 const { default: OrderCalendar } = await import("../app/routes/app.reorder_.calendar");
-const { default: Planner } = await import("../app/routes/app.planner");
+const { default: Planner } = await import("../app/routes/app.reorder_.season");
 const { default: OpenOrders } = await import("../app/routes/app.reorder_.orders");
 const { default: OrderPage } = await import("../app/routes/app.reorder_.$id");
 const { default: Products } = await import("../app/routes/app.products");
@@ -490,8 +490,8 @@ const screens: Screen[] = [
   S({ slug: "order-now--growth", screen: "Order plan → Order now", state: "Growth", nav: "orderplan", url: "/app/reorder?variants=1", plan: "growth", Component: Reorder, data: () => orderNow("growth"), expect: ["Order plan", "Lisbon Linen", "Create order"] }),
   S({ slug: "order-now--pro-2-locations", screen: "Order plan → Order now", state: "Pro, 2 locations + transfers", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), expect: ["Lisbon Linen", "Create transfer in Shopify", "Barcelona"] }),
   S({ slug: "next-90-days--growth", screen: "Order plan → Next 90 days", state: "Growth", nav: "orderplan", url: "/app/reorder/calendar", plan: "growth", Component: OrderCalendar, data: (): CalendarPageData => ({ enabled: true, plan: orderPlanFixture() }), expect: ["Next 90 days", "Lisbon Linen", "Download CSV"] }),
-  S({ slug: "season-plan--growth-scenario", screen: "Order plan → Season plan", state: "Growth, with scenario", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner(), expect: ["Season plan", "Black Friday 2026", "Slow Mill"] }),
-  S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/planner", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),
+  S({ slug: "season-plan--growth-scenario", screen: "Order plan → Season plan", state: "Growth, with scenario", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner(), expect: ["Season plan", "Black Friday 2026", "Slow Mill"] }),
+  S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),
   S({ slug: "open-orders--growth", screen: "Order plan → Open orders", state: "Growth", nav: "orderplan", url: "/app/reorder/orders", plan: "growth", Component: OpenOrders, data: (): OpenOrdersPageData => ({ enabled: true, orders: OPEN_ORDER_ROWS, today: "2026-10-17" }), expect: ["Open orders", "PO-0001", "From Shopify"] }),
 
   S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV"] }),

@@ -11,13 +11,13 @@ vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() }, unau
 vi.mock("../app/db.server", () => ({ default: {} }));
 vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn(), upgradeResponse: vi.fn() }));
 
-import Planner from "../app/routes/app.planner";
+import Planner from "../app/routes/app.reorder_.season";
 import type { PlannerData, ScenarioView } from "../app/models/planner.server";
 import { addDays } from "../app/lib/engine/dates-shared";
 import { computeScenario, createPlannerSeason, newScenarioForm, type PlannerVariant } from "../app/lib/planner-shared";
 
 function render(path: string, data: unknown) {
-  const Stub = createRoutesStub([{ id: "planner", path: "/app/planner", Component: Planner, loader: () => data }]);
+  const Stub = createRoutesStub([{ id: "planner", path: "/app/reorder/season", Component: Planner, loader: () => data }]);
   return renderToString(<Stub initialEntries={[path]} hydrationData={{ loaderData: { planner: data } }} />);
 }
 
@@ -108,7 +108,7 @@ function data(over: Partial<PlannerData> = {}): PlannerData {
 
 describe("Planner page", () => {
   it("Growth with a scenario: summary, cash per week, order list, demand per collection, popovers", () => {
-    const html = render("/app/planner", data());
+    const html = render("/app/reorder/season", data());
     // One of the Order plan tabs (Kanwar 2026-10-17): the tab bar, Season plan selected.
     expect(html).toContain('heading="Order plan"');
     for (const tab of ["Order now", "Next 90 days", "Season plan", "Open orders"]) expect(html).toContain(tab);
@@ -148,7 +148,7 @@ describe("Planner page", () => {
 
   it("Pro with several scenarios: all listed, create allowed, no limit banner", () => {
     const list = [scenario("a", "Black Friday 2026"), scenario("b", "Christmas 2026"), scenario("c", "Spring sale")];
-    const html = render("/app/planner?scenario=b", data({ plan: "pro", canAdd: true, limit: null, scenarios: list, selected: { ...list[1]!, result: null } }));
+    const html = render("/app/reorder/season?scenario=b", data({ plan: "pro", canAdd: true, limit: null, scenarios: list, selected: { ...list[1]!, result: null } }));
     for (const n of ["Black Friday 2026", "Christmas 2026", "Spring sale"]) expect(html).toContain(n);
     expect(html).toContain("New scenario");
     expect(html).not.toContain("Your plan keeps 1 scenario");
@@ -157,20 +157,20 @@ describe("Planner page", () => {
   });
 
   it("the scenario form: event, dates, target", () => {
-    const html = render("/app/planner?edit=new", data({ canAdd: true, editing: { id: null, form: newScenarioForm(TODAY) } }));
+    const html = render("/app/reorder/season?edit=new", data({ canAdd: true, editing: { id: null, form: newScenarioForm(TODAY) } }));
     for (const s of ["Scenario name", "Event", "Start date", "End date", "Target", "Growth vs. sales now", "Save and calculate", "Thursday to Cyber Monday."]) expect(html).toContain(s);
     expect(html).toContain('value="2026-11-26"');
     expect(html).toContain('value="2026-11-30"');
   });
 
   it("no scenarios yet: the empty state", () => {
-    const html = render("/app/planner", data({ scenarios: [], selected: null, canAdd: true }));
+    const html = render("/app/reorder/season", data({ scenarios: [], selected: null, canAdd: true }));
     expect(html).toContain("Plan your next season");
     expect(html).toContain("New scenario");
   });
 
   it("Free: the tab bar stays, the tab teaches (what it does + See plans)", () => {
-    const html = render("/app/planner", { ...data(), enabled: false, plan: "free" });
+    const html = render("/app/reorder/season", { ...data(), enabled: false, plan: "free" });
     expect(html).toContain("Season plan · Growth plan");
     expect(html).toContain("keha-tabs");
     expect(html).toContain('href="/app/plans?upgrade=planner"');
@@ -181,7 +181,7 @@ describe("Planner page", () => {
 
   it("collection goals: share, gap, products holding it back, overlap note", () => {
     const html = render(
-      "/app/planner",
+      "/app/reorder/season",
       data({
         goals: {
           total: 130,
@@ -210,11 +210,11 @@ describe("Planner page", () => {
   });
 
   it("accuracy: empty state with the first date, then the graded month", () => {
-    expect(render("/app/planner", data())).toContain(
+    expect(render("/app/reorder/season", data())).toContain(
       "We grade our forecasts on the 1st of each month. Your first scorecard arrives on Dec 1, 2026.",
     );
     const html = render(
-      "/app/planner",
+      "/app/reorder/season",
       data({
         scorecard: {
           kind: "graded",
@@ -239,7 +239,7 @@ describe("Planner page", () => {
   });
 
   it("plan without goals / accuracy: locked teaching sections", () => {
-    const html = render("/app/planner", data({ features: { collectionGoals: false, accuracy: false }, goals: null, scorecard: null }));
+    const html = render("/app/reorder/season", data({ features: { collectionGoals: false, accuracy: false }, goals: null, scorecard: null }));
     expect(html).toContain("Set a revenue share per collection and see which products hold it back.");
     expect(html).toContain("Every month, see how close our forecasts were to what you actually sold.");
   });

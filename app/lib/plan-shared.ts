@@ -144,10 +144,10 @@ export function effectivePlan(input: {
   return planCodeFromHandle(input.planCode) ?? "pro";
 }
 
-/** Admin pages that need a plan (path prefix → feature). */
+/** Admin pages that need a plan (path prefix → feature; the longest prefix first). */
 export const PAGE_FEATURE: { path: string; feature: Feature }[] = [
+  { path: "/app/reorder/season", feature: "planner" },
   { path: "/app/reorder", feature: "reorderPlan" },
-  { path: "/app/planner", feature: "planner" },
 ];
 
 /**
@@ -155,7 +155,7 @@ export const PAGE_FEATURE: { path: string; feature: Feature }[] = [
  * they keep the tab bar and teach inside the tab (Free sees Order now as a read-only preview).
  * Everything else under PAGE_FEATURE (a purchase order page) shows the plan page instead.
  */
-export const ORDER_PLAN_PATHS = ["/app/reorder", "/app/reorder/calendar", "/app/reorder/orders", "/app/planner"] as const;
+export const ORDER_PLAN_PATHS = ["/app/reorder", "/app/reorder/calendar", "/app/reorder/orders", "/app/reorder/season"] as const;
 
 export function lockedPageFeature(pathname: string, plan: PlanCode | "none"): Feature | null {
   const p = plan === "none" ? "free" : plan;

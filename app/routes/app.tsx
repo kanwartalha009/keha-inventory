@@ -114,10 +114,9 @@ function Content({ plan }: { plan: PlanCode | "none" }) {
 function AppNav() {
   const { t } = useLocale();
   // Kanwar 2026-10-17: Dashboard · Order plan · Products · Settings · Plans. "Order plan" holds
-  // the tabs Order now (/app/reorder), Next 90 days, Season plan (/app/planner) and Open orders.
-  // Highlighting is App Bridge's (by URL path): the /app/reorder/* tabs share the link's path;
-  // Season plan keeps its old /app/planner URL (links already point at it), so the admin may not
-  // highlight "Order plan" there — not verifiable outside the admin.
+  // the tabs Order now (/app/reorder), Next 90 days, Season plan (/app/reorder/season) and Open
+  // orders. Highlighting is the admin's (by URL path prefix): every tab lives under /app/reorder,
+  // so "Order plan" stays highlighted on all four (the old /app/planner URL redirects).
   return (
     <s-app-nav>
       <s-link href="/app">{t("Dashboard")}</s-link>
