@@ -197,6 +197,8 @@ model Variant {
   caseQty          Int?
   /// Merchant: "Don't reorder" (sell through, discontinued, one-off). Stays in stock numbers, never in orders.
   noReorder        Boolean   @default(false)
+  /// The supplier's article / style code for the product (written to every variant of the product; size-grid PO documents).
+  supplierCode     String?
   /// Shopify ProductVariant.inventoryPolicy: CONTINUE = keeps selling when out of stock (backorders owed); DENY / null = missed sales are lost.
   inventoryPolicy  String?
   /// First day with a StockDaily row at any location (DB scale #3; null = none or not known yet,

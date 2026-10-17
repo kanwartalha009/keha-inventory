@@ -296,6 +296,10 @@ function OrderView({ data }: { data: OrderPageView }) {
     keha && features.poExport ? (
       <DownloadButton key="csv" url={`/app/reorder/${order.id}/csv`} fileName={poFileName(order.number, "csv")} label={t("Download CSV")} />
     ) : null,
+    // Supplier module: one row per style and colour, sizes as columns (the flat CSV stays above).
+    keha && features.poExport ? (
+      <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />
+    ) : null,
     draft && canEmail && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), false, false, dirty) : null,
     !draft && canEmail ? button({ kind: "email" }, t("Email again")) : null,
     can("confirmed") ? button({ kind: "transition", to: "confirmed" }, t("Mark as confirmed")) : null,

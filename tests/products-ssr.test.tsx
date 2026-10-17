@@ -17,6 +17,7 @@ vi.mock("../app/models/products.server", () => ({
   getVariantDetail: vi.fn(),
   allProducts: vi.fn(),
   setProductCaseSize: vi.fn(async () => ({ ok: true, count: 3 })),
+  setProductSupplierCode: vi.fn(async () => ({ ok: true, count: 3 })),
 }));
 vi.mock("../app/models/reorder.server", () => ({ setNoReorder: vi.fn(async () => ({ ok: true, count: 1 })) }));
 
@@ -24,7 +25,7 @@ import Products, { action as productsAction, type ProductsData } from "../app/ro
 import VariantDetailPage, { action as detailAction, type VariantDetailData } from "../app/routes/app.products_.$variantId";
 import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
-import { getVariantDetail, setProductCaseSize } from "../app/models/products.server";
+import { getVariantDetail, setProductCaseSize, setProductSupplierCode } from "../app/models/products.server";
 import { setNoReorder } from "../app/models/reorder.server";
 import { featureMap } from "../app/lib/plan-shared";
 import { dailySeries, monthlyTotals, pageInfo, readForecastInputs, recentDays, toProductRow } from "../app/lib/products-shared";
@@ -377,5 +378,24 @@ describe("Product type: the Products filter and the season source on the detail 
     expect(html).toMatch(/Season from.*Product type “Jackets”/s);
     // Rows stored before the source was recorded: no row.
     expect(renderDetail(detail(true))).not.toContain("Season from");
+  });
+});
+
+describe("Ordering: the product's supplier code (size-grid purchase orders)", () => {
+  it("the field shows the saved code; saving validates it and writes it for the product", async () => {
+    const html = renderDetail({ ...detail(true), productId: "gid://shopify/Product/1", variantCount: 3, supplierCode: "ART-4410" });
+    expect(html).toContain('label="Supplier code"');
+    expect(html).toContain('value="ART-4410"');
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    vi.mocked(getVariantDetail).mockResolvedValue({ variant: { productId: "gid://shopify/Product/1" } } as never);
+    const post = (body: unknown) => ({ request: new Request("https://x/app/products/1", { method: "POST", body: JSON.stringify(body) }), params: { variantId: "1" }, context: {} }) as never;
+    expect(await detailAction(post({ intent: "supplierCode", supplierCode: "  ART 9 " }))).toEqual({ ok: true, count: 3 });
+    expect(setProductSupplierCode).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", "ART 9");
+    expect(await detailAction(post({ intent: "supplierCode", supplierCode: "x".repeat(65) }))).toEqual({ ok: false, error: "supplierCode" });
+    // Saved with a new case size from the same save bar.
+    await detailAction(post({ intent: "caseQty", caseQty: 12, supplierCode: "" }));
+    expect(setProductSupplierCode).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", null);
+    expect(setProductCaseSize).toHaveBeenLastCalledWith("acme.myshopify.com", "gid://shopify/Product/1", 12);
   });
 });

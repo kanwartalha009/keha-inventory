@@ -16,7 +16,8 @@ import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
-import { getVariantDetail, setProductCaseSize } from "../models/products.server";
+import { getVariantDetail, setProductCaseSize, setProductSupplierCode } from "../models/products.server";
+import { SUPPLIER_CODE_MAX, readSupplierCode } from "../lib/po-grid-shared";
 import { setNoReorder } from "../models/reorder.server";
 import { AppPage, DaysLeft, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
@@ -60,6 +61,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     productNoReorder: detail.siblings.length > 0 && detail.siblings.every((v) => v.noReorder),
     variantCount: detail.siblings.length,
     caseQty: detail.caseQty,
+    supplierCode: detail.supplierCode ?? null,
     trendMode: detail.trendMode,
     vendor: detail.variant.vendor,
     series,
@@ -72,7 +74,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
 };
 
-export type VariantDetailAction = { ok: true; count: number } | { ok: false; error?: "caseQty" };
+export type VariantDetailAction = { ok: true; count: number } | { ok: false; error?: "caseQty" | "supplierCode" };
 
 /** "Don't reorder" (product or variant) and the product's case size — confirmed in the UI; our database only. */
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -92,7 +94,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const target = body.scope === "product" ? { productId: detail.variant.productId } : { variantId: gid };
     return (await setNoReorder(session.shop, target, body.value !== false)) satisfies VariantDetailAction;
   }
+  if (body.intent === "supplierCode") {
+    const code = readSupplierCode(body.supplierCode);
+    if (!code.ok) return { ok: false, error: "supplierCode" } satisfies VariantDetailAction;
+    return (await setProductSupplierCode(session.shop, detail.variant.productId, code.code)) satisfies VariantDetailAction;
+  }
   if (body.intent === "caseQty") {
+    // The supplier code can be saved with it (one save bar for the card).
+    if ("supplierCode" in body) {
+      const code = readSupplierCode(body.supplierCode);
+      if (!code.ok) return { ok: false, error: "supplierCode" } satisfies VariantDetailAction;
+      await setProductSupplierCode(session.shop, detail.variant.productId, code.code);
+    }
     const raw = body.caseQty;
     const n = raw === null || raw === "" ? null : Number(raw);
     if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 10_000)) return { ok: false, error: "caseQty" } satisfies VariantDetailAction;
@@ -113,6 +126,8 @@ export type VariantDetailData = {
   variantCount?: number;
   /** The product's own case size (null: the supplier's case pack applies). */
   caseQty?: number | null;
+  /** The supplier's article / style code (purchase orders); null = none. */
+  supplierCode?: string | null;
   trendMode?: TrendMode;
   vendor: string | null;
   series: ChartDay[];
@@ -372,6 +387,12 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
   const fetcher = useFetcher<VariantDetailAction>();
   const saved = data.caseQty && data.caseQty > 1 ? String(data.caseQty) : "";
   const [caseQty, setCaseQty] = useState(saved);
+  const savedCode = data.supplierCode ?? "";
+  const [code, setCode] = useState(savedCode);
+  useEffect(() => setCode(savedCode), [savedCode]);
+  const codeInvalid = !readSupplierCode(code).ok;
+  const caseChanged = caseQty !== saved;
+  const codeChanged = code.trim() !== savedCode;
   const [confirmCase, setConfirmCase] = useState(false);
   const [ask, setAsk] = useState<null | { scope: "product" | "variant"; value: boolean }>(null);
   useEffect(() => setCaseQty(saved), [saved]);
@@ -404,10 +425,18 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
         </s-stack>
         <FormSaveBar
           id="keha-product-case"
-          dirty={caseQty !== saved}
+          dirty={caseChanged || codeChanged}
           saving={saving}
-          onSave={() => (invalid ? undefined : setConfirmCase(true))}
-          onDiscard={() => setCaseQty(saved)}
+          onSave={() => {
+            if (invalid || codeInvalid) return;
+            // A new case size changes order quantities: it asks first. The code alone saves at once.
+            if (caseChanged) setConfirmCase(true);
+            else fetcher.submit({ intent: "supplierCode", supplierCode: code } as never, { method: "post", encType: "application/json" });
+          }}
+          onDiscard={() => {
+            setCaseQty(saved);
+            setCode(savedCode);
+          }}
         />
         <s-number-field
           label={t("Case size")}
@@ -415,9 +444,18 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
           value={caseQty}
           min={1}
           step={1}
-          error={invalid || (fetcher.data && !fetcher.data.ok) ? t("Enter a whole number from 1 to 10,000.") : undefined}
+          error={invalid || (fetcher.data && !fetcher.data.ok && fetcher.data.error === "caseQty") ? t("Enter a whole number from 1 to 10,000.") : undefined}
           disabled={flag(saving)}
           onInput={(e) => setCaseQty(val(e))}
+        />
+        <s-text-field
+          label={t("Supplier code")}
+          details={t("The supplier's article or style number for this product. Shown on purchase orders. Leave empty to use the start of the SKUs.")}
+          value={code}
+          maxLength={SUPPLIER_CODE_MAX}
+          error={codeInvalid || (fetcher.data && !fetcher.data.ok && fetcher.data.error === "supplierCode") ? t("Use up to 64 characters.") : undefined}
+          disabled={flag(saving)}
+          onInput={(e) => setCode(val(e))}
         />
       </s-stack>
       <ConfirmModal
@@ -431,7 +469,7 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
         onCancel={() => setConfirmCase(false)}
         onConfirm={() => {
           setConfirmCase(false);
-          fetcher.submit({ intent: "caseQty", caseQty: n } as never, { method: "post", encType: "application/json" });
+          fetcher.submit({ intent: "caseQty", caseQty: n, ...(codeChanged ? { supplierCode: code } : {}) } as never, { method: "post", encType: "application/json" });
         }}
       />
       <NoReorderConfirm

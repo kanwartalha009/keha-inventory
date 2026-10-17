@@ -343,6 +343,15 @@ export async function setProductCaseSize(shop: string, productId: string, caseQt
   return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 
+/**
+ * The supplier's article / style code for the product (written to every variant of the product),
+ * shown on the purchase order PDF / size-grid CSV. null clears it. Our database only.
+ */
+export async function setProductSupplierCode(shop: string, productId: string, supplierCode: string | null): Promise<{ ok: true; count: number } | { ok: false }> {
+  const r = await prisma.variant.updateMany({ where: { shop, productId }, data: { supplierCode } });
+  return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
+}
+
 /** Vendor, product type and collection choices for the filters. */
 export async function productFilterOptions(shop: string): Promise<{ vendors: string[]; collections: string[]; productTypes: string[] }> {
   const [vendors, types, collections] = await Promise.all([
@@ -383,6 +392,8 @@ export type VariantDetail = {
   };
   /** The product's own case size (null: the supplier's case pack applies). */
   caseQty: number | null;
+  /** The supplier's article / style code for the product (purchase order documents); null = none. */
+  supplierCode?: string | null;
   /** Variants of the same product (the "Don't reorder" choice for the whole product). */
   siblings: { id: string; variantTitle: string; noReorder: boolean }[];
   /** Settings → growth assumption (the Trend row). */
@@ -411,7 +422,7 @@ export async function getVariantDetail(
   ]);
   if (!variant) return null;
   const [siblings, view] = await Promise.all([
-    prisma.variant.findMany({ where: { shop, productId: variant.productId }, select: { id: true, variantTitle: true, noReorder: true, caseQty: true }, orderBy: [{ variantTitle: "asc" }, { id: "asc" }] }),
+    prisma.variant.findMany({ where: { shop, productId: variant.productId }, select: { id: true, variantTitle: true, noReorder: true, caseQty: true, supplierCode: true }, orderBy: [{ variantTitle: "asc" }, { id: "asc" }] }),
     forecast ? planView(shop, METRIC_SCOPE, now) : Promise.resolve(null),
   ]);
   const today = todayIn(shopRow?.timezone, now);
@@ -446,6 +457,7 @@ export async function getVariantDetail(
   return {
     variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
     caseQty: caseQtys.length === 1 ? caseQtys[0]! : (variant.caseQty ?? null),
+    supplierCode: siblings.find((v) => v.id === variant.id)?.supplierCode ?? siblings.find((v) => v.supplierCode)?.supplierCode ?? null,
     siblings: siblings.map((v) => ({ id: v.id, variantTitle: v.variantTitle, noReorder: !!v.noReorder })),
     trendMode: readSettings(shopRow?.settings).trendMode,
     row: withPlan(

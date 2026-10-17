@@ -6,7 +6,7 @@ on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro store
 for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
 this week", Done in the action menu) and for the merged build (Order now = the next 7 days,
 editable drafts, receiving per line, re-open) and for the supplier order builder (one purchase
-order per supplier per cycle); labels are the app's English strings.
+order per supplier per cycle) and for size-grid purchase orders; labels are the app's English strings.
 
 ---
 
@@ -91,7 +91,9 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    supplier, each line on its own order-by date, with case packs and the supplier's minimums →
    **Create order** → confirm (a draft; nothing is sent). On the draft: change quantities or
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
-   **Download CSV**, **Email supplier** (or **Copy link**), or **Mark as sent**. A draft not sent
+   **Download CSV**, **Download CSV (size grid)**, **Email supplier** (or **Copy link**), or **Mark as sent**.
+   The PDF lists clothing and shoes as a size grid (one row per style and colour, sizes as columns,
+   the style code — the product page's **Supplier code**, else the start of the SKUs — and totals). A draft not sent
    within 14 days stops counting as ordered (a banner says so).
 10. **Order now → Build supplier order** (on a supplier's card, inside "Can join this order" when
     it is there): one purchase order for that supplier's whole order cycle — **Due now** and

@@ -2,7 +2,9 @@
  * Purchase order as PDF (spec §5.3, §9: pdfkit). A plain A4 document in the
  * given language: who it's for, dates, the lines and the totals, and the
  * supplier's confirm link. Unit costs are left out when the supplier sees no
- * prices.
+ * prices. Lines are shown as a size grid (lib/po-grid-shared: one row per style
+ * and colour, sizes as columns, the supplier's style code, totals per row and
+ * column); products without sizes as a flat list.
  *
  * pdfkit's built-in Helvetica only covers Windows-1252 (Western European).
  * Text outside it (e.g. Polish ł, ą) is written without its accent rather
@@ -12,6 +14,7 @@
 import PDFDocument from "pdfkit";
 import { translate, fill, type Locale } from "../lib/i18n";
 import { lineVariant, supplierTotals, type SupplierLine } from "../lib/purchase-order-shared";
+import { buildPoGrid, type GridLine } from "../lib/po-grid-shared";
 
 export type PoPdfInput = {
   locale: Locale;
@@ -26,6 +29,8 @@ export type PoPdfInput = {
   hidePrices: boolean;
   /** Supplier-safe lines (lib/purchase-order-shared supplierLines): no unit cost when prices are hidden. */
   lines: SupplierLine[];
+  /** The same lines with their product grouping and supplier code (size grid); absent = a flat list. */
+  gridLines?: GridLine[];
   confirmUrl: string | null;
 };
 
@@ -101,8 +106,65 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
   }
   doc.moveDown(1);
 
+  type Col = { key: string; w: number; right?: boolean };
+  const row = (cols: readonly Col[], cells: Record<string, string>, bold: boolean, size = 9) => {
+    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(size);
+    const heights = cols.map((c) => doc.heightOfString(s(cells[c.key] ?? ""), { width: c.w * width - 4 }));
+    const h = Math.max(...heights) + 6;
+    if (doc.y + h > bottom()) doc.addPage();
+    const y = doc.y;
+    let x = left;
+    for (const c of cols) {
+      doc.text(s(cells[c.key] ?? ""), x, y + 3, { width: c.w * width - 4, align: c.right ? "right" : "left" });
+      x += c.w * width;
+    }
+    doc
+      .moveTo(left, y + h)
+      .lineTo(left + width, y + h)
+      .strokeColor("#dddddd")
+      .lineWidth(0.5)
+      .stroke();
+    doc.x = left;
+    doc.y = y + h;
+  };
+  const count = (n: number) => new Intl.NumberFormat(input.locale).format(n);
+
+  // Size grid (supplier module): one row per style and colour, the sizes as columns, totals per row
+  // and column. Products without a size dimension stay in the flat list below.
+  const grid = input.gridLines?.length ? buildPoGrid(input.gridLines, input.hidePrices) : null;
+  const flatLines = grid ? grid.flat : input.lines;
+  for (const b of grid?.blocks ?? []) {
+    const fixed = input.hidePrices ? 0.12 + 0.3 + 0.08 : 0.11 + 0.22 + 0.07 + 0.12;
+    const sizeW = (1 - fixed) / b.sizes.length;
+    const cols: Col[] = [
+      { key: "code", w: input.hidePrices ? 0.12 : 0.11 },
+      { key: "product", w: input.hidePrices ? 0.3 : 0.22 },
+      ...b.sizes.map((_, i) => ({ key: `s${i}`, w: sizeW, right: true })),
+      { key: "units", w: input.hidePrices ? 0.08 : 0.07, right: true },
+      ...(input.hidePrices ? [] : [{ key: "total", w: 0.12, right: true }]),
+    ];
+    const fontSize = b.sizes.length > 10 ? 7 : 8;
+    row(cols, { code: tr("Style code"), product: tr("Product"), ...Object.fromEntries(b.sizes.map((z, i) => [`s${i}`, z])), units: tr("Total units"), total: tr("Line total") }, true, fontSize);
+    for (const r of b.rows) {
+      row(
+        cols,
+        {
+          code: r.styleCode ?? "—",
+          product: r.label ? `${r.productTitle} — ${r.label}` : r.productTitle,
+          ...Object.fromEntries(r.qty.map((q, i) => [`s${i}`, q > 0 ? count(q) : ""])),
+          units: count(r.units),
+          total: money(r.cost, input.currency, input.locale),
+        },
+        false,
+        fontSize,
+      );
+    }
+    row(cols, { code: tr("Totals"), ...Object.fromEntries(b.columnTotals.map((q, i) => [`s${i}`, count(q)])), units: count(b.units), total: money(b.cost, input.currency, input.locale) }, true, fontSize);
+    doc.moveDown(1);
+  }
+
   // Columns: SKU · Product · Qty · (Unit cost · Line total)
-  const cols = input.hidePrices
+  const cols: Col[] = input.hidePrices
     ? [
         { key: "sku", w: 0.22 },
         { key: "product", w: 0.63 },
@@ -122,34 +184,15 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
     unit: tr("Unit cost"),
     total: tr("Line total"),
   };
-  const row = (cells: Record<string, string>, bold: boolean) => {
-    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9);
-    const heights = cols.map((c) => doc.heightOfString(s(cells[c.key] ?? ""), { width: c.w * width - 6 }));
-    const h = Math.max(...heights) + 6;
-    if (doc.y + h > bottom()) doc.addPage();
-    const y = doc.y;
-    let x = left;
-    for (const c of cols) {
-      doc.text(s(cells[c.key] ?? ""), x, y + 3, { width: c.w * width - 6, align: c.right ? "right" : "left" });
-      x += c.w * width;
-    }
-    doc
-      .moveTo(left, y + h)
-      .lineTo(left + width, y + h)
-      .strokeColor("#dddddd")
-      .lineWidth(0.5)
-      .stroke();
-    doc.x = left;
-    doc.y = y + h;
-  };
-  row(label, true);
-  for (const l of input.lines) {
+  if (flatLines.length) row(cols, label, true);
+  for (const l of flatLines) {
     const variant = lineVariant(l.variantTitle);
     row(
+      cols,
       {
         sku: l.sku ?? "—",
         product: variant ? `${l.productTitle} — ${variant}` : l.productTitle,
-        qty: new Intl.NumberFormat(input.locale).format(l.qty),
+        qty: count(l.qty),
         unit: money(l.unitCost ?? null, input.currency, input.locale),
         total: money(l.unitCost == null ? null : l.unitCost * l.qty, input.currency, input.locale),
       },
