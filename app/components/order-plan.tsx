@@ -10,6 +10,7 @@ import type { PlanWeek } from "../lib/engine/forward-plan-shared";
 import { formatWeekRange, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import { featureCopy, planTag } from "./plan";
 import { useLinkProps } from "./wc";
+import { HeaderLabel } from "./ui";
 import type { Feature } from "../lib/plan-shared";
 
 const STRIP_W = 640;
@@ -63,9 +64,15 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
     <s-table>
       <s-table-header-row>
         <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-        <s-table-header listSlot="labeled">{t("Days of stock left")}</s-table-header>
-        <s-table-header listSlot="labeled">{t("Order by")}</s-table-header>
-        <s-table-header listSlot="labeled">{t("Suggested qty")}</s-table-header>
+        <s-table-header listSlot="labeled" format="numeric">
+          <HeaderLabel id="keha-prev-left" label={t("Days left")} hint={t("Days of stock left")} />
+        </s-table-header>
+        <s-table-header listSlot="labeled">
+          <HeaderLabel id="keha-prev-by" label={t("Order by")} />
+        </s-table-header>
+        <s-table-header listSlot="labeled" format="numeric">
+          <HeaderLabel id="keha-prev-qty" label={t("To order")} hint={t("Suggested qty")} />
+        </s-table-header>
       </s-table-header-row>
       <s-table-body>
         {rows.map((r) => {
@@ -81,10 +88,10 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               </s-table-cell>
               <s-table-cell>{days}</s-table-cell>
               <s-table-cell>
-                <s-stack direction="inline" gap="small-200" alignItems="center">
+                <span className="keha-inline">
                   <span>{formatDay(r.orderBy, locale)}</span>
                   {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-                </s-stack>
+                </span>
               </s-table-cell>
               <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
             </s-table-row>

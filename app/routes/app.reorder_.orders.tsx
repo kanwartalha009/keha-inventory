@@ -12,7 +12,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { openOrders, type OpenOrderRow } from "../models/reorder.server";
-import { AppPage } from "../components/ui";
+import { AppPage, EmptyState, FormCard, HeaderLabel } from "../components/ui";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { TabLock } from "../components/order-plan";
 import { useLinkProps } from "../components/wc";
@@ -46,18 +46,20 @@ export function OpenOrders({ orders }: { orders: OpenOrderRow[] }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   return (
-    <s-section heading={t("Open orders")}>
+    <FormCard flush title={t("Open orders")}>
       {orders.length === 0 ? (
-        <s-paragraph color="subdued">{t("No open orders. Orders you create here, and purchase orders in Shopify, show up here.")}</s-paragraph>
+        <EmptyState body={t("No open orders. Orders you create here, and purchase orders in Shopify, show up here.")} />
       ) : (
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Order")}</s-table-header>
             <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
             <s-table-header listSlot="labeled">{t("Supplier")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Units")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Cost")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Expected arrival")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Units")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Cost")}</s-table-header>
+            <s-table-header listSlot="labeled">
+              <HeaderLabel id="keha-oo-arrival" label={t("Arrives")} hint={t("Expected arrival")} />
+            </s-table-header>
           </s-table-header-row>
           <s-table-body>
             {orders.map((o) => (
@@ -65,7 +67,11 @@ export function OpenOrders({ orders }: { orders: OpenOrderRow[] }) {
                 <s-table-cell>
                   <s-stack direction="inline" gap="small-200" alignItems="center">
                     <s-link {...link(`/app/reorder/${o.id}`)}>{o.number}</s-link>
-                    {o.source === "shopify" && <s-badge tone="neutral">{t("From Shopify")}</s-badge>}
+                    {o.source === "shopify" && (
+                      <span className="keha-nowrap">
+                        <s-badge tone="neutral">{t("From Shopify")}</s-badge>
+                      </span>
+                    )}
                   </s-stack>
                 </s-table-cell>
                 <s-table-cell>
@@ -80,6 +86,6 @@ export function OpenOrders({ orders }: { orders: OpenOrderRow[] }) {
           </s-table-body>
         </s-table>
       )}
-    </s-section>
+    </FormCard>
   );
 }

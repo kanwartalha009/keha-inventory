@@ -253,4 +253,16 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
     nl: "Bestellingen die je hier hebt gemaakt en inkooporders uit Shopify die nog niet binnen zijn.",
     pl: "Zamówienia utworzone tutaj i zamówienia zakupu z Shopify, które jeszcze nie dotarły.",
   },
+  // ---- Column labels (short form; the long form is the tooltip) ----
+  "Actual": { es: "Real", fr: "Réel", de: "Tatsächlich", it: "Reale", pt: "Real", nl: "Werkelijk", pl: "Rzeczywisty" },
+  "Cash": { es: "Dinero", fr: "Trésorerie", de: "Geld", it: "Liquidità", pt: "Dinheiro", nl: "Geld", pl: "Gotówka" },
+  "Open a week to see its suppliers and lines.": {
+    es: "Abre una semana para ver sus proveedores y líneas.",
+    fr: "Ouvrez une semaine pour voir ses fournisseurs et ses lignes.",
+    de: "Öffne eine Woche, um ihre Lieferanten und Positionen zu sehen.",
+    it: "Apri una settimana per vedere i fornitori e le righe.",
+    pt: "Abra uma semana para ver os fornecedores e as linhas.",
+    nl: "Open een week om de leveranciers en regels te zien.",
+    pl: "Otwórz tydzień, aby zobaczyć dostawców i pozycje.",
+  },
 };

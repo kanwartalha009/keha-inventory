@@ -33,7 +33,7 @@ import {
   type ScenarioView,
 } from "../models/planner.server";
 import { plannerShop } from "../services/planner.server";
-import { AppPage, FormCard, ProductThumb } from "../components/ui";
+import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { featureCopy, planTag } from "../components/plan";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
@@ -205,7 +205,7 @@ function LockedSection({ feature }: { feature: Feature }) {
   const link = useLinkProps();
   const copy = featureCopy(feature, t);
   return (
-    <s-section heading={copy.title}>
+    <FormCard title={copy.title}>
       <s-stack direction="block" gap="small-200">
         <s-badge tone="info">{planTag(feature, t)}</s-badge>
         <s-paragraph color="subdued">{copy.body}</s-paragraph>
@@ -215,7 +215,7 @@ function LockedSection({ feature }: { feature: Feature }) {
           </s-button>
         </s-stack>
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -265,7 +265,7 @@ function Scenarios({ data }: { data: PlannerData }) {
   const [confirm, setConfirm] = useState<ScenarioView | null>(null);
   const atLimit = !data.canAdd;
   return (
-    <s-section heading={t("Scenarios")}>
+    <FormCard title={t("Scenarios")}>
       <s-stack direction="block" gap="base">
         {data.scenarios.length === 0 ? (
           <s-stack direction="block" gap="small-200">
@@ -277,10 +277,10 @@ function Scenarios({ data }: { data: PlannerData }) {
         ) : (
           <s-table>
             <s-table-header-row>
-              <s-table-header listSlot="primary">{t("Scenario name")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Period")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Target")}</s-table-header>
-              <s-table-header>{t("Manage")}</s-table-header>
+              <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-scenario-name" label={t("Scenario name")} /></s-table-header>
+              <s-table-header listSlot="labeled"><HeaderLabel id="keha-ph-period" label={t("Period")} /></s-table-header>
+              <s-table-header listSlot="labeled"><HeaderLabel id="keha-ph-target" label={t("Target")} /></s-table-header>
+              <s-table-header><HeaderLabel id="keha-ph-manage" label={t("Manage")} /></s-table-header>
             </s-table-header-row>
             <s-table-body>
               {data.scenarios.map((s) => (
@@ -336,7 +336,7 @@ function Scenarios({ data }: { data: PlannerData }) {
           if (id) fetcher.submit({ intent: "delete", id } as never, { method: "post", encType: "application/json" });
         }}
       />
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -620,7 +620,7 @@ function CashChart({ result }: { result: ScenarioResult }) {
       })
     : "";
   return (
-    <s-section heading={t("Cash needed per week")}>
+    <FormCard title={t("Cash needed per week")}>
       <s-stack direction="block" gap="base">
         {weeks.length === 0 ? (
           <s-paragraph color="subdued">{t("Nothing to order for this period: the stock you have covers it.")}</s-paragraph>
@@ -652,10 +652,10 @@ function CashChart({ result }: { result: ScenarioResult }) {
             />
             <s-table>
               <s-table-header-row>
-                <s-table-header listSlot="primary">{t("Week of")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Cash needed")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Order lines")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Note")}</s-table-header>
+                <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-week-of" label={t("Week of")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-cash-needed" label={t("Cash needed")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-order-lines" label={t("Order lines")} /></s-table-header>
+                <s-table-header listSlot="labeled"><HeaderLabel id="keha-ph-note" label={t("Note")} /></s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {weeks.map((w) => (
@@ -679,7 +679,7 @@ function CashChart({ result }: { result: ScenarioResult }) {
           </>
         )}
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -692,7 +692,7 @@ function OrderList({ result }: { result: ScenarioResult }) {
   const link = useLinkProps();
   const all = result.groups.flatMap((g) => g.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })));
   return (
-    <s-section heading={t("What to order, and by when")}>
+    <FormCard title={t("What to order, and by when")}>
       <s-stack direction="block" gap="base">
         {result.groups.length === 0 ? (
           <s-paragraph color="subdued">{t("Nothing to order for this period: the stock you have covers it.")}</s-paragraph>
@@ -720,7 +720,7 @@ function OrderList({ result }: { result: ScenarioResult }) {
           </>
         )}
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -754,12 +754,12 @@ function GroupTable({ group, currency }: { group: PlannerGroup; currency: string
         )}
         <s-table>
           <s-table-header-row>
-            <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Expected sales")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Stock at start")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("To order")}</s-table-header>
-            <s-table-header listSlot="secondary">{t("Order by")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Line total")}</s-table-header>
+            <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-product" label={t("Product")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-expected-sales" label={t("Expected sales")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-stock-at-start" label={t("Stock at start")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-to-order" label={t("To order")} /></s-table-header>
+            <s-table-header listSlot="secondary"><HeaderLabel id="keha-ph-order-by" label={t("Order by")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-line-total" label={t("Line total")} /></s-table-header>
           </s-table-header-row>
           <s-table-body>
             {group.lines.map((l) => {
@@ -816,7 +816,7 @@ function CollectionDemandTable({ result, titles }: { result: ScenarioResult; tit
   const { t, locale } = useLocale();
   const money = (v: number | null) => formatAmount(v, result.currency, locale);
   return (
-    <s-section heading={t("Demand per collection")}>
+    <FormCard title={t("Demand per collection")}>
       <s-stack direction="block" gap="base">
         <s-text color="subdued">{t("A product in several collections counts in each, so collection totals overlap. The store total counts each product once.")}</s-text>
         <HowWeGotThis
@@ -829,9 +829,9 @@ function CollectionDemandTable({ result, titles }: { result: ScenarioResult; tit
         />
         <s-table>
           <s-table-header-row>
-            <s-table-header listSlot="primary">{t("Collection")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Expected sales")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Expected revenue")}</s-table-header>
+            <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-collection" label={t("Collection")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-expected-sales" label={t("Expected sales")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-expected-revenue" label={t("Expected revenue")} /></s-table-header>
           </s-table-header-row>
           <s-table-body>
             <s-table-row>
@@ -851,7 +851,7 @@ function CollectionDemandTable({ result, titles }: { result: ScenarioResult; tit
           </s-table-body>
         </s-table>
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -876,7 +876,7 @@ function CollectionGoals({ goals, options, currency }: { goals: GoalsData | null
   const rows = goals?.rows ?? [];
   const range = goals ? periodText(goals.window.from, goals.window.to, t, locale) : "—";
   return (
-    <s-section heading={t("Collection goals")}>
+    <FormCard title={t("Collection goals")}>
       <s-stack direction="block" gap="base">
         <s-paragraph color="subdued">{t("Set the share of revenue you want from a collection, and see which products hold it back.")}</s-paragraph>
         {rows.length > 0 && (
@@ -899,12 +899,12 @@ function CollectionGoals({ goals, options, currency }: { goals: GoalsData | null
             />
             <s-table>
               <s-table-header-row>
-                <s-table-header listSlot="primary">{t("Collection")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Goal")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Actual (last 90 days)")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Gap")}</s-table-header>
-                <s-table-header>{t("Products holding it back")}</s-table-header>
-                <s-table-header>{t("Manage")}</s-table-header>
+                <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-collection" label={t("Collection")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-goal" label={t("Goal")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-actual-last-90-days" label={t("Actual")} hint={t("Actual (last 90 days)")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-gap" label={t("Gap")} /></s-table-header>
+                <s-table-header><HeaderLabel id="keha-ph-products-holding-it-back" label={t("Products holding it back")} /></s-table-header>
+                <s-table-header><HeaderLabel id="keha-ph-manage" label={t("Manage")} /></s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {rows.map((r) => (
@@ -978,7 +978,7 @@ function CollectionGoals({ goals, options, currency }: { goals: GoalsData | null
           </s-stack>
         )}
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -1035,10 +1035,10 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
         {data.rows.length > 0 && (
           <s-table>
             <s-table-header-row>
-              <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Forecast")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Sold")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("% error")}</s-table-header>
+              <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-product" label={t("Product")} /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-forecast" label={t("Forecast")} /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-sold" label={t("Sold")} /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-error" label={t("% error")} /></s-table-header>
             </s-table-header-row>
             <s-table-body>
               {data.rows.map((r) => (
@@ -1061,10 +1061,10 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
     );
   }
   return (
-    <s-section heading={t("How accurate we were")}>
+    <FormCard title={t("How accurate we were")}>
       <s-stack direction="block" gap="base">
         {body}
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }

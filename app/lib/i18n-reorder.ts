@@ -197,15 +197,7 @@ export const REORDER_TR: Record<string, Tr> = {
     nl: "Aantal voor {product}",
     pl: "Ilość dla {product}",
   },
-  "+{n} on order with Keha": {
-    es: "+{n} pedidas con Keha",
-    fr: "+{n} en commande via Keha",
-    de: "+{n} über Keha bestellt",
-    it: "+{n} in ordine con Keha",
-    pt: "+{n} encomendadas com a Keha",
-    nl: "+{n} besteld via Keha",
-    pl: "+{n} zamówione przez Keha",
-  },
+
   "On order with Keha": {
     es: "Pedido con Keha",
     fr: "En commande via Keha",

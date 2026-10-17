@@ -709,8 +709,6 @@ s-table { font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .keha-setup-step { grid-template-columns: 20px minmax(0, 1fr); } .keha-setup-step > :last-child { grid-column: 2; } }
 
 /* Products: filter bar, detail chart and legend (task 1.7) */
-.keha-filters { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 8px; align-items: end; }
-@media (max-width: 760px) { .keha-filters { grid-template-columns: 1fr; } }
 .keha-grow { flex: 1; min-width: 0; }
 .keha-chart { display: block; width: 100%; height: 140px; }
 .keha-chart__bar { fill: var(--keha-accent); }
@@ -724,19 +722,24 @@ s-table { font-variant-numeric: tabular-nums; }
 /* Order plan · Next 90 days: one row per ISO week that opens to its suppliers; the cash strip. */
 .keha-orderplan-strip { width: 100%; }
 .keha-orderplan-weeks { display: flex; flex-direction: column; border-top: 1px solid var(--keha-border-secondary); }
+.keha-orderplan-weeks > :last-child { border-bottom: 0; }
 .keha-orderplan-week { border-bottom: 1px solid var(--keha-border-secondary); }
-.keha-orderplan-week--empty { display: flex; align-items: center; gap: 12px; padding: 10px 4px; }
+.keha-orderplan-week--empty { display: flex; align-items: center; gap: var(--keha-space-300); padding: var(--keha-space-300) var(--keha-space-400); }
 .keha-orderplan-week__head {
   display: grid; grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(80px, 1fr)) minmax(120px, 1.4fr) 20px;
-  gap: 12px; align-items: center; width: 100%; padding: 10px 4px; background: none; border: 0; cursor: pointer;
+  gap: var(--keha-space-300); align-items: center; width: 100%; padding: var(--keha-space-300) var(--keha-space-400); background: none; border: 0; cursor: pointer;
   text-align: left; font: inherit; color: var(--keha-text);
 }
 .keha-orderplan-week__head:hover { background: var(--keha-surface-hover); }
 .keha-orderplan-week__head:focus-visible { outline: 2px solid var(--keha-accent, #5b4fd6); outline-offset: -2px; }
-.keha-orderplan-week__when { display: inline-flex; align-items: center; gap: 8px; font-weight: var(--keha-weight-semibold); }
-.keha-orderplan-week__cash { font-variant-numeric: tabular-nums; font-weight: var(--keha-weight-semibold); }
-.keha-orderplan-week__by { color: var(--keha-text-secondary); }
-.keha-orderplan-week__body { display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 16px; }
+/* One line per cell (DESIGN-RULES 9, 12): labels never wrap; counts and cash are right-aligned
+   with lined-up digits; the order-by range shortens with an ellipsis rather than wrapping. */
+.keha-orderplan-week__head > * { white-space: nowrap; min-width: 0; }
+.keha-orderplan-week__when { display: inline-flex; align-items: center; gap: var(--keha-space-200); font-weight: var(--keha-weight-semibold); }
+.keha-orderplan-week__n { text-align: end; font-variant-numeric: tabular-nums; }
+.keha-orderplan-week__cash { text-align: end; font-variant-numeric: tabular-nums; font-weight: var(--keha-weight-semibold); }
+.keha-orderplan-week__by { color: var(--keha-text-secondary); overflow: hidden; text-overflow: ellipsis; }
+.keha-orderplan-week__body { display: flex; flex-direction: column; gap: var(--keha-space-300); padding: var(--keha-space-100) var(--keha-space-400) var(--keha-space-400); }
 @media (max-width: 760px) {
   .keha-orderplan-week__head { grid-template-columns: 1fr 1fr 20px; }
   .keha-orderplan-week__head > :nth-child(5) { grid-column: 1 / 3; }

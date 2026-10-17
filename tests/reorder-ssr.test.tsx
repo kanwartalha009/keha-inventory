@@ -103,6 +103,23 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Open orders: 2");
     expect(html).toContain('href="/app/reorder/orders"');
     for (const h of ["Stock now", "Incoming", "Days of stock left", "Quantity", "Unit cost", "Line total"]) expect(html).toContain(h);
+    // DESIGN-RULES: short header with the long form in a tooltip; number columns right-aligned.
+    expect(html).toMatch(/<s-text interestFor="keha-left-[^"]+">Days left<\/s-text><s-tooltip id="keha-left-[^"]+">Days of stock left<\/s-tooltip>/);
+    expect((html.match(/format="numeric"/g) ?? []).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("one-location store: no location switcher at all; Pro with two: the switcher in a toolbar", () => {
+    const one = render("/app/reorder", "reorder", Reorder, { ...reorderData(), locationCount: 1 });
+    expect(one).not.toContain("keha-toolbar");
+    expect(one).not.toContain("keha-switcher");
+    const two = render("/app/reorder", "reorder", Reorder, { ...reorderData(), locationCount: 2 });
+    expect(two).toContain("keha-toolbar");
+  });
+
+  it("units on an open Keha order use the short label", () => {
+    const d = reorderData();
+    d.groups[0]!.lines[0]!.onOrder = 6;
+    expect(render("/app/reorder", "reorder", Reorder, d)).toContain("+6 on order");
   });
 
   it("shows the empty state with the way to the next 90 days", () => {

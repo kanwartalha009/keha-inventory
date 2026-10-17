@@ -16,7 +16,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { loadOrderPlan } from "../models/order-plan.server";
-import { AppPage, ProductThumb } from "../components/ui";
+import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { CantPlan, CashStrip, TabLock } from "../components/order-plan";
 import { DownloadButton } from "../components/download-button";
@@ -74,20 +74,20 @@ function Calendar({ plan }: { plan: OrderPlanData }) {
   const busy = weeks.filter((w) => w.lines > 0);
   return (
     <>
-      <s-section>
-        <s-stack direction="block" gap="base">
-          {totals.lines === 0 ? (
-            <s-paragraph>{t("No orders needed in the next 90 days.")}</s-paragraph>
-          ) : (
-            <s-text fontWeight="medium">
-              {fill(t("{orders} orders in the next 13 weeks · {units} units · {cash}"), {
+      <FormCard
+        title={t("Next 90 days")}
+        sub={
+          totals.lines === 0
+            ? t("No orders needed in the next 90 days.")
+            : fill(t("{orders} orders in the next 13 weeks · {units} units · {cash}"), {
                 // One order per supplier and week.
                 orders: formatCount(weeks.reduce((a, w) => a + w.suppliers.length, 0), locale),
                 units: formatCount(totals.units, locale),
                 cash: money(totals.cash),
-              })}
-            </s-text>
-          )}
+              })
+        }
+      >
+        <s-stack direction="block" gap="base">
           {totals.missingCost > 0 && (
             <s-text color="subdued">
               {fill(t("{n} lines without a cost price are not in the cash totals."), { n: formatCount(totals.missingCost, locale) })}
@@ -102,16 +102,16 @@ function Calendar({ plan }: { plan: OrderPlanData }) {
             </s-stack>
           )}
         </s-stack>
-      </s-section>
+      </FormCard>
       {busy.length > 0 && (
-        <s-section heading={t("Week by week")}>
+        <FormCard flush title={t("Week by week")} sub={t("Open a week to see its suppliers and lines.")}>
           <div className="keha-orderplan-weeks">
             {weeks.map((w) => (
               // The first week with orders starts open.
               <WeekRow key={w.weekStart} week={w} plan={plan} initiallyOpen={w.weekStart === busy[0]!.weekStart} />
             ))}
           </div>
-        </s-section>
+        </FormCard>
       )}
       <s-paragraph color="subdued">
         {t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, the trend, stock now and stock on order with its dates.")}
@@ -141,8 +141,8 @@ function WeekRow({ week, plan, initiallyOpen }: { week: PlanWeek; plan: OrderPla
           {range}
           {week.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
         </span>
-        <span>{fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) })}</span>
-        <span>{fill(t("{n} units"), { n: formatCount(week.units, locale) })}</span>
+        <span className="keha-orderplan-week__n">{fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) })}</span>
+        <span className="keha-orderplan-week__n">{fill(t("{n} units"), { n: formatCount(week.units, locale) })}</span>
         <span className="keha-orderplan-week__cash">{money(week.cash)}</span>
         <span className="keha-orderplan-week__by">{`${t("Order by")} ${formatDayRange(week.orderByFrom, week.orderByTo, locale)}`}</span>
         <s-icon type={open ? "chevron-up" : "chevron-down"} />
@@ -170,9 +170,9 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-text fontWeight="semibold">{name}</s-text>
             {plan.suppliers[s.supplierKey]?.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
-            <s-text color="subdued">
-              {`${fill(t("{n} units"), { n: formatCount(s.units, locale) })} · ${money(s.cash)}`}
-            </s-text>
+            <span className="keha-num">
+              <s-text color="subdued">{`${fill(t("{n} units"), { n: formatCount(s.units, locale) })} · ${money(s.cash)}`}</s-text>
+            </span>
             {s.missingCost > 0 && (
               <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(s.missingCost, locale) })}</s-text>
             )}
@@ -184,10 +184,10 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Order by")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Arrives")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Quantity")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Cost")}</s-table-header>
+            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-by" label={t("Order by")} /></s-table-header>
+            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-arrives" label={t("Arrives")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-qty" label={t("Quantity")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-cost" label={t("Cost")} /></s-table-header>
           </s-table-header-row>
           <s-table-body>
             {s.events.map((e, i) => {

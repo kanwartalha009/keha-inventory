@@ -36,7 +36,7 @@ import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
 import type { ActionListView } from "../lib/action-list-shared";
-import { AppPage } from "../components/ui";
+import { AppPage, FormCard, HeaderLabel } from "../components/ui";
 import { useLinkProps } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
@@ -132,23 +132,16 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const { t } = useLocale();
   const heading = t("Order this week");
   if (data.state === "syncing") {
-    return (
-      <s-section heading={heading}>
-        <s-paragraph color="subdued">{t("Your order plan appears here once your products, stock and sales are read.")}</s-paragraph>
-      </s-section>
-    );
+    return <FormCard title={heading} sub={t("Your order plan appears here once your products, stock and sales are read.")} />;
   }
   const op = data.orderPlan;
   if (data.state !== "ready" || !op) return null;
   if (op.kind === "preview") {
     return (
-      <s-section heading={heading}>
-        <s-stack direction="block" gap="base">
-          <s-paragraph color="subdued">{t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}</s-paragraph>
-          <PreviewTable rows={op.rows} />
-          <PreviewLock />
-        </s-stack>
-      </s-section>
+      <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
+        <PreviewTable rows={op.rows} />
+        <PreviewLock />
+      </FormCard>
     );
   }
   return <OrderPlanBlock plan={op.plan} heading={heading} />;
@@ -162,7 +155,14 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
   const strip = cashTotals(weeks.flatMap((w) => w.suppliers.flatMap((s) => s.events)));
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
   return (
-    <s-section heading={heading}>
+    <FormCard
+      title={heading}
+      action={
+        <s-button variant="tertiary" {...link("/app/reorder")}>
+          {t("Order plan")}
+        </s-button>
+      }
+    >
       <s-stack direction="block" gap="base">
         {week.suppliers.length === 0 ? (
           <s-paragraph>
@@ -185,11 +185,11 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
             <s-table>
               <s-table-header-row>
                 <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Products")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Units")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Cash needed")}</s-table-header>
-                <s-table-header listSlot="labeled">{t("Order by")}</s-table-header>
-                <s-table-header>{t("Order")}</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ow-products" label={t("Products")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ow-units" label={t("Units")} /></s-table-header>
+                <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ow-cash" label={t("Cash")} hint={t("Cash needed")} /></s-table-header>
+                <s-table-header listSlot="labeled"><HeaderLabel id="keha-ow-by" label={t("Order by")} /></s-table-header>
+                <s-table-header><HeaderLabel id="keha-ow-order" label={t("Order")} /></s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {week.suppliers.map((s) => (
@@ -208,15 +208,17 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
                       </s-stack>
                     </s-table-cell>
                     <s-table-cell>
-                      <s-stack direction="inline" gap="small-200" alignItems="center">
+                      <span className="keha-inline">
                         <span>{formatDay(s.overdue ? (s.events.find((e) => e.overdue)?.deadline ?? s.orderByFrom) : s.orderByFrom, locale)}</span>
                         {s.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-                      </s-stack>
+                      </span>
                     </s-table-cell>
                     <s-table-cell>
-                      <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
-                        {t("Review order")}
-                      </s-button>
+                      <span className="keha-nowrap">
+                        <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
+                          {t("Review order")}
+                        </s-button>
+                      </span>
                     </s-table-cell>
                   </s-table-row>
                 ))}
@@ -246,7 +248,7 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
           </s-stack>
         )}
       </s-stack>
-    </s-section>
+    </FormCard>
   );
 }
 

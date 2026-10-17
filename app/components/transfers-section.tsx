@@ -17,7 +17,7 @@ import { transferAdminHref, type RecentTransfer, type TransferGroup, type Transf
 import type { TransfersResult } from "../routes/app.transfers";
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
-import { ProductThumb } from "./ui";
+import { EmptyState, FormCard, HeaderLabel, ProductThumb } from "./ui";
 import { flag, useLinkProps, val } from "./wc";
 
 export type TransfersView = {
@@ -37,46 +37,38 @@ export function TransfersSection({ view }: { view: TransfersView }) {
   if (!view.enabled) {
     const copy = featureCopy("transfers", t);
     return (
-      <s-section heading={heading}>
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small-200" alignItems="center">
+      <FormCard
+        title={heading}
+        sub={copy.body}
+        action={
+          <span className="keha-inline">
             <s-badge icon="lock" tone="info">
               {planTag("transfers", t)}
             </s-badge>
-            <s-text color="subdued">{copy.body}</s-text>
-          </s-stack>
-          <s-stack direction="inline" gap="small">
             <s-button {...link("/app/plans?upgrade=transfers")}>{t("See plans")}</s-button>
-          </s-stack>
-        </s-stack>
-      </s-section>
+          </span>
+        }
+      />
     );
   }
   if (!view.hasWarehouse || !view.hasStore) {
     return (
-      <s-section heading={heading}>
-        <s-stack direction="block" gap="small">
-          <s-paragraph color="subdued">
-            {t("Mark at least one warehouse and one store in Settings → Locations to get a transfer plan.")}
-          </s-paragraph>
-          <s-stack direction="inline" gap="small">
-            <s-button {...link("/app/settings/locations")}>{t("Set up warehouses and stores")}</s-button>
-          </s-stack>
-        </s-stack>
-      </s-section>
+      <FormCard
+        title={heading}
+        sub={t("Mark at least one warehouse and one store in Settings → Locations to get a transfer plan.")}
+        action={<s-button {...link("/app/settings/locations")}>{t("Set up warehouses and stores")}</s-button>}
+      />
     );
   }
   return (
     <>
       {view.groups.length === 0 ? (
-        <s-section heading={heading}>
-          <s-stack direction="block" gap="small">
-            <s-heading>{t("Nothing to move right now")}</s-heading>
-            <s-paragraph color="subdued">
-              {t("Stores that are running low get stock from a warehouse that has more than it needs itself.")}
-            </s-paragraph>
-          </s-stack>
-        </s-section>
+        <FormCard title={heading}>
+          <EmptyState
+            heading={t("Nothing to move right now")}
+            body={t("Stores that are running low get stock from a warehouse that has more than it needs itself.")}
+          />
+        </FormCard>
       ) : (
         view.groups.map((g) => <TransferCard key={g.key} group={g} heading={heading} />)
       )}
@@ -101,7 +93,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
   const result = fetcher.data;
 
   return (
-    <s-section heading={`${heading} · ${route}`}>
+    <FormCard title={`${heading} · ${route}`}>
       <s-stack direction="block" gap="base">
         {result?.ok && (
           <s-banner tone="success">
@@ -144,9 +136,11 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-            <s-table-header listSlot="labeled">{fill(t("Stock at {location}"), { location: group.destinationName })}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Days of stock left")}</s-table-header>
-            <s-table-header listSlot="labeled">{fill(t("Spare at {location}"), { location: group.originName })}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{fill(t("Stock at {location}"), { location: group.destinationName })}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id={`keha-tleft-${group.key}`} label={t("Days left")} hint={t("Days of stock left")} />
+            </s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{fill(t("Spare at {location}"), { location: group.originName })}</s-table-header>
             <s-table-header>{t("Quantity")}</s-table-header>
           </s-table-header-row>
           <s-table-body>
@@ -181,7 +175,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
           });
         }}
       />
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -224,11 +218,11 @@ function LineRow({ l, value, onChange, locale }: { l: TransferLine; value: strin
 function RecentTransfers({ rows }: { rows: RecentTransfer[] }) {
   const { t, locale } = useLocale();
   return (
-    <s-section heading={t("Transfers created with Keha")}>
+    <FormCard flush title={t("Transfers created with Keha")}>
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">{t("Transfer")}</s-table-header>
-          <s-table-header listSlot="labeled">{t("Units")}</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">{t("Units")}</s-table-header>
           <s-table-header listSlot="labeled">{t("Created")}</s-table-header>
         </s-table-header-row>
         <s-table-body>
@@ -245,6 +239,6 @@ function RecentTransfers({ rows }: { rows: RecentTransfer[] }) {
           ))}
         </s-table-body>
       </s-table>
-    </s-section>
+    </FormCard>
   );
 }

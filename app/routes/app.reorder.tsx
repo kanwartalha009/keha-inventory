@@ -33,10 +33,10 @@ import { loadOrderPlan } from "../models/order-plan.server";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { PreviewLock, PreviewTable } from "../components/order-plan";
 import { previewRows, type PreviewRow } from "../lib/order-plan-shared";
-import { LocationSwitcher } from "../components/location-switcher";
+import { LocationSwitcher, switcherMode } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
 import { loadTransfers } from "../models/transfers.server";
-import { AppPage, ProductThumb } from "../components/ui";
+import { AppPage, EmptyState, FormCard, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
@@ -92,7 +92,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   const supplierKey = url.searchParams.get("supplier");
   const locations = features.locations ? await listPlanningLocations(session.shop) : [];
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
-  const active = features.transfers ? 0 : await activeLocationCount(session.shop);
+  // Active locations: the switcher hides itself in a one-location store; transfers need two.
+  const active = await activeLocationCount(session.shop);
   const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
   const [reorder, transfers] = await Promise.all([
     loadReorder(session.shop, selected, view.scope, planned),
@@ -108,6 +109,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
     locationsEnabled: features.locations,
     locations,
     location: view.location,
+    locationCount: active,
     transfers,
     showTransfers: transfersShown,
     preview: null,
@@ -151,6 +153,8 @@ export type ReorderPageData = ReorderData & {
   supplierFilter?: { key: string; name: string; kind: "supplier" | "vendor" } | null;
   hiddenGroups?: number;
   showTransfers?: boolean;
+  /** Active locations (LocationSwitcher: fewer than 2 → not shown). */
+  locationCount?: number;
 } & LocationView & { transfers: TransfersView };
 
 const EMPTY_REORDER: Omit<ReorderPageData, "enabled" | "preview"> = {
@@ -176,12 +180,10 @@ export default function Reorder() {
     return (
       <AppPage heading={t("Order plan")} intro={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
         <OrderPlanTabs current="now" />
-        <s-section heading={t("What to order, and by when")}>
-          <s-stack direction="block" gap="base">
-            <PreviewTable rows={data.preview ?? []} />
-            <PreviewLock />
-          </s-stack>
-        </s-section>
+        <FormCard title={t("What to order, and by when")}>
+          <PreviewTable rows={data.preview ?? []} />
+          <PreviewLock />
+        </FormCard>
       </AppPage>
     );
   }
@@ -197,8 +199,6 @@ export default function Reorder() {
           : t("What to order from each supplier, how much, and by which date. Quantities are rounded up to case packs and minimum orders.")
       }
     >
-      <OrderPlanTabs current="now" />
-      <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
       {filter && (
         <s-banner tone="info">
           <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -217,15 +217,21 @@ export default function Reorder() {
       {data.missingSelected > 0 && (
         <s-banner tone="warning">{t("Some products from the link aren't tracked in your store any more.")}</s-banner>
       )}
+      <OrderPlanTabs current="now" />
+      {switcherMode({ enabled: data.locationsEnabled, planning: data.locations.length, locationCount: data.locationCount, viewing: !!location }) !== "none" && (
+        <Toolbar
+          filters={
+            <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} locationCount={data.locationCount} />
+          }
+        />
+      )}
       {data.groups.length === 0 ? (
         <s-section>
-          <s-stack direction="block" gap="small" alignItems="center">
-            <s-heading>{t("Nothing to reorder right now")}</s-heading>
-            <s-paragraph color="subdued">
-              {t("Products show up here when their stock will run out before a new order would arrive.")}
-            </s-paragraph>
-            <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
-          </s-stack>
+          <EmptyState
+            heading={t("Nothing to reorder right now")}
+            body={t("Products show up here when their stock will run out before a new order would arrive.")}
+            action={<s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>}
+          />
         </s-section>
       ) : (
         data.groups.map((g) => <GroupCard key={g.key} group={g} location={location} />)
@@ -266,16 +272,21 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
   const failed = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
 
   return (
-    <s-section heading={title}>
+    <FormCard
+      title={title}
+      sub={`${t("Lead time")}: ${leadLabel} · ${t("Order by")}: ${formatDay(group.orderBy, locale)}`}
+      action={
+        group.kind === "vendor" || group.selected ? (
+          <span className="keha-inline">
+            {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
+            {group.selected && (
+              <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From your order plan") : t("From your action list")}</s-badge>
+            )}
+          </span>
+        ) : undefined
+      }
+    >
       <s-stack direction="block" gap="base">
-        <s-stack direction="inline" gap="base" alignItems="center">
-          {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
-          {group.selected && (
-            <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From your order plan") : t("From your action list")}</s-badge>
-          )}
-          <s-text color="subdued">{`${t("Lead time")}: ${leadLabel}`}</s-text>
-          <s-text color="subdued">{`${t("Order by")}: ${formatDay(group.orderBy, locale)}`}</s-text>
-        </s-stack>
         {group.toppedUp && (
           <s-text color="subdued">
             {fill(t("Topped up to reach {supplier}'s minimum of {min} units."), {
@@ -287,12 +298,14 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Stock now")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Incoming")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Days of stock left")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Stock now")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Incoming")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">
+              <HeaderLabel id={`keha-left-${group.key}`} label={t("Days left")} hint={t("Days of stock left")} />
+            </s-table-header>
             <s-table-header>{t("Quantity")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Unit cost")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Line total")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Unit cost")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("Line total")}</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {group.lines.map((l) => (
@@ -347,7 +360,7 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
           fetcher.submit(body as never, { method: "post", encType: "application/json" });
         }}
       />
-    </s-section>
+    </FormCard>
   );
 }
 
@@ -399,7 +412,9 @@ function LineRow({
         <s-stack direction="block" gap="none">
           <span>{formatCount(l.incoming, locale)}</span>
           {l.onOrder > 0 && (
-            <s-text color="subdued">{fill(t("+{n} on order with Keha"), { n: formatCount(l.onOrder, locale) })}</s-text>
+            <s-text color="subdued">
+              <span className="keha-nowrap">{fill(t("+{n} on order"), { n: formatCount(l.onOrder, locale) })}</span>
+            </s-text>
           )}
         </s-stack>
       </s-table-cell>
