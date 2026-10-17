@@ -5,14 +5,17 @@
  * Inputs and why they are consistent with the rest of the app:
  *  - Rate, σ, z and "enough data": the latest VariantMetric run (scope "online"), i.e. the
  *    numbers Products and Reorder show. The planner does not recompute the sales rate.
- *  - Stock: Σ StockNow over the online pool (onHand, Shopify's incoming) plus units on sent /
- *    confirmed Keha orders (they never reach Shopify; compute counts them the same way), minus
- *    the units compute estimated as already landed (VariantMetric.inputs.kehaLanded).
- *    The pool honours the merchant's "counts for online sales" override (POOL_LOCATION_SELECT).
- *  - Seasonality and trend: daily units from the SalesDaily LOCATION view (channel "all",
- *    locationKey in the pool keys) — the view the sales rate uses — at store or collection
- *    level (collections that sold ≥ 2,000 units in 12 months), only over the windows the maths
- *    reads (seasonWindows).
+ *  - Stock: Σ StockNow over the supplier-order pool (compute-shared countsForOnline: every
+ *    active location unless the merchant left it out). The PLANNING position is Shopify's
+ *    `available` (on hand − committed − reserved …; negative when oversold), as compute;
+ *    `onHand` is kept for display. Plus Shopify's incoming and the units on sent / confirmed
+ *    Keha orders (supplier-shared onOrderByVariant: remaining units), minus the units compute
+ *    estimated as already landed (VariantMetric.inputs.kehaLanded).
+ *  - Seasonality and trend: daily units from the pool's demand view (compute-shared demandWhere:
+ *    all channels, minus locations left out) — the view the sales rate uses — at store or
+ *    collection level (collections that sold ≥ 2,000 units in 12 months), only over the windows
+ *    the maths reads (seasonWindows). The trend is applied only when the shop turned the growth
+ *    assumption on (settings trendMode, default off), as compute.
  *  - "Last year same period", collection goals and the scorecard's revenue ranking: the
  *    CHANNEL view (locationKey "all", every channel). The two views are never added together.
  */
@@ -32,10 +35,11 @@ import {
 } from "../lib/planner-shared";
 import { SEASON, spanStats, type Coverage, type UnitsSeries } from "../lib/engine/season-shared";
 import { addDays } from "../lib/engine/dates-shared";
-import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys, salesCoverage } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds, salesCoverage, type DemandScope } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { OPEN_PO_STATUSES } from "../lib/supplier-shared";
 import { readSettings } from "../lib/settings-shared";
+import type { TrendMode } from "../lib/engine/season-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
@@ -60,8 +64,11 @@ export type PlannerShop = {
   today: string;
   leadTimeDays: number;
   coverage: Coverage;
-  poolKeys: string[];
+  /** Pool demand: the SalesDaily view compute reads (demandWhere; never both views). */
+  demand: DemandScope;
   pool: string[];
+  /** Growth assumption (settings trendMode); "off" by default. */
+  trendMode: TrendMode;
 };
 
 /** Store currency, today (store time zone), default lead time, sales coverage and the online pool. */
@@ -73,14 +80,16 @@ export async function plannerShop(shop: string, now: Date = new Date()): Promise
   ]);
   const timezone = safeTimeZone(row?.timezone);
   const pool = poolLocationIds(locations);
+  const settings = readSettings(row?.settings);
   return {
     currency: row?.currency ?? "USD",
     timezone,
     today: localDate(now, timezone),
-    leadTimeDays: readSettings(row?.settings).leadTimeDays,
+    leadTimeDays: settings.leadTimeDays,
     coverage: salesCoverage(readBackfillState(row?.backfillState)),
-    poolKeys: poolSalesKeys(pool),
+    demand: demandScope(locations),
     pool,
+    trendMode: settings.trendMode,
   };
 }
 
@@ -117,9 +126,9 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
       ? prisma.stockNow.groupBy({
           by: ["variantId"],
           where: { shop, locationId: { in: ctx.pool } },
-          _sum: { onHand: true, incoming: true },
+          _sum: { onHand: true, available: true, incoming: true },
         })
-      : Promise.resolve([] as { variantId: string; _sum: { onHand: number | null; incoming: number | null } }[]),
+      : Promise.resolve([] as { variantId: string; _sum: { onHand: number | null; available: number | null; incoming: number | null } }[]),
     kehaOnOrder(shop, OPEN_PO_STATUSES),
   ]);
   const wanted = new Set(ids);
@@ -150,6 +159,8 @@ async function plannerVariants(shop: string, ctx: PlannerShop): Promise<PlannerV
       z: num(inputs.z),
       enoughData: inputs.enoughData === true,
       onHand: s?.onHand ?? 0,
+      // The planning position (Shopify available; negative when oversold), as compute.
+      available: s?.available ?? s?.onHand ?? 0,
       // Keha units minus those compute estimated as already landed (they are in on-hand).
       incoming: (s?.incoming ?? 0) + Math.max(0, (keha.get(v.id)?.qty ?? 0) - landedOf(inputs)),
     });
@@ -163,10 +174,10 @@ async function plannerSeason(
   ctx: PlannerShop,
   input: { start: string; end: string; variants: { id: string; collections: string[] }[] },
 ) {
-  const { today, poolKeys, coverage } = ctx;
+  const { today, coverage } = ctx;
   const yesterday = addDays(today, -1);
   const windows = seasonWindows(today, input.start, input.end);
-  const pool = { shop, channel: ALL, locationKey: { in: poolKeys } };
+  const pool = { shop, ...demandWhere(ctx.demand) };
   const [storeG, units12G] = await Promise.all([
     Promise.all(windows.map((r) => prisma.salesDaily.groupBy({ by: ["day"], where: { ...pool, day: rangeWhere(r) }, _sum: { sold: true } }))),
     prisma.salesDaily.groupBy({
@@ -201,7 +212,7 @@ async function plannerSeason(
       collections.set(c, { units, coverage });
     }
   }
-  return createPlannerSeason({ today, start: input.start, end: input.end, store: { units: storeUnits, coverage }, collections, units12m });
+  return createPlannerSeason({ today, start: input.start, end: input.end, store: { units: storeUnits, coverage }, collections, units12m, trendMode: ctx.trendMode });
 }
 
 /** Units and revenue over the same dates last year (channel view, all channels); null below 80 % coverage. */

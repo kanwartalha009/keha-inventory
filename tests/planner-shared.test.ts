@@ -358,6 +358,31 @@ describe("computeScenario", () => {
     expect(r.groups[0]!.lines[0]!.late).toBe(true); // starts today: any lead time is too late
   });
 
+  it("applies the trend only with the shop's growth assumption on (trendMode, integration 2026-10-17)", () => {
+    const s = series((d) => (d >= "2025-10-16" && d <= "2025-10-31" ? 2 : 1), FULL);
+    const spec = { start: "2026-10-01", end: "2026-10-20", targetType: "keep_pace" as const, targetValue: 0, variants: [V(1, { onHand: 0, incoming: 0 })] };
+    const season = (trendMode?: "off" | "store") =>
+      createPlannerSeason({ today: TODAY, start: spec.start, end: spec.end, store: s, collections: new Map(), units12m: new Map(), trendMode });
+    const off = computeScenario(input({ ...spec, season: season() }, s, FULL));
+    const on = computeScenario(input({ ...spec, season: season("store") }, s, FULL));
+    expect(off.season).toMatchObject({ trendApplied: false, trend: 1 });
+    expect(on.season!.trendApplied).toBe(true);
+    expect(on.season!.trend).not.toBe(1);
+    expect(on.totals.units!).toBeCloseTo(off.totals.units! * on.season!.trend, 1);
+  });
+
+  it("plans from available (the planning position), not on hand; on hand stays on the line", () => {
+    const period = { start: "2026-10-20", end: "2026-11-30" };
+    const base = computeScenario(input({ ...period, variants: [V(1, { onHand: 50, incoming: 0 })] }));
+    const committed = computeScenario(input({ ...period, variants: [V(1, { onHand: 50, available: 20, incoming: 0 })] }));
+    const a = base.groups[0]!.lines[0]!;
+    const b = committed.groups[0]!.lines[0]!;
+    expect(b.onHand).toBe(50);
+    // 30 of the 50 are sold but not shipped: 30 fewer at the start, 30 more to order.
+    expect(a.stockAtStart - b.stockAtStart).toBeCloseTo(30, 5);
+    expect(b.qty - a.qty).toBe(30);
+  });
+
   it("reads a stored result only in the current version", () => {
     const r = computeScenario(input());
     expect(readScenarioResult(JSON.parse(JSON.stringify(r)))).toEqual(r);

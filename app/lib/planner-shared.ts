@@ -15,11 +15,12 @@
  *    away) ÷ units/day over the engine's base window (the 28 days ending yesterday, one year
  *    back), clamped 0.2–5.0, with the engine's requirements (≥ 13 months of history, ≥ 80 %
  *    covered days in both spans, base sold > 0); otherwise 1.0.
- *  - Trend: the engine's trendFactor at the same level.
+ *  - Trend: the engine's trendFactor at the same level, applied only with the shop's growth
+ *    assumption on (settings trendMode "store"; default off → 1.0, as compute).
  *  - Plan multiplier (planMultiplier): keep pace 1; grow X % 1 + X/100; revenue target =
  *    target ÷ baseline revenue, where baseline revenue = Σ baseline units × price.
  *  - demand(period) = rate × seasonal(period) × trend × plan × days.
- *  - Stock at the period start = max(0, onHand + incoming − rate × seasonal(today → start) ×
+ *  - Stock at the period start = max(0, available + incoming − rate × seasonal(today → start) ×
  *    trend × days until the start); plan 1 before the period. Never below 0: sales lost before
  *    the period are the Reorder screen's job, not the season order's.
  *  - Units needed = demand + safety (z × σ × √lead time) − stock at start; rounded up to the case
@@ -53,6 +54,7 @@ import {
   type SeasonalReason,
   type SeasonalResult,
   type SpanStats,
+  type TrendMode,
   type TrendResult,
   type UnitsSeries,
 } from "./engine/season-shared";
@@ -361,6 +363,8 @@ export function createPlannerSeason(input: {
   store: UnitsSeries;
   collections: ReadonlyMap<string, UnitsSeries>;
   units12m: ReadonlyMap<string, number>;
+  /** Growth assumption (settings trendMode); default "off": the trend is measured, not applied. */
+  trendMode?: TrendMode;
 }) {
   const today = toDayKey(input.today);
   const from = effectiveStart(input.start, today);
@@ -376,7 +380,7 @@ export function createPlannerSeason(input: {
           collectionId: id,
           period: periodSeasonalIndex(s, today, from, input.end),
           gap: gapDays > 0 ? seasonalIndex(s, today, gapDays) : null,
-          trend: trendFactor(s, today),
+          trend: trendFactor(s, today, input.trendMode ?? "off"),
         }
       : null;
     memo.set(key, r);
@@ -425,8 +429,10 @@ export interface PlannerVariant {
   z: number | null;
   /** ≥ 14 in-stock days (VariantMetric.inputs.enoughData). */
   enoughData: boolean;
-  /** Σ over the online pool now. */
+  /** Σ on hand over the supplier-order pool now (display). */
   onHand: number;
+  /** The planning position: Σ Shopify available over the pool (negative when oversold); onHand when unknown. */
+  available?: number;
   /** Shopify's incoming + units on sent / confirmed Keha orders. */
   incoming: number;
 }
@@ -691,7 +697,7 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
       const lead = resolveLeadTime(supplier?.leadTimeDays ?? null, settings);
       const safety = safetyStock(finite(r.v.z) ? r.v.z : 0, r.v.sigma!, lead.days);
       const sDays = r.v.rate! > 0 ? safety / r.v.rate! : 0;
-      const stockAtStart = Math.max(0, r.v.onHand + Math.max(0, r.v.incoming) - r.gapDemand);
+      const stockAtStart = Math.max(0, (r.v.available ?? r.v.onHand) + Math.max(0, r.v.incoming) - r.gapDemand);
       const pack = casePackFor(r.v.caseQty, supplier);
       const moq = supplier?.minOrder ?? null;
       const qty = lineQuantity(demand + safety - stockAtStart, pack, moq);

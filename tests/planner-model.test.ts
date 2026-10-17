@@ -217,11 +217,26 @@ describe("results calculated on save", () => {
     db.tables.variantMetric[0]!.inputs = { z: 1.65, enoughData: true, kehaLanded: 2 };
     const line = async () =>
       (await computeScenarioFor(SHOP, BF, NOW)).groups.flatMap((g) => g.lines).find((l) => l.variantId === V(1))!;
-    // Shopify's flag: the POS store is not online → 5 on hand; Keha 3 sent − 2 landed → 1 incoming.
+    // The POS store is left out of supplier orders → 5 on hand; Keha 3 sent − 2 landed → 1 incoming.
     expect(await line()).toMatchObject({ onHand: 5, incoming: 1 });
-    // The merchant counts the POS store for online sales → its 500 join the pool.
+    // The merchant counts the POS store in supplier orders → its 500 join the pool.
     db.tables.location[1]!.onlinePool = true;
     expect(await line()).toMatchObject({ onHand: 505 });
+  });
+
+  it("integration: plans from Shopify available over the pool; demand view, pool and growth assumption as compute", async () => {
+    const { computeScenarioFor, plannerShop } = await import("../app/services/planner.server");
+    db.tables.variantMetric[0]!.rate = 100;
+    db.tables.stockNow[0]!.available = -4; // oversold: 5 on the shelf, 9 sold but not shipped
+    const line = (await computeScenarioFor(SHOP, BF, NOW)).groups.flatMap((g) => g.lines).find((l) => l.variantId === V(1))!;
+    expect(line.onHand).toBe(5);
+    expect(line.stockAtStart).toBe(0);
+    // The POS store is left out (onlinePool false): location view without it; by default the channel view.
+    expect((await plannerShop(SHOP, NOW)).demand).toEqual({ view: "location", exclude: [POS] });
+    db.tables.location[1]!.onlinePool = null;
+    expect(await plannerShop(SHOP, NOW)).toMatchObject({ demand: { view: "channel" }, pool: [WH, POS], trendMode: "off" });
+    db.tables.shop[0]!.settings = { leadTimeDays: 10, trendMode: "store" };
+    expect((await plannerShop(SHOP, NOW)).trendMode).toBe("store");
   });
 
   it("edits and deletes are scoped to the shop", async () => {
