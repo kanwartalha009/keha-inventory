@@ -91,10 +91,7 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               </s-table-cell>
               <s-table-cell>{days}</s-table-cell>
               <s-table-cell>
-                <span className="keha-inline">
-                  {(r.orderBy || !r.overdue) && <span>{formatDay(r.orderBy, locale)}</span>}
-                  {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-                </span>
+                <OrderByCell orderBy={r.orderBy} overdue={r.overdue} />
               </s-table-cell>
               <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
             </s-table-row>
@@ -254,6 +251,20 @@ export function AboveLastYearBadge({ qty, lastYear }: { qty: number; lastYear: n
   const { t } = useLocale();
   if (!aboveLastYear(qty, lastYear)) return null;
   return <s-badge tone="warning">{t("Above last year")}</s-badge>;
+}
+
+/**
+ * An order-by date with the Overdue badge (Dashboard, Products, the product page, the Free
+ * preview): the date, then the badge when late; the badge alone when late with no date (M3).
+ */
+export function OrderByCell({ orderBy, overdue }: { orderBy: string | null | undefined; overdue: boolean }) {
+  const { t, locale } = useLocale();
+  return (
+    <span className="keha-inline">
+      {(orderBy || !overdue) && <span>{formatDay(orderBy, locale)}</span>}
+      {overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+    </span>
+  );
 }
 
 /** A line's real deadline: "Due 27 Oct", "Due today", "Overdue since 12 Oct" or "Overdue" (critical). */

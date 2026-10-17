@@ -19,7 +19,7 @@ import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { listProducts, productFilterOptions, supplierFilterOptions } from "../models/products.server";
 import { setNoReorder } from "../models/reorder.server";
-import { NoReorderConfirm } from "../components/order-plan";
+import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
@@ -27,7 +27,7 @@ import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { UpgradeBanner, planName, planTag } from "../components/plan";
 import { requiredPlan } from "../lib/plan-shared";
 import { fill, useLocale } from "../lib/i18n";
-import { formatCount, formatDay } from "../lib/dashboard-shared";
+import { formatCount } from "../lib/dashboard-shared";
 import {
   STATUS_ORDER,
   daysLeftView,
@@ -371,11 +371,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
         {locked ? (
           ""
         ) : (
-          <span className="keha-inline">
-            {/* Overdue with no date (already out, run-out day unknown): the badge alone. */}
-            {(r.orderBy || !r.overdue) && <span>{formatDay(r.orderBy, locale)}</span>}
-            {r.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-          </span>
+          <OrderByCell orderBy={r.orderBy} overdue={!!r.overdue} />
         )}
       </s-table-cell>
       <s-table-cell>{locked ? "" : r.noReorder ? <s-badge tone="neutral">{t("Not reordered")}</s-badge> : formatCount(r.orderQty, locale)}</s-table-cell>

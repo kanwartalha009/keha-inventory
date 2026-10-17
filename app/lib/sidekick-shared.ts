@@ -21,7 +21,7 @@
 import type { MoneyCardKey } from "./money-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
-import { byWeek, bySupplier, cashTotals, dueDay, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
+import { byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
 import {
   orderLink,
   supplierName,
@@ -319,8 +319,8 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
   const groups = bySupplier(events);
   const results = groups.map((g) => {
     const shown = g.events.slice(0, MAX_GROUP_LINES);
-    const known = g.events.map(dueDay).filter((d): d is DayKey => !!d).sort();
-    const first = known[0] ?? null;
+    // The supplier's order-by date, as the Dashboard, Order now and the email show it (M2).
+    const first = ordersDue(g.events).orderBy;
     const s = data.suppliers[g.supplierKey];
     return link(groupUri(s, g.supplierKey), name(g.supplierKey), MIME.supplierOrder, {
       grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",

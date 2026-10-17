@@ -970,6 +970,21 @@ export function dueDay(e: Pick<PlanEvent, "orderBy" | "overdue" | "deadline">): 
   return e.overdue ? e.deadline : (e.deadline ?? e.orderBy);
 }
 
+/**
+ * M2: THE order-by date of a set of orders — a supplier's orders this week, one Order now line —
+ * on every screen (Dashboard, Order now, Products, Sidekick, the Monday email): overdue when any
+ * order is, and then the earliest date that passed (null when every overdue one is already out
+ * with no known run-out day); otherwise the earliest order-by date.
+ */
+export function ordersDue(events: readonly Pick<PlanEvent, "orderBy" | "overdue" | "deadline">[]): { orderBy: DayKey | null; overdue: boolean } {
+  const overdue = events.some((e) => e.overdue);
+  const days = (overdue ? events.filter((e) => e.overdue) : events)
+    .map(dueDay)
+    .filter((d): d is DayKey => !!d)
+    .sort();
+  return { orderBy: days[0] ?? null, overdue };
+}
+
 /** Events placed within the next `days` days (today included; overdue day-0 orders too). */
 export function dueWithin(events: readonly PlanEvent[], today: DayKey, days: number): PlanEvent[] {
   const last = addDays(today, days - 1);

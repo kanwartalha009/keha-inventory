@@ -16,7 +16,7 @@
  */
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
 import { lineQuantity, netNeed } from "./engine/order-shared";
-import { ORDER_NOW_DAYS, dueDay, topUpToMinimum, type OrderWhy, type PlanEvent, type TopUpLine } from "./engine/forward-plan-shared";
+import { ORDER_NOW_DAYS, ordersDue, topUpToMinimum, type OrderWhy, type PlanEvent, type TopUpLine } from "./engine/forward-plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import type { OrderPlanData } from "./order-plan-shared";
 
@@ -243,6 +243,9 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
     // A line that joins this order leaves its own later order: that order's top-up doesn't apply.
     const qty = events.reduce((a, e) => a + (join && e.why ? e.why.rounded : e.qty), 0);
     const first = events[0] ?? null;
+    // One date per line, the same rule as the Dashboard, Sidekick and the email (M2): with several
+    // orders of this variant in the 7 days, the earliest (overdue: the one that passed).
+    const due = ordersDue(events);
     const pack = v ? (v.pack ?? null) : x ? casePackFor(x.caseQty, supplierFor(x, input.suppliers ?? [])) : null;
     const moq = v ? (v.moq ?? null) : info.minOrderScope === "product" ? null : info.minOrder;
     const plannedQty = planned.get(id);
@@ -261,8 +264,8 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       onOrder: Math.max(0, input.onOrder.get(id) ?? 0),
       daysLeft: v?.daysLeft ?? null,
       neverRunsOut: !!v?.neverRunsOut,
-      orderBy: first ? dueDay(first) : (v?.deadline ?? null),
-      overdue: events.some((e) => e.overdue),
+      orderBy: events.length ? due.orderBy : (v?.deadline ?? null),
+      overdue: due.overdue,
       suggested: Math.max(qty, plannedQty !== undefined ? lineQuantity(plannedQty, pack, moq) : 0),
       pack,
       moq,
@@ -302,7 +305,10 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       if (l) joinable.push({ ...l, selected: false });
     }
     sortLines(joinable);
-    const orderBy = lines.map((l) => l.orderBy).filter((d): d is string => !!d).sort()[0] ?? null;
+    // The supplier's order-by date (M2): ordersDue over every order behind its lines; asked-for
+    // lines without a planned order only when nothing else gives a date.
+    const due = ordersDue(lines.flatMap((l) => accs.get(l.variantId)?.events ?? []));
+    const orderBy = due.orderBy ?? (due.overdue ? null : (lines.map((l) => l.orderBy).filter((d): d is string => !!d).sort()[0] ?? null));
     out.push({
       key,
       kind: info.kind,
@@ -311,7 +317,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       leadTimeDays: info.leadTimeDays,
       leadTimeSource: info.leadTimeSource,
       orderBy,
-      overdue: lines.some((l) => l.overdue),
+      overdue: due.overdue || lines.some((l) => l.overdue),
       currency: info.currency,
       storeCurrency: plan.currency.toUpperCase(),
       exchangeRate: info.exchangeRate,

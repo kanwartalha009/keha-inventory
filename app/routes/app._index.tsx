@@ -26,9 +26,9 @@ import { getHomeData, reviewAskDue } from "../models/dashboard.server";
 import { recordReviewAsk } from "../models/settings.server";
 import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../lib/review-ask-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
-import { CantPlan, CashStrip, PreviewLock, PreviewTable } from "../components/order-plan";
+import { CantPlan, CashStrip, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
-import { cashTotals } from "../lib/engine/forward-plan-shared";
+import { cashTotals, ordersDue } from "../lib/engine/forward-plan-shared";
 import {
   lockTeaser,
   orderLink,
@@ -282,10 +282,8 @@ function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: strin
                       </s-stack>
                     </s-table-cell>
                     <s-table-cell>
-                      <span className="keha-inline">
-                        <span>{formatDay(s.overdue ? (s.events.find((e) => e.overdue)?.deadline ?? s.orderByFrom) : s.orderByFrom, locale)}</span>
-                        {s.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-                      </span>
+                      {/* The supplier's order-by date, as Order now, Sidekick and the Monday email show it (M2). */}
+                      <OrderByCell {...ordersDue(s.events)} />
                     </s-table-cell>
                     <s-table-cell>
                       <span className="keha-nowrap">

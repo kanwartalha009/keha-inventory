@@ -36,6 +36,7 @@ import {
   type MondayValues,
 } from "../lib/monday-shared";
 import { previewRows, supplierName, thisWeek } from "../lib/order-plan-shared";
+import { ordersDue } from "../lib/engine/forward-plan-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
 import { MONEY_CARDS } from "../lib/money-shared";
 import { canRetryOwnerEmail, listUnsubscribeHeaders, weekKey } from "../lib/owner-email-shared";
@@ -195,8 +196,8 @@ export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale,
           name: supplierName(data, s.supplierKey, tr),
           units: s.units,
           cash: s.cash,
-          orderBy: s.orderByFrom,
-          overdue: s.overdue,
+          // The supplier's order-by date, as the Dashboard, Order now and Sidekick show it (M2).
+          ...ordersDue(s.events),
           link: adminAppUrl(shop, `/app/reorder?supplier=${encodeURIComponent(s.supplierKey)}`),
         })),
         next: week.next ? { name: supplierName(data, week.next.supplierKey, tr), orderBy: week.next.orderBy } : null,

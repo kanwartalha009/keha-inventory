@@ -20,7 +20,7 @@ import { getVariantDetail, setProductCaseSize } from "../models/products.server"
 import { setNoReorder } from "../models/reorder.server";
 import { AppPage, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
-import { NoReorderConfirm } from "../components/order-plan";
+import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { flag, val } from "../components/wc";
 import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -177,10 +177,7 @@ export default function VariantDetailPage() {
                 !forecast ? (
                   locked
                 ) : (
-                  <span className="keha-inline">
-                    {(row.orderBy || !row.overdue) && <span>{formatDay(row.orderBy, locale)}</span>}
-                    {row.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
-                  </span>
+                  <OrderByCell orderBy={row.orderBy} overdue={!!row.overdue} />
                 )
               }
             />

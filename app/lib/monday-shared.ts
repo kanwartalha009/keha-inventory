@@ -136,8 +136,8 @@ export type MondayOrderLine = {
   units: number;
   /** Known costs only; null = no line has a cost (left out, never 0). */
   cash: number | null;
-  /** Earliest order-by date (overdue orders: today). */
-  orderBy: DayKey;
+  /** forward-plan ordersDue: the earliest order-by date (overdue: the one that passed; null = overdue, no date). */
+  orderBy: DayKey | null;
   overdue: boolean;
   /** "Review order": Order now for this supplier. */
   link: string;
@@ -256,7 +256,8 @@ export function mondayOrderSubject(orders: MondayOrders, tr: (k: string) => stri
   const overdue = orders.lines.find((l) => l.overdue);
   if (overdue) return fill(tr("{supplier} order is overdue · {units} units"), { supplier: overdue.name, units: count(overdue.units) });
   if (orders.lines.length) {
-    const first = orders.lines.reduce((m, l) => (l.orderBy < m ? l.orderBy : m), orders.lines[0]!.orderBy);
+    // No line is overdue here, so every line has a date.
+    const first = orders.lines.map((l) => l.orderBy ?? orders.today).sort()[0]!;
     const day = formatEmailDay(first, numLocale);
     return orders.lines.length === 1
       ? fill(tr("1 order due this week · by {day}"), { day })
@@ -306,7 +307,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
         l.name,
         units(l.units),
         ...(l.cash != null ? [money(l.cash)] : []),
-        l.overdue ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy, numLocale) }),
+        l.overdue ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
       ].join(" · "),
       overdue: l.overdue,
       flag: l.overdue ? tr("Overdue") : null,
