@@ -32,6 +32,7 @@ export type ShopSettings = {
    * 2026-10-17). Next 13 weeks compares each month's cash out with it. null = none.
    */
   monthlyBudget: number | null;
+  /**
    * Sales channels left out of the forecast (SalesDaily channel names, e.g. "Draft Orders"):
    * their units are not demand for supplier orders. Default none — on the store checked
    * (docs/ACCURACY.md) draft orders were a steady stream of ~1 item each (service orders that

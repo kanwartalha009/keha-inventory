@@ -415,6 +415,9 @@ describe("How the forecast was built: the supplier's delivery spread in safety s
     expect(renderDetail(base)).not.toContain("incl. late deliveries");
     expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12, leadSigma: 4.4 }, 1)!.leadSigma).toBe(4.4);
     expect(readForecastInputs({ leadTimeDays: 30, z: 1.65, safety: 12 }, 1)!.leadSigma).toBeNull();
+  });
+});
+
 describe("Forecast choices (R4): Don't cap and Plan like", () => {
   const spikes = { cap: 9, count: 2, off: false, days: [{ day: "2026-10-01", sold: 30, cap: 9 }, { day: "2026-09-14", sold: 300, cap: 9 }] };
   it("unusual days capped: the largest day, the cap and Don't cap; none → no button", () => {
