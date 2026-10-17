@@ -3,10 +3,20 @@
  * store's time zone, and what it says. The sending (once per store week,
  * unsubscribe, recipients) is app/services/monday.server.ts.
  *
- * Task 2.6 (full email): subject "<money> at stake this week — N things to do",
- * the 4 numbers with week-on-week change, the top 5 actions (each with a button
- * into the app), on Free the Fix rows only as a count, the accuracy line, and
- * the unsubscribe link. `mondaySummary` builds the content once; the email
+ * Task 2.6 (full email): the 4 numbers with week-on-week change, the top 5
+ * actions (each with a button into the app), on Free the Fix rows only as a
+ * count, the accuracy line, and the unsubscribe link.
+ *
+ * Audit 2026-10-17: the email leads with the job. An "Order this week" block
+ * comes first (one line per supplier: units, cash, order-by date, overdue
+ * flagged, "Review order" → Order now for that supplier; Free: its top-10
+ * preview, read-only), and the subject says what to order:
+ *   "{n} orders due this week · first by {day}", "{supplier} order is overdue ·
+ *   {units} units", "Nothing to order this week · next: {supplier} by {date}",
+ *   Free "{n} products to order by {date}".
+ * "{money} at stake · {count} things to do" moves to the preheader. Without
+ * order data (`orders` absent) the subject stays "{money} at stake this week —
+ * N things to do". `mondaySummary` builds the content once; the email
  * (composeMondayEmail) and Slack (lib/slack-shared buildSlackMonday) render it.
  */
 import { fill, translate, type Locale } from "./i18n";
@@ -14,6 +24,7 @@ import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
 import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
 import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
+import type { DayKey } from "./engine/dates-shared";
 
 // ---------------------------------------------------------------- send time
 
@@ -119,6 +130,42 @@ export type MondayValues = Record<MoneyCardKey, number | null>;
 
 export type MondayAction = { title: string; reason: string; amount: number | null; link: string };
 
+/** One supplier's order this week (from the forward order plan, order-plan-shared thisWeek). */
+export type MondayOrderLine = {
+  name: string;
+  units: number;
+  /** Known costs only; null = no line has a cost (left out, never 0). */
+  cash: number | null;
+  /** Earliest order-by date (overdue orders: today). */
+  orderBy: DayKey;
+  overdue: boolean;
+  /** "Review order": Order now for this supplier. */
+  link: string;
+};
+
+/** Free: one row of its top-10 preview (read-only). */
+export type MondayPreviewRow = { title: string; variant: string; qty: number; orderBy: DayKey; overdue: boolean };
+
+export type MondayOrders =
+  | {
+      kind: "plan";
+      /** Store-local today. */
+      today: DayKey;
+      lines: MondayOrderLine[];
+      /** The first order after this week, for the "nothing to order" line. */
+      next: { name: string; orderBy: DayKey } | null;
+    }
+  | {
+      kind: "preview";
+      today: DayKey;
+      rows: MondayPreviewRow[];
+      /** Distinct products in `rows`. */
+      products: number;
+      /** The app (Free's preview lives on the Dashboard) and the plans page. */
+      link: string;
+      plansLink: string;
+    };
+
 export type MondayEmailInput = {
   /** The store's language (Shop.locale → toSupportedLocale). */
   locale: Locale;
@@ -138,14 +185,29 @@ export type MondayEmailInput = {
   lockedFixes?: { count: number; link: string } | null;
   /** Last month's absolute % error on the store total (AccuracyMonth.storeErrorPct); null/undefined = no line. */
   accuracyPct?: number | null;
+  /** "Order this week" (paid) or the top-10 preview (Free); absent/null = no order data (old subject, no block). */
+  orders?: MondayOrders | null;
 };
 
 export type MondayEmailContent = { subject: string; text: string; html: string };
+
+/** The "Order this week" block, worded. */
+export type MondayOrderBlock = {
+  heading: string;
+  lines: { text: string; overdue: boolean; flag: string | null; link: string | null; label: string | null }[];
+  /** Shown when there are no lines ("Nothing to order this week. Next order: …"). */
+  empty: string | null;
+  /** Free: the way to the full plan. */
+  footer: { text: string; link: string; label: string } | null;
+};
 
 /** Everything the email and the Slack message show, worded and translated. */
 export type MondaySummary = {
   locale: Locale;
   subject: string;
+  /** Inbox preview line ("{money} at stake · {count} things to do"); null = none. */
+  preheader: string | null;
+  orders: MondayOrderBlock | null;
   heading: string;
   atStake: string;
   rows: { label: string; value: string; changeText: string | null }[];
@@ -165,6 +227,103 @@ const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 const DASH = "—";
+
+/** "Wed 21 Oct" in the store's language (a DayKey is a calendar day: formatted in UTC). */
+export function formatEmailDay(day: DayKey, locale: string, weekday = true): string {
+  const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC", ...(weekday ? { weekday: "short" } : {}) };
+  const d = new Date(`${day}T12:00:00Z`);
+  for (const l of [locale, "en"]) {
+    try {
+      return d.toLocaleDateString(l, opts);
+    } catch {
+      /* unknown locale — next */
+    }
+  }
+  return day;
+}
+
+/** The job-first subject from the order data (null = no order data → the money subject). */
+export function mondayOrderSubject(orders: MondayOrders, tr: (k: string) => string, numLocale: string): string {
+  const count = (n: number) => formatCountIn(n, numLocale);
+  if (orders.kind === "preview") {
+    if (!orders.rows.length) return tr("Nothing to order this week");
+    const last = orders.rows.reduce((m, r) => (r.orderBy > m ? r.orderBy : m), orders.rows[0]!.orderBy);
+    const n = orders.products;
+    if (orders.rows.every((r) => r.overdue || r.orderBy < orders.today)) return n === 1 ? tr("1 product to order now") : fill(tr("{n} products to order now"), { n: count(n) });
+    const date = formatEmailDay(last, numLocale, false);
+    return n === 1 ? fill(tr("1 product to order by {date}"), { date }) : fill(tr("{n} products to order by {date}"), { n: count(n), date });
+  }
+  const overdue = orders.lines.find((l) => l.overdue);
+  if (overdue) return fill(tr("{supplier} order is overdue · {units} units"), { supplier: overdue.name, units: count(overdue.units) });
+  if (orders.lines.length) {
+    const first = orders.lines.reduce((m, l) => (l.orderBy < m ? l.orderBy : m), orders.lines[0]!.orderBy);
+    const day = formatEmailDay(first, numLocale);
+    return orders.lines.length === 1
+      ? fill(tr("1 order due this week · by {day}"), { day })
+      : fill(tr("{n} orders due this week · first by {day}"), { n: count(orders.lines.length), day });
+  }
+  if (orders.next)
+    return fill(tr("Nothing to order this week · next: {supplier} by {date}"), {
+      supplier: orders.next.name,
+      date: formatEmailDay(orders.next.orderBy, numLocale, false),
+    });
+  return tr("Nothing to order this week");
+}
+
+function formatCountIn(n: number, locale: string): string {
+  const nf = numberFormat([locale, "en"], {});
+  return nf ? nf.format(n) : String(n);
+}
+
+function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: string, money: (v: number) => string): MondayOrderBlock {
+  const units = (n: number) => fill(tr("{n} units"), { n: formatCountIn(n, numLocale) });
+  if (orders.kind === "preview") {
+    return {
+      heading: tr("Your most urgent orders"),
+      lines: orders.rows.map((r) => ({
+        text: [
+          r.variant ? `${r.title} · ${r.variant}` : r.title,
+          units(r.qty),
+          r.overdue ? tr("order now") : fill(tr("order by {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
+        ].join(" · "),
+        overdue: r.overdue,
+        flag: r.overdue ? tr("Overdue") : null,
+        link: null,
+        label: null,
+      })),
+      empty: orders.rows.length ? null : tr("Nothing to order in the next 13 weeks."),
+      footer: {
+        text: tr("Plan every order by supplier and send purchase orders on the Growth plan."),
+        link: orders.plansLink,
+        label: tr("See plans"),
+      },
+    };
+  }
+  return {
+    heading: tr("Order this week"),
+    lines: orders.lines.map((l) => ({
+      text: [
+        l.name,
+        units(l.units),
+        ...(l.cash != null ? [money(l.cash)] : []),
+        l.overdue ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy, numLocale) }),
+      ].join(" · "),
+      overdue: l.overdue,
+      flag: l.overdue ? tr("Overdue") : null,
+      link: l.link,
+      label: tr("Review order"),
+    })),
+    empty: orders.lines.length
+      ? null
+      : orders.next
+        ? fill(tr("Nothing to order this week. Next order: {supplier} by {date}."), {
+            supplier: orders.next.name,
+            date: formatEmailDay(orders.next.orderBy, numLocale, false),
+          })
+        : tr("Nothing to order this week"),
+    footer: null,
+  };
+}
 
 export function mondaySummary(input: MondayEmailInput): MondaySummary {
   const { locale, currency, storeName } = input;
@@ -204,7 +363,12 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   const locked = input.lockedFixes && input.lockedFixes.count > 0 ? input.lockedFixes : null;
   const count = actions.length + (locked?.count ?? 0);
   const todo = count === 0 ? null : count === 1 ? tr("1 thing to do") : fill(tr("{count} things to do"), { count });
-  const subject = todo ? `${atStake} — ${todo}` : atStake;
+  const orders = input.orders ?? null;
+  // With order data the subject leads with the job and the money moves to the preheader.
+  const subject = orders ? mondayOrderSubject(orders, tr, numLocale) : todo ? `${atStake} — ${todo}` : atStake;
+  const preheader = orders
+    ? [total == null ? null : fill(tr("{money} at stake"), { money: money(total) }), todo].filter(Boolean).join(" · ") || null
+    : null;
 
   const pct = input.accuracyPct;
   const accuracy =
@@ -215,6 +379,8 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   return {
     locale,
     subject,
+    preheader,
+    orders: orders ? orderBlock(orders, tr, numLocale, money) : null,
     heading: fill(tr("Your Monday summary for {store}"), { store: storeName }),
     atStake,
     rows,
@@ -243,8 +409,20 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
   const m = mondaySummary(input);
   const { subject, heading, atStake, rows, refreshNote, actions, accuracy, openLabel, footer, unsubscribe, topHeading, openAction } = m;
   const locale = m.locale;
+  const ob = m.orders;
   // ---- plain text ----
-  const lines: string[] = [heading, "", atStake, ""];
+  const lines: string[] = [heading, ""];
+  if (ob) {
+    lines.push(ob.heading);
+    for (const l of ob.lines) {
+      lines.push(`- ${l.flag ? `${l.flag}: ` : ""}${l.text}`);
+      if (l.link && l.label) lines.push(`  ${l.label}: ${l.link}`);
+    }
+    if (ob.empty) lines.push(ob.empty);
+    if (ob.footer) lines.push(ob.footer.text, `${ob.footer.label}: ${ob.footer.link}`);
+    lines.push("");
+  }
+  lines.push(atStake, "");
   for (const r of rows) lines.push(`${r.label}: ${r.value}${r.changeText ? ` (${r.changeText})` : ""}`);
   if (refreshNote) lines.push("", refreshNote);
   if (actions.length || m.lockedFixes) {
@@ -291,6 +469,30 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
         )}</td></tr>`,
     )
     .join("");
+  const flagStyle = "display:inline-block;background:#fee9e8;color:#8e1f0b;border-radius:6px;padding:1px 6px;font-size:12px;font-weight:600;margin-right:6px;";
+  const orderRows = ob
+    ? ob.lines
+        .map(
+          (l) =>
+            `<tr><td style="padding:10px 0;border-bottom:1px solid #ebebeb;">${l.flag ? `<span style="${flagStyle}">${esc(l.flag)}</span>` : ""}${esc(
+              l.text,
+            )}</td><td style="padding:10px 0 10px 12px;border-bottom:1px solid #ebebeb;text-align:right;white-space:nowrap;">${
+              l.link && l.label ? button(l.link, l.label, true) : ""
+            }</td></tr>`,
+        )
+        .join("")
+    : "";
+  const orderSection = ob
+    ? `<tr><td style="padding:16px 24px 0;"><h2 style="margin:0 0 4px;font-size:18px;">${esc(ob.heading)}</h2>${
+        orderRows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${orderRows}</table>` : ""
+      }${ob.empty ? `<p style="margin:4px 0 0;">${esc(ob.empty)}</p>` : ""}${
+        ob.footer ? `<p style="margin:12px 0 0;${muted}">${esc(ob.footer.text)}</p><p style="margin:8px 0 0;">${button(ob.footer.link, ob.footer.label, true)}</p>` : ""
+      }</td></tr>`
+    : "";
+  // Inbox preview text: hidden in the body, shown by mail clients after the subject.
+  const preheaderHtml = m.preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${esc(m.preheader)}</div>`
+    : "";
   const lockedRow = m.lockedFixes
     ? `<tr><td style="padding:10px 0;border-bottom:1px solid #ebebeb;">${esc(m.lockedFixes.text)}</td><td style="padding:10px 0 10px 12px;border-bottom:1px solid #ebebeb;text-align:right;">${button(
         m.lockedFixes.link,
@@ -301,11 +503,12 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
 
   const html = [
     `<!doctype html><html lang="${esc(locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(subject)}</title></head>`,
-    `<body style="margin:0;padding:0;background:#f1f1f1;">`,
+    `<body style="margin:0;padding:0;background:#f1f1f1;">${preheaderHtml}`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f1f1;"><tr><td align="center" style="padding:24px 12px;">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;${font}color:#1a1a1a;font-size:14px;line-height:1.5;">`,
-    `<tr><td style="padding:24px 24px 0;"><p style="margin:0;${muted}">${esc(heading)}</p>`,
-    `<h1 style="margin:6px 0 16px;font-size:22px;line-height:1.3;">${esc(atStake)}</h1></td></tr>`,
+    `<tr><td style="padding:24px 24px 0;"><p style="margin:0;${muted}">${esc(heading)}</p></td></tr>`,
+    orderSection,
+    `<tr><td style="padding:${ob ? "20px" : "6px"} 24px 0;"><h1 style="margin:0 0 16px;font-size:${ob ? "18px" : "22px"};line-height:1.3;">${esc(atStake)}</h1></td></tr>`,
     `<tr><td style="padding:0 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cardRows}</table></td></tr>`,
     refreshNote ? `<tr><td style="padding:12px 24px 0;"><p style="margin:0;${muted}">${esc(refreshNote)}</p></td></tr>` : "",
     actions.length || lockedRow

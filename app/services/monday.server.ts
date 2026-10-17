@@ -21,7 +21,7 @@
  */
 import prisma from "../db.server";
 import { adminAppUrl } from "../lib/admin-url.server";
-import { toSupportedLocale } from "../lib/i18n";
+import { toSupportedLocale, translate } from "../lib/i18n";
 import {
   actionReasonText,
   composeMondayEmail,
@@ -32,8 +32,11 @@ import {
   type MondayAction,
   type MondayActionRow,
   type MondayEmailInput,
+  type MondayOrders,
   type MondayValues,
 } from "../lib/monday-shared";
+import { previewRows, supplierName, thisWeek } from "../lib/order-plan-shared";
+import { loadOrderPlan } from "../models/order-plan.server";
 import { MONEY_CARDS } from "../lib/money-shared";
 import { canRetryOwnerEmail, listUnsubscribeHeaders, weekKey } from "../lib/owner-email-shared";
 import { hasFeature, MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "../lib/plan-shared";
@@ -173,6 +176,47 @@ async function mondayExtras(
   return { actions, lockedFixes: lockedFixes > 0 ? { count: lockedFixes, link: adminAppUrl(shop, "/app/plans") } : null, accuracyPct };
 }
 
+/**
+ * "Order this week" (Growth and Pro: every supplier's order due in the next 7 days, overdue
+ * first) or Free's top-10 preview. Null when the plan can't be read (the email still goes).
+ */
+export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale, now: Date): Promise<MondayOrders | null> {
+  try {
+    const data = await loadOrderPlan(shop, now);
+    // Nothing planned in the 13 weeks (or no numbers yet): keep the money email as it was.
+    if (!data.events.length) return null;
+    const tr = (k: string) => translate(locale, k);
+    if (hasFeature(plan, "reorderPlan")) {
+      const week = thisWeek(data);
+      return {
+        kind: "plan",
+        today: data.today,
+        lines: week.suppliers.map((s) => ({
+          name: supplierName(data, s.supplierKey, tr),
+          units: s.units,
+          cash: s.cash,
+          orderBy: s.orderByFrom,
+          overdue: s.overdue,
+          link: adminAppUrl(shop, `/app/reorder?supplier=${encodeURIComponent(s.supplierKey)}`),
+        })),
+        next: week.next ? { name: supplierName(data, week.next.supplierKey, tr), orderBy: week.next.orderBy } : null,
+      };
+    }
+    const rows = previewRows(data, 10);
+    return {
+      kind: "preview",
+      today: data.today,
+      rows: rows.map((r) => ({ title: r.productTitle, variant: r.variantTitle, qty: r.qty, orderBy: r.orderBy, overdue: r.overdue })),
+      products: new Set(rows.map((r) => data.variants[r.variantId]?.productId ?? r.variantId)).size,
+      link: adminAppUrl(shop, "/app"),
+      plansLink: adminAppUrl(shop, "/app/plans"),
+    };
+  } catch (e) {
+    console.error(`[monday] ${shop}: order plan not read, sending without it`, e);
+    return null;
+  }
+}
+
 async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const shop = row.domain;
   if (row.uninstalledAt) return "skipped:not_installed";
@@ -198,7 +242,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
 
   // Never send stale numbers: paid plans refresh daily, Free weekly.
   const plan = await planFor(shop);
-  const refresh = MONEY_REFRESH[plan];
+  const refresh: keyof typeof MAX_MONEY_AGE_MS = MONEY_REFRESH[plan];
   const computedAt = moneyComputedAt(money.latest);
   const ageMs = now.getTime() - computedAt.getTime();
   if (ageMs > MAX_MONEY_AGE_MS[refresh]) {
@@ -221,6 +265,7 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     refresh,
     links: { app: adminAppUrl(shop, "/app"), unsubscribe: unsubscribe ?? "" },
     ...(await mondayExtras(shop, plan, locale, localDate, now)),
+    orders: await mondayOrders(shop, plan, locale, now),
   };
 
   // Slack (Growth): the same summary, shorter. Its failure never stops the email.

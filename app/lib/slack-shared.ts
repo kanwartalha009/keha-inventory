@@ -81,7 +81,17 @@ export function buildSlackTest(locale: Locale, storeName: string): SlackMessage 
  */
 export function buildSlackMonday(m: MondaySummary): SlackMessage {
   const e = slackEscape;
-  const lines: string[] = [`*${e(m.atStake)}*`, e(m.heading), ""];
+  // With order data the message leads with the job, like the email subject (audit 2026-10-17).
+  const lines: string[] = [`*${e(m.orders ? m.subject : m.atStake)}*`, e(m.heading), ""];
+  if (m.orders) {
+    const o = m.orders;
+    lines.push(`*${e(o.heading)}*`);
+    for (const l of o.lines)
+      lines.push(`• ${l.flag ? `*${e(l.flag)}* ` : ""}${e(l.text)}${l.link && l.label ? ` ${slackLink(l.link, l.label)}` : ""}`);
+    if (o.empty) lines.push(e(o.empty));
+    if (o.footer) lines.push(`${e(o.footer.text)} ${slackLink(o.footer.link, o.footer.label)}`);
+    lines.push("", `*${e(m.atStake)}*`);
+  }
   for (const r of m.rows) lines.push(`• ${e(r.label)}: *${e(r.value)}*${r.changeText ? ` (${e(r.changeText)})` : ""}`);
   if (m.refreshNote) lines.push(`_${e(m.refreshNote)}_`);
   if (m.actions.length || m.lockedFixes) {

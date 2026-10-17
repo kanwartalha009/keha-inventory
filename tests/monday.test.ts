@@ -11,7 +11,7 @@ import { createElement } from "react";
 import { createRoutesStub } from "react-router";
 
 type Row = Record<string, unknown>;
-const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce } = vi.hoisted(() => {
+const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan } = vi.hoisted(() => {
   const tables: { shop: Row[]; moneyAtStake: Row[]; ownerEmailLog: Row[]; action: Row[]; variant: Row[]; accuracyMonth: Row[] } = {
     shop: [],
     moneyAtStake: [],
@@ -87,7 +87,17 @@ const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce } = vi.hoisted(() =
   const sendEmail = vi.fn(async (_input: Record<string, unknown>) => ({ ok: true }) as { ok: true } | { ok: false; reason: string });
   const planFor = vi.fn(async (_shop: string) => "growth");
   const deliverSlackOnce = vi.fn(async (..._a: unknown[]) => "sent" as "sent" | "failed" | "skipped");
-  return { tables, sendEmail, planFor, fakeDb, deliverSlackOnce };
+  const loadOrderPlan = vi.fn(async (..._a: unknown[]): Promise<unknown> => ({
+    today: "2026-10-19",
+    currency: "EUR",
+    timezone: "Europe/Madrid",
+    events: [],
+    variants: {},
+    suppliers: {},
+    suppliersSetUp: false,
+    cantPlan: { noData: 0, dead: 0 },
+  }));
+  return { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan };
 });
 
 vi.mock("../app/db.server", () => ({ default: fakeDb }));
@@ -105,6 +115,7 @@ vi.mock("../app/shopify.server", () => ({
   },
 }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: (shop: string) => planFor(shop) }));
+vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: (...a: unknown[]) => loadOrderPlan(...a) }));
 vi.mock("../app/services/slack.server", () => ({ deliverSlackOnce: (...a: unknown[]) => deliverSlackOnce(...a) }));
 vi.mock("../app/services/email.server", () => ({
   emailTransportConfigured: () => true,
@@ -123,12 +134,15 @@ import {
   isMondaySendTime,
   lastMonthAccuracy,
   MONDAY_UNSUB_PURPOSE,
+  mondaySummary,
   selectMondayActions,
+  type MondayOrders,
   type MondayActionRow,
   type MondayEmailInput,
 } from "../app/lib/monday-shared";
 import { runMondayEmails, runMondayEmailsAllShops } from "../app/services/monday.server";
 import { seal } from "../app/lib/seal.server";
+import { buildSlackMonday } from "../app/lib/slack-shared";
 import UnsubscribePage, { action as unsubAction, loader as unsubLoader } from "../app/routes/email.unsubscribe";
 
 // ---------------------------------------------------------------- send time
@@ -196,7 +210,7 @@ describe("composeMondayEmail", () => {
     expect(e.text).toMatch(/^Sold-out page visits \(last 30 days\): €50$/m); // before null → no change
     expect(e.text).toContain(`Open Keha: ${base.links.app}`);
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
-    expect(e.text).not.toContain("Refreshed monthly");
+    expect(e.text).not.toContain("Refreshed weekly");
     expect(e.text).not.toContain("things to do");
     expect(e.text).not.toMatch(/\b0 vs last week/);
     expect(e.html).toContain('<html lang="en">');
@@ -215,7 +229,7 @@ describe("composeMondayEmail", () => {
     expect(e.text).toContain("respecto a la semana pasada");
     expect(e.text).toContain("Dinero inmovilizado");
     expect(e.text).toContain("Igual que la semana pasada");
-    expect(e.text).toContain("Se actualiza cada mes en el plan Gratis");
+    expect(e.text).toContain("Se actualiza cada semana en el plan Gratis");
     expect(e.text).toContain("Abrir Keha:");
     expect(e.text).toContain("Darse de baja:");
     expect(e.html).toContain('<html lang="es">');
@@ -671,6 +685,163 @@ describe("runMondayEmails — full email", () => {
     expect(await runMondayEmails(S, MON)).toBe("skipped:stale_data");
     warn.mockRestore();
     expect(deliverSlackOnce).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------- Order this week (audit 2026-10-17)
+
+describe("Monday email: Order this week first, subject leads with the job", () => {
+  const plan = (over: Partial<Extract<MondayOrders, { kind: "plan" }>> = {}): MondayOrders => ({
+    kind: "plan",
+    today: "2026-10-19",
+    lines: [
+      { name: "Acme Textiles", units: 120, cash: 1830.4, orderBy: "2026-10-21", overdue: false, link: "https://x/app/reorder?supplier=s%3A1" },
+      { name: "Lisbon Linen", units: 40, cash: null, orderBy: "2026-10-23", overdue: false, link: "https://x/app/reorder?supplier=s%3A2" },
+    ],
+    next: null,
+    ...over,
+  });
+  const actions = [{ title: "Reorder item", reason: "", amount: 100, link: "https://x/1" }];
+
+  it("orders due: '{n} orders due this week · first by {day}', money in the preheader, the block before the money", () => {
+    const e = composeMondayEmail({ ...base, orders: plan(), actions });
+    expect(e.subject).toBe("2 orders due this week · first by Wed, Oct 21");
+    expect(e.html).toContain(">€4,601 at stake · 1 thing to do</div>");
+    expect(e.html.indexOf("Order this week")).toBeLessThan(e.html.indexOf("Sales at risk"));
+    expect(e.text.indexOf("Order this week")).toBeLessThan(e.text.indexOf("€4,601 at stake this week"));
+    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · order by Wed, Oct 21");
+    expect(e.text).toContain("  Review order: https://x/app/reorder?supplier=s%3A1");
+    // Unknown cost: left out, never "€0".
+    expect(e.text).toContain("- Lisbon Linen · 40 units · order by Fri, Oct 23");
+    expect(e.html).toContain('href="https://x/app/reorder?supplier=s%3A2"');
+    // Still there: unsubscribe and the money rows.
+    expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
+    expect(e.text).toContain("Sales at risk (next 28 days): €1,200");
+    const one = plan() as Extract<MondayOrders, { kind: "plan" }>;
+    expect(composeMondayEmail({ ...base, orders: plan({ lines: [one.lines[0]!] }) }).subject).toBe(
+      "1 order due this week · by Wed, Oct 21",
+    );
+  });
+
+  it("an overdue order leads: '{supplier} order is overdue · {units} units', flagged in the block", () => {
+    const p = plan();
+    if (p.kind !== "plan") throw new Error();
+    const lines = [p.lines[0]!, { ...p.lines[1]!, overdue: true, orderBy: "2026-10-19" }];
+    const e = composeMondayEmail({ ...base, orders: { ...p, lines } });
+    expect(e.subject).toBe("Lisbon Linen order is overdue · 40 units");
+    expect(e.text).toContain("- Overdue: Lisbon Linen · 40 units · order today");
+    expect(e.html).toContain(">Overdue</span>");
+  });
+
+  it("nothing due: 'Nothing to order this week · next: {supplier} by {date}'", () => {
+    const e = composeMondayEmail({ ...base, orders: plan({ lines: [], next: { name: "Acme Textiles", orderBy: "2026-11-04" } }) });
+    expect(e.subject).toBe("Nothing to order this week · next: Acme Textiles by Nov 4");
+    expect(e.text).toContain("Nothing to order this week. Next order: Acme Textiles by Nov 4.");
+    expect(e.html).not.toContain("Review order");
+    expect(e.html).toContain(">€4,601 at stake</div>");
+  });
+
+  it("Free: '{n} products to order by {date}', the top-10 preview read-only, a way to the plans", () => {
+    const orders: MondayOrders = {
+      kind: "preview",
+      today: "2026-10-19",
+      rows: [
+        { title: "Linen shirt", variant: "M / White", qty: 24, orderBy: "2026-10-19", overdue: true },
+        { title: "Linen shirt", variant: "L / White", qty: 12, orderBy: "2026-10-26", overdue: false },
+        { title: "Cap", variant: "", qty: 6, orderBy: "2026-11-02", overdue: false },
+      ],
+      products: 2,
+      link: "https://x/app",
+      plansLink: "https://x/app/plans",
+    };
+    const e = composeMondayEmail({ ...base, refresh: "monthly", orders });
+    expect(e.subject).toBe("2 products to order by Nov 2");
+    expect(e.text).toContain("Your most urgent orders");
+    expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · order now");
+    expect(e.text).toContain("- Cap · 6 units · order by Nov 2");
+    expect(e.text).not.toContain("Review order"); // read-only
+    expect(e.text).toContain("See plans: https://x/app/plans");
+    expect(e.text).toContain("Refreshed weekly on Free");
+    const allLate = { ...orders, rows: [orders.rows[0]!], products: 1 };
+    expect(composeMondayEmail({ ...base, orders: allLate }).subject).toBe("1 product to order now");
+  });
+
+  it("translated (es), and without order data the money subject stays", () => {
+    const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", orders: plan() });
+    expect(e.subject).toMatch(/^2 pedidos para esta semana · el primero antes del /);
+    expect(e.text).toContain("Pedir esta semana");
+    expect(composeMondayEmail({ ...base, orders: null }).subject).toBe("€4,601 at stake this week");
+  });
+
+  it("Slack leads with the same job line and lists the orders with a Review order link", () => {
+    const msg = buildSlackMonday(mondaySummary({ ...base, orders: plan() }));
+    expect(msg.text).toMatch(/^\*2 orders due this week · first by Wed, Oct 21\*/);
+    expect(msg.text).toContain("• Acme Textiles · 120 units · €1,830 · order by Wed, Oct 21 <https://x/app/reorder?supplier=s%3A1|Review order>");
+    expect(msg.text).toContain("*€4,601 at stake this week*");
+    expect(buildSlackMonday(mondaySummary(base)).text).toMatch(/^\*€4,601 at stake this week\*/);
+  });
+});
+
+describe("runMondayEmails: Order this week from the order plan", () => {
+  const event = (supplierKey: string, orderBy: string, qty: number, cost: number | null, overdue = false, variantId = "gid://shopify/ProductVariant/1") => ({
+    variantId,
+    productId: "gid://shopify/Product/1",
+    supplierKey,
+    orderBy,
+    arrives: "2026-11-20",
+    qty,
+    unitCost: cost === null ? null : cost / qty,
+    cost,
+    overdue,
+    deadline: overdue ? "2026-10-15" : orderBy,
+  });
+  const planData = (events: ReturnType<typeof event>[]) => ({
+    today: "2026-10-19",
+    currency: "EUR",
+    timezone: "Europe/Madrid",
+    events,
+    variants: {
+      "gid://shopify/ProductVariant/1": { variantId: "gid://shopify/ProductVariant/1", productId: "gid://shopify/Product/1", productTitle: "Linen shirt", variantTitle: "M", sku: null, image: null, daysLeft: 3, neverRunsOut: false, deadline: "2026-10-15", valuePerDay: 50 },
+    },
+    suppliers: { "s:1": { key: "s:1", kind: "supplier", supplierId: "1", name: "Acme Textiles" } },
+    suppliersSetUp: true,
+    cantPlan: { noData: 0, dead: 0 },
+  });
+
+  afterEach(() => loadOrderPlan.mockReset());
+
+  it("Growth: one line per supplier with Review order into Order now for that supplier", async () => {
+    loadOrderPlan.mockResolvedValue(planData([event("s:1", "2026-10-19", 30, 450, true), event("s:1", "2026-12-01", 30, 450)]));
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string; headers?: Record<string, string> };
+    expect(sent.subject).toBe("Acme Textiles order is overdue · 30 units");
+    expect(sent.text).toContain("- Overdue: Acme Textiles · 30 units · €450 · order today");
+    expect(sent.text).toContain("Review order: https://admin.shopify.com/store/acme/apps/keha-inventory/app/reorder?supplier=s%3A1");
+    expect(JSON.stringify(sent)).toContain("List-Unsubscribe");
+  });
+
+  it("Free: the top-10 preview, read-only", async () => {
+    planFor.mockResolvedValue("free");
+    loadOrderPlan.mockResolvedValue(planData([event("s:1", "2026-10-28", 30, 450)]));
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
+    expect(sent.subject).toBe("1 product to order by Oct 28");
+    expect(sent.text).toContain("- Linen shirt · M · 30 units · order by Oct 28");
+    expect(sent.text).not.toContain("Review order");
+  });
+
+  it("a plan that can't be read never stops the email (money subject)", async () => {
+    loadOrderPlan.mockRejectedValue(new Error("db down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    expect((sendEmail.mock.calls[0][0] as { subject: string }).subject).toMatch(/at stake this week$/);
+    err.mockRestore();
   });
 });
 
