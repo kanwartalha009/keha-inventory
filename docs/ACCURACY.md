@@ -1,4 +1,180 @@
-# Forecast accuracy on real data (R4, 2026-10-17)
+# Forecast accuracy on real data
+
+Two rounds on the same data and method (below): **2026-10-17 engine round** (this section) and
+**R4** (the original measurement, kept further down). Aggregates only: no store name, no product
+names, no customer data. The throwaway scripts and the transcribed daily figures stay outside the
+repository. Every number below comes from the app's own engine (`app/lib/engine`) run on the
+read-only real-store data R4 transcribed (38 variants, 776 days); no new store data was read.
+
+## Engine round 2026-10-17: what changed
+
+| Change | Where | Why |
+|---|---|---|
+| Seasonal index with one year of history: soft threshold in log space (`exp(sign(l)·max(0, \|l\| − 0.2))`, l = ln raw) instead of `1 + 0.5 × (raw − 1)` | `season-shared` shrinkRaw | The linear shrink halved every season: swimwear in winter was planned at ~60 % of its summer base instead of ~30 %, and peaks were cut. A change within −18 % … +22 % is still treated as noise. |
+| Season groups' daily sales loaded for every day through yesterday | `season.server` | The days between last year's horizon and the last 28 days were not loaded and read as zero sales (in the loader's test fixture a group's 90-day levels covered 38 of the 90 days). |
+| Spike cap removes one-offs only: when more than 1 % of the 14 months' in-stock days are above the robust cap, the cap rises to the highest day outside that top 1 % | `outliers-shared` | Cause of the fast-seller under-forecast (below). |
+| Level-shift detection (×2 up / below ⅓ down, ≥ 4 weeks, weekly-block z ≥ 4, raw sales moving the same way, de-seasonalised by the group's level) | `level-shift-shared` | Viral / dead products. Deliberately strict: see "Level shifts". |
+| Safety stock from the forecast's own error and the fill target | `error-shared` | The calibration gap (fills 88–91 % against 95 / 90 / 85 %). |
+| Off season, overdue dates, minimums in the forward plan | `forward-plan-shared` | Merchant-trust anomalies found by the simulator (end of this section). |
+
+### Why fast sellers ran 8–12 % low (B6)
+
+Two causes, measured on the A items at 28 days (bias = Σ(F − A) ÷ ΣA):
+
+1. **The spike cap clipped recurring demand.** 2.5 % of A items' in-stock days were above the
+   k = 4 robust cap, removing 3.3 % of their units. Those were not one-offs (promotion and campaign
+   days recur). k = 4 had been chosen on WAPE, which is minimised by the *median* of the demand
+   distribution; on right-skewed daily sales the median is below the mean the order quantity
+   needs. Fixed by capping only the top 1 % of the item's own 14 months (a single wholesale day is
+   still capped). A bias −8.8 → −6.4 % (with the new seasonal index), WAPE +0.7 points: the honest
+   price of an unbiased mean.
+2. **The store's own growth.** It doubled year on year; every forecast built from past weeks lags
+   it. The naive last-28-days forecast is itself −3.4 % (28 days) / −7.4 % (56 days) on A items.
+   The rest of Keha's bias beyond naive (≈ 2 points) is the 28 / 56 / 90-day blend being older than
+   28 days. Not corrected: the growth assumption (trend) is off by owner decision (C4), and a
+   store-level "acceleration" factor tested here (YoY of the last 28 days ÷ YoY of the blend) did
+   not predict the next 28 days (it pointed up before both of the store's dips).
+
+Partial days (the day it ran out) were checked too: marking them in the transcribed data (a sold
+day followed by a sold-out day) moved nothing measurable (only 155 sold-out variant-days).
+
+### Forecast error, before → after (rolling origin, 13 / 12 cutoffs, last 2 held out)
+
+WAPE / bias, %. "Before" = HEAD 2e09ad6 (R4), "after" = this round; naive = last 28 days.
+
+| H = 28 days | n | Before WAPE | Before bias | **After WAPE** | **After bias** | Naive WAPE | Naive bias |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| All | 440 | 32.2 | −7.7 | **31.7** | **−5.4** | 37.5 | −3.2 |
+| A | 279 | 32.0 | −8.1 | **31.5** | **−5.8** | 36.9 | −3.4 |
+| B | 96 | 35.5 | +2.5 | **34.3** | +3.6 | 46.9 | +2.3 |
+| C | 65 | 46.3 | +2.7 | **45.3** | +2.5 | 59.6 | +2.3 |
+| Tune (11) | 364 | 32.9 | −7.1 | **32.4** | −4.9 | 39.8 | −4.3 |
+| **Hold-out (2)** | 76 | 28.9 | −10.5 | **28.7** | −8.0 | **26.3** | +2.0 |
+
+| H = 56 days | n | Before WAPE | Before bias | **After WAPE** | **After bias** | Naive WAPE | Naive bias |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| All | 402 | 31.4 | −11.0 | **30.2** | **−9.1** | 39.7 | −7.0 |
+| A | 254 | 31.3 | −11.6 | **30.1** | **−9.6** | 39.4 | −7.4 |
+| B | 88 | 32.3 | +3.9 | **30.2** | +4.6 | 47.0 | +3.5 |
+| C | 60 | 37.0 | +4.1 | **34.6** | +3.5 | 53.8 | +4.1 |
+| Tune (10) | 328 | 31.4 | −8.0 | **30.9** | −7.0 | 43.3 | −5.6 |
+| **Hold-out (2)** | 74 | 31.2 | −24.3 | **27.0** | −18.3 | **24.1** | −13.4 |
+
+Reading it honestly:
+- Better than before at both horizons, in every ABC role, on the tune and the held-out cutoffs.
+- **Still not better than naive on the two held-out cutoffs** (28.7 vs 26.3 at 28 days, 27.0 vs
+  24.1 at 56). Both start in July–August 2026, when this store's sales did not follow last
+  year's August dip (index 0.87; the store sold 0.97 × its last 28 days). A forecast that uses
+  last year's shape loses to "same as last month" when the shape does not repeat; no change here
+  can fix that without hurting the other eleven cutoffs (a softer index, δ = 0.3, beats naive on
+  the 28-day hold-out — 24.3 % — but was not the choice on the tune cutoffs, so it is not used).
+- Bias is within ±5 % for B and C and overall at 28 days only after rounding (−5.4 %); A items
+  stay −5.8 % at 28 days and −9.6 % at 56 (the growth, above).
+
+Seasonal shrinkage chosen on the tune cutoffs (28 + 56-day WAPE): linear 0.5 (before) 64.3;
+soft δ 0.10 61.9, **0.15 61.5, 0.20 61.7**, 0.25 62.0, 0.30 62.8. 0.15 and 0.20 are within noise;
+0.20 (a change within −18 % … +22 % of a normal week is noise) was kept.
+
+### Level shifts (B5)
+
+On this store a third to a half of the products "shift" by a looser test (×1.3, z 3.5, two weeks)
+and those changes mostly reverted: using the new level raised 28-day WAPE from 31.6 to 37 %; even
+×2 with weekly-block variance lost on the cases it fired on (44 % vs 36 % WAPE). Detection on raw
+sales flagged the November peak (store-wide) as a product shift. So the bar is high (×2 up, below
+⅓ down, four weeks, z ≥ 4 on weekly blocks, de-seasonalised, raw sales moving the same way) and
+it is effectively neutral here (WAPE 31.6 → 31.7 %, bias −6.1 → −5.4 %); it exists for the viral
+/ dead product the unit tests pin. Without a seasonal index (no group levels) nothing is detected.
+
+### Safety stock from the forecast's own error (B4)
+
+safety = k × σ_P, P = lead time + order cycle:
+- σ_P = ρ × √(P·σ² + P²·Var(pace)) — the daily noise (σ ≥ the Poisson √forecast) plus the error
+  of the pace estimate itself, which multiplies all P days (σ² × Σᵢⱼ wᵢwⱼ ÷ max(nᵢ, nⱼ) over the
+  overlapping 28 / 56 / 90-day windows); + d²σ_L² with a measured lead-time spread.
+- ρ = how much larger the engine's real error has been than that model: a rolling backtest at
+  compute time, 13 weekly origins whose P days are in the past, the engine's own pace as of each
+  day × the season multiplier those days really had (with 14 months of history the index itself
+  can't be recomputed for a day months back), sold-out days left out on both sides. The ABC role's
+  ratio is the median of up to 200 of its variants (a pre-pass, so chunking changes nothing); a
+  variant's own backtest is pooled with it (role worth 8 windows; the variant's ≤ (84 + P) ÷ P).
+- k = the fill-rate safety factor for the role's target (the safety level's service level,
+  Balanced 95 / 90 / 85 %): σ_P·G(k) = (1 − β) × one cycle's demand (G = standard normal loss),
+  k ≥ 0. The product page shows the fill target and the error; Why this quantity says what the
+  safety covers.
+
+Measured ratios on this store (median, A / B / C): 1.9 / 1.3 / 0.9 — A items' real 28-day errors
+were about twice what daily noise suggests. Pooled by role vs. each variant's own ratio: the
+variant's own 13 overlapping weeks put stock where the error *had been*: at equal stock about one
+one to one and a half points of fill less (daily review, Balanced: 93.8 % for €588 k on the
+variant's own ratio, 94.1 % for €584 k pooled at 2 windows; fully pooled 92.3 % for €456 k at
+Balanced and 95.1 % for €550 k at Safe). Out of sample the next 28 days' errors were still larger than the
+backtest's for A items (RMS of the standardised error ≈ 2.1–2.3 instead of 1): surges don't repeat on
+schedule — the remaining reason A stays under its target.
+
+### Service level vs stock, before → after (L = 14, R = 14; lost sales when out)
+
+Two ways the merchant can follow the plan: **daily** — place each order on its order-by date (R4's
+simulation, the plan's own semantics) — and **every cycle** — every R days order everything due
+within the cycle (the supplier order builder's "due + can join"), the review the safety formula
+assumes. Fill per role (target in brackets), stock-out days per variant-year, average stock (€ at
+selling price).
+
+| Daily review | A (95) | B (90) | C (85) | All | Stock-out days | Avg stock |
+|---|---:|---:|---:|---:|---:|---:|
+| Before, balanced | 90.0 | 94.9 | 91.3 | 90.2 | 18.5 | €403 k |
+| **After, balanced** | **93.7** | **95.1** | **87.7** | **93.7** | **14.2** | **€528 k** |
+| Before, lean (85 / 80 / 75) | 87.5 | 92.8 | 87.9 | 87.6 | 23.4 | €362 k |
+| After, lean | 87.7 | 89.2 | 84.3 | 87.7 | 27.7 | €376 k |
+| Before, safe (98 / 95 / 90) | 91.0 | 96.8 | 93.9 | 91.2 | 15.5 | €438 k |
+| After, safe | 95.9 | 96.9 | 91.3 | 95.9 | 8.8 | €642 k |
+| Naive c = 1 / 1.5 / 2 / 3 | — | — | — | 88.5 / 90.9 / 92.7 / 95.5 | 23.5 / 16.5 / 12.6 / 7.4 | €531 / 627 / 718 / 895 k |
+
+| Every cycle | A (95) | B (90) | C (85) | All | Stock-out days | Avg stock |
+|---|---:|---:|---:|---:|---:|---:|
+| Before, balanced | 85.9 | 91.8 | 88.5 | 86.1 | 24.9 | €489 k |
+| **After, balanced** | **92.6** | **93.7** | **86.2** | **92.6** | **18.5** | **€723 k** |
+| Before, safe | 87.0 | 93.0 | 89.4 | 87.2 | 21.7 | €521 k |
+| After, safe | 94.3 | 95.0 | 89.6 | 94.3 | 13.3 | €848 k |
+| Naive c = 1 / 1.5 / 2 / 3 | — | — | — | 83.8 / 86.0 / 87.6 / 90.4 | 32.1 / 25.2 / 20.9 / 14.7 | €565 / 649 / 739 / 931 k |
+
+- **Calibration.** Mean absolute gap to the targets at Balanced: daily 5.4 → 3.0 points, every
+  cycle 4.8 → 2.4; at Safe (daily) 4.2 → 1.8. A is now 1.3 (daily) / 2.4 (cycle) points short
+  (before 5.0 / 9.1); B is 3.7–5.1 points over (8 B items), C within 1.2–2.7. Lean overshoots B
+  and C by ~9 points: k is 0 there and the order-up-to alone already fills ~85–90 %.
+- **Stock against naive at equal fill:** daily Balanced 93.7 % for €528 k vs ≈ €781 k naive
+  (−32 %); every cycle 92.6 % for €723 k, above naive's best setting (90.4 % for €931 k).
+- **More stock than before** (Balanced daily €403 k → €528 k, +31 %) — that is the fill the
+  targets ask for (A 90 → 93.7 %). At the low end the old σ model with this round's forecast was a
+  little more stock-efficient (89.8 % for €378 k vs 87.7 % for €376 k at Lean); the error model
+  wins on calibration, not on the lean end of the curve.
+- Not met: "within 1–2 points of target per role" holds for A (daily) and C, not for B (+3.7 /
+  +5.1) nor for A when ordering once per cycle (−2.4).
+
+### Simulator anomalies (sim:check, S store, 17 Oct 2026)
+
+| | Before | After |
+|---|---|---|
+| Swimwear in October | ordered now ("Overdue since 13 Jul"), arriving 16 Dec | "Next season: order by 10 Jan 2027", arriving 11 Mar (19 products) |
+| Order this week | 6 suppliers, 1,617 units, €56 k; 6 of 6 suppliers "overdue", Guangzhou since 13 Jul, Ningbo since 14 Jun | 4 suppliers, 1,459 units, €75 k (winter coats for the season); dates within one lead time |
+| "Overdue since" dates | 49 overdue products, dates back to 14 Jun (4 months) | none more than one lead time back (checked in sim:check and the e2e invariants); beyond it "Overdue · sold out since / runs out {date}" |
+| Today's order-by date | printed "(overdue)" | "Due today" (one label rule, every screen) |
+| Tiny need raised to a full style minimum | swimwear ordered in October (Guangzhou 336 units) | held back ("Below the supplier's minimum — wait for the next season or add to a larger order"; 2 styles in the January run, 0 in October) |
+
+## Limits of the 2026-10-17 numbers
+
+- One store, 38 variants (25 A, 8 B, 5 C): role results for B and C rest on few products.
+- The compute-time backtest uses the season multiplier the days really had (the index can't be
+  recomputed months back with 14 months of history): it measures the product's own error given
+  its season, not the index's error — part of why A's real error is still larger.
+- Level-shift detection is not applied at the backtest's origins (their levels are not stored).
+- Per-location metrics (Pro) have no backtest of their own: the model's error × 1.
+- The simulator store (sim:check, e2e-sim) checks the plan's behaviour, not accuracy: its demand is
+  generated, so it is not used for any number above.
+
+---
+
+# R4 (2026-10-17, before this round)
+
 
 How well Keha's forecast and order advice do on a real store's history, measured with the
 app's own engine (`app/lib/engine`), not a re-implementation. Aggregates only: no store name,
