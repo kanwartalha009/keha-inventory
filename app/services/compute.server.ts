@@ -566,7 +566,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     // R4: units sold inside bundles, in the same SalesDaily view, added to each component's own.
     const bundleIds = bundlesOf(inBundles, ids);
     if (bundleIds.length) {
-      const bundleG = await prisma.salesDaily.groupBy({
+      const bundleG = await facts.salesDaily.groupBy({
         by: ["variantId", "day"],
         where: { shop, ...demandFilter, variantId: { in: bundleIds }, day: range },
         _sum: { sold: true },

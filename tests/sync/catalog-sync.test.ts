@@ -232,6 +232,10 @@ describe("syncProduct / deleteProduct", () => {
         { variantId: "gid://shopify/ProductVariant/1002", quantity: 1 },
       ],
     });
+    // The same components again: nothing rewritten (change-only, as the catalog's bulk upserts).
+    db.calls.length = 0;
+    await syncProduct(a.client, S, "gid://shopify/Product/5");
+    expect(db.calls.filter((c) => c.table === "variant" && c.op === "updateMany" && JSON.stringify(c.args).includes("bundleComponents"))).toEqual([]);
     // The components read fails: the product still syncs, the stored components stay.
     const broken = admin((q) => {
       if (q.includes("KehaInvBundleComponents")) throw new Error("boom");

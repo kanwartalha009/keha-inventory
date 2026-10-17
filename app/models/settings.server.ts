@@ -4,6 +4,7 @@
  * before that there is nothing to save to and the caller gets `null`.
  */
 import prisma from "../db.server";
+import { facts } from "../services/facts-store.server";
 import { forgetOrderPlan } from "./plan-cache.server";
 import { readSettings, type ShopSettings } from "../lib/settings-shared";
 import { ALL } from "../lib/sync/facts-shared";
@@ -46,7 +47,7 @@ export type SalesChannelRow = { name: string; units: number };
  */
 export async function salesChannels(shop: string, excluded: readonly string[], today = new Date()): Promise<SalesChannelRow[]> {
   const from = new Date(today.getTime() - 365 * 86_400_000);
-  const rows = await prisma.salesDaily.groupBy({
+  const rows = await facts.salesDaily.groupBy({
     by: ["channel"],
     where: { shop, locationKey: ALL, day: { gte: from } },
     _sum: { sold: true },

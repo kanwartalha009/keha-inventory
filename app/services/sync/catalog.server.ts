@@ -298,6 +298,13 @@ export async function upsertCollections(shop: string, rows: CollectionRow[]): Pr
   return rows.length;
 }
 
+/** JSON with object keys sorted (Postgres jsonb reorders keys), for an equality check. */
+function canonicalJson(v: unknown): string {
+  const norm = (x: unknown): unknown =>
+    Array.isArray(x) ? x.map(norm) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x as object).sort().map((k) => [k, norm((x as Record<string, unknown>)[k])])) : x;
+  return JSON.stringify(norm(v));
+}
+
 /**
  * R4: each bundle's components (productVariantComponents) → Variant.bundleComponents, so the
  * bundle's sales count on its components. Fails open: a failed read keeps what was stored and
@@ -309,7 +316,13 @@ export async function syncBundleComponents(admin: AdminGraphqlClient, shop: stri
     const ids = bundleIds.slice(i, i + BUNDLE_BATCH);
     try {
       const data = await gql<{ nodes?: unknown }>(admin, BUNDLE_COMPONENTS_QUERY, { ids }, deps);
+      // Change-only, as the catalog's bulk upserts: an unchanged bundle is not rewritten, so its
+      // updatedAt (the order-plan cache's key) moves only when its components really change.
+      const current = new Map(
+        (await prisma.variant.findMany({ where: { shop, id: { in: ids } }, select: { id: true, bundleComponents: true } })).map((r) => [r.id, canonicalJson(r.bundleComponents ?? null)]),
+      );
       for (const [id, components] of bundleComponentsFromNodes(data?.nodes)) {
+        if (current.get(id) === canonicalJson(components)) continue;
         stored += (await prisma.variant.updateMany({ where: { shop, id }, data: { bundleComponents: components } })).count;
       }
     } catch (e) {
