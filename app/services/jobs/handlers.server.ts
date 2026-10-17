@@ -5,7 +5,9 @@
  *    (behind every other due job, so large stores share the workers), throttled → in a minute;
  *  - nightly: the nightly sync (runNightly checks it is due), throttled → in five minutes;
  *  - compute: the engine (the sync jobs queue it instead of running it inline);
- *  - alerts: instant alerts + Flow triggers for the shop.
+ *  - alerts: instant alerts + Flow triggers for the shop;
+ *  - maintenance (shop "*", queued hourly): the fact tables' month partitions — the months ahead
+ *    created, the months past retention dropped (services/partitions.server).
  * The return value is a short outcome for /health ("kind:outcome"), never shop data.
  */
 import prisma from "../../db.server";
@@ -16,6 +18,7 @@ import { runAlertsForShop, type AlertsShopRow } from "../alerts.server";
 import { STEPS_PER_TICK, THROTTLE_BUDGET_MS, createSleepBudget } from "../../lib/sync/budget-shared";
 import { NIGHTLY_THROTTLED_RETRY_MS, THROTTLED_RETRY_MS } from "../../lib/jobs-shared";
 import { enqueueJob } from "./queue.server";
+import { maintainPartitions } from "../partitions.server";
 import type { JobHandlers } from "./worker.server";
 
 export type HandlerDeps = Omit<DataJobDeps, "afterSync" | "maxSteps" | "throttleSleep"> & {
@@ -54,6 +57,11 @@ export function jobHandlers(base: HandlerDeps): JobHandlers {
       if (!row) return "skipped";
       const r = await runAlertsForShop(row, new Date());
       return `${r.instant}/${r.flow}`;
+    },
+    maintenance: async () => {
+      const r = await maintainPartitions(new Date().toISOString().slice(0, 10));
+      if (r.created || r.dropped.length) console.log(`[jobs/maintenance] partitions: ${r.created} created, dropped ${r.dropped.join(", ") || "none"} (${r.ms} ms)`);
+      return `${r.created}+${r.dropped.length}-`;
     },
   };
 }

@@ -20,8 +20,14 @@
  * there are no session-level locks: safe behind PgBouncer in transaction mode.
  */
 
-export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts"] as const;
+export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts", "maintenance"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
+
+/**
+ * The shop of the store-wide jobs (`maintenance`: the fact tables' monthly partitions, DB scale
+ * "before 1,000 stores"): one row, one lease ("shop:*"), never a real shop domain.
+ */
+export const GLOBAL_JOB_SHOP = "*";
 
 export function isJobKind(v: unknown): v is JobKind {
   return typeof v === "string" && (JOB_KINDS as readonly string[]).includes(v);

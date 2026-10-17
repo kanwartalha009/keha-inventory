@@ -26,6 +26,8 @@
  *     once per store week via OwnerEmailLog
  *   - accuracy snapshot / grade (spec §7.8): hourly
  *   - job queue upkeep: claims that kept dying are set aside (hourly, with purge)
+ *   - fact partitions: hourly, queues the store-wide `maintenance` job (months ahead created,
+ *     months past retention dropped — services/partitions.server)
  * A lease the database cannot give (it is down) lets the timer run anyway: each one is idempotent.
  *
  * Boot runs every hourly job once (after BOOT_DELAY_MS), so a restart never leaves a job
@@ -48,7 +50,7 @@ import { isNightlyDue, safeTimeZone } from "../lib/sync/store-time-shared";
 import { runMondayEmailsAllShops } from "./monday.server";
 import { runAccuracyAllShops } from "./accuracy.server";
 import { alertsTick } from "./alerts.server";
-import { tickLeaseKey, workerCount, workerMode, type JobKind, type WorkerMode } from "../lib/jobs-shared";
+import { GLOBAL_JOB_SHOP, tickLeaseKey, workerCount, workerMode, type JobKind, type WorkerMode } from "../lib/jobs-shared";
 import { enqueueJob, jobStore } from "./jobs/queue.server";
 import { INSTANCE_ID, startWorkers, workerStatus, type Workers } from "./jobs/worker.server";
 import { jobHandlers } from "./jobs/handlers.server";
@@ -267,6 +269,8 @@ export const HOURLY_JOBS: ReadonlyArray<{ name: string; run: () => Promise<unkno
   { name: "accuracy", run: () => onceAcross("accuracy", HOURLY_LEASE_MS, () => runAccuracyAllShops(new Date())) },
   // instant alerts + Flow triggers (spec §6.6 "alerts"): queues one job per shop
   { name: "alerts", run: () => onceAcross("alerts", HOURLY_LEASE_MS, () => alertsTick()) },
+  // the fact tables' month partitions (DB scale): one store-wide job on the queue
+  { name: "partitions", run: () => onceAcross("partitions", HOURLY_LEASE_MS, () => enqueueJob(GLOBAL_JOB_SHOP, "maintenance")) },
 ];
 
 export function startScheduler(): void {
