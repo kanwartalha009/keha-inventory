@@ -66,7 +66,7 @@ import {
 export type DashboardOrderPlan =
   | { kind: "full"; plan: OrderPlanData }
   // Free: the top 10 and the teaching lock with the merchant's own totals (worked out on the server).
-  | { kind: "preview"; rows: PreviewRow[]; teaser?: LockTeaser | null; currency?: string };
+  | { kind: "preview"; rows: PreviewRow[]; teaser?: LockTeaser | null; currency?: string; cantPlan?: OrderPlanData["cantPlan"] };
 
 export type HomeLoaderData = HomeData & {
   actions?: ActionListView | null;
@@ -91,7 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
   const orderPlan: DashboardOrderPlan | null = forward
     ? hasFeature(plan, "reorderPlan")
       ? { kind: "full", plan: forward }
-      : { kind: "preview", rows: previewRows(forward), teaser: lockTeaser(forward), currency: forward.currency }
+      : { kind: "preview", rows: previewRows(forward), teaser: lockTeaser(forward), currency: forward.currency, cantPlan: forward.cantPlan }
     : null;
   return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk };
 };
@@ -207,10 +207,15 @@ function ReviewAsk() {
 
 /** The lead block: what to order this week, by supplier, and the cash needed over 12 weeks. */
 function OrderThisWeek({ data }: { data: HomeLoaderData }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const heading = t("Order this week");
   if (data.state === "syncing") {
-    return <FormCard title={heading} sub={t("Your order plan appears here once your products, stock and sales are read.")} />;
+    // Not ready: how far the reading is, never "nothing to order" (2026-10-17 click-through).
+    return (
+      <FormCard title={heading} sub={t("Your order plan appears here once your products, stock and sales are read.")}>
+        <s-text>{fill(t("Still reading your store: {pct}."), { pct: formatPercent((data.sync.percent ?? 0) / 100, locale) })}</s-text>
+      </FormCard>
+    );
   }
   const op = data.orderPlan;
   if (data.state !== "ready" || !op) return null;
@@ -218,6 +223,7 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
     return (
       <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
         <PreviewTable rows={op.rows} />
+        {op.cantPlan && <CantPlan plan={{ cantPlan: op.cantPlan }} />}
         <PreviewLock teaser={op.teaser} currency={op.currency} />
       </FormCard>
     );

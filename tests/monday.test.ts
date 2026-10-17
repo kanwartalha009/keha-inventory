@@ -11,7 +11,7 @@ import { createElement } from "react";
 import { createRoutesStub } from "react-router";
 
 type Row = Record<string, unknown>;
-const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan } = vi.hoisted(() => {
+const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan, readiness } = vi.hoisted(() => {
   const tables: { shop: Row[]; moneyAtStake: Row[]; ownerEmailLog: Row[]; action: Row[]; variant: Row[]; accuracyMonth: Row[] } = {
     shop: [],
     moneyAtStake: [],
@@ -97,7 +97,8 @@ const { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan } = 
     suppliersSetUp: false,
     cantPlan: { noData: 0, dead: 0 },
   }));
-  return { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan };
+  const readiness = vi.fn(async (..._a: unknown[]): Promise<unknown> => ({ ready: true }));
+  return { tables, sendEmail, planFor, fakeDb, deliverSlackOnce, loadOrderPlan, readiness };
 });
 
 vi.mock("../app/db.server", () => ({ default: fakeDb }));
@@ -116,6 +117,7 @@ vi.mock("../app/shopify.server", () => ({
 }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: (shop: string) => planFor(shop) }));
 vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: (...a: unknown[]) => loadOrderPlan(...a) }));
+vi.mock("../app/models/dashboard.server", () => ({ readiness: (...a: unknown[]) => readiness(...a) }));
 vi.mock("../app/services/slack.server", () => ({ deliverSlackOnce: (...a: unknown[]) => deliverSlackOnce(...a) }));
 vi.mock("../app/services/email.server", () => ({
   emailTransportConfigured: () => true,
@@ -140,7 +142,7 @@ import {
   type MondayActionRow,
   type MondayEmailInput,
 } from "../app/lib/monday-shared";
-import { runMondayEmails, runMondayEmailsAllShops } from "../app/services/monday.server";
+import { mondayOrders, runMondayEmails, runMondayEmailsAllShops } from "../app/services/monday.server";
 import { seal } from "../app/lib/seal.server";
 import { buildSlackMonday } from "../app/lib/slack-shared";
 import UnsubscribePage, { action as unsubAction, loader as unsubLoader } from "../app/routes/email.unsubscribe";
@@ -739,6 +741,34 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     expect(e.text).toContain("Nothing to order this week. Next order: Acme Textiles by Nov 4.");
     expect(e.html).not.toContain("Review order");
     expect(e.html).toContain(">€4,601 at stake</div>");
+  });
+
+  it("nothing due but products can't be planned: the caveat goes with 'Nothing to order this week'", () => {
+    const e = composeMondayEmail({ ...base, orders: plan({ lines: [], next: null, cantPlan: { noData: 2, dead: 1 } }) });
+    expect(e.text).toContain(
+      "Nothing to order this week. 2 products can't be planned yet — not enough sales history. 1 product isn't selling (dead stock), so it isn't reordered.",
+    );
+  });
+
+  it("store not ready (2026-10-17 click-through): the block says why and when; the subject is the money one, never 'Nothing to order'", () => {
+    const orders: MondayOrders = { kind: "notReady", today: "2026-10-19", readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } };
+    const e = composeMondayEmail({ ...base, orders, actions });
+    expect(e.subject).toBe("€4,601 at stake this week — 1 thing to do");
+    expect(e.text).toContain("Order this week");
+    expect(e.text).toContain("Your order plan isn't ready yet. Your first order plan needs 14 days of sales — expected on Oct 31.");
+    expect(e.text).not.toContain("Nothing to order");
+    expect(e.html).not.toContain("Nothing to order");
+    const syncing = composeMondayEmail({ ...base, orders: { ...orders, readiness: { ready: false, state: "syncing", percent: 43 } } });
+    expect(syncing.text).toContain("Still reading your store: 43%.");
+    // Slack gets the same block.
+    expect(JSON.stringify(buildSlackMonday(mondaySummary({ ...base, orders })))).toContain("Your first order plan needs 14 days of sales");
+  });
+
+  it("mondayOrders: a store that isn't ready gets the not-ready block, whatever the plan holds", async () => {
+    readiness.mockResolvedValueOnce({ ready: false, state: "noSales", readyOn: "2026-10-31" });
+    expect(await mondayOrders(S, "growth", "en", MON)).toEqual({ kind: "notReady", today: "2026-10-19", readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } });
+    // Ready with nothing planned: no block (the money email as before).
+    expect(await mondayOrders(S, "growth", "en", MON)).toBeNull();
   });
 
   it("Free: '{n} products to order by {date}', the top-10 preview read-only, a way to the plans", () => {

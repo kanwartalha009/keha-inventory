@@ -141,6 +141,23 @@ describe("loadOrderPlan", () => {
     expect(reorder.groups.flatMap((g) => g.lines).some((l) => l.variantId === V(1))).toBe(false);
   });
 
+  it("out of stock with no sales pace (sales/day —) is counted as can't be planned yet, not dropped (2026-10-17)", async () => {
+    fake.tables.variant.push(variant(7), variant(8), variant(9, { productId: "P7" }));
+    fake.tables.variantMetric.push(
+      // Out, no rate, no order: can't be planned (P7, two variants → one product).
+      metric(7, 0, { status: "out", rate: null, daysLeft: 0, orderQty: null, orderBy: null }, { orderNeed: null }),
+      metric(9, 0, { status: "out", rate: null, daysLeft: 0, orderQty: null, orderBy: null }, { orderNeed: null }),
+      // Out WITH a rate: planned (an order today), not counted.
+      metric(8, 0, { status: "out", daysLeft: 0 }),
+    );
+    const plan = await loadOrderPlan(S, NOW);
+    expect(plan.cantPlan).toEqual({ noData: 2, dead: 1 }); // P5 (not enough data) + P7 (out, no pace)
+    expect(plan.events.some((e) => e.variantId === V(8))).toBe(true);
+    expect(plan.events.some((e) => [V(7), V(9)].includes(e.variantId))).toBe(false);
+    const reorder = await loadReorder(S, [], "online", new Map(), NOW);
+    expect(reorder.cantPlan).toEqual({ noData: 2, dead: 1 });
+  });
+
   it("dead and not-enough-data products are counted, not planned; another currency's cost is unknown", async () => {
     const plan = await loadOrderPlan(S, NOW);
     expect(plan.cantPlan).toEqual({ noData: 1, dead: 1 }); // variants 5 and 6 are one product

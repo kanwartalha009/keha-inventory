@@ -5,7 +5,7 @@
  * "Don't reorder" confirm.
  */
 import { fill, useLocale } from "../lib/i18n";
-import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
+import { formatAmount, formatCount, formatDay, formatPercent, notReadyText, type PlanNotReady, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
 import type { OrderWhy, PlanWeek } from "../lib/engine/forward-plan-shared";
@@ -59,47 +59,74 @@ export function CashStrip({ weeks, currency, compact }: { weeks: PlanWeek[]; cur
   );
 }
 
-/** Free plan: what to order and when for the 10 most urgent products — read only. */
-export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
+/** Why the order plan isn't ready, in the admin's language (lib/dashboard-shared notReadyText). */
+export function useNotReadyText(): (r: PlanNotReady) => string {
   const { t, locale } = useLocale();
+  return (r) => notReadyText(r, t, { day: (d) => formatDay(d, locale), percent: (x) => formatPercent(x, locale) });
+}
+
+/** The not-ready reason as a line of text (banners, cards). */
+export function PlanNotReadyNote({ readiness }: { readiness: PlanNotReady }) {
+  const text = useNotReadyText();
+  return <s-text>{text(readiness)}</s-text>;
+}
+
+/**
+ * Free plan: what to order and when for the 10 most urgent products — read only. Not ready
+ * (lib/dashboard-shared planReadiness): says why, never "No orders needed" (2026-10-17).
+ */
+export function PreviewTable({ rows, readiness }: { rows: PreviewRow[]; readiness?: PlanReadiness | null }) {
+  const { t, locale } = useLocale();
+  const notReadyLine = useNotReadyText();
+  const notReady = readiness && !readiness.ready ? readiness : null;
+  if (!rows.length && notReady)
+    return (
+      <s-stack direction="block" gap="small-200">
+        <s-text fontWeight="medium">{t("Your order plan isn't ready yet")}</s-text>
+        <s-paragraph color="subdued">{notReadyLine(notReady)}</s-paragraph>
+      </s-stack>
+    );
   if (!rows.length) return <s-paragraph color="subdued">{t("No orders needed in the next 90 days.")}</s-paragraph>;
   return (
-    <s-table>
-      <s-table-header-row>
-        <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-        <s-table-header listSlot="labeled" format="numeric">
-          <HeaderLabel id="keha-prev-left" label={t("Days left")} hint={t("Days of stock left")} />
-        </s-table-header>
-        <s-table-header listSlot="labeled">
-          <HeaderLabel id="keha-prev-by" label={t("Order by")} />
-        </s-table-header>
-        <s-table-header listSlot="labeled" format="numeric">
-          <HeaderLabel id="keha-prev-qty" label={t("To order")} hint={t("Suggested qty")} />
-        </s-table-header>
-      </s-table-header-row>
-      <s-table-body>
-        {rows.map((r) => {
-          const variant = variantName(r.variantTitle);
-          return (
-            <s-table-row key={r.variantId}>
-              <s-table-cell>
-                <s-stack direction="block" gap="none">
-                  <s-text fontWeight="medium">{r.productTitle}</s-text>
-                  {variant && <s-text color="subdued">{variant}</s-text>}
-                </s-stack>
-              </s-table-cell>
-              <s-table-cell>
-                <DaysLeft id={`keha-prev-left-${r.variantId.replace(/\D/g, "")}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />
-              </s-table-cell>
-              <s-table-cell>
-                <OrderByCell orderBy={r.orderBy} overdue={r.overdue} />
-              </s-table-cell>
-              <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
-            </s-table-row>
-          );
-        })}
-      </s-table-body>
-    </s-table>
+    <>
+      {notReady && <s-text color="subdued">{`${t("Your order plan isn't ready yet")}: ${notReadyLine(notReady)}`}</s-text>}
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">{t("Product")}</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">
+            <HeaderLabel id="keha-prev-left" label={t("Days left")} hint={t("Days of stock left")} />
+          </s-table-header>
+          <s-table-header listSlot="labeled">
+            <HeaderLabel id="keha-prev-by" label={t("Order by")} />
+          </s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">
+            <HeaderLabel id="keha-prev-qty" label={t("To order")} hint={t("Suggested qty")} />
+          </s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {rows.map((r) => {
+            const variant = variantName(r.variantTitle);
+            return (
+              <s-table-row key={r.variantId}>
+                <s-table-cell>
+                  <s-stack direction="block" gap="none">
+                    <s-text fontWeight="medium">{r.productTitle}</s-text>
+                    {variant && <s-text color="subdued">{variant}</s-text>}
+                  </s-stack>
+                </s-table-cell>
+                <s-table-cell>
+                  <DaysLeft id={`keha-prev-left-${r.variantId.replace(/\D/g, "")}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />
+                </s-table-cell>
+                <s-table-cell>
+                  <OrderByCell orderBy={r.orderBy} overdue={r.overdue} />
+                </s-table-cell>
+                <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
+              </s-table-row>
+            );
+          })}
+        </s-table-body>
+      </s-table>
+    </>
   );
 }
 

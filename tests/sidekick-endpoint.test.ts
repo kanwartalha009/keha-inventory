@@ -417,6 +417,29 @@ describe("empty store", () => {
     expect((await body("get_money_at_stake")).message).toBe(MSG.noSales);
     expect((await body("get_action_list")).message).toBe(MSG.noSales);
   });
+
+  it("not enough sales yet (2026-10-17 click-through): the order plan says it isn't ready and when — never 'nothing to order'", async () => {
+    db.tables.salesDaily = db.tables.salesDaily!.slice(0, 5);
+    const plan = await body("get_order_plan", "within_days=7");
+    expect(plan.ready).toBe(false);
+    expect(plan.results).toEqual([]);
+    // 5 of 14 days: 9 more nights from 17 Oct (Madrid) → 26 Oct.
+    expect(plan.message).toBe(
+      "Order suggestions aren't ready yet: the first ones need 14 days of sales, expected on Mon 26 Oct 2026 (in 9 days). This doesn't mean nothing needs ordering.",
+    );
+    expect(plan.message).not.toBe(MSG.nothingToOrder);
+    const stock = await body("get_product_stock", "query=hoodie");
+    expect(stock).toMatchObject({ ready: false, order_advice: plan.message });
+    expect(stock.results!.length).toBeGreaterThan(0);
+    for (const r of stock.results!) expect(r._meta).toMatchObject({ order_by: null, suggested_order_qty: null });
+  });
+
+  it("still reading the store: the order plan gives how far the reading is", async () => {
+    db.tables.shop![0]!.backfillState = { first90Ready: false, datasets: { products: { done: 1, total: 1 }, stock: { done: 6, total: 13 }, sales: { done: 4, total: 13 }, visits: { done: 0, total: 13 } } };
+    const plan = await body("get_order_plan");
+    expect(plan.ready).toBe(false);
+    expect(plan.message).toMatch(/^Order suggestions aren't ready yet: Keha Inventory Intelligence is still reading this store's data \(\d+% done\)\./);
+  });
 });
 
 describe("@shopify/shopify-app-react-router CORS (pinned: the Sidekick sandbox depends on it)", () => {

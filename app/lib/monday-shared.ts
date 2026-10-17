@@ -25,6 +25,7 @@ import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type Ac
 import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
 import type { DayKey } from "./engine/dates-shared";
+import { notReadyText, type PlanNotReady } from "./dashboard-shared";
 
 // ---------------------------------------------------------------- send time
 
@@ -154,6 +155,14 @@ export type MondayOrders =
       lines: MondayOrderLine[];
       /** The first order after this week, for the "nothing to order" line. */
       next: { name: string; orderBy: DayKey } | null;
+      /** Products the plan can't plan (too little history; dead): the caveat on "nothing to order". */
+      cantPlan?: { noData: number; dead: number } | null;
+    }
+  | {
+      /** The store isn't ready (still reading it, fewer than 14 days of sales): say why (2026-10-17). */
+      kind: "notReady";
+      today: DayKey;
+      readiness: PlanNotReady;
     }
   | {
       kind: "preview";
@@ -242,9 +251,11 @@ export function formatEmailDay(day: DayKey, locale: string, weekday = true): str
   return day;
 }
 
-/** The job-first subject from the order data (null = no order data → the money subject). */
-export function mondayOrderSubject(orders: MondayOrders, tr: (k: string) => string, numLocale: string): string {
+/** The job-first subject from the order data (null = nothing to say about orders yet → the money subject). */
+export function mondayOrderSubject(orders: MondayOrders, tr: (k: string) => string, numLocale: string): string | null {
   const count = (n: number) => formatCountIn(n, numLocale);
+  // Not ready: no order subject at all — never "Nothing to order this week".
+  if (orders.kind === "notReady") return null;
   if (orders.kind === "preview") {
     if (!orders.rows.length) return tr("Nothing to order this week");
     const last = orders.rows.reduce((m, r) => (r.orderBy > m ? r.orderBy : m), orders.rows[0]!.orderBy);
@@ -276,8 +287,32 @@ function formatCountIn(n: number, locale: string): string {
   return nf ? nf.format(n) : String(n);
 }
 
+/** "1 product can't be planned yet — …" lines (Order plan's CantPlan wording), or null when none. */
+function cantPlanText(c: { noData: number; dead: number } | null | undefined, tr: (k: string) => string, numLocale: string): string | null {
+  if (!c) return null;
+  const n = (v: number) => formatCountIn(v, numLocale);
+  const parts: string[] = [];
+  if (c.noData > 0)
+    parts.push(fill(c.noData === 1 ? tr("1 product can't be planned yet — not enough sales history.") : tr("{n} products can't be planned yet — not enough sales history."), { n: n(c.noData) }));
+  if (c.dead > 0)
+    parts.push(fill(c.dead === 1 ? tr("1 product isn't selling (dead stock), so it isn't reordered.") : tr("{n} products aren't selling (dead stock), so they aren't reordered."), { n: n(c.dead) }));
+  return parts.length ? parts.join(" ") : null;
+}
+
 function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: string, money: (v: number) => string): MondayOrderBlock {
   const units = (n: number) => fill(tr("{n} units"), { n: formatCountIn(n, numLocale) });
+  if (orders.kind === "notReady") {
+    const pct = numberFormat([numLocale, "en"], { style: "percent", maximumFractionDigits: 0 });
+    return {
+      heading: tr("Order this week"),
+      lines: [],
+      empty: `${tr("Your order plan isn't ready yet")}. ${notReadyText(orders.readiness, tr, {
+        day: (d) => formatEmailDay(d, numLocale, false),
+        percent: (x) => (pct ? pct.format(x) : `${Math.round(x * 100)} %`),
+      })}`,
+      footer: null,
+    };
+  }
   if (orders.kind === "preview") {
     return {
       heading: tr("Your most urgent orders"),
@@ -316,12 +351,19 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
     })),
     empty: orders.lines.length
       ? null
-      : orders.next
-        ? fill(tr("Nothing to order this week. Next order: {supplier} by {date}."), {
-            supplier: orders.next.name,
-            date: formatEmailDay(orders.next.orderBy, numLocale, false),
-          })
-        : tr("Nothing to order this week"),
+      : [
+          orders.next
+            ? fill(tr("Nothing to order this week. Next order: {supplier} by {date}."), {
+                supplier: orders.next.name,
+                date: formatEmailDay(orders.next.orderBy, numLocale, false),
+              })
+            : tr("Nothing to order this week"),
+          // Never "nothing to order" without the products that couldn't be planned.
+          cantPlanText(orders.cantPlan, tr, numLocale),
+        ]
+          .filter((x): x is string => !!x)
+          .map((x, i, all) => (i < all.length - 1 && !/[.!?。]$/.test(x) ? `${x}.` : x))
+          .join(" "),
     footer: null,
   };
 }
@@ -366,8 +408,9 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   const todo = count === 0 ? null : count === 1 ? tr("1 thing to do") : fill(tr("{count} things to do"), { count });
   const orders = input.orders ?? null;
   // With order data the subject leads with the job and the money moves to the preheader.
-  const subject = orders ? mondayOrderSubject(orders, tr, numLocale) : todo ? `${atStake} — ${todo}` : atStake;
-  const preheader = orders
+  const orderSubject = orders ? mondayOrderSubject(orders, tr, numLocale) : null;
+  const subject = orderSubject ?? (todo ? `${atStake} — ${todo}` : atStake);
+  const preheader = orderSubject
     ? [total == null ? null : fill(tr("{money} at stake"), { money: money(total) }), todo].filter(Boolean).join(" · ") || null
     : null;
 

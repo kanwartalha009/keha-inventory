@@ -97,16 +97,21 @@ const po = (over: Record<string, unknown> = {}) => ({
 const SHARES = [{ po: "po1", open: 40, units: 40, day: "2026-10-19" }];
 const week = (p: OrderPlanData) => p.events.filter((e) => e.orderBy <= "2026-10-22").reduce((a, e) => a + e.qty, 0);
 
+/** 14 distinct days of sales well before the plan's windows (Home: "ready"). */
+const READY_SALES = () =>
+  Array.from({ length: 14 }, (_, i) => ({ shop: S, day: new Date(Date.UTC(2026, 8, 1 + i)), variantId: "gid://shopify/ProductVariant/999", locationKey: "all", channel: "web", sold: 1 }));
+
 beforeEach(() => {
   fake.reset();
   clearOrderPlanCache();
-  fake.tables.shop = [{ domain: S, currency: "EUR", timezone: "UTC", locale: "en", settings: {}, uninstalledAt: null }];
+  // A ready store (history read, 14 days of sales): the order plan surfaces show the plan.
+  fake.tables.shop = [{ domain: S, currency: "EUR", timezone: "UTC", locale: "en", settings: {}, uninstalledAt: null, backfillState: { finishedAt: "2026-10-01T00:00:00Z", first90Ready: true }, lastNightlyAt: null }];
   fake.tables.location = [{ id: "L1", shop: S, name: "Main", active: true, online: true, role: "warehouse", onlinePool: null }];
   fake.tables.variant = [variant];
   fake.tables.supplier = [];
   fake.tables.stockNow = [];
   fake.tables.moneyAtStake = [];
-  fake.tables.salesDaily = [];
+  fake.tables.salesDaily = READY_SALES();
 });
 
 describe("Keha orders closed after the nightly run (H2)", () => {

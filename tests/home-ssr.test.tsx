@@ -53,6 +53,10 @@ describe("Home", () => {
     // The order block waits for the sync.
     expect(html).toContain("Order this week");
     expect(html).toContain("Your order plan appears here once your products, stock and sales are read.");
+    // …and how far the reading is (never "nothing to order").
+    expect(html).toContain("Still reading your store: 0%.");
+    expect(html).not.toContain("Nothing to order");
+    expect(html).not.toContain("No orders needed");
     expect(html).toContain("Setup guide");
     // First 10 minutes: the setup guide first, then the sync progress, then the order block.
     expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Reading your store…"));

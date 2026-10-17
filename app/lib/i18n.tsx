@@ -35,6 +35,7 @@ import { FORECAST_TR } from "./i18n-forecast";
 import { PO_TR } from "./i18n-po";
 import { ORDERING_TR } from "./i18n-ordering";
 import { UX_TR } from "./i18n-ux";
+import { READINESS_TR } from "./i18n-readiness";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -91,6 +92,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   po: PO_TR,
   ordering: ORDERING_TR,
   ux: UX_TR,
+  readiness: READINESS_TR,
 };
 
 for (const area of Object.values(AREAS)) {

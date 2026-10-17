@@ -8,6 +8,7 @@ import { hasFeature, MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "./p
 import { readSettings } from "./settings-shared";
 import {
   DATASETS,
+  backfillPercent,
   datasetPercent,
   isBackfillDone,
   isDataLate,
@@ -77,7 +78,8 @@ export type HomeData = {
   state: HomeState;
   refresh: MoneyRefresh;
   money: MoneySnapshot | null;
-  sync: { done: boolean; first90Ready: boolean; datasets: DatasetBar[] };
+  /** `percent`: the whole read, 0–100 (mean of the datasets, as /health). */
+  sync: { done: boolean; first90Ready: boolean; datasets: DatasetBar[]; percent: number };
   setup: {
     leadTimeDone: boolean;
     leadTimeDays: number;
@@ -216,6 +218,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
     sync: {
       done: backfillDone,
       first90Ready,
+      percent: raw.shop ? backfillPercent(backfill) : 0,
       datasets: DATASETS.map((key) => ({
         key,
         percent: datasetPercent(backfill.datasets?.[key]),
@@ -236,6 +239,49 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
       allDone: leadTimeDone && suppliersDone && costsDone && mondayEnabled,
     },
   };
+}
+
+// ── Order plan readiness (2026-10-17 click-through) ─────────────────────────
+//
+// The one rule behind every order-plan surface (Dashboard, Order now, Next 90 days, the Monday
+// email, Sidekick): while Home isn't "ready" the plan isn't either — say so and why, never
+// "nothing to order". Home's own state decides (homeState), so the surfaces can't disagree.
+
+export type PlanNotReady =
+  | { ready: false; state: "syncing"; percent: number }
+  | { ready: false; state: "noSales"; readyOn: string | null }
+  | { ready: false; state: "noTracked" };
+export type PlanReadiness = { ready: true } | PlanNotReady;
+
+export function planReadiness(home: Pick<HomeData, "state" | "noSalesReadyOn"> & { sync: Pick<HomeData["sync"], "percent"> }): PlanReadiness {
+  switch (home.state) {
+    case "ready":
+      return { ready: true };
+    case "syncing":
+      return { ready: false, state: "syncing", percent: Math.max(0, Math.min(100, Math.round(home.sync.percent ?? 0))) };
+    case "noSales":
+      return { ready: false, state: "noSales", readyOn: home.noSalesReadyOn };
+    case "noTracked":
+      return { ready: false, state: "noTracked" };
+  }
+}
+
+/**
+ * Why the plan isn't ready, in the merchant's language: "Still reading your store: 43%. …",
+ * "Your first order plan needs 14 days of sales — expected on 31 Oct 2026.", or "Turn on
+ * 'Track quantity' …". `day` / `percent` format in the admin's (or the email's) locale.
+ */
+export function notReadyText(r: PlanNotReady, t: T, f: { day: (d: string) => string; percent: (ratio: number) => string }): string {
+  switch (r.state) {
+    case "syncing":
+      return fill(t("Still reading your store: {pct}. Your first order plan appears once your products, stock and sales are read."), { pct: f.percent(r.percent / 100) });
+    case "noSales":
+      return r.readyOn
+        ? fill(t("Your first order plan needs 14 days of sales — expected on {date}."), { date: f.day(r.readyOn) })
+        : t("Your first order plan needs 14 days of sales.");
+    case "noTracked":
+      return t("Turn on 'Track quantity' for your products in Shopify.");
+  }
 }
 
 // ── Formatting (admin locale, store currency / time zone) ──────────────────

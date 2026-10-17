@@ -224,8 +224,10 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       },
       select: METRIC_SELECT,
     }),
+    // Can't be planned: too little history, dead, or out of stock with no sales pace (2026-10-17:
+    // an Out variant with "—" sales/day has no order and no order-by date — count it, don't drop it).
     prisma.variantMetric.findMany({
-      where: { shop, scope, status: { in: ["dead", "not_enough_data"] } },
+      where: { shop, scope, OR: [{ status: { in: ["dead", "not_enough_data"] } }, { status: "out", rate: null }] },
       select: { variantId: true, status: true },
     }),
   ]);
@@ -236,9 +238,8 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const missing = [...new Set(metricRows.flatMap((m) => (readKehaShares(m.inputs) ?? []).map((x) => x.po)))].filter((id) => !kehaOrders.has(id));
   for (const o of await kehaOrdersById(shop, missing)) kehaOrders.set(o.id, o);
   const kehaByVariant = kehaOrdersByVariant([...kehaOrders.values()]);
-  const [variantRows, noData, dead, notReordered] = await Promise.all([
+  const [variantRows, dead, notReordered] = await Promise.all([
     ids.length ? prisma.variant.findMany({ where: { shop, id: { in: ids }, tracked: true, isBundle: false }, select: VARIANT_SELECT }) : Promise.resolve([]),
-    productCount(shop, unplannable.filter((m) => m.status === "not_enough_data").map((m) => m.variantId)),
     productCount(shop, unplannable.filter((m) => m.status === "dead").map((m) => m.variantId)),
     // L1: counted from the catalog, not from the metrics read above — compute gives a "Don't
     // reorder" variant no order and no order-by date, so its metric is never read here.
@@ -371,6 +372,11 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
 
   const variantInfo: Record<string, PlanVariantInfo> = {};
   const withOrders = new Set(events.map((e) => e.variantId));
+  // Not enough history, or out with no sales pace and no order from the plan: "can't be planned yet".
+  const noData = await productCount(
+    shop,
+    unplannable.filter((m) => m.status === "not_enough_data" || (m.status === "out" && !withOrders.has(m.variantId))).map((m) => m.variantId),
+  );
   for (const id of withOrders) {
     const v = byId.get(id)!;
     const m = metrics.get(id)!;

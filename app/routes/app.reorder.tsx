@@ -39,8 +39,9 @@ import { getEntitlements, upgradeResponse } from "../services/entitlements.serve
 import { createOrderFromGroup, loadReorder, scenarioPlanned, setNoReorder, type ReorderData } from "../models/reorder.server";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { loadOrderPlan } from "../models/order-plan.server";
+import { readiness } from "../models/dashboard.server";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
-import { AboveLastYearBadge, DueLabel, NoReorderConfirm, PreviewLock, PreviewTable, StaleDrafts, WhyPopover } from "../components/order-plan";
+import { AboveLastYearBadge, CantPlan, DueLabel, NoReorderConfirm, PlanNotReadyNote, PreviewLock, PreviewTable, StaleDrafts, WhyPopover, useNotReadyText } from "../components/order-plan";
 import { lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type PreviewRow } from "../lib/order-plan-shared";
 import { LocationSwitcher, switcherMode } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
@@ -49,7 +50,7 @@ import { AppPage, DaysLeft, EmptyState, FormCard, HeaderLabel, ProductThumb, Too
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
-import { formatCount, formatDay } from "../lib/dashboard-shared";
+import { formatCount, formatDay, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { quantitiesKey } from "../lib/quantities-key-shared";
 import {
@@ -88,13 +89,15 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   const { features } = await getEntitlements(session.shop);
   // Free: the read-only preview of the forward order plan and its totals, nothing else.
   if (!features.reorderPlan) {
-    const plan = await loadOrderPlan(session.shop);
+    const [plan, ready] = await Promise.all([loadOrderPlan(session.shop), readiness(session.shop)]);
     return {
       ...EMPTY_REORDER,
       currency: plan.currency,
       enabled: false,
       preview: previewRows(plan),
       teaser: lockTeaser(plan),
+      cantPlan: plan.cantPlan,
+      readiness: ready,
     };
   }
   const url = new URL(request.url);
@@ -110,9 +113,10 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   // Active locations: the switcher hides itself in a one-location store; transfers need two.
   const active = await activeLocationCount(session.shop);
   const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
-  const [reorder, transfers] = await Promise.all([
+  const [reorder, transfers, ready] = await Promise.all([
     loadReorder(session.shop, selected, view.scope, planned, new Date(), link),
     features.transfers && transfersShown ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
+    readiness(session.shop),
   ]);
   const only = supplierKey ? reorder.groups.find((g) => g.key === supplierKey) : undefined;
   return {
@@ -130,6 +134,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
     transfers,
     showTransfers: transfersShown,
     preview: null,
+    readiness: ready,
   };
 };
 
@@ -198,6 +203,8 @@ export type ReorderPageData = ReorderData & {
   showTransfers?: boolean;
   /** Active locations (LocationSwitcher: fewer than 2 → not shown). */
   locationCount?: number;
+  /** Home's state: not ready → say why, never "Nothing to order" (absent = ready). */
+  readiness?: PlanReadiness;
 } & LocationView & { transfers: TransfersView };
 
 const EMPTY_REORDER: Omit<ReorderPageData, "enabled" | "preview"> = {
@@ -220,18 +227,21 @@ export default function Reorder() {
   const fromPlanner = data.groups.some((g) => g.lines.some((l) => l.fromPlanner));
   const location = data.location;
   const today = data.today ?? new Date().toISOString().slice(0, 10);
+  const notReadyLine = useNotReadyText();
   if (!data.enabled) {
     return (
       <AppPage heading={t("Order plan")} intro={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
         <OrderPlanTabs current="now" />
         <FormCard title={t("What to order, and by when")}>
-          <PreviewTable rows={data.preview ?? []} />
+          <PreviewTable rows={data.preview ?? []} readiness={data.readiness} />
+          {data.readiness?.ready !== false && data.cantPlan && <CantPlan plan={{ cantPlan: data.cantPlan }} />}
           <PreviewLock teaser={data.teaser} currency={data.currency} />
         </FormCard>
       </AppPage>
     );
   }
   const filter = data.supplierFilter;
+  const notReady = data.readiness && !data.readiness.ready ? data.readiness : null;
   return (
     <AppPage
       heading={t("Order plan")}
@@ -279,23 +289,43 @@ export default function Reorder() {
           }
         />
       )}
+      {notReady && data.groups.length > 0 && (
+        <s-banner tone="info" heading={t("Your order plan isn't ready yet")}>
+          <PlanNotReadyNote readiness={notReady} />
+        </s-banner>
+      )}
       {data.groups.length === 0 ? (
         <s-section>
-          <EmptyState
-            heading={t("Nothing to order today")}
-            body={
-              data.next
-                ? fill(t("Next order: {supplier} by {date}."), {
-                    supplier: data.next.kind === "supplier" ? data.next.name : data.next.name || t("No vendor"),
-                    date: formatDay(data.next.orderBy, locale),
-                  })
-                : t("No orders needed in the next 90 days.")
-            }
-            action={<s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>}
-          />
+          {notReady ? (
+            // Not ready (still reading the store, fewer than 14 days of sales): say so — never "nothing to order".
+            <EmptyState heading={t("Your order plan isn't ready yet")} body={notReadyLine(notReady)} />
+          ) : (
+            <EmptyState
+              heading={t("Nothing to order today")}
+              body={
+                data.next
+                  ? fill(t("Next order: {supplier} by {date}."), {
+                      supplier: data.next.kind === "supplier" ? data.next.name : data.next.name || t("No vendor"),
+                      date: formatDay(data.next.orderBy, locale),
+                    })
+                  : t("No orders needed in the next 90 days.")
+              }
+              action={
+                <s-stack direction="block" gap="small" alignItems="center">
+                  {data.cantPlan && <CantPlan plan={{ cantPlan: data.cantPlan }} />}
+                  <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
+                </s-stack>
+              }
+            />
+          )}
         </s-section>
       ) : (
-        data.groups.map((g) => <GroupCard key={g.key} group={g} location={location} today={today} />)
+        <>
+          {data.groups.map((g) => (
+            <GroupCard key={g.key} group={g} location={location} today={today} />
+          ))}
+          {!notReady && data.cantPlan && <CantPlan plan={{ cantPlan: data.cantPlan }} />}
+        </>
       )}
       {data.showTransfers !== false && <TransfersSection view={data.transfers} />}
       {data.openOrders.length > 0 && (

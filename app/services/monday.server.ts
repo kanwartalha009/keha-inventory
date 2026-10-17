@@ -38,6 +38,7 @@ import {
 import { previewRows, supplierName, thisWeek } from "../lib/order-plan-shared";
 import { ordersDue } from "../lib/engine/forward-plan-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
+import { readiness } from "../models/dashboard.server";
 import { MONEY_CARDS } from "../lib/money-shared";
 import { canRetryOwnerEmail, listUnsubscribeHeaders, weekKey } from "../lib/owner-email-shared";
 import { hasFeature, MONEY_REFRESH, type MoneyRefresh, type PlanCode } from "../lib/plan-shared";
@@ -183,7 +184,9 @@ async function mondayExtras(
  */
 export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale, now: Date): Promise<MondayOrders | null> {
   try {
-    const data = await loadOrderPlan(shop, now);
+    const [data, ready] = await Promise.all([loadOrderPlan(shop, now), readiness(shop, now)]);
+    // Not ready (still reading the store, fewer than 14 days of sales): say why — never "nothing to order".
+    if (!ready.ready) return { kind: "notReady", today: data.today, readiness: ready };
     // Nothing planned in the 13 weeks (or no numbers yet): keep the money email as it was.
     if (!data.events.length) return null;
     const tr = (k: string) => translate(locale, k);
@@ -201,6 +204,7 @@ export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale,
           link: adminAppUrl(shop, `/app/reorder?supplier=${encodeURIComponent(s.supplierKey)}`),
         })),
         next: week.next ? { name: supplierName(data, week.next.supplierKey, tr), orderBy: week.next.orderBy } : null,
+        cantPlan: data.cantPlan,
       };
     }
     const rows = previewRows(data, 10);

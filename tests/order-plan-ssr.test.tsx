@@ -67,6 +67,25 @@ describe("Next 90 days", () => {
     expect(html).not.toContain("Week by week");
   });
 
+  it("nothing to order but products that can't be planned: the count line goes with it", () => {
+    const html = render({ enabled: true, plan: { ...EMPTY_ORDER_PLAN(PLAN_TODAY, "EUR"), cantPlan: { noData: 2, dead: 0 } } });
+    expect(html).toContain("No orders needed in the next 90 days.");
+    expect(html).toContain("2 products can&#x27;t be planned yet — not enough sales history.");
+  });
+
+  it("not ready (2026-10-17 click-through): says why and when — never 'No orders needed'", () => {
+    const html = render({
+      enabled: true,
+      plan: { ...EMPTY_ORDER_PLAN(PLAN_TODAY, "EUR"), cantPlan: { noData: 2, dead: 0 } },
+      readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" },
+    });
+    expect(html).toContain("Your order plan isn&#x27;t ready yet");
+    expect(html).toContain("Your first order plan needs 14 days of sales — expected on Oct 31, 2026.");
+    expect(html).not.toContain("No orders needed");
+    const syncing = render({ enabled: true, plan: EMPTY_ORDER_PLAN(PLAN_TODAY, "EUR"), readiness: { ready: false, state: "syncing", percent: 43 } });
+    expect(syncing).toContain("Still reading your store: 43%.");
+  });
+
   it("Free (and below Growth): the tab bar stays and the tab teaches", () => {
     const html = render({ enabled: false, plan: EMPTY_ORDER_PLAN("") });
     expect(html).toContain("keha-tabs");

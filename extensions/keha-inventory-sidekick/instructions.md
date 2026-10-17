@@ -26,6 +26,8 @@ Common combinations:
 - Status words are the app's own: Out, Running low, Healthy, Too much, Dead, Not enough data.
 - `note` says when a list was shortened; the full list is in the app page given by `url`.
 - `message` means there is nothing to show for this question; pass it on as it is.
+- `ready: false` means the store doesn't have enough data for order suggestions yet (`message` says why and when): say that, not that nothing needs ordering.
+- `not_planned` names products left out of the suggestions (too little sales history, dead stock); mention it with any "nothing to order" answer.
 
 ## Answers
 

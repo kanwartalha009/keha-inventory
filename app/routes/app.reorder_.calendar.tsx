@@ -20,13 +20,14 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { loadOrderPlan } from "../models/order-plan.server";
+import { readiness } from "../models/dashboard.server";
 import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
-import { AboveLastYearBadge, CantPlan, CashStrip, DueLabel, StaleDrafts, TabLock, WhyPopover } from "../components/order-plan";
+import { AboveLastYearBadge, CantPlan, CashStrip, DueLabel, StaleDrafts, TabLock, WhyPopover, useNotReadyText } from "../components/order-plan";
 import { DownloadButton } from "../components/download-button";
 import { useLinkProps } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
-import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
+import { formatAmount, formatCount, formatDay, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashTotals, dueDay, type PlanEvent, type PlanSupplierWeek, type PlanWeek } from "../lib/engine/forward-plan-shared";
 import { toSupplierCurrency } from "../lib/supplier-shared";
@@ -43,7 +44,13 @@ import {
   type OrderPlanData,
 } from "../lib/order-plan-shared";
 
-export type CalendarPageData = { enabled: boolean; plan: OrderPlanData; teaser?: LockTeaser | null };
+export type CalendarPageData = {
+  enabled: boolean;
+  plan: OrderPlanData;
+  teaser?: LockTeaser | null;
+  /** Home's state: not ready → say why, never "No orders needed" (absent = ready). */
+  readiness?: PlanReadiness;
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<CalendarPageData> => {
   const { session } = await authenticate.admin(request);
@@ -53,7 +60,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<CalendarP
     const plan = await loadOrderPlan(session.shop);
     return { enabled: false, plan: EMPTY_ORDER_PLAN("", plan.currency, plan.timezone), teaser: lockTeaser(plan) };
   }
-  return { enabled: true, plan: await loadOrderPlan(session.shop, new Date(), { lastYear: true }) };
+  const [plan, ready] = await Promise.all([loadOrderPlan(session.shop, new Date(), { lastYear: true }), readiness(session.shop)]);
+  return { enabled: true, plan, readiness: ready };
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -72,14 +80,16 @@ export default function OrderCalendar() {
       }
     >
       <OrderPlanTabs current="calendar" />
-      {data.enabled ? <Calendar plan={data.plan} /> : <TabLock feature="orderCalendar" teaser={data.teaser} currency={data.plan.currency} />}
+      {data.enabled ? <Calendar plan={data.plan} readiness={data.readiness} /> : <TabLock feature="orderCalendar" teaser={data.teaser} currency={data.plan.currency} />}
     </AppPage>
   );
 }
 
-function Calendar({ plan }: { plan: OrderPlanData }) {
+function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanReadiness }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
+  const notReady = readiness && !readiness.ready ? readiness : null;
+  const notReadyLine = useNotReadyText();
   const weeks = planWeeks(plan);
   const totals = cashTotals(plan.events);
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
@@ -88,9 +98,12 @@ function Calendar({ plan }: { plan: OrderPlanData }) {
     <>
       <StaleDrafts n={plan.staleDrafts} />
       <FormCard
-        title={t("Next 90 days")}
+        title={notReady ? t("Your order plan isn't ready yet") : t("Next 90 days")}
         sub={
-          totals.lines === 0
+          notReady
+            ? // Still reading the store / fewer than 14 days of sales: say why — never "No orders needed".
+              notReadyLine(notReady)
+            : totals.lines === 0
             ? t("No orders needed in the next 90 days.")
             : fill(t("{orders} orders in the next 13 weeks · {units} units · {cash}"), {
                 // One order per supplier and week.
@@ -107,7 +120,7 @@ function Calendar({ plan }: { plan: OrderPlanData }) {
             </s-text>
           )}
           {totals.lines > 0 && <CashStrip weeks={weeks} currency={plan.currency} />}
-          <CantPlan plan={plan} />
+          {!notReady && <CantPlan plan={plan} />}
           {!plan.suppliersSetUp && totals.lines > 0 && (
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text color="subdued">{t("Grouped by vendor until you add your suppliers.")}</s-text>

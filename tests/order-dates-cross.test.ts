@@ -47,10 +47,15 @@ function metric(n: number, onHand: number, o: { rate?: number; lead?: number; cy
   };
 }
 
+/** 14 distinct days of sales well before the plan's windows (Home: "ready"). */
+const READY_SALES = () =>
+  Array.from({ length: 14 }, (_, i) => ({ shop: S, day: new Date(Date.UTC(2026, 8, 1 + i)), variantId: "gid://shopify/ProductVariant/999", locationKey: "all", channel: "web", sold: 1 }));
+
 beforeEach(() => {
   fake.reset();
   clearOrderPlanCache();
-  fake.tables.shop = [{ domain: S, currency: "EUR", timezone: "Europe/Madrid", locale: "en", settings: { leadTimeDays: 14 }, uninstalledAt: null }];
+  // A ready store (history read, 14 days of sales): the order plan surfaces show the plan.
+  fake.tables.shop = [{ domain: S, currency: "EUR", timezone: "Europe/Madrid", locale: "en", settings: { leadTimeDays: 14 }, uninstalledAt: null, backfillState: { finishedAt: "2026-10-01T00:00:00Z", first90Ready: true }, lastNightlyAt: null }];
   fake.tables.location = [{ id: "L1", shop: S, name: "Main", active: true, online: true, role: "warehouse", onlinePool: null }];
   fake.tables.variant = [variant(1), variant(2), variant(3)];
   fake.tables.variantMetric = [metric(1, 10, { rate: 10, lead: 2, cycle: 3 }), metric(2, -200, { rate: 0.5 }), metric(3, 30)];
@@ -58,7 +63,7 @@ beforeEach(() => {
   fake.tables.purchaseOrder = [];
   fake.tables.supplier = [];
   fake.tables.moneyAtStake = [];
-  fake.tables.salesDaily = [];
+  fake.tables.salesDaily = READY_SALES();
 });
 
 const NF = { status: null, collection: null, vendor: null, q: null };

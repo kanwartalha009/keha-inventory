@@ -298,6 +298,8 @@ export type ReorderData = {
   next?: { supplierKey: string; name: string; kind: "supplier" | "vendor"; orderBy: string } | null;
   /** Products marked "Don't reorder". */
   notReordered?: number;
+  /** Products the plan can't plan (too little history, out with no sales pace; dead stock). */
+  cantPlan?: { noData: number; dead: number };
 };
 
 /**
@@ -353,6 +355,7 @@ export async function loadReorder(
     today: plan.today,
     staleDrafts: plan.staleDrafts ?? 0,
     notReordered: plan.notReordered ?? 0,
+    cantPlan: plan.cantPlan,
     next:
       week.next && nextKey
         ? { supplierKey: nextKey, name: plan.suppliers[nextKey]?.name ?? "", kind: plan.suppliers[nextKey]?.kind ?? "vendor", orderBy: week.next.orderBy }

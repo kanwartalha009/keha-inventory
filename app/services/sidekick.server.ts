@@ -19,7 +19,7 @@
  *  get_forecast_accuracy Planner scorecard (planner + accuracy)
  */
 import { getEntitlements } from "./entitlements.server";
-import { getHomeData } from "../models/dashboard.server";
+import { getHomeData, readiness } from "../models/dashboard.server";
 import { getActionList, stockValue } from "../models/actions.server";
 import { openOrders } from "../models/reorder.server";
 import { loadOrderPlan } from "../models/order-plan.server";
@@ -41,6 +41,8 @@ import { actionReasonText } from "../lib/monday-shared";
 import {
   MAX_ROWS,
   MSG,
+  appUrl,
+  notReadyResponse,
   accuracyResponse,
   actionListResponse,
   moneyResponse,
@@ -96,7 +98,10 @@ export async function orderPlanForSidekick(
   const facts = await shopFacts(shop);
   if (!facts) return { results: [], message: MSG.syncing };
   const access = deps.access ?? (await sidekickAccess(shop));
-  const plan = await loadOrderPlan(shop, deps.now ?? new Date());
+  const now = deps.now ?? new Date();
+  const [plan, ready] = await Promise.all([loadOrderPlan(shop, now), readiness(shop, now)]);
+  // Not ready (still reading the store, fewer than 14 days of sales): the reason, never "nothing to order".
+  if (!ready.ready) return notReadyResponse(ready, plan.today, { url: appUrl("/app/reorder") });
   if (!access.features.reorderPlan || !access.features.orderCalendar) return orderPreviewResponse(previewRows(plan), plan);
   return orderPlanResponse(plan, opts);
 }
@@ -113,12 +118,14 @@ export async function productStockForSidekick(
   const facts = await shopFacts(shop);
   if (!facts) return { results: [], message: MSG.syncing };
   const access = deps.access ?? (await sidekickAccess(shop));
-  const { rows, total } = await searchVariantStock(shop, words, access.features.forecast, MAX_ROWS);
+  const now = deps.now ?? new Date();
+  const [{ rows, total }, ready] = await Promise.all([searchVariantStock(shop, words, access.features.forecast, MAX_ROWS), readiness(shop, now)]);
   return productStockResponse(rows, {
     query: words.join(" "),
     total,
     forecast: access.features.forecast,
-    today: todayIn(facts.timezone, deps.now ?? new Date()),
+    today: todayIn(facts.timezone, now),
+    notReady: ready.ready ? null : ready,
   });
 }
 

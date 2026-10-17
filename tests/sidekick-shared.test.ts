@@ -127,9 +127,15 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
 
   it("filters by supplier or vendor name; neutral messages when there is nothing", () => {
     expect(orderPlanResponse(plan, { supplier: "cap", withinDays: 90 }).results!.map((x) => x.name)).toEqual(["Cap Co"]);
-    expect(orderPlanResponse(plan, { supplier: "cap", withinDays: 7 }).message).toBe(MSG.nothingToOrder);
+    // Never "nothing to order" without the products the plan couldn't plan (fixture: 12 no data, 1 dead).
+    const NOT_PLANNED = "12 products can't be planned yet — not enough sales history. 1 product isn't selling (dead stock), so it isn't reordered. They are not in this answer.";
+    const cap7 = orderPlanResponse(plan, { supplier: "cap", withinDays: 7 });
+    expect(cap7.message).toBe(`${MSG.nothingToOrder} ${NOT_PLANNED}`);
+    expect(cap7.not_planned).toBe(NOT_PLANNED);
     expect(orderPlanResponse(plan, { supplier: "nobody", withinDays: 90 }).message).toBe(MSG.noSupplierMatch);
-    expect(orderPlanResponse(orderPlanFixture({ events: [] }), { supplier: null, withinDays: 14 }).message).toBe(MSG.nothingToOrder);
+    expect(orderPlanResponse(orderPlanFixture({ events: [] }), { supplier: null, withinDays: 14 }).message).toBe(`${MSG.nothingToOrder} ${NOT_PLANNED}`);
+    expect(orderPlanResponse({ ...orderPlanFixture({ events: [] }), cantPlan: { noData: 0, dead: 0 } }, { supplier: null, withinDays: 14 }).message).toBe(MSG.nothingToOrder);
+    expect(orderPlanResponse(plan, { supplier: null, withinDays: 90 }).not_planned).toBe(NOT_PLANNED);
   });
 
   it("shows at most 8 lines per supplier and counts the rest", () => {
@@ -146,7 +152,8 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: "2026-09-29", overdue: true, suggested_order_qty: 61 } });
     const text = JSON.stringify(r);
     for (const word of ["supplier", "cost", "cash", "calendar"]) expect(text).not.toContain(word);
-    expect(orderPreviewResponse([], plan).message).toBe(MSG.nothingToOrder);
+    expect(orderPreviewResponse([], plan).message).toMatch(new RegExp(`^${MSG.nothingToOrder} 12 products can't be planned yet`));
+    expect(orderPreviewResponse([], { ...plan, cantPlan: { noData: 0, dead: 0 } }).message).toBe(MSG.nothingToOrder);
   });
 });
 
@@ -345,5 +352,37 @@ describe("daysLeftMeta (2026-10-17: no recent sales is unknown, never ∞)", () 
     expect(daysLeftMeta(9.7, false)).toEqual({ days_left: 9 });
     expect(daysLeftMeta(-2, false)).toEqual({ days_left: 0 });
     expect(JSON.stringify(daysLeftMeta(null, true))).not.toMatch(/never|∞/);
+  });
+});
+
+describe("order plan not ready (2026-10-17 click-through: never 'nothing to order' before the store is ready)", () => {
+  it("says why and when, neutrally; product stock keeps stock but drops the order fields", async () => {
+    const { notReadyMessage, notReadyResponse, cantPlanNote } = await import("../app/lib/sidekick-shared");
+    const { policyViolations } = await import("./helpers/sidekick-policy");
+    const noSales = notReadyMessage({ ready: false, state: "noSales", readyOn: "2026-10-31" }, "2026-10-17");
+    expect(noSales).toBe("Order suggestions aren't ready yet: the first ones need 14 days of sales, expected on Sat 31 Oct 2026 (in 14 days). This doesn't mean nothing needs ordering.");
+    const syncing = notReadyMessage({ ready: false, state: "syncing", percent: 43 }, "2026-10-17");
+    expect(syncing).toContain("still reading this store's data (43% done)");
+    expect(notReadyMessage({ ready: false, state: "noTracked" }, "2026-10-17")).toBe(MSG.noTracked);
+    const r = notReadyResponse({ ready: false, state: "noSales", readyOn: null }, "2026-10-17", { url: "app://app/reorder" });
+    expect(r).toEqual({ url: "app://app/reorder", ready: false, results: [], message: "Order suggestions aren't ready yet: the first ones need 14 days of sales. This doesn't mean nothing needs ordering." });
+    for (const text of [noSales, syncing, r.message!, cantPlanNote({ noData: 2, dead: 3 })!]) {
+      expect(policyViolations(text)).toEqual([]);
+      // "nothing needs ordering" appears only as what the answer does NOT mean.
+      expect(text.replace("This doesn't mean nothing needs ordering.", "")).not.toMatch(/nothing (needs|to)/i);
+      expect(text).not.toMatch(/\bplan\b/i);
+    }
+    expect(cantPlanNote({ noData: 0, dead: 0 })).toBeNull();
+    expect(cantPlanNote({ noData: 1, dead: 0 })).toBe("1 product can't be planned yet — not enough sales history. They are not in this answer.");
+
+    const out = productStockResponse([stockRow({ status: "out", onHand: 0, rate: null, daysLeft: 0, orderBy: "2026-10-20", orderQty: 12 })], {
+      query: "x",
+      total: 1,
+      forecast: true,
+      today: "2026-10-17",
+      notReady: { ready: false, state: "noSales", readyOn: "2026-10-31" },
+    });
+    expect(out).toMatchObject({ ready: false, order_advice: noSales });
+    expect(out.results![0]!._meta).toMatchObject({ status: "Out", on_hand: 0, sales_per_day: null, days_left: 0, order_by: null, order_by_label: null, suggested_order_qty: null });
   });
 });

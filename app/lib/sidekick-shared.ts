@@ -19,6 +19,7 @@
  * Text is English (Sidekick answers in the merchant's language itself).
  */
 import type { MoneyCardKey } from "./money-shared";
+import type { PlanNotReady } from "./dashboard-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import { byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd } from "./engine/forward-plan-shared";
@@ -86,6 +87,38 @@ export const MSG = {
   failed: "Keha Inventory Intelligence could not load this right now.",
   slow: "Keha Inventory Intelligence took too long to answer. Try again in a moment.",
 } as const;
+
+/**
+ * The order plan isn't ready (Home's state — the same rule as the app's screens, 2026-10-17):
+ * say so and why, so an empty answer is never read as "nothing needs ordering".
+ */
+export function notReadyMessage(r: PlanNotReady, today: string): string {
+  switch (r.state) {
+    case "syncing":
+      return `Order suggestions aren't ready yet: Keha Inventory Intelligence is still reading this store's data (${r.percent}% done). This doesn't mean nothing needs ordering.`;
+    case "noSales": {
+      const when = r.readyOn ? dayLabel(r.readyOn, today) : null;
+      return `Order suggestions aren't ready yet: the first ones need 14 days of sales${when ? `, expected on ${when}` : ""}. This doesn't mean nothing needs ordering.`;
+    }
+    case "noTracked":
+      return MSG.noTracked;
+  }
+}
+
+/** Products left out of the order suggestions and why ("1 product can't be planned yet …"); null when none. */
+export function cantPlanNote(c: { noData: number; dead: number } | null | undefined): string | null {
+  if (!c) return null;
+  const parts: string[] = [];
+  if (c.noData > 0)
+    parts.push(c.noData === 1 ? "1 product can't be planned yet — not enough sales history." : `${c.noData} products can't be planned yet — not enough sales history.`);
+  if (c.dead > 0) parts.push(c.dead === 1 ? "1 product isn't selling (dead stock), so it isn't reordered." : `${c.dead} products aren't selling (dead stock), so they aren't reordered.`);
+  return parts.length ? `${parts.join(" ")} They are not in this answer.` : null;
+}
+
+/** The answer of get_order_plan / get_product_stock's order fields while the plan isn't ready. */
+export function notReadyResponse(r: PlanNotReady, today: string, extra: Record<string, unknown> = {}): SidekickResponse {
+  return { ...extra, ready: false, results: [], message: notReadyMessage(r, today) };
+}
 
 // ── Inputs (from the query string; Sidekick fills them from tools.json) ─────
 
@@ -319,9 +352,12 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
     url: appUrl("/app/reorder/calendar"),
     order_now_url: appUrl("/app/reorder"),
   };
+  const notPlanned = cantPlanNote(data.cantPlan);
   if (!events.length) {
     const anyForSupplier = opts.supplier && data.events.some((e) => supplierMatches(name(e.supplierKey), opts.supplier));
-    return { ...base, results: [], message: opts.supplier && !anyForSupplier ? MSG.noSupplierMatch : MSG.nothingToOrder };
+    if (opts.supplier && !anyForSupplier) return { ...base, results: [], message: MSG.noSupplierMatch };
+    // Never "nothing to order" without the products that couldn't be planned.
+    return { ...base, results: [], message: notPlanned ? `${MSG.nothingToOrder} ${notPlanned}` : MSG.nothingToOrder, not_planned: notPlanned ?? undefined };
   }
   const groups = bySupplier(events);
   const results = groups.map((g) => {
@@ -361,6 +397,7 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
   const out: SidekickResponse = {
     ...base,
     results,
+    not_planned: notPlanned ?? undefined,
     totals: { suppliers: groups.length, orders: totals.lines, units: totals.units, cash: money(totals.cash), lines_without_cost: totals.missingCost || undefined },
   };
   if (opts.withinDays > 14) {
@@ -372,11 +409,13 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
 }
 
 /** The read-only preview the app shows when the full order plan isn't part of the store's plan. */
-export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<OrderPlanData, "today" | "variants">): SidekickResponse {
+export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<OrderPlanData, "today" | "variants"> & Partial<Pick<OrderPlanData, "cantPlan">>): SidekickResponse {
   const base = { url: appUrl("/app/reorder") };
-  if (!rows.length) return { ...base, results: [], message: MSG.nothingToOrder };
+  const notPlanned = cantPlanNote(data.cantPlan);
+  if (!rows.length) return { ...base, results: [], message: notPlanned ? `${MSG.nothingToOrder} ${notPlanned}` : MSG.nothingToOrder, not_planned: notPlanned ?? undefined };
   return {
     ...base,
+    not_planned: notPlanned ?? undefined,
     shows: `The ${rows.length} most urgent products to order, most urgent first.`,
     results: rows.map((r) =>
       link(r.variantId, displayName(r.productTitle || "—", r.variantTitle), MIME.variant, {
@@ -427,9 +466,11 @@ export type ProductStockIn = {
  */
 export function productStockResponse(
   rows: readonly ProductStockIn[],
-  ctx: { query: string; total: number; forecast: boolean; today: string },
+  ctx: { query: string; total: number; forecast: boolean; today: string; notReady?: PlanNotReady | null },
 ): SidekickResponse {
   if (!rows.length) return { query: ctx.query, results: [], message: MSG.noProducts };
+  // Plan not ready: stock and sales stay, the order fields are unknown and the reason is given.
+  const advice = ctx.notReady ? notReadyMessage(ctx.notReady, ctx.today) : null;
   const results = rows.map((r) => {
     const meta: Record<string, unknown> = {
       product_gid: r.productId,
@@ -444,14 +485,14 @@ export function productStockResponse(
     };
     if (ctx.forecast) {
       Object.assign(meta, daysLeftMeta(r.daysLeft, r.neverRunsOut));
-      meta.order_by = r.orderBy;
-      meta.order_by_label = dayLabel(r.orderBy, ctx.today);
-      meta.suggested_order_qty = r.orderQty;
+      meta.order_by = advice ? null : r.orderBy;
+      meta.order_by_label = advice ? null : dayLabel(r.orderBy, ctx.today);
+      meta.suggested_order_qty = advice ? null : r.orderQty;
     }
     meta.url = appUrl(variantPath(r.id));
     return link(r.id, displayName(r.productTitle, r.variantTitle), MIME.variant, meta);
   });
-  return fitResponse({ query: ctx.query, results }, { total: ctx.total, what: "matching variants" });
+  return fitResponse(advice ? { query: ctx.query, ready: false, order_advice: advice, results } : { query: ctx.query, results }, { total: ctx.total, what: "matching variants" });
 }
 
 // ── Action list ─────────────────────────────────────────────────────────────

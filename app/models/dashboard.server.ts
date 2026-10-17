@@ -4,7 +4,7 @@
  * A missing Shop row (first load before the sync created it) is "syncing".
  */
 import prisma from "../db.server";
-import { buildHome, MIN_SALES_DAYS, type HomeData, type HomeRaw } from "../lib/dashboard-shared";
+import { buildHome, MIN_SALES_DAYS, planReadiness, type HomeData, type HomeRaw, type PlanReadiness } from "../lib/dashboard-shared";
 import type { PlanCode } from "../lib/plan-shared";
 import { readReviewAsk, reviewMoment, shouldAskForReview, type ReviewMoment } from "../lib/review-ask-shared";
 
@@ -77,4 +77,22 @@ export async function reviewAskDue(shop: string, now: Date = new Date()): Promis
   ]);
   const moment = reviewMoment({ supplierConfirmations, lastStoreErrorPct: accuracy?.storeErrorPct ?? null, clearances });
   return shouldAskForReview({ installedAt: row.installedAt, now, asked, moment }) ? moment : null;
+}
+
+/**
+ * Is the order plan ready (Home's own state: syncing / not enough sales / nothing tracked)?
+ * Order now, Next 90 days, the Monday email and Sidekick ask this before they say anything about
+ * what to order. The plan code doesn't change the state, so any plan will do.
+ */
+export async function getPlanReadiness(shop: string, now: Date = new Date()): Promise<PlanReadiness> {
+  return planReadiness(buildHome(await readHomeRaw(shop), "free", now));
+}
+
+/** getPlanReadiness for the order-plan screens: a failed read never blocks the page (fails open). */
+export async function readiness(shop: string, now: Date = new Date()): Promise<PlanReadiness> {
+  try {
+    return await getPlanReadiness(shop, now);
+  } catch {
+    return { ready: true };
+  }
 }

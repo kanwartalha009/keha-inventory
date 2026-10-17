@@ -168,6 +168,38 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null })).toContain("No orders needed in the next 90 days.");
   });
 
+  it("ready but some products can't be planned: the count line next to Nothing to order (never 'no orders needed' alone)", () => {
+    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null, cantPlan: { noData: 2, dead: 0 } });
+    expect(html).toContain("No orders needed in the next 90 days.");
+    expect(html).toContain("2 products can&#x27;t be planned yet — not enough sales history.");
+    const withLines = render("/app/reorder", "reorder", Reorder, { ...reorderData(), cantPlan: { noData: 1, dead: 0 } });
+    expect(withLines).toContain("1 product can&#x27;t be planned yet — not enough sales history.");
+  });
+
+  it("not ready (2026-10-17 click-through: too little sales, 2 variants out): says why and when, never Nothing to order", () => {
+    const html = render("/app/reorder", "reorder", Reorder, {
+      ...reorderData(),
+      groups: [],
+      next: null,
+      cantPlan: { noData: 2, dead: 0 },
+      readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" },
+    });
+    expect(html).toContain("Your order plan isn&#x27;t ready yet");
+    expect(html).toContain("Your first order plan needs 14 days of sales — expected on Oct 31, 2026.");
+    expect(html).not.toContain("Nothing to order today");
+    expect(html).not.toContain("No orders needed");
+    const syncing = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], readiness: { ready: false, state: "syncing", percent: 43 } });
+    expect(syncing).toContain("Still reading your store: 43%. Your first order plan appears once your products, stock and sales are read.");
+    // Lines that exist anyway (a Season plan link) stay, under a banner that says the plan isn't ready.
+    const lines = render("/app/reorder", "reorder", Reorder, { ...reorderData(), readiness: { ready: false, state: "noSales", readyOn: null } });
+    expect(lines).toMatch(/<s-banner tone="info" heading="Your order plan isn&#x27;t ready yet"><s-text>Your first order plan needs 14 days of sales.<\/s-text>/);
+    expect(lines).toContain("Create order");
+    // Free: the same, instead of "No orders needed".
+    const free = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview: [], readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } });
+    expect(free).toContain("Your first order plan needs 14 days of sales — expected on Oct 31, 2026.");
+    expect(free).not.toContain("No orders needed");
+  });
+
   it("?supplier= shows that supplier only, with the way back", () => {
     const d = reorderData();
     const only = d.groups.find((g) => g.kind === "supplier")!;
