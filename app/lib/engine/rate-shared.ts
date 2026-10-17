@@ -3,9 +3,12 @@
  *
  * Rules:
  *  - Only days WITH data count. A missing day is never treated as a 0-sale day.
- *  - A day is "in stock" when it has data and outOfStock is false.
- *  - `sold` is summed over in-stock days only: sales on a sell-out day are
- *    partial, so a stock-out window must not lower the rate.
+ *  - A day is SOLD OUT only when the caller flagged it out of stock (ending units ≤ 0) AND
+ *    it sold nothing (`soldOutDay`, audit 2026-10-17, H1). A day that ended at ≤ 0 but still
+ *    sold (backorders, "continue selling when out of stock", the day the last units went) is
+ *    an in-stock day: its sales are real demand. Every other day with data is "in stock".
+ *  - `sold` is summed over in-stock days only, so a real sold-out spell (no sales) does not
+ *    lower the rate.
  *  - Rows dated today or later are ignored (today is partial, §6.2).
  *  - A row whose `sold` is not a finite number is treated as missing.
  */
@@ -15,6 +18,15 @@ import {
   type DailyRow,
   type EngineSettings,
 } from "./types-shared";
+
+/**
+ * A sold-out day (H1): out of stock AND nothing sold. Out-of-stock days that still sold
+ * (backorders / continue selling) count as in stock everywhere: the rate, σ, the in-stock day
+ * count, "sales lost to sell-outs" and Dead.
+ */
+export function soldOutDay(row: Pick<DailyRow, "outOfStock" | "sold">): boolean {
+  return row.outOfStock && !(row.sold > 0);
+}
 
 /** Rows by day index, before `today` only. Throws on a duplicate day. */
 export type SeriesIndex = Map<number, DailyRow>;
@@ -37,7 +49,7 @@ export interface WindowStats {
   /** Days in the window that have a row. */
   dataDays: number;
   inStockDays: number;
-  /** Days with a row and outOfStock true. */
+  /** Sold-out days with data (soldOutDay). */
   outOfStockDays: number;
   /** Σ sold over in-stock days. */
   soldInStock: number;
@@ -51,7 +63,7 @@ export function windowStats(index: SeriesIndex, today: DayKey, days: number): Wi
     const row = index.get(i);
     if (!row) continue;
     s.dataDays++;
-    if (row.outOfStock) {
+    if (soldOutDay(row)) {
       s.outOfStockDays++;
     } else {
       s.inStockDays++;
@@ -123,15 +135,16 @@ export function salesRate(
 }
 
 /**
- * σ_daily: POPULATION standard deviation of daily `sold` on in-stock days in
- * the last `days` days. Null when there is no in-stock day.
+ * σ_daily: POPULATION standard deviation of daily demand on in-stock days in the last `days`
+ * days. Days with negative net sales (returns larger than sales) are left out: a return is
+ * not negative demand. Null when there is no such day.
  */
 export function sigmaDaily(index: SeriesIndex, today: DayKey, days: number): number | null {
   const t = dayIndex(today);
   const xs: number[] = [];
   for (let i = t - days; i < t; i++) {
     const row = index.get(i);
-    if (row && !row.outOfStock) xs.push(row.sold);
+    if (row && !soldOutDay(row) && row.sold >= 0) xs.push(row.sold);
   }
   if (xs.length === 0) return null;
   const mean = xs.reduce((a, b) => a + b, 0) / xs.length;

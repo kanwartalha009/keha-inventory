@@ -15,8 +15,10 @@
  *   sales: the SalesDaily LOCATION view (channel "all") for locationKey "online" (sales with
  *          no POS location) plus the pool location ids — never the channel view, which
  *          includes POS stores outside the pool;
- *   stock: Σ StockDaily over the pool; a day is out of stock when the pooled ending units
- *          are ≤ 0 OR every pooled location that reported that day reported out of stock;
+ *   stock: Σ StockDaily over the pool; a day is SOLD OUT when the pooled ending units are ≤ 0
+ *          OR every pooled location that reported that day reported out of stock — AND
+ *          nothing sold that day (a day that still sold is a backorder / continue-selling day:
+ *          in stock, audit H1);
  *   data:  a day counts only when the variant has a pool StockDaily row that day; sales on a
  *          day without one are MISSING data, never "in stock";
  *   onHand / incoming: Σ StockNow over the pool.
@@ -88,6 +90,9 @@ export function buildSeries(poolSales: SalesDay[], stock: PooledStockDay[], pric
     const r = byVariant.get(s.variantId)?.get(s.day);
     if (r) r.sold += s.sold; // a sale on a day without pool stock data stays missing
   }
+  // H1 (audit 2026-10-17): a day that ended at ≤ 0 units but still sold (backorders, continue
+  // selling) is NOT a sold-out day — its sales are real demand (engine rate-shared soldOutDay).
+  for (const days of byVariant.values()) for (const r of days.values()) if (r.outOfStock && r.sold > 0) r.outOfStock = false;
   const price = new Map<string, { sold: number; gross: number }>();
   for (const s of priceSales) {
     const k = `${s.variantId}|${s.day}`;

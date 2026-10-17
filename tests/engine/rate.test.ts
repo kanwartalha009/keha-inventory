@@ -9,6 +9,7 @@ import {
   lastSaleDay,
   salesRate,
   sigmaDaily,
+  soldOutDay,
 } from "../../app/lib/engine/rate-shared";
 import type { DailyRow } from "../../app/lib/engine/types-shared";
 import { TODAY, ago, buildSeries } from "./fixtures";
@@ -41,11 +42,11 @@ describe("salesRate", () => {
 
   it("a stock-out window does not lower the rate", () => {
     const base = rateOf(buildSeries({ days: 90, sold: 2 }));
-    // Days 1–20 sold out: 0 sales, and a partial sale on the sell-out day.
+    // Days 1–20 sold out: no sales at all.
     const withOut = rateOf(
       buildSeries({
         days: 90,
-        sold: (k) => (k <= 20 ? (k === 20 ? 1 : 0) : 2),
+        sold: (k) => (k <= 20 ? 0 : 2),
         oos: (k) => k <= 20,
       }),
     );
@@ -54,9 +55,27 @@ describe("salesRate", () => {
     expect(withOut.inStockDays).toBe(70);
   });
 
-  it("sales on out-of-stock days are not summed", () => {
-    const r = rateOf(buildSeries({ days: 90, sold: (k) => (k === 5 ? 50 : 2), oos: (k) => k === 5 }));
-    expect(r.rate).toBeCloseTo(2, 12);
+  it("H1: an out-of-stock day that still sold (backorders) is an in-stock day", () => {
+    // Audit 2026-10-17: a continue-selling store ended 30 of the last 90 days at ≤ 0 units and
+    // still sold 2 a day on them. Old rule: 30 sold-out days, their sales thrown away.
+    const r = rateOf(buildSeries({ days: 90, sold: 2, endStock: (k) => (k <= 30 ? -5 : 10), oos: (k) => k <= 30 }));
+    expect(r.outOfStockDays).toBe(0);
+    expect(r.inStockDays).toBe(90);
+    expect(r.rate).toBe(2);
+    // A big backorder day is real demand and counts.
+    const spike = rateOf(buildSeries({ days: 90, sold: (k) => (k === 5 ? 50 : 2), oos: (k) => k === 5 }));
+    expect(spike.windows[0]!.soldInStock).toBe(27 * 2 + 50);
+  });
+
+  it("H1: only out of stock AND nothing sold is a sold-out day", () => {
+    expect(soldOutDay({ outOfStock: true, sold: 0 })).toBe(true);
+    expect(soldOutDay({ outOfStock: true, sold: -1 })).toBe(true);
+    expect(soldOutDay({ outOfStock: true, sold: 1 })).toBe(false);
+    expect(soldOutDay({ outOfStock: false, sold: 0 })).toBe(false);
+    // A top seller that is "out" most days but keeps selling still gets a forecast (≥ 14 in-stock days).
+    const r = rateOf(buildSeries({ days: 90, sold: 3, oos: (k) => k % 10 !== 0 }));
+    expect(r.enoughData).toBe(true);
+    expect(r.rate).toBe(3);
   });
 
   it("missing days are not zeros", () => {
@@ -143,13 +162,17 @@ describe("sigmaDaily", () => {
     const idx = indexSeries(
       buildSeries({
         days: 90,
-        sold: (k) => (k % 2 ? 1 : 3),
+        sold: (k) => (k === 2 || k === 4 ? 0 : k % 2 ? 1 : 3),
         oos: (k) => k === 2 || k === 4,
         missing: (k) => k === 1 || k === 3,
       }),
       TODAY,
     );
-    // Removing two 1s and two 3s keeps the mix balanced.
+    // Removing two 1s (missing) and two sold-out days (would have been 3s) keeps the mix balanced.
+    expect(sigmaDaily(idx, TODAY, 90)).toBeCloseTo(1, 12);
+  });
+  it("leaves out negative (return-heavy) days: a return is not negative demand", () => {
+    const idx = indexSeries(buildSeries({ days: 90, sold: (k) => (k === 7 || k === 8 ? -40 : k % 2 ? 1 : 3) }), TODAY);
     expect(sigmaDaily(idx, TODAY, 90)).toBeCloseTo(1, 12);
   });
   it("is 0 for constant sales and null with no in-stock day", () => {

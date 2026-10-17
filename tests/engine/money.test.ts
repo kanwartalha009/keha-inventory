@@ -115,6 +115,20 @@ describe("salesLostToSellOuts", () => {
     });
   });
 
+  it("H1: backorder days (out of stock but still selling) are never lost sales", () => {
+    // 60 days at ≤ 0 units while 3 a day kept selling (continue selling): nothing was lost.
+    const r = computeVariant(
+      variantInput({ series: buildSeries({ days: 90, sold: 3, endStock: (k) => (k <= 60 ? -10 : 5), oos: (k) => k <= 60 }), price: 20 }),
+    )!;
+    expect(r.outOfStockDays).toBe(0);
+    expect(salesLostToSellOuts([r], ctx).amount).toBe(0);
+    // A real sell-out (no sales) still counts: 10 days × 3 a day × 20.
+    const out = computeVariant(
+      variantInput({ series: buildSeries({ days: 90, sold: (k) => (k <= 10 ? 0 : 3), oos: (k) => k <= 10 }), price: 20 }),
+    )!;
+    expect(salesLostToSellOuts([out], ctx).amount).toBe(600);
+  });
+
   it("is 0 when known-rate variants never sold out", () => {
     expect(salesLostToSellOuts([mv({ outOfStockDays: 0 })], ctx).amount).toBe(0);
   });

@@ -15,7 +15,10 @@ export interface DailyRow {
   sold: number;
   /** Ending units on hand. Not used by the rate maths; kept for the caller. */
   endStock: number;
-  /** True when the scope was out of stock that day. */
+  /**
+   * True when the scope ended the day out of stock (ending units ≤ 0). Only a day that is
+   * out of stock AND sold nothing is a sold-out day (rate-shared soldOutDay).
+   */
   outOfStock: boolean;
   returned?: number;
   /** Gross sales ÷ units for that day. */

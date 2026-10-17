@@ -70,6 +70,20 @@ describe("buildSeries", () => {
     expect(s[2].outOfStock).toBe(true);
   });
 
+  it("H1: a day that ended at ≤ 0 units but still sold (backorders) is not a sold-out day", () => {
+    const rows = buildSeries(
+      [{ variantId: "b", day: "2026-10-03", sold: 4, gross: 0 }],
+      [
+        { variantId: "b", day: "2026-10-03", endUnits: -4, reported: 1, outReported: 1 }, // oversold, still selling
+        { variantId: "b", day: "2026-10-04", endUnits: -4, reported: 1, outReported: 1 }, // out, nothing sold
+      ],
+    ).get("b")!;
+    expect(rows.map((r) => [r.day, r.outOfStock])).toEqual([
+      ["2026-10-03", false],
+      ["2026-10-04", true],
+    ]);
+  });
+
   it("a variant with sales but no pool stock rows has no series at all", () => {
     expect(buildSeries([{ variantId: "z", day: "2026-10-02", sold: 1, gross: 0 }], []).get("z")).toBeUndefined();
   });
