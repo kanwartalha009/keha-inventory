@@ -32,7 +32,7 @@ import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../li
 import { loadOrderPlan } from "../models/order-plan.server";
 import { CantPlan, CashBreakdown, CashStrip, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
-import { cashTotals, ordersDue } from "../lib/engine/forward-plan-shared";
+import { cashTotals, dueNote, ordersDue } from "../lib/engine/forward-plan-shared";
 import {
   lockTeaser,
   orderLink,
@@ -342,7 +342,7 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
                     </s-table-cell>
                     <s-table-cell>
                       {/* The supplier's order-by date, as Order now, Sidekick and the Monday email show it (M2). */}
-                      <OrderByCell {...ordersDue(s.events)} />
+                      <OrderByCell {...ordersDue(s.events)} note={dueNote(s.events)} />
                     </s-table-cell>
                     <s-table-cell>
                       <span className="keha-nowrap">

@@ -22,7 +22,7 @@ import type { MoneyCardKey } from "./money-shared";
 import type { PlanNotReady } from "./dashboard-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
-import { PLAN_WEEKS, byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd } from "./engine/forward-plan-shared";
+import { PLAN_WEEKS, byWeek, bySupplier, cashTotals, dueDay, dueNote, ordersDue, planEnd, type DueNote } from "./engine/forward-plan-shared";
 import { cashWeeks } from "./cash-shared";
 import {
   orderLink,
@@ -341,7 +341,16 @@ export function daysLeftMeta(daysLeft: number | null | undefined, neverRunsOut: 
 
 /** order_by_label of an overdue order with no date (already out, the day it ran out unknown — M3). */
 const OVERDUE_NO_DATE = "overdue — already out of stock, the day it ran out isn't known";
-const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey) => (day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null);
+/**
+ * A1: long overdue (the date would be more than lead time + cycle back) — the day it sold out, or
+ * will; off season — the next order is the season's.
+ */
+const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey, note?: DueNote | null) => {
+  if (!day && overdue && note?.soldOutSince) return `overdue — sold out since ${dayLabel(note.soldOutSince, today)}`;
+  if (!day && overdue && note?.runsOut) return `overdue — runs out ${dayLabel(note.runsOut, today)}`;
+  if (day && !overdue && note?.nextSeason) return `next season: order by ${dayLabel(day, today)}`;
+  return day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null;
+};
 
 /**
  * What to order and from whom in the window, grouped by supplier (vendor when no supplier is
@@ -375,7 +384,7 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
     return link(groupUri(s, g.supplierKey), name(g.supplierKey), MIME.supplierOrder, {
       grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
       order_by: first,
-      order_by_label: dueLabel(first, g.overdue, data.today),
+      order_by_label: dueLabel(first, g.overdue, data.today, dueNote(g.events)),
       overdue: g.overdue || undefined,
       orders: g.lines,
       products: g.products,
@@ -447,7 +456,7 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
       link(r.variantId, displayName(r.productTitle || "—", r.variantTitle), MIME.variant, {
         ...daysLeftMeta(r.daysLeft, r.neverRunsOut),
         order_by: r.orderBy,
-        order_by_label: dueLabel(r.orderBy, r.overdue, data.today),
+        order_by_label: dueLabel(r.orderBy, r.overdue, data.today, r.dueNote),
         overdue: r.overdue || undefined,
         suggested_order_qty: r.qty,
         sku: data.variants[r.variantId]?.sku ?? undefined,

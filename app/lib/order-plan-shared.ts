@@ -12,9 +12,12 @@ import {
   byWeek,
   cashTotals,
   dueDay,
+  dueNote,
   dueState,
   dueWithin,
+  type DueNote,
   planEnd,
+  type BelowMinimum,
   type CashTotals,
   type OrderWhy,
   type PlanBatch,
@@ -112,6 +115,8 @@ export type OrderPlanData = {
   committed?: CommittedPayment[];
   /** Monthly budget for stock (Settings → Defaults); null / absent = none. */
   budget?: number | null;
+  /** A2: styles held back below their supplier's minimum per style (forward-plan BelowMinimum). */
+  belowMinimum?: (BelowMinimum & { productTitle: string })[];
 };
 
 export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UTC"): OrderPlanData => ({
@@ -287,6 +292,8 @@ export type PreviewRow = {
   orderBy: DayKey | null;
   overdue: boolean;
   qty: number;
+  /** A1: the season's first order, or why an overdue order has no date. */
+  dueNote?: DueNote | null;
 };
 
 /**
@@ -312,6 +319,7 @@ export function previewRows(data: Pick<OrderPlanData, "events" | "variants">, li
         orderBy: when,
         overdue: e.overdue,
         qty: e.qty,
+        dueNote: dueNote([e]),
       },
       value: v?.valuePerDay ?? -1,
     };
@@ -396,10 +404,17 @@ export function shortDay(day: DayKey, locale: string): string {
  * A line's real deadline: "Due today", "Due 27 Oct", "Overdue since 12 Oct"; "Overdue" when it is
  * late with no date (already out, run-out day unknown — M3); "—" unknown.
  */
-export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string, overdue = false): string {
+export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string, overdue = false, note?: DueNote | null): string {
   const state = dueState(deadline, today, overdue);
   if (state === null) return "—";
-  if (!deadline) return t("Overdue");
+  if (!deadline) {
+    // A1: long overdue — the day it sold out, or will, instead of a date months back.
+    if (note?.soldOutSince) return fill(t("Overdue · sold out since {date}"), { date: shortDay(note.soldOutSince, locale) });
+    if (note?.runsOut) return fill(t("Overdue · runs out {date}"), { date: shortDay(note.runsOut, locale) });
+    return t("Overdue");
+  }
+  // A1: off season now — the next order is the season's.
+  if (note?.nextSeason && state !== "overdue") return fill(t("Next season: order by {date}"), { date: shortDay(deadline, locale) });
   if (state === "overdue") return fill(t("Overdue since {date}"), { date: shortDay(deadline, locale) });
   if (state === "today") return t("Due today");
   return fill(t("Due {date}"), { date: shortDay(deadline, locale) });

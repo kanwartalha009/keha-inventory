@@ -71,7 +71,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Beta");
     expect(html).toContain("14 days (supplier)");
     expect(html).toContain("14 days (store default)");
-    expect(html).toContain("Sep 29, 2026"); // the group's earliest order-by date (overdue)
+    expect(html).toContain("Oct 2, 2026"); // the group's earliest order-by date (overdue)
     expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 150 units.");
     expect(html).toContain("The products from your action list are highlighted.");
     expect(html).toContain("From your action list");
@@ -91,9 +91,19 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect((html.match(/format="numeric"/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
+  it("A2: a slow style held back below the supplier's minimum is named, with the builder to add it by hand", () => {
+    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), belowMinimum: [{ supplierKey: "supplier:s1", supplier: "Acme Textiles", productTitle: "Lido swimsuit", units: 12, styleMin: 240 }] });
+    expect(html).toContain("Below the supplier&#x27;s minimum — wait for the next season or add to a larger order");
+    expect(html).toContain("Lido swimsuit: needs 12 of a minimum of 240 per style");
+    expect(html).toContain('<s-link href="/app/reorder/build?supplier=supplier:s1">Build supplier order</s-link>');
+    expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Below the supplier");
+  });
+
   it("each line shows its real deadline, never 'today' unless it is (audit 2026-10-17)", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData());
-    expect(html).toContain("Overdue since Sep 29");
+    // A1: never a date more than one lead time back — "Overdue" with the day it runs out instead.
+    expect(html).toContain("Overdue · runs out Oct 18");
+    expect(html).toContain("Overdue since Oct 2");
     expect(html).toContain("Due Oct 18");
     expect(html).not.toContain("Due today");
   });

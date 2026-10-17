@@ -23,7 +23,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { facts } from "../services/facts-store.server";
-import { variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
+import { dueNote, variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
@@ -168,7 +168,7 @@ export function withPlan(row: ProductRow, view: PlanView | null, noReorder: bool
   if (noReorder) return { ...row, noReorder: true, orderQty: null, orderBy: null, overdue: false };
   if (!view) return { ...row, noReorder: false };
   const l = view.line.get(row.id);
-  if (l) return { ...row, noReorder: false, orderQty: l.qty, orderBy: l.orderBy, overdue: l.overdue };
+  if (l) return { ...row, noReorder: false, orderQty: l.qty, orderBy: l.orderBy, overdue: l.overdue, dueNote: dueNote(l.events) };
   const st = view.state.get(row.id);
   return { ...row, noReorder: false, orderQty: null, orderBy: st ? st.deadline : row.orderBy, overdue: false };
 }

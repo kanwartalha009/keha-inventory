@@ -129,7 +129,8 @@ describe("buildOrderNow (Order now = the plan's orders due in the next 7 days)",
       }
     const acme = groups[0]!;
     expect(acme.overdue).toBe(true);
-    expect(acme.orderBy).toBe("2026-09-29");
+    // The last past day an order would still have arrived with its safety stock (A1).
+    expect(acme.orderBy).toBe("2026-10-02");
     // The sock is due on 24 Oct (day 8): not a line, but it can join (before the next order, 14 days).
     expect(acme.lines.some((l) => l.productTitle === "Wool sock")).toBe(false);
     expect(acme.joinable.map((l) => l.productTitle)).toEqual(["Wool sock"]);

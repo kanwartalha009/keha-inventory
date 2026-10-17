@@ -6,6 +6,7 @@
 import { addDays, type DayKey } from "./engine/dates-shared";
 import { safetyStock } from "./engine/order-shared";
 import { VARIANT_STATUSES, type VariantStatus } from "./engine/types-shared";
+import type { DueNote } from "./engine/forward-plan-shared";
 
 type T = (s: string) => string;
 
@@ -157,6 +158,8 @@ export type ProductRow = {
   noReorder?: boolean;
   /** Its order-by date has passed (the plan orders it today). */
   overdue?: boolean;
+  /** A1: the season's first order, or why an overdue order has no date (forward-plan dueNote). */
+  dueNote?: DueNote | null;
   productId?: string;
 };
 

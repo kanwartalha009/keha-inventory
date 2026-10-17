@@ -31,6 +31,8 @@ import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, lineRemaining, onOrderByVariant, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
 import { buildOrderNow, type ReorderGroup } from "../lib/reorder-shared";
 import { thisWeek } from "../lib/order-plan-shared";
+import { addDays } from "../lib/engine/dates-shared";
+import { ORDER_NOW_DAYS } from "../lib/engine/forward-plan-shared";
 import { mergeDraftLines } from "../lib/supplier-order-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
@@ -311,6 +313,8 @@ export type ReorderData = {
   notReordered?: number;
   /** Products the plan can't plan (too little history, out with no sales pace; dead stock). */
   cantPlan?: { noData: number; dead: number };
+  /** A2: styles due in the next 7 days held back below the supplier's minimum per style. */
+  belowMinimum?: { supplierKey: string; supplier: string; productTitle: string; units: number; styleMin: number }[];
 };
 
 /**
@@ -367,6 +371,9 @@ export async function loadReorder(
     staleDrafts: plan.staleDrafts ?? 0,
     notReordered: plan.notReordered ?? 0,
     cantPlan: plan.cantPlan,
+    belowMinimum: (plan.belowMinimum ?? [])
+      .filter((b) => b.orderBy <= addDays(plan.today, ORDER_NOW_DAYS - 1))
+      .map((b) => ({ supplierKey: b.supplierKey, supplier: plan.suppliers[b.supplierKey]?.name ?? "", productTitle: b.productTitle, units: b.units, styleMin: b.styleMin })),
     next:
       week.next && nextKey
         ? { supplierKey: nextKey, name: plan.suppliers[nextKey]?.name ?? "", kind: plan.suppliers[nextKey]?.kind ?? "vendor", orderBy: week.next.orderBy }

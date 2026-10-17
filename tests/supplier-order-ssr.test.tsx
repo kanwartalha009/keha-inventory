@@ -73,7 +73,7 @@ describe("Supplier order builder (Growth)", () => {
     // The supplier's cycle, where it comes from, and the way to change it.
     expect(html).toContain("30 days (supplier)");
     expect(html).toContain('href="/app/settings/suppliers?edit=s1"');
-    expect(html).toContain("Overdue since Sep 29");
+    expect(html).toContain("Overdue · runs out Oct 18");
     expect(html).toContain("Due Oct 24");
     expect(html).toContain("Why this quantity");
     // Several orders of one product in the cycle are added together, and said so.

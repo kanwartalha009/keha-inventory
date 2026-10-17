@@ -81,7 +81,11 @@ describe("planVariant — order-by date", () => {
         for (const [lead, safety] of [[0, 0], [7, 3.2], [14, 10], [45, 22.5]] as const) {
           const p = planVariant(steady({ onHand, rate, leadTimeDays: lead, safety, days: 0 }));
           const left = onHand <= 0 ? 0 : onHand / rate;
-          expect(p.deadline, `${onHand}/${rate}/${lead}/${safety}`).toBe(orderByDate(TODAY, left, lead, safety / rate));
+          const nightly = orderByDate(TODAY, left, lead, safety / rate)!;
+          // A1: a late order's date is never more than one lead time back — beyond it, no date
+          // (Overdue · runs out {date}).
+          if (nightly < addDays(TODAY, -lead)) expect(p.deadline, `${onHand}/${rate}/${lead}/${safety}`).toBeNull();
+          else expect(p.deadline, `${onHand}/${rate}/${lead}/${safety}`).toBe(nightly);
         }
   });
 
@@ -100,15 +104,19 @@ describe("planVariant — order-by date", () => {
     expect(late.needNow).toBe(0);
   });
 
-  it("an overdue order: dated in the past, ordered today", () => {
-    const p = planVariant(steady({ onHand: 5 }));
-    // ⌊(5 − 28 − 10) ÷ 2⌋ = −17, as the nightly formula.
-    expect(p.deadline).toBe(addDays(TODAY, -17));
-    expect(p.deadline).toBe(orderByDate(TODAY, 2.5, 14, 5));
-    // 56 + 10 − 5 = 61, minus the 23 sales missed before it lands (lost: it doesn't sell when out).
-    expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, qty: 38, deadline: addDays(TODAY, -17) });
+  it("an overdue order: dated in the past (at most one lead time back), ordered today", () => {
+    // 30 on hand: an order placed 4 days ago would have arrived on day 10 with 30 − 20 = 10 = safety.
+    const p = planVariant(steady({ onHand: 30 }));
+    expect(p.deadline).toBe(addDays(TODAY, -4));
+    expect(p.deadline).toBe(orderByDate(TODAY, 15, 14, 5));
+    expect(p.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, deadline: addDays(TODAY, -4) });
+    // 5 on hand: the nightly formula says 17 days ago — more than the 14-day lead time: no date,
+    // "Overdue · runs out {date}" (A1). 56 + 10 − 5 = 61, minus the 23 sales missed before it lands.
+    const late = planVariant(steady({ onHand: 5 }));
+    expect(late).toMatchObject({ deadline: null, overdue: true, context: { runsOut: addDays(TODAY, 2) } });
+    expect(late.orders[0]).toMatchObject({ day: 0, orderBy: TODAY, overdue: true, qty: 38, deadline: null, context: { runsOut: addDays(TODAY, 2) } });
     // Sells when out of stock: the 23 are owed, so they are ordered back.
-    expect(planVariant(steady({ onHand: 5, sellsWhenOut: true })).orders[0]).toMatchObject({ qty: 61, deadline: addDays(TODAY, -17) });
+    expect(planVariant(steady({ onHand: 5, sellsWhenOut: true })).orders[0]).toMatchObject({ qty: 61, deadline: null });
   });
 
   it("M3: already out or oversold — never a date made up by running demand backwards", () => {
@@ -124,9 +132,11 @@ describe("planVariant — order-by date", () => {
     expect(known.orders[0]).toMatchObject({ overdue: true, deadline: addDays(TODAY, -6) });
     // 0 on hand: the same.
     expect(planVariant(steady({ onHand: 0 }))).toMatchObject({ deadline: null, overdue: true });
-    // Still in stock but late: bounded by lead time + the stock's days, as the nightly formula.
-    const late = planVariant(steady({ onHand: 1 }));
-    expect(late.deadline! >= addDays(TODAY, -(14 + 5))).toBe(true);
+    // Still in stock but very late: no date, the day it runs out as context (A1).
+    expect(planVariant(steady({ onHand: 1 }))).toMatchObject({ deadline: null, overdue: true, context: { runsOut: TODAY } });
+    // Sold out longer than one lead time ago: no date, the day it sold out as context (A1).
+    const long = planVariant({ ...oversold, onHand: 0, outSince: addDays(TODAY, -40) });
+    expect(long).toMatchObject({ deadline: null, overdue: true, context: { soldOutSince: addDays(TODAY, -40) } });
     // A future run-out day or a malformed one is ignored.
     expect(planVariant({ ...oversold, outSince: addDays(TODAY, 1) }).deadline).toBeNull();
     expect(planVariant({ ...oversold, outSince: "14 Aug" }).deadline).toBeNull();

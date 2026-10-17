@@ -178,8 +178,9 @@ const { writeSimStore } = await import("../app/services/sample-data.server");
 const { computeShop } = await import("../app/services/compute.server");
 const { loadOrderPlan } = await import("../app/models/order-plan.server");
 const { thisWeek, planWeeks, supplierName } = await import("../app/lib/order-plan-shared");
-const { cashTotals, dueDay, ordersDue } = await import("../app/lib/engine/forward-plan-shared");
+const { cashTotals, dueDay, dueNote, ordersDue } = await import("../app/lib/engine/forward-plan-shared");
 const { dueText } = await import("../app/lib/order-plan-shared");
+const { addDays: addDaysTo } = await import("../app/lib/engine/dates-shared");
 const KEY = "sim-check.myshopify.com";
 const now = new Date(`${store.meta.today}T07:00:00.000Z`);
 let t = performance.now();
@@ -206,14 +207,29 @@ line("Order this week", `${week.suppliers.length} suppliers, ${fmt(week.totals.u
 for (const s of week.suppliers) {
   const due = ordersDue(s.events);
   // The app's own label rule (forward-plan dueState): "Due today" is never overdue.
-  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue)}`);
+  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue, dueNote(s.events))}`);
 }
 const total = cashTotals(plan.events);
 line("Next 13 weeks", `${fmt(total.lines)} orders, ${fmt(total.units)} units, ${plan.currency} ${fmt(total.cash ?? 0)} (${total.missingCost} lines without a cost)`);
 line("Weekly cash", planWeeks(plan).map((w) => fmt(w.cash ?? 0)).join(" · "));
 line("Can't plan yet / dead / don't reorder", `${plan.cantPlan.noData} / ${plan.cantPlan.dead} / ${plan.notReordered ?? 0} products`);
+// Sanity (engine work 2026-10-17): no date months back for a product still selling, no tiny need
+// raised to a full minimum per style, seasonal products waiting for their season.
+const firstOf = new Map<string, (typeof plan.events)[number]>();
+for (const e of plan.events) if (!firstOf.has(e.variantId) || e.orderBy < firstOf.get(e.variantId)!.orderBy) firstOf.set(e.variantId, e);
+const metricOf = new Map((db.tables.variantMetric ?? []).filter((m) => m.scope === "online").map((m) => [m.variantId as string, m]));
+let late = 0;
+for (const e of firstOf.values()) {
+  const i = (metricOf.get(e.variantId)?.inputs ?? {}) as { leadTimeDays?: number };
+  const due = dueDay(e);
+  if (e.overdue && due && due < addDaysTo(plan.today, -(i.leadTimeDays ?? 0))) late++;
+}
+const nextSeason = [...firstOf.values()].filter((e) => e.nextSeason);
+line("Next season orders", `${nextSeason.length} products, first by ${nextSeason.map((e) => e.orderBy).sort()[0] ?? "—"}`);
+line("Overdue since more than a lead time", `${late} (must be 0)`);
+line("Held back below a style minimum", `${(plan.belowMinimum ?? []).length} styles${(plan.belowMinimum ?? []).slice(0, 3).map((b) => ` · ${b.productTitle} ${b.units}/${b.styleMin}`).join("")}`);
 head("Sample plan lines");
 for (const e of plan.events.slice(0, 8)) {
   const v = plan.variants[e.variantId];
-  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units, ${dueText(dueDay(e), plan.today, (x) => x, "en-GB", e.overdue)}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
+  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units, ${dueText(dueDay(e), plan.today, (x) => x, "en-GB", e.overdue, dueNote([e]))}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
 }

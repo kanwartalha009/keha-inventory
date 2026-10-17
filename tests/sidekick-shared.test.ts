@@ -99,10 +99,11 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     expect(r).toMatchObject({ within_days: 7, order_by_until: "2026-10-22", currency: "EUR", url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
     expect(r.results!.map((x) => [x.uri, x.name])).toEqual([["gid://keha-inventory/Supplier/s1", "Lisbon Linen"]]);
     const meta = r.results![0]!._meta as Record<string, unknown> & { lines: Record<string, unknown>[] };
-    expect(meta).toMatchObject({ grouped_by: "supplier", order_by: "2026-09-29", overdue: true, orders: 2, products: 2, units: 66, cost: 1016 });
-    expect(meta.order_by_label).toBe("Tue 29 Sep 2026 (17 days ago)");
+    // A1: the shirt is short by more than one lead time — overdue, no date, the day it runs out.
+    expect(meta).toMatchObject({ grouped_by: "supplier", order_by: null, overdue: true, orders: 2, products: 2, units: 66, cost: 1016 });
+    expect(meta.order_by_label).toBe("overdue — runs out Sun 18 Oct 2026 (in 2 days)");
     expect(meta.lines.map((l) => [l.variant_gid, l.order_qty, l.order_by, l.overdue, l.arrives, l.days_left])).toEqual([
-      [V(1), 38, "2026-09-29", true, "2026-10-30", 2],
+      [V(1), 38, null, true, "2026-10-30", 2],
       // Ordered on its own order-by date (tomorrow), not today (audit 2026-10-17).
       [V(2), 28, "2026-10-17", undefined, "2026-10-31", 20],
     ]);
@@ -152,7 +153,7 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     const r = orderPreviewResponse(rows, plan);
     expect(r.url).toBe("app://app/reorder");
     expect(r.results!.map((x) => [x.uri, x._meta.order_by, x._meta.suggested_order_qty])).toEqual(rows.map((x) => [x.variantId, x.orderBy, x.qty]));
-    expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: "2026-09-29", overdue: true, suggested_order_qty: 38 } });
+    expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: null, order_by_label: "overdue — runs out Sun 18 Oct 2026 (in 2 days)", overdue: true, suggested_order_qty: 38 } });
     const text = JSON.stringify(r);
     for (const word of ["supplier", "cost", "cash", "calendar"]) expect(text).not.toContain(word);
     expect(orderPreviewResponse([], plan).message).toMatch(new RegExp(`^${MSG.nothingToOrder} 12 products can't be planned yet`));

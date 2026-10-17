@@ -89,7 +89,7 @@ import { refreshLeadStats } from "../models/suppliers.server";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { errorOriginDays } from "../lib/engine/error-shared";
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
-import { SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
+import { CURVE_MAX_WEEKS, SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
 import { OPEN_PO_STATUSES, casePackFor, cycleFor, poCountsAsOrdered, readPoLines, supplierFor } from "../lib/supplier-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
@@ -614,7 +614,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       seasonOf.set(v.id, season);
       // The weekly seasonal shape (only when the index was applied): the forward plan's 13 weeks and
       // the status / money projection up to the Too-much threshold (H6).
-      const curve = seasonCtx.curveFor(season, Math.ceil(Math.max(FORWARD_CURVE_DAYS + horizon, settings.tooMuchDays + 1, settings.cashStuckCoverDays) / 7));
+      // A1: the whole coming year (CURVE_MAX_WEEKS) so the forward plan sees the season's peak and
+      // off season (an order for swimwear waits for spring instead of landing in December).
+      const curve = seasonCtx.curveFor(season, CURVE_MAX_WEEKS);
       const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
       const ref = references.get(v.productId);
       const share = shareOf.get(v.id) ?? 0;
@@ -686,6 +688,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         });
         // "Don't reorder" variants get no order-by date (no order advice at all).
         r.orderBy = r.inputs.noReorder ? null : fwd.deadline;
+        // A1: off season the plan waits for the season start — not "running low" now.
+        if (fwd.nextSeason && r.status === "running_low") r.status = "healthy";
         forwardOf.set(v.id, { seasonCurve: curve, arrivals });
         chunkResults.push(r);
       }

@@ -47,7 +47,8 @@ describe("Next 13 weeks", () => {
     // Create order → Order now with that supplier's orders of the week (resolved on the server).
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     // Each line: its real deadline and "Why this quantity" from the plan's own terms.
-    expect(html).toContain("Overdue since Sep 29");
+    // A1: the shirt is short by more than one lead time — "Overdue" with the day it runs out.
+    expect(html).toContain("Overdue · runs out Oct 18");
     expect(html).toContain("Due Oct 17");
     expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − missed while sold out 23 = 38");
     // Unknown costs are counted, never 0.
@@ -212,7 +213,8 @@ describe("order-plan-shared", () => {
   it("the Free preview: next order per variant, most urgent first, at most 10", () => {
     const rows = previewRows(plan);
     expect(rows[0]).toMatchObject({ productTitle: "Linen shirt", overdue: true, qty: 38 });
-    expect(rows[0]!.orderBy! < PLAN_TODAY).toBe(true); // overdue shows its order-by date
+    // Overdue by more than one lead time: no date, the day it runs out as context (A1).
+    expect(rows[0]).toMatchObject({ orderBy: null, dueNote: { runsOut: "2026-10-18" } });
     for (let i = 1; i < rows.length; i++) expect((rows[i - 1]!.orderBy ?? "") <= (rows[i]!.orderBy ?? "")).toBe(true);
     expect(previewRows(plan, 2)).toHaveLength(2);
   });

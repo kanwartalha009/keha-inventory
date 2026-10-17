@@ -209,8 +209,18 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
     const due = dueDay(e);
     if (e.overdue) expect(due === null || due < today, `${e.variantId} overdue with date ${due}`).toBe(true);
     else expect(due !== null && due >= today, `${e.variantId} not overdue with date ${due}`).toBe(true);
+    // A1: never "Overdue since" more than one lead time back (beyond: no date, the stock-out day as context).
+    const lead = Number((inputsOf(e.variantId).leadTimeDays as number | undefined) ?? 0);
+    if (e.overdue && due) expect(due >= addDays(today, -lead), `${e.variantId} overdue since ${due} (lead ${lead})`).toBe(true);
+    if (e.overdue && !due && e.context) expect(!!(e.context.soldOutSince || e.context.runsOut)).toBe(true);
   }
   counts.events = plan.events.length;
+  // A1: in October swimwear waits for its season — its next order is the season's, never overdue.
+  const summerIds = new Set(store.variants.filter((v) => v.product.season === "summer").map((v) => v.id));
+  const seasonal = plan.events.filter((e) => e.nextSeason);
+  expect(seasonal.length).toBeGreaterThan(0);
+  expect(seasonal.every((e) => !e.overdue && summerIds.has(e.variantId))).toBe(true);
+  counts.nextSeasonOrders = seasonal.length;
 
   // ── One order-by date per variant on every screen ──
   const byVariant = eventsBy(plan.events);

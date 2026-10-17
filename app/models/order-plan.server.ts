@@ -449,6 +449,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       suppliersSetUp: supplierRows.length > 0,
       cantPlan: { noData, dead },
       batches: plan.batches,
+      belowMinimum: (plan.belowMinimum ?? []).map((b) => ({ ...b, productTitle: byId.get(b.variantIds[0]!)?.productTitle ?? "" })),
       staleDrafts,
       notReordered,
       trendMode: basics.trendMode,

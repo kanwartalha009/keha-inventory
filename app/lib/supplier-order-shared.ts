@@ -20,7 +20,7 @@
  */
 import { addDays, type DayKey } from "./engine/dates-shared";
 import { lineQuantity } from "./engine/order-shared";
-import { ORDER_NOW_DAYS, ordersDue, splitByShare, topUpToMinimum, topUpToValue, type OrderWhy, type PlanEvent } from "./engine/forward-plan-shared";
+import { ORDER_NOW_DAYS, dueNote, ordersDue, splitByShare, topUpToMinimum, topUpToValue, type DueNote, type OrderWhy, type PlanEvent } from "./engine/forward-plan-shared";
 import type { OrderPlanData, PlanSupplierInfo } from "./order-plan-shared";
 import { orderTotals, type OrderTotals } from "./reorder-shared";
 import type { PoLine } from "./supplier-shared";
@@ -41,6 +41,8 @@ export type BuilderLine = {
   /** The line's order-by date (several orders: ordersDue's — the earliest, or the one that passed). */
   orderBy: DayKey | null;
   overdue: boolean;
+  /** A1: the season's first order, or why an overdue line has no date. */
+  dueNote?: DueNote | null;
   /** The plan's quantity before top-ups (case pack and minimum per item applied). */
   base: number;
   /** Starting quantity: base + this order's top-up. */
@@ -171,6 +173,7 @@ export function buildSupplierOrder(input: BuildSupplierOrderInput): SupplierOrde
       section: events.some((e) => e.orderBy <= win.dueTo) ? "due" : "cycle",
       orderBy: due.orderBy,
       overdue: due.overdue,
+      dueNote: dueNote(events),
       base,
       suggested: base,
       topUp: 0,

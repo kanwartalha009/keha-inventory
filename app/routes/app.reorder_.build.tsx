@@ -611,7 +611,7 @@ function BuilderRow({
           </s-stack>
         </div>
       </s-table-cell>
-      <s-table-cell>{l.section === "added" ? "—" : <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} />}</s-table-cell>
+      <s-table-cell>{l.section === "added" ? "—" : <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />}</s-table-cell>
       <s-table-cell>
         <s-number-field
           label={fill(t("Quantity for {product}"), { product: name })}

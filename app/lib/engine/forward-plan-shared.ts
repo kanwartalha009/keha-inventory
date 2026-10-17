@@ -66,6 +66,22 @@ export const DEADLINE_SCAN_DAYS = 400;
 export const FORWARD_CURVE_DAYS = 91;
 /** "Order now" / "Order this week": orders due in the next 7 days (today included, overdue too). */
 export const ORDER_NOW_DAYS = 7;
+/**
+ * Off season (A1): a lead time + cycle selling less than this share of the year's best one. A
+ * product with no real season (best window < 4 × now) is never off season.
+ */
+export const OFF_SEASON_SHARE = 0.25;
+/** How far the year's best window is searched (days). */
+export const SEASON_SCAN_DAYS = 364;
+/** Bounds of the seasonal scale of safety stock (window demand ÷ today's window). */
+const SAFETY_SCALE_MIN = 0.1;
+const SAFETY_SCALE_MAX = 10;
+
+/** Context for an overdue order without a date (A1): the day it sold out, or will. */
+export interface OverdueContext {
+  soldOutSince?: DayKey;
+  runsOut?: DayKey;
+}
 
 const EPS = 1e-9;
 const S_MIN = 0.2;
@@ -211,6 +227,10 @@ export interface ForwardOrder {
   deadline: DayKey | null;
   /** The terms of the quantity; null for rows without the plan's inputs. */
   why: OrderWhy | null;
+  /** The first order after an off season: the season's ("Next season: order by {date}", A1). */
+  nextSeason?: boolean;
+  /** Overdue with no date: the day it sold out, or will (A1). */
+  context?: OverdueContext | null;
 }
 
 export interface ForwardVariantPlan {
@@ -219,8 +239,12 @@ export interface ForwardVariantPlan {
   deadline: DayKey | null;
   /** Today's stored need after open Keha orders; null when not plannable. */
   needNow: number | null;
-  /** Already late today (see VariantProjection.overdue); with deadline null: out, run-out day unknown. */
+  /** Already late today (see VariantProjection.overdue); with deadline null: out, run-out day unknown, or long past (context). */
   overdue: boolean;
+  /** Off season now: the next order is the season's (A1). */
+  nextSeason?: boolean;
+  /** Overdue with no date because it would be long past: the day it sold out, or will (A1). */
+  context?: OverdueContext | null;
   orders: ForwardOrder[];
 }
 
@@ -291,11 +315,24 @@ export class VariantProjection {
   readonly deadline: DayKey | null;
   /** Today's order is late: its stock at arrival is below safety stock. */
   readonly overdue: boolean;
+  /**
+   * Off season now (A1): the lead time + cycle from today sells less than OFF_SEASON_SHARE of the
+   * best such window of the coming year — the next order is the season's, never overdue.
+   */
+  readonly nextSeason: boolean;
+  /**
+   * Overdue with no date because the date would be long past (A1, never more than lead time +
+   * cycle back): the day it sold out (already out) or the day it will (still in stock), as context.
+   */
+  readonly context: OverdueContext | null;
   /** Sells when out of stock (input flag, or a negative on hand): the projection is not floored. */
   readonly sellsWhenOut: boolean;
   private readonly input: ForwardVariantInput;
   private readonly base: number;
   private readonly safety: number;
+  /** Window demand W(d) = demand over [d, d + H) ÷ W(0): the seasonal scale of safety and the off-season test. */
+  private readonly scale: Float64Array = new Float64Array(1);
+  private readonly off: Uint8Array = new Uint8Array(1);
   private readonly T: number;
   private readonly c: number[] = [];
   private readonly S: number[] = [];
@@ -307,6 +344,8 @@ export class VariantProjection {
   private onOrderTotal = 0;
   /** Legacy path: today's order was taken. */
   private legacyDone = false;
+  /** An order was placed (the first one after an off season is the season's). */
+  private ordered = false;
 
   constructor(input: ForwardVariantInput) {
     this.input = input;
@@ -328,9 +367,11 @@ export class VariantProjection {
     this.projected = this.base > 0 && safety !== null;
     this.sellsWhenOut = input.sellsWhenOut === true || (finite(input.onHand) && input.onHand < 0);
     this.T = 0;
+    this.context = null;
     if (!this.projected) {
       this.deadline = null;
       this.overdue = false;
+      this.nextSeason = false;
       return;
     }
     const L = this.L;
@@ -360,21 +401,52 @@ export class VariantProjection {
     this.project(0);
     this.onOrderTotal = this.arr.reduce((a, b) => a + b, 0);
 
+    // A1: the season over the coming year — window demand W(d) over [d, d + H) — scales safety stock
+    // (an order for the peak protects the peak) and finds the off season (W(d) < OFF_SEASON_SHARE ×
+    // the best window): an order whose whole lead time + cycle falls there isn't needed.
+    const span = Math.max(1, Math.min(SEASON_SCAN_DAYS, T - this.H));
+    const W0 = this.P[Math.min(T, this.H)]!;
+    let peak = 0;
+    for (let d = 0; d <= span; d++) peak = Math.max(peak, this.P[Math.min(T, d + this.H)]! - this.P[d]!);
+    this.scale = new Float64Array(T + 1);
+    this.off = new Uint8Array(T + 1);
+    for (let d = 0; d <= T; d++) {
+      // Past the projection's end a window would be cut short: the last full one stands for it.
+      const a = Math.min(d, Math.max(0, T - this.H));
+      const w = this.P[a + this.H]! - this.P[a]!;
+      this.scale[d] = W0 > 0 ? clamp(w / W0, SAFETY_SCALE_MIN, SAFETY_SCALE_MAX) : 1;
+      this.off[d] = peak > 0 && w < OFF_SEASON_SHARE * peak - EPS ? 1 : 0;
+    }
+    this.nextSeason = this.off[0] === 1;
+
     this.overdue = !this.safeAt(0);
     if (this.overdue) {
+      // A1: the order-by date of a late order is the last past day an order would still have
+      // arrived (today or later) with its safety stock — so never more than one lead time back, and
+      // never made up from today's demand alone (a swimsuit short for spring isn't "late since
+      // August" because it sells little in January). Later than that: "Overdue" with the day it
+      // sold out (already out) or will (still in stock) as context.
+      let back: number | null = null;
+      for (let k = 1; k <= L; k++) {
+        if (this.U[L - k]! >= this.safetyAt(0) - EPS) {
+          back = k;
+          break;
+        }
+      }
       if (this.O[0]! <= EPS) {
-        // M3: already out (or oversold: a negative available is a backlog, not past sales).
-        // Running today's demand backwards would invent a date (−200 units at 0.5/day = "428 days
-        // ago"); the date is the day it ran out per sales history, else none.
+        // M3: already out (or oversold: a negative available is a backlog, not past sales): the day
+        // it ran out per sales history when that is within the lead time, else none.
         const out = input.outSince && /^\d{4}-\d{2}-\d{2}$/.test(input.outSince) && input.outSince < today ? input.outSince : null;
-        this.deadline = out;
+        const recent = out && out >= addDays(today, -L) ? out : null;
+        this.deadline = recent ?? (back !== null ? addDays(today, -back) : null);
+        if (!this.deadline && out) this.context = { soldOutSince: out };
       } else {
-        // Still in stock, below safety at arrival: the date it was, running today's demand back
-        // over at most lead time + the days of stock left above safety (bounded: stock > 0). The
-        // position at arrival is unclamped here: back then the stock was higher, nothing was missed.
-        let atArrival = input.onHand - this.P[Math.min(T, L)]!;
-        for (let i = 0; i <= Math.min(T, L); i++) atArrival += this.arr[i]!;
-        this.deadline = addDays(today, Math.min(-1, Math.floor((atArrival - this.safety) / this.c[0]! + EPS)));
+        this.deadline = back !== null ? addDays(today, -back) : null;
+        if (back === null) {
+          let d = 0;
+          while (d < T && this.U[d + 1]! > EPS) d++;
+          this.context = { runsOut: addDays(today, d) };
+        }
       }
     } else {
       let found: number | null = null;
@@ -388,7 +460,7 @@ export class VariantProjection {
         // Beyond the scan: the stored index, flat.
         const flat = this.base * (finite(input.seasonal) && input.seasonal > 0 ? input.seasonal : 1);
         const end = DEADLINE_SCAN_DAYS;
-        found = end + Math.floor((this.O[Math.min(T, end + L)]! - this.safety) / flat + EPS);
+        found = end + Math.floor((this.O[Math.min(T, end + L)]! - this.safetyAt(end)) / flat + EPS);
       }
       this.deadline = addDays(today, found);
     }
@@ -416,7 +488,15 @@ export class VariantProjection {
 
   /** An order placed on day s arrives with at least safety stock and nothing ran out just before. */
   private safeAt(s: number): boolean {
-    return this.U[Math.min(this.T, s + this.L)]! >= this.safety - EPS;
+    const i = Math.min(this.T, s);
+    // Off season (A1): the lead time + cycle from s sells next to nothing — no order is due.
+    if (this.off[i] === 1) return true;
+    return this.U[Math.min(this.T, s + this.L)]! >= this.safetyAt(s) - EPS;
+  }
+
+  /** Safety stock for an order placed on day s: today's, scaled by the season of its window (A1). */
+  safetyAt(s: number): number {
+    return this.safety * (this.scale[Math.min(this.T, Math.max(0, s))] ?? 1);
   }
 
   /** The next day d in [from, days) on which an order is due (an order-by date); null when none. */
@@ -451,7 +531,8 @@ export class VariantProjection {
       missed = Math.max(0, this.O[a]! - unclamped);
       if (missed < 1e-7) missed = 0;
     }
-    const need = demand + this.safety - onHand - onOrder - missed;
+    const safety = this.safetyAt(t);
+    const need = demand + safety - onHand - onOrder - missed;
     let sSum = 0;
     for (let i = t; i < end; i++) sSum += this.S[i]!;
     const days = end - t;
@@ -465,7 +546,7 @@ export class VariantProjection {
         rate: finite(this.input.rate) ? this.input.rate : 0,
         season: days > 0 ? sSum / days : 1,
         growth,
-        safety: this.safety,
+        safety,
         onHand,
         onOrder,
         missed,
@@ -482,6 +563,23 @@ export class VariantProjection {
         topUp: 0,
       },
     };
+  }
+
+  /** Forecast units over [t, t + H): what an order placed on day t covers. */
+  windowDemand(t: number): number {
+    if (!this.projected) return 0;
+    const a = Math.min(this.T, Math.max(0, t));
+    return this.P[Math.min(this.T, a + this.H)]! - this.P[a]!;
+  }
+
+  /** Take back `qty` units booked on day t (A2: an order not placed after all). */
+  remove(t: number, qty: number): void {
+    if (!(qty > 0) || !this.projected) return;
+    const at = Math.min(this.T, t + this.L);
+    this.arr[at] -= qty;
+    if (at === 0) this.project(0);
+    else this.project(at - 1);
+    this.onOrderTotal -= qty;
   }
 
   /** Book `qty` units ordered on day t (arriving t + lead). */
@@ -502,15 +600,20 @@ export class VariantProjection {
   order(t: number, qty: number, need: number, why: OrderWhy | null): ForwardOrder {
     const orderBy = addDays(this.today, t);
     const deadline = t === 0 ? (this.projected ? this.deadline : null) : orderBy;
+    const nextSeason = this.nextSeason && !this.ordered;
+    this.ordered = true;
+    const overdue = t === 0 && this.overdue;
     return {
       day: t,
       orderBy,
       arrives: addDays(this.today, t + this.L),
       qty,
       need,
-      overdue: t === 0 && this.overdue,
+      overdue,
       deadline,
       why,
+      ...(nextSeason ? { nextSeason: true } : {}),
+      ...(overdue && this.context ? { context: this.context } : {}),
     };
   }
 }
@@ -520,6 +623,7 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
   const sim = new VariantProjection(input);
   const orders: ForwardOrder[] = [];
   if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, overdue: false, orders };
+  const extra = { ...(sim.nextSeason ? { nextSeason: true } : {}), ...(sim.overdue && sim.context ? { context: sim.context } : {}) };
   let t = 0;
   for (let d = sim.nextOrderDay(t); d !== null; d = sim.nextOrderDay(t)) {
     const { need, why } = sim.needAt(d);
@@ -530,7 +634,7 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
     }
     t = d + 1;
   }
-  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, overdue: sim.overdue, orders };
+  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, overdue: sim.overdue, ...extra, orders };
 }
 
 // ---------------------------------------------------------------------------
@@ -720,6 +824,10 @@ export interface PlanEvent {
   landed?: number | null;
   /** When the line's money is paid (lib/cash-shared withPayments); absent = its cost on the order day. */
   payments?: { day: DayKey; amount: number; kind: "order" | "deposit" | "balance" | "landed" }[];
+  /** The first order after an off season: the season's ("Next season: order by {date}", A1). */
+  nextSeason?: boolean;
+  /** Overdue with no date: the day it sold out, or will (A1). */
+  context?: OverdueContext | null;
 }
 
 /** Last day of the calendar: the Sunday of the 13th ISO week starting with today's. */
@@ -751,6 +859,8 @@ export function eventsOf(
     overdue: o.overdue,
     deadline: o.deadline,
     why: o.why,
+    ...(o.nextSeason ? { nextSeason: true } : {}),
+    ...(o.context ? { context: o.context } : {}),
   }));
 }
 
@@ -931,9 +1041,30 @@ export function batchWindows(days: number): [number, number][] {
   return out;
 }
 
+/**
+ * A2: a style whose need in a batch is a small fraction of the supplier's minimum per style and
+ * that sells too slowly to use a full minimum within lead time + cycle — not ordered (never
+ * inflated to the minimum); shown as "Below the supplier's minimum", the merchant may add it.
+ */
+export interface BelowMinimum {
+  supplierKey: string;
+  productId: string;
+  variantIds: string[];
+  /** The first order-by day it was held back. */
+  orderBy: DayKey;
+  /** Units the plan needed (before the minimum) and the minimum per style. */
+  units: number;
+  styleMin: number;
+}
+
+/** A2: a need below this share of the minimum per style is not raised to it (slow styles). */
+export const BELOW_MIN_SHARE = 0.25;
+
 export interface StorePlan {
   events: PlanEvent[];
   batches: PlanBatch[];
+  /** Styles held back below the supplier's minimum (A2), one row per style, first day. */
+  belowMinimum?: BelowMinimum[];
   /** Per variant: why it can't be planned, its order-by date before any order. */
   variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean }>;
 }
@@ -954,6 +1085,7 @@ export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Rec
   const windows = batchWindows(days);
   const out: { spec: number; o: ForwardOrder }[] = [];
   const batches: PlanBatch[] = [];
+  const belowMinimum = new Map<string, BelowMinimum>();
   const keys = [...bySupplier.keys()].sort();
   for (const key of keys) {
     const members = bySupplier.get(key)!.slice().sort((a, b) => (specs[a]!.variantId < specs[b]!.variantId ? -1 : 1));
@@ -988,6 +1120,20 @@ export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Rec
           const mine = evs.filter((e) => specs[e.spec]!.productId === pid);
           const total = mine.reduce((x, e) => x + e.qty, 0);
           if (total >= r.styleMin) continue;
+          // A2: a tiny need of a slow style (a full minimum outlasts its whole lead time + cycle) is
+          // not raised to the minimum: held back, shown, never auto-inflated.
+          const day0 = Math.min(...mine.map((e) => e.day));
+          const styleDemand = members.filter((i) => specs[i]!.productId === pid).reduce((x, i) => x + sims[i]!.windowDemand(day0), 0);
+          if (total < BELOW_MIN_SHARE * r.styleMin && styleDemand < r.styleMin) {
+            for (const e of mine) {
+              sims[e.spec]!.remove(e.day, e.qty);
+              e.qty = 0;
+            }
+            const k = `${key}|${pid}`;
+            if (!belowMinimum.has(k))
+              belowMinimum.set(k, { supplierKey: key, productId: pid, variantIds: [...new Set(mine.map((e) => specs[e.spec]!.variantId))].sort(), orderBy: addDays(today, day0), units: total, styleMin: r.styleMin });
+            continue;
+          }
           // Every plannable variant of the style from this supplier shares the minimum.
           const family = members.filter((i) => specs[i]!.productId === pid && sims[i]!.plannable);
           const withWeight = family.filter((i) => specs[i]!.weight > 0);
@@ -1008,6 +1154,9 @@ export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Rec
           batch.styleToppedUp.push(pid);
         }
       }
+      // Held back below the style minimum (A2): no event.
+      for (let k = evs.length - 1; k >= 0; k--) if (!(evs[k]!.qty > 0)) evs.splice(k, 1);
+      if (!evs.length) continue;
       // Order minimum in units, then in money.
       const lines = () => evs.map((e) => ({ qty: e.qty, pack: sims[e.spec]!.pack, weight: specs[e.spec]!.weight, unitCost: unitOf(specs[e.spec]!) }));
       const units = topUpToMinimum(lines(), r.minTotal);
@@ -1035,10 +1184,12 @@ export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Rec
       overdue: o.overdue,
       deadline: o.deadline,
       why: o.why,
+      ...(o.nextSeason ? { nextSeason: true } : {}),
+      ...(o.context ? { context: o.context } : {}),
     };
   });
   events.sort((a, b) => a.orderBy.localeCompare(b.orderBy) || a.supplierKey.localeCompare(b.supplierKey) || (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
-  return { events, batches, variants };
+  return { events, batches, variants, belowMinimum: [...belowMinimum.values()].sort((a, b) => a.orderBy.localeCompare(b.orderBy) || (a.productId < b.productId ? -1 : 1)) };
 }
 
 const unitOf = (s: Pick<PlanVariantSpec, "unitCost">) => (finite(s.unitCost) && s.unitCost >= 0 ? s.unitCost : null);
@@ -1160,6 +1311,22 @@ export function dueState(deadline: DayKey | null | undefined, today: DayKey, ove
   if (!deadline) return overdue ? "overdue" : null;
   if (deadline < today) return "overdue";
   return deadline === today ? "today" : "upcoming";
+}
+
+/** What a line's date says beyond the date (A1): the season's first order, or why an overdue order has no date. */
+export interface DueNote {
+  nextSeason?: boolean;
+  soldOutSince?: DayKey;
+  runsOut?: DayKey;
+}
+
+/** The note of a set of orders (ordersDue's): an overdue one's context, else the first order's next season. */
+export function dueNote(events: readonly Pick<PlanEvent, "orderBy" | "overdue" | "nextSeason" | "context">[]): DueNote | null {
+  const late = events.find((e) => e.overdue && e.context);
+  if (late?.context) return { ...late.context };
+  if (events.some((e) => e.overdue)) return null;
+  const first = [...events].sort((a, b) => a.orderBy.localeCompare(b.orderBy))[0];
+  return first?.nextSeason ? { nextSeason: true } : null;
 }
 
 /**

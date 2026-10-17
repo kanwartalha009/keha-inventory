@@ -8,7 +8,7 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, notReadyText, type PlanNotReady, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
-import { dueState, type OrderWhy } from "../lib/engine/forward-plan-shared";
+import { dueState, type DueNote, type OrderWhy } from "../lib/engine/forward-plan-shared";
 import type { CashSummary, CashWeek as PaidWeek } from "../lib/cash-shared";
 import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
@@ -174,7 +174,7 @@ export function PreviewTable({ rows, readiness }: { rows: PreviewRow[]; readines
                   <DaysLeft id={`keha-prev-left-${r.variantId.replace(/\D/g, "")}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />
                 </s-table-cell>
                 <s-table-cell>
-                  <OrderByCell orderBy={r.orderBy} overdue={r.overdue} />
+                  <OrderByCell orderBy={r.orderBy} overdue={r.overdue} note={r.dueNote ?? null} />
                 </s-table-cell>
                 <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
               </s-table-row>
@@ -350,20 +350,24 @@ export function AboveLastYearBadge({ qty, lastYear }: { qty: number; lastYear: n
  * An order-by date with the Overdue badge (Dashboard, Products, the product page, the Free
  * preview): the date, then the badge when late; the badge alone when late with no date (M3).
  */
-export function OrderByCell({ orderBy, overdue }: { orderBy: string | null | undefined; overdue: boolean }) {
+export function OrderByCell({ orderBy, overdue, note = null }: { orderBy: string | null | undefined; overdue: boolean; note?: DueNote | null }) {
   const { t, locale } = useLocale();
   return (
     <span className="keha-inline">
       {(orderBy || !overdue) && <span>{formatDay(orderBy, locale)}</span>}
       {overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+      {/* A1: the season's first order after an off season; a long-overdue line's context. */}
+      {!overdue && note?.nextSeason && <s-badge tone="info">{t("Next season")}</s-badge>}
+      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("sold out since {date}"), { date: formatDay(note.soldOutSince, locale) })}</s-text>}
+      {overdue && !orderBy && note?.runsOut && <s-text color="subdued">{fill(t("runs out {date}"), { date: formatDay(note.runsOut, locale) })}</s-text>}
     </span>
   );
 }
 
 /** A line's real deadline: "Due 27 Oct", "Due today", "Overdue since 12 Oct" or "Overdue" (critical). */
-export function DueLabel({ deadline, today, overdue = false }: { deadline: string | null | undefined; today: string; overdue?: boolean }) {
+export function DueLabel({ deadline, today, overdue = false, note = null }: { deadline: string | null | undefined; today: string; overdue?: boolean; note?: DueNote | null }) {
   const { t, locale } = useLocale();
-  const text = dueText(deadline, today, t, locale, overdue);
+  const text = dueText(deadline, today, t, locale, overdue, note);
   if (dueState(deadline, today, overdue) === "overdue") return <s-badge tone="critical">{text}</s-badge>;
   return <span className="keha-nowrap">{text}</span>;
 }

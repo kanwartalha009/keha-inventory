@@ -221,7 +221,7 @@ export default function VariantDetailPage() {
                 !forecast ? (
                   locked
                 ) : (
-                  <OrderByCell orderBy={row.orderBy} overdue={!!row.overdue} />
+                  <OrderByCell orderBy={row.orderBy} overdue={!!row.overdue} note={row.dueNote ?? null} />
                 )
               }
             />

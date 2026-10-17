@@ -285,6 +285,21 @@ export default function Reorder() {
       )}
       {data.scenarioMissing && <s-banner tone="warning">{t("This Season plan scenario no longer exists.")}</s-banner>}
       <StaleDrafts n={data.staleDrafts} />
+      {/* A2: a small need of a slow style is never raised to the supplier's minimum per style. */}
+      {!!data.belowMinimum?.length && (
+        <s-banner tone="info" heading={t("Below the supplier's minimum — wait for the next season or add to a larger order")}>
+          <s-stack gap="small-200">
+            {data.belowMinimum.map((b) => (
+              <span key={`${b.supplierKey}|${b.productTitle}`} className="keha-inline">
+                <s-text>{fill(t("{product}: needs {n} of a minimum of {min} per style"), { product: b.productTitle, n: formatCount(b.units, locale), min: formatCount(b.styleMin, locale) })}</s-text>
+                {!location && (
+                  <s-link {...link(builderLink(b.supplierKey))}>{t("Build supplier order")}</s-link>
+                )}
+              </span>
+            ))}
+          </s-stack>
+        </s-banner>
+      )}
       <OrderPlanTabs current="now" />
       {switcherMode({ enabled: data.locationsEnabled, planning: data.locations.length, locationCount: data.locationCount, viewing: !!location }) !== "none" && (
         <Toolbar
@@ -626,7 +641,7 @@ function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine
                         </s-stack>
                       </s-table-cell>
                       <s-table-cell>
-                        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} />
+                        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />
                       </s-table-cell>
                       <s-table-cell>{formatCount(l.suggested, locale)}</s-table-cell>
                       <s-table-cell>{formatPrice(l.unitCostStore === null ? null : l.unitCostStore * l.suggested, group.storeCurrency, locale)}</s-table-cell>
@@ -698,7 +713,7 @@ function LineRow({
         </div>
       </s-table-cell>
       <s-table-cell>
-        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} />
+        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />
       </s-table-cell>
       <s-table-cell>{formatCount(l.onHand, locale)}</s-table-cell>
       <s-table-cell>

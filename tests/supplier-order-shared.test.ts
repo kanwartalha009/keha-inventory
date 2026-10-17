@@ -62,7 +62,8 @@ describe("buildSupplierOrder", () => {
     const shirt = v.lines.find((l) => l.variantId === V(1))!;
     expect(shirt.why.length).toBe(2); // today's order and the one on 1 Nov
     expect(shirt.section).toBe("due");
-    expect(shirt.orderBy! < PLAN_TODAY).toBe(true); // overdue: the date that passed
+    // Overdue by more than one lead time: no date, the day it runs out as context (A1).
+    expect(shirt).toMatchObject({ overdue: true, orderBy: null, dueNote: { runsOut: "2026-10-18" } });
   });
 
   it("the minimums are applied once to the whole order (not per week): the cycle's lines can make a top-up unnecessary", () => {
