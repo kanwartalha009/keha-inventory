@@ -126,7 +126,7 @@ describe("per-location metrics (Pro)", () => {
     const WH2 = "gid://shopify/Location/5";
     db.tables.location.push({ id: WH2, shop: S, name: "Warehouse 2", active: true, online: true, role: "warehouse", onlinePool: null });
     for (const day of daysBetween("2026-07-18", "2026-10-15")) db.tables.stockDaily.push({ shop: S, day: d(day), variantId: A, locationId: WH2, endUnits: 100, outOfStock: false });
-    db.tables.stockNow.push({ shop: S, variantId: A, locationId: WH2, onHand: 100, incoming: 0 });
+    db.tables.stockNow.push({ shop: S, variantId: A, locationId: WH2, onHand: 100, available: 100, incoming: 0 });
     await computeShop(S, { now: () => NOW });
     const w1 = metric(A, WH)!;
     const w2 = metric(A, WH2)!;
