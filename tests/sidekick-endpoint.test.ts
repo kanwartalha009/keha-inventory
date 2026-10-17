@@ -57,6 +57,11 @@ vi.mock("../app/services/entitlements.server", () => ({
 import * as dbModule from "../app/db.server";
 import { loader, withDeadline } from "../app/routes/api.sidekick.$tool";
 import { SIDEKICK_TOOLS, MSG } from "../app/lib/sidekick-shared";
+import { loader as reorderLoader, type ReorderPageData } from "../app/routes/app.reorder";
+import { loader as calendarLoader, type CalendarPageData } from "../app/routes/app.reorder_.calendar";
+import { planWeeks } from "../app/lib/order-plan-shared";
+import { bySupplier, cashTotals } from "../app/lib/engine/forward-plan-shared";
+import { safetyStock } from "../app/lib/engine/order-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const SHOP = "acme.myshopify.com";
@@ -111,13 +116,19 @@ function seed() {
     variant(3, 3, "Cap", "Default Title", { supplierId: null, vendor: "CapCo", cost: 5 }),
     variant(4, 4, "Untracked mug", "Default Title", { tracked: false }),
   ];
+  /** VariantMetric.inputs as compute writes them; orderNeed = demand(lead + cycle) + safety − stock. */
+  const plannedInputs = (rate: number, onHand: number, incoming: number) => {
+    const safety = safetyStock(1.28, 1, 21);
+    return { today: "2026-10-17", seasonal: 1, trend: 1, plan: 1, leadTimeDays: 21, cycleDays: 14, z: 1.28, safety, onHand, incoming, orderNeed: rate * 35 + safety - onHand - incoming, kehaOnOrder: 0, arrivals: [], seasonCurve: null };
+  };
   const metric = (n: number, extra: Record<string, unknown>) => ({
     shop: SHOP, variantId: V(n), scope: "online", rate: null, sigma: null, daysLeft: null, neverRunsOut: false, status: "healthy", role: "A",
     orderQty: 0, orderBy: null, computedAt: NOW, inputs: {}, ...extra,
   });
   db.tables.variantMetric = [
-    metric(1, { status: "running_low", rate: 2, daysLeft: 5.5, orderQty: 30, orderBy: day("2026-10-20") }),
-    metric(2, { status: "out", rate: 1, daysLeft: 0, orderQty: 10, orderBy: day("2026-10-12") }),
+    // As compute stores them (forward plan inputs): lead 21, cycle 14, z 1.28, σ 1.
+    metric(1, { status: "running_low", rate: 2, sigma: 1, daysLeft: 5.5, orderQty: 65, orderBy: day("2026-10-12"), inputs: plannedInputs(2, 11, 0) }),
+    metric(2, { status: "out", rate: 1, sigma: 1, daysLeft: 0, orderQty: 36, orderBy: day("2026-09-30"), inputs: plannedInputs(1, 0, 5) }),
     metric(3, { status: "dead", rate: 0, neverRunsOut: true }),
   ];
   db.tables.stockNow = [
@@ -224,18 +235,39 @@ describe("route", () => {
 });
 
 describe("tools on Growth", () => {
-  it("get_order_plan: the Reorder groups, net of open Keha orders, with order-by dates and cash", async () => {
-    const r = await body("get_order_plan", "within_days=14");
-    expect(r.results!.map((x) => x.name)).toEqual(["Acme Textiles"]);
-    const meta = r.results![0]!._meta as { lines: { variant_gid: string; order_qty: number; order_by: string }[] } & Record<string, unknown>;
-    // V1: 30 suggested − 20 already on the sent Keha order = 10; V2 (no cost) 10.
-    expect(meta.lines.map((l) => [l.variant_gid, l.order_qty, l.order_by])).toEqual([
-      [V(2), 10, "2026-10-12"],
-      [V(1), 10, "2026-10-20"],
-    ]);
-    expect(meta).toMatchObject({ order_by: "2026-10-12", order_by_label: "Mon 12 Oct 2026 (5 days ago)", lead_time_days: 21, units: 20, cost: 100, lines_without_cost: 1, currency: "EUR" });
-    expect(r.totals).toEqual({ suppliers: 1, units: 20, cash: [{ currency: "EUR", amount: 100, lines_without_cost: 1 }] });
-    expect(r.order_by_until).toBe("2026-10-31");
+  it("get_order_plan: the same orders, quantities, dates and cash as Order now and Next 90 days", async () => {
+    const orderNow = (await reorderLoader({ request: new Request("https://inventory.keha.io/app/reorder"), params: {}, context: {} } as never)) as ReorderPageData;
+    const calendar = (await calendarLoader({ request: new Request("https://inventory.keha.io/app/reorder/calendar"), params: {}, context: {} } as never)) as CalendarPageData;
+    expect(calendar.enabled).toBe(true);
+    type Line = { variant_gid: string; order_qty: number; order_by: string; arrives: string; cost: number | null };
+    const linesOf = (r: Awaited<ReturnType<typeof body>>) =>
+      r.results!.flatMap((g) => (g._meta.lines as Line[]).map((l) => [g.name, l.variant_gid, l.order_qty, l.arrives, l.cost] as const)).sort();
+
+    // Next 90 days (within_days 90) = the calendar loader: every order, by supplier, same totals and weeks.
+    const all = await body("get_order_plan", "within_days=90");
+    const events = calendar.plan.events;
+    expect(events.length).toBeGreaterThan(2);
+    const totals = cashTotals(events);
+    expect(all.totals).toEqual({ suppliers: 1, orders: totals.lines, units: totals.units, cash: totals.cash, lines_without_cost: totals.missingCost || undefined });
+    // The first 8 lines of the supplier, in the calendar's own supplier order (the rest are counted).
+    const group = bySupplier(events)[0]!;
+    expect(linesOf(all)).toEqual(group.events.slice(0, 8).map((e) => ["Acme Textiles", e.variantId, e.qty, e.arrives, e.cost] as const).sort());
+    expect(all.results![0]!._meta).toMatchObject({ orders: group.lines, units: group.units, cost: group.cash, more_lines: group.lines - 8 });
+    const weeks = all.cash_per_week as { week_of: string; orders: number; units: number; cash: number | null }[];
+    expect(weeks.map((w) => [w.week_of, w.orders, w.units, w.cash])).toEqual(
+      planWeeks(calendar.plan).filter((w) => w.lines > 0).map((w) => [w.weekStart, w.lines, w.units, w.cash]),
+    );
+
+    // Today (within_days 1) = Order now's lines and quantities (net of the 20 units on the sent Keha order).
+    const today = await body("get_order_plan", "within_days=1");
+    const nowLines = orderNow.groups.flatMap((g) => g.lines.map((l) => [g.name, l.variantId, l.suggested] as const)).sort();
+    expect(today.results!.flatMap((g) => (g._meta.lines as Line[]).map((l) => [g.name, l.variant_gid, l.order_qty] as const)).sort()).toEqual(nowLines);
+    expect(nowLines.length).toBe(2);
+    // Order-by dates are the forward plan's (overdue: the date that passed), never null.
+    for (const l of today.results![0]!._meta.lines as Line[]) expect(l.order_by).toBe(calendar.plan.variants[l.variant_gid]!.deadline);
+    expect(today.results![0]!._meta).toMatchObject({ overdue: true, url: expect.stringMatching(/^app:\/\/app\/reorder\?variants=.+&supplier=supplier:s1$/) });
+    expect(today).toMatchObject({ url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
+    expect(today.cash_per_week).toBeUndefined();
     expect((await body("get_order_plan", "supplier=nobody")).message).toBe(MSG.noSupplierMatch);
   });
 
@@ -250,8 +282,8 @@ describe("tools on Growth", () => {
       keha_order_arrival: "2026-11-01",
       sales_per_day: 2,
       days_left: 5,
-      order_by: "2026-10-20",
-      suggested_order_qty: 30,
+      order_by: "2026-10-12",
+      suggested_order_qty: 65,
       url: "app://app/products/1",
     });
     expect((await body("get_product_stock", "query=sku-3")).results!.map((x) => x.name)).toEqual(["Cap"]);
@@ -309,7 +341,18 @@ describe("tools on Growth", () => {
 describe("plans", () => {
   it("Free: only what the Free screens show, and not one plan or upgrade word", async () => {
     m.plan = "free";
-    for (const tool of ["get_order_plan", "get_purchase_orders"]) expect((await body(tool)).message, tool).toBe(MSG.notAvailable);
+    expect((await body("get_purchase_orders")).message).toBe(MSG.notAvailable);
+    // The order plan: exactly the read-only preview the Free Order now page shows.
+    const page = (await reorderLoader({ request: new Request("https://inventory.keha.io/app/reorder"), params: {}, context: {} } as never)) as ReorderPageData;
+    expect(page.enabled).toBe(false);
+    for (const q of ["", "within_days=90&supplier=acme"]) {
+      const preview = await body("get_order_plan", q);
+      expect(preview.results!.map((x) => [x.uri, x._meta.order_by, x._meta.suggested_order_qty, x._meta.days_left])).toEqual(
+        page.preview!.map((p) => [p.variantId, p.orderBy, p.qty, p.daysLeft === null ? null : Math.floor(p.daysLeft)]),
+      );
+      expect(preview.results!.length).toBeGreaterThan(0);
+      expect(JSON.stringify(preview)).not.toMatch(/supplier|cash|cost|calendar/i);
+    }
     expect((await body("get_forecast_accuracy")).message).toBe(MSG.notAvailable);
     const stock = await body("get_product_stock", "query=hoodie");
     for (const row of stock.results!) {

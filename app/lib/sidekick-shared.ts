@@ -19,6 +19,16 @@
  * Text is English (Sidekick answers in the merchant's language itself).
  */
 import type { MoneyCardKey } from "./money-shared";
+import { addDays, type DayKey } from "./engine/dates-shared";
+import { byWeek, bySupplier, cashTotals, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
+import {
+  orderLink,
+  supplierName,
+  type OrderPlanData,
+  type PlanSupplierInfo,
+  type PlanVariantInfo,
+  type PreviewRow,
+} from "./order-plan-shared";
 
 // ── Tools ────────────────────────────────────────────────────────────────────
 
@@ -139,11 +149,23 @@ export function daysBetween(today: string, day: string | null | undefined): numb
   return Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-10-12" (a Monday) → "Mon 12 Oct – Sun 18 Oct 2026". */
+export function weekLabel(weekStartDay: DayKey): string {
+  const a = new Date(`${weekStartDay}T12:00:00Z`);
+  const b = new Date(`${addDays(weekStartDay, 6)}T12:00:00Z`);
+  const part = (d: Date) => `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  return `${part(a)} – ${part(b)} ${b.getUTCFullYear()}`;
+}
+
 /** "2026-10-24" → "Sat 24 Oct 2026 (in 7 days)"; "today", "tomorrow", "3 days ago". */
 export function dayLabel(day: string | null | undefined, today: string): string | null {
   if (!day || !DAY.test(day)) return null;
   const d = new Date(`${day}T12:00:00Z`);
-  const date = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).replace(/,/g, "");
+  // Fixed English names (ICU versions differ: "Sep" / "Sept").
+  const date = `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   const n = daysBetween(today, day);
   if (n === null) return date;
   const rel = n === 0 ? "today" : n === 1 ? "tomorrow" : n === -1 ? "yesterday" : n > 0 ? `in ${n} days` : `${-n} days ago`;
@@ -159,12 +181,6 @@ export function appUrl(path: string): string {
 export function gidTail(gid: string | null | undefined): string | null {
   const m = /^gid:\/\/shopify\/[A-Za-z]+\/(\d{1,20})$/.exec(String(gid ?? ""));
   return m ? m[1]! : null;
-}
-
-/** The Reorder page with these variants highlighted (numeric ids, at most 50: parseVariantsWithQty reads them). */
-export function reorderPath(variantIds: readonly string[]): string {
-  const ids = [...new Set(variantIds.map(gidTail).filter((x): x is string => !!x))].slice(0, 50);
-  return ids.length ? `/app/reorder?variants=${ids.join(",")}` : "/app/reorder";
 }
 
 /** Our variant page. */
@@ -244,124 +260,125 @@ export function fitResponse(
 }
 
 // ── Order plan ──────────────────────────────────────────────────────────────
-
-/** One supplier group as the order plan source hands it over (from lib/reorder-shared ReorderGroup). */
-export type PlanGroupIn = {
-  key: string;
-  kind: "supplier" | "vendor";
-  supplierId: string | null;
-  name: string;
-  leadTimeDays: number;
-  currency: string;
-  lines: {
-    variantId: string;
-    productTitle: string;
-    variantTitle: string;
-    sku: string | null;
-    onHand: number | null;
-    daysLeft: number | null;
-    orderBy: string | null;
-    suggested: number;
-    unitCost: number | null;
-  }[];
-};
+//
+// One source of truth with the Order plan screens: the forward order plan
+// (models/order-plan.server loadOrderPlan → engine/forward-plan-shared). Day-0 orders are
+// Order now's lines (/app/reorder), the 13 weeks are Next 90 days (/app/reorder/calendar),
+// and Free gets the same read-only top-10 preview the Free Order now page shows.
 
 export type OrderPlanOptions = { supplier: string | null; withinDays: number };
-
-/** A line counts in the window when its order-by date is on or before the cutoff, or unknown. */
-export function lineInWindow(orderBy: string | null, cutoff: string): boolean {
-  return !orderBy || orderBy <= cutoff;
-}
 
 export function supplierMatches(name: string, q: string | null): boolean {
   if (!q) return true;
   return (name || "").toLowerCase().includes(q.toLowerCase());
 }
 
-function groupUri(g: Pick<PlanGroupIn, "kind" | "supplierId" | "name">): string {
-  return g.kind === "supplier" && g.supplierId
-    ? `gid://keha-inventory/Supplier/${g.supplierId}`
-    : `gid://keha-inventory/Vendor/${encodeURIComponent(g.name || "none")}`;
+function groupUri(s: PlanSupplierInfo | undefined, key: string): string {
+  return s?.kind === "supplier" && s.supplierId
+    ? `gid://keha-inventory/Supplier/${s.supplierId}`
+    : `gid://keha-inventory/Vendor/${encodeURIComponent(s?.name || "none")}`;
 }
 
+/** The last order-by day a `within_days` window covers: today + days − 1; 90 = the whole calendar. */
+export function windowEnd(today: DayKey, withinDays: number): DayKey {
+  const end = planEnd(today);
+  if (withinDays >= MAX_WITHIN_DAYS) return end;
+  const last = addDays(today, withinDays - 1);
+  return last < end ? last : end;
+}
+
+/** Days left, rounded down like the screens; "never" when it never runs out at this pace. */
+const daysLeftOf = (v: PlanVariantInfo | undefined): number | string | null =>
+  !v ? null : v.neverRunsOut ? "never runs out at the current pace" : v.daysLeft === null || !Number.isFinite(v.daysLeft) ? null : Math.max(0, Math.floor(v.daysLeft));
+
+/** An overdue order's date is the order-by date that passed (as the Free preview shows it). */
+const dueDay = (e: Pick<PlanEvent, "orderBy" | "overdue" | "deadline">) => (e.overdue && e.deadline ? e.deadline : e.orderBy);
+
 /**
- * What to order and from whom, by order-by date. `today` and `cutoff` are store-local
- * days. Cash per currency counts only lines with a unit cost; `lines_without_cost`
- * says how many were left out of it.
+ * What to order and from whom in the window, grouped by supplier (vendor when no supplier is
+ * set), earliest order-by first, with the cash it needs; per-week cash when the window is
+ * longer than two weeks. All costs are in the store currency (other currencies are unknown).
  */
-export function orderPlanResponse(
-  groups: readonly PlanGroupIn[],
-  opts: OrderPlanOptions,
-  ctx: { today: string; cutoff: string; storeCurrency: string },
-): SidekickResponse {
-  const picked = groups
-    .filter((g) => supplierMatches(g.name, opts.supplier))
-    .map((g) => ({ ...g, lines: g.lines.filter((l) => l.suggested > 0 && lineInWindow(l.orderBy, ctx.cutoff)) }))
-    .filter((g) => g.lines.length > 0);
-  const base = { within_days: opts.withinDays, order_by_until: ctx.cutoff, store_currency: ctx.storeCurrency, url: appUrl("/app/reorder") };
-  if (!picked.length) {
-    return { ...base, results: [], message: opts.supplier && groups.length ? MSG.noSupplierMatch : MSG.nothingToOrder };
+export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): SidekickResponse {
+  const until = windowEnd(data.today, opts.withinDays);
+  const name = (key: string) => supplierName(data, key, (s) => s);
+  const events = data.events.filter((e) => e.orderBy <= until && supplierMatches(name(e.supplierKey), opts.supplier));
+  const base = {
+    within_days: opts.withinDays,
+    order_by_until: until,
+    currency: data.currency,
+    url: appUrl("/app/reorder/calendar"),
+    order_now_url: appUrl("/app/reorder"),
+  };
+  if (!events.length) {
+    const anyForSupplier = opts.supplier && data.events.some((e) => supplierMatches(name(e.supplierKey), opts.supplier));
+    return { ...base, results: [], message: opts.supplier && !anyForSupplier ? MSG.noSupplierMatch : MSG.nothingToOrder };
   }
-  const cash = new Map<string, { amount: number; withoutCost: number }>();
-  let units = 0;
-  const results = picked.map((g) => {
-    let gUnits = 0;
-    let gCost = 0;
-    let costed = 0;
-    let orderBy: string | null = null;
-    for (const l of g.lines) {
-      gUnits += l.suggested;
-      if (l.unitCost !== null) {
-        gCost += l.unitCost * l.suggested;
-        costed++;
-      }
-      if (l.orderBy && (!orderBy || l.orderBy < orderBy)) orderBy = l.orderBy;
-    }
-    const withoutCost = g.lines.length - costed;
-    units += gUnits;
-    const c = cash.get(g.currency) ?? { amount: 0, withoutCost: 0 };
-    c.amount += gCost;
-    c.withoutCost += withoutCost;
-    cash.set(g.currency, c);
-    const shown = g.lines.slice(0, MAX_GROUP_LINES);
-    return link(groupUri(g), g.name || "Products without a vendor", MIME.supplierOrder, {
-      grouped_by: g.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
-      order_by: orderBy,
-      order_by_label: dayLabel(orderBy, ctx.today),
-      lead_time_days: g.leadTimeDays,
-      units: gUnits,
-      cost: costed ? money(gCost) : null,
-      currency: g.currency,
-      lines_without_cost: withoutCost || undefined,
-      lines: shown.map((l) => ({
-        product: displayName(l.productTitle, l.variantTitle),
-        sku: l.sku ?? undefined,
-        variant_gid: l.variantId,
-        order_qty: l.suggested,
-        order_by: l.orderBy,
-        days_left: l.daysLeft === null ? null : Math.max(0, Math.floor(l.daysLeft)),
-        on_hand: l.onHand,
-      })),
-      more_lines: g.lines.length > shown.length ? g.lines.length - shown.length : undefined,
-      url: appUrl(reorderPath(g.lines.map((l) => l.variantId))),
+  const groups = bySupplier(events);
+  const results = groups.map((g) => {
+    const shown = g.events.slice(0, MAX_GROUP_LINES);
+    const first = g.events.reduce((d, e) => (dueDay(e) < d ? dueDay(e) : d), dueDay(g.events[0]!));
+    const s = data.suppliers[g.supplierKey];
+    return link(groupUri(s, g.supplierKey), name(g.supplierKey), MIME.supplierOrder, {
+      grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
+      order_by: first,
+      order_by_label: dayLabel(first, data.today),
+      overdue: g.overdue || undefined,
+      orders: g.lines,
+      products: g.products,
+      units: g.units,
+      cost: money(g.cash),
+      lines_without_cost: g.missingCost || undefined,
+      lines: shown.map((e) => {
+        const v = data.variants[e.variantId];
+        return {
+          product: displayName(v?.productTitle ?? "—", v?.variantTitle),
+          sku: v?.sku ?? undefined,
+          variant_gid: e.variantId,
+          order_qty: e.qty,
+          order_by: dueDay(e),
+          overdue: e.overdue || undefined,
+          arrives: e.arrives,
+          cost: money(e.cost),
+          days_left: daysLeftOf(v),
+        };
+      }),
+      more_lines: g.events.length > shown.length ? g.events.length - shown.length : undefined,
+      url: appUrl(orderLink(g.events, g.supplierKey)),
     });
   });
-  return fitResponse(
-    {
-      ...base,
-      results,
-      totals: {
-        suppliers: picked.length,
-        units,
-        cash: [...cash].map(([currency, c]) => ({
-          currency,
-          amount: money(c.amount),
-          lines_without_cost: c.withoutCost || undefined,
-        })),
-      },
-    },
-    { total: picked.length, what: "suppliers" },
-  );
+  const totals = cashTotals(events);
+  const out: SidekickResponse = {
+    ...base,
+    results,
+    totals: { suppliers: groups.length, orders: totals.lines, units: totals.units, cash: money(totals.cash), lines_without_cost: totals.missingCost || undefined },
+  };
+  if (opts.withinDays > 14) {
+    out.cash_per_week = byWeek(events, data.today)
+      .filter((w) => w.lines > 0)
+      .map((w) => ({ week_of: w.weekStart, week: weekLabel(w.weekStart), orders: w.lines, units: w.units, cash: money(w.cash), lines_without_cost: w.missingCost || undefined }));
+  }
+  return fitResponse(out, { total: groups.length, what: "suppliers" });
+}
+
+/** The read-only preview the app shows when the full order plan isn't part of the store's plan. */
+export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<OrderPlanData, "today" | "variants">): SidekickResponse {
+  const base = { url: appUrl("/app/reorder") };
+  if (!rows.length) return { ...base, results: [], message: MSG.nothingToOrder };
+  return {
+    ...base,
+    shows: `The ${rows.length} most urgent products to order, most urgent first.`,
+    results: rows.map((r) =>
+      link(r.variantId, displayName(r.productTitle || "—", r.variantTitle), MIME.variant, {
+        days_left: r.neverRunsOut ? "never runs out at the current pace" : r.daysLeft === null || !Number.isFinite(r.daysLeft) ? null : Math.max(0, Math.floor(r.daysLeft)),
+        order_by: r.orderBy,
+        order_by_label: dayLabel(r.orderBy, data.today),
+        overdue: r.overdue || undefined,
+        suggested_order_qty: r.qty,
+        sku: data.variants[r.variantId]?.sku ?? undefined,
+      }),
+    ),
+  };
 }
 
 // ── Product stock ───────────────────────────────────────────────────────────
@@ -541,7 +558,7 @@ export function purchaseOrdersResponse(
   const picked = rows.filter(
     (r) => (!ctx.status || r.status === ctx.status) && (!ctx.supplier || supplierMatches(r.supplierName ?? "", ctx.supplier)),
   );
-  const base = { url: appUrl("/app/reorder") };
+  const base = { url: appUrl("/app/reorder/orders") };
   if (!picked.length) return { ...base, results: [], message: MSG.noOrders };
   const results = picked.map((r) =>
     link(`gid://keha-inventory/PurchaseOrder/${r.id}`, `${r.number}${r.supplierName ? ` — ${r.supplierName}` : ""}`, MIME.purchaseOrder, {

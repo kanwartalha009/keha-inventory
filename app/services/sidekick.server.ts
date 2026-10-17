@@ -11,20 +11,21 @@
  * is not returned and the tool says only that it isn't available — never a
  * plan name or an upgrade (Sidekick content policy).
  *
- *  get_order_plan        Reorder screen (reorderPlan)       → supplier groups by order-by date
+ *  get_order_plan        Order plan (forward plan)          → by supplier and week; Free: the top-10 preview
  *  get_product_stock     Products table (forecast columns)  → status, stock, days left, order by
  *  get_action_list       Home "This week's actions"         → plan limits of buildActionList
  *  get_money_at_stake    Home money cards                   → every plan; plus dead stock value
- *  get_purchase_orders   Reorder "Open orders" (reorderPlan)
+ *  get_purchase_orders   Order plan · Open orders (reorderPlan)
  *  get_forecast_accuracy Planner scorecard (planner + accuracy)
  */
 import { getEntitlements } from "./entitlements.server";
 import { getHomeData } from "../models/dashboard.server";
 import { getActionList, stockValue } from "../models/actions.server";
-import { loadReorder, openOrders } from "../models/reorder.server";
+import { openOrders } from "../models/reorder.server";
+import { loadOrderPlan } from "../models/order-plan.server";
+import { previewRows } from "../lib/order-plan-shared";
 import { accuracyMonths, deadVariantIds, searchVariantStock, shopFacts } from "../models/sidekick.server";
 import { featureMap, ACTION_LIST_LIMIT, type Feature, type PlanCode } from "../lib/plan-shared";
-import { addDays } from "../lib/engine/dates-shared";
 import {
   basisLines,
   formatAmount,
@@ -44,6 +45,7 @@ import {
   actionListResponse,
   moneyResponse,
   orderPlanResponse,
+  orderPreviewResponse,
   productStockResponse,
   purchaseOrdersResponse,
   readActionKind,
@@ -54,7 +56,6 @@ import {
   searchWords,
   type ActionIn,
   type OrderPlanOptions,
-  type PlanGroupIn,
   type SidekickResponse,
   type SidekickTool,
 } from "../lib/sidekick-shared";
@@ -82,28 +83,22 @@ const identity = (s: string) => s;
 // ── get_order_plan ──────────────────────────────────────────────────────────
 
 /**
- * Where the order plan's supplier groups come from. Today: the Reorder screen's
- * groups (VariantMetric order quantities, open Keha orders, supplier minimums).
- * A forward order calendar can be passed instead (same group shape) without
- * touching the tool, its route or its response.
+ * The order plan, from the same forward plan the Order plan screens load (loadOrderPlan): with
+ * the full order plan (`reorderPlan` + `orderCalendar`), the window's orders by supplier as on
+ * Order now / Next 90 days; otherwise exactly the read-only top-10 preview of the Free
+ * Order now page (previewRows), whatever the inputs.
  */
-export type OrderPlanSource = (shop: string, window: { today: string; cutoff: string }) => Promise<PlanGroupIn[]>;
-
-export const reorderScreenSource: OrderPlanSource = async (shop) => (await loadReorder(shop)).groups;
-
 export async function orderPlanForSidekick(
   shop: string,
   opts: OrderPlanOptions,
-  deps: { now?: Date; access?: Access; source?: OrderPlanSource } = {},
+  deps: { now?: Date; access?: Access } = {},
 ): Promise<SidekickResponse> {
   const facts = await shopFacts(shop);
   if (!facts) return { results: [], message: MSG.syncing };
   const access = deps.access ?? (await sidekickAccess(shop));
-  if (!access.features.reorderPlan) return { results: [], message: MSG.notAvailable };
-  const today = todayIn(facts.timezone, deps.now ?? new Date());
-  const cutoff = addDays(today, opts.withinDays);
-  const groups = await (deps.source ?? reorderScreenSource)(shop, { today, cutoff });
-  return orderPlanResponse(groups, opts, { today, cutoff, storeCurrency: facts.currency });
+  const plan = await loadOrderPlan(shop, deps.now ?? new Date());
+  if (!access.features.reorderPlan || !access.features.orderCalendar) return orderPreviewResponse(previewRows(plan), plan);
+  return orderPlanResponse(plan, opts);
 }
 
 // ── get_product_stock ───────────────────────────────────────────────────────

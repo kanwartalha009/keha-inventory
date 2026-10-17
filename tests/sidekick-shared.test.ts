@@ -24,14 +24,18 @@ import {
   readPoStatus,
   readText,
   readWithinDays,
-  reorderPath,
+  orderPreviewResponse,
+  weekLabel,
   searchWords,
   sizeOf,
   variantPath,
-  type PlanGroupIn,
   type ProductStockIn,
 } from "../app/lib/sidekick-shared";
 import { policyViolations } from "./helpers/sidekick-policy";
+import { PLAN_TODAY, orderPlanFixture } from "./order-plan-fixtures";
+import { previewRows, planWeeks, type PlanSupplierInfo, type PlanVariantInfo } from "../app/lib/order-plan-shared";
+import { cashTotals, planEnd } from "../app/lib/engine/forward-plan-shared";
+import { addDays } from "../app/lib/engine/dates-shared";
 
 const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
 const TODAY = "2026-10-17";
@@ -75,81 +79,94 @@ describe("dates and links", () => {
 
   it("builds app: links to our pages", () => {
     expect(appUrl("/app/reorder")).toBe("app://app/reorder");
-    expect(reorderPath([V(1), V(2), V(1), "junk"])).toBe("/app/reorder?variants=1,2");
-    expect(reorderPath([])).toBe("/app/reorder");
     expect(variantPath(V(42))).toBe("/app/products/42");
+    expect(weekLabel("2026-10-12")).toBe("Mon 12 Oct – Sun 18 Oct 2026");
+    expect(dayLabel("2026-09-29", TODAY)).toBe("Tue 29 Sep 2026 (18 days ago)");
   });
 });
 
-function group(over: Partial<PlanGroupIn> = {}, lines: Partial<PlanGroupIn["lines"][number]>[] = [{}]): PlanGroupIn {
-  return {
-    key: "supplier:s1",
-    kind: "supplier",
-    supplierId: "s1",
-    name: "Acme Textiles",
-    leadTimeDays: 21,
-    currency: "EUR",
-    ...over,
-    lines: lines.map((l, i) => ({
-      variantId: V(i + 1),
-      productTitle: "Hoodie",
-      variantTitle: `Size ${i + 1}`,
-      sku: `HD-${i + 1}`,
-      onHand: 4,
-      daysLeft: 6.7,
-      orderBy: "2026-10-20",
-      suggested: 12,
-      unitCost: 10,
-      ...l,
-    })),
-  };
-}
+// The forward plan fixture (tests/order-plan-fixtures.ts, today 2026-10-16): Lisbon Linen (s1) with an
+// overdue shirt and trousers due today, then every two weeks; Mug (vendor Acme, no cost) from 11 Dec;
+// Cap Co (s2) on 6 Jan.
+describe("order plan (the forward plan the Order plan screens show)", () => {
+  const plan = orderPlanFixture();
 
-describe("order plan", () => {
-  const ctx = { today: TODAY, cutoff: "2026-10-31", storeCurrency: "EUR" };
-
-  it("keeps lines due by the cutoff (overdue and undated included), with order-by labels and links", () => {
-    const g = group({}, [{ orderBy: "2026-10-12" }, { orderBy: "2026-10-30" }, { orderBy: "2026-11-20" }, { orderBy: null, unitCost: null }]);
-    const r = orderPlanResponse([g], { supplier: null, withinDays: 14 }, ctx);
-    expect(r.results).toHaveLength(1);
-    const meta = r.results![0]!._meta as Record<string, unknown> & { lines: { variant_gid: string; days_left: number }[] };
-    expect(r.results![0]).toMatchObject({ type: "resource_link", uri: "gid://keha-inventory/Supplier/s1", name: "Acme Textiles", mimeType: "application/vnd.keha.supplier-order" });
-    expect(meta.lines.map((l) => l.variant_gid)).toEqual([V(1), V(2), V(4)]);
-    expect(meta.order_by).toBe("2026-10-12");
-    expect(meta.order_by_label).toBe("Mon 12 Oct 2026 (5 days ago)");
-    expect(meta.units).toBe(36);
-    expect(meta.cost).toBe(240);
-    expect(meta.lines_without_cost).toBe(1);
-    expect(meta.lines[0]!.days_left).toBe(6);
-    expect(meta.url).toBe("app://app/reorder?variants=1,2,4");
-    expect(r.totals).toEqual({ suppliers: 1, units: 36, cash: [{ currency: "EUR", amount: 240, lines_without_cost: 1 }] });
-    expect(r.order_by_until).toBe("2026-10-31");
+  it("this week: Order now's orders by supplier, overdue first, with order-by dates, cash and the Order now link", () => {
+    const r = orderPlanResponse(plan, { supplier: null, withinDays: 7 });
+    expect(r).toMatchObject({ within_days: 7, order_by_until: "2026-10-22", currency: "EUR", url: "app://app/reorder/calendar", order_now_url: "app://app/reorder" });
+    expect(r.results!.map((x) => [x.uri, x.name])).toEqual([["gid://keha-inventory/Supplier/s1", "Lisbon Linen"]]);
+    const meta = r.results![0]!._meta as Record<string, unknown> & { lines: Record<string, unknown>[] };
+    expect(meta).toMatchObject({ grouped_by: "supplier", order_by: "2026-09-29", overdue: true, orders: 2, products: 2, units: 87, cost: 1252 });
+    expect(meta.order_by_label).toBe("Tue 29 Sep 2026 (17 days ago)");
+    expect(meta.lines.map((l) => [l.variant_gid, l.order_qty, l.order_by, l.overdue, l.arrives, l.days_left])).toEqual([
+      [V(1), 61, "2026-09-29", true, "2026-10-30", 2],
+      [V(2), 26, "2026-10-16", undefined, "2026-10-30", 20],
+    ]);
+    expect(meta.url).toBe("app://app/reorder?variants=1:61,2:26&supplier=supplier:s1");
+    expect(r.totals).toEqual({ suppliers: 1, orders: 2, units: 87, cash: 1252 });
+    expect(r.cash_per_week).toBeUndefined();
   });
 
-  it("keeps cash per currency and filters by supplier name", () => {
-    const usd = group({ key: "supplier:s2", supplierId: "s2", name: "Pacific Caps", currency: "USD" }, [{ unitCost: 2.5, suggested: 10 }]);
-    const vendor = group({ key: "vendor:capco", kind: "vendor", supplierId: null, name: "" }, [{ unitCost: null }]);
-    const all = orderPlanResponse([group(), usd, vendor], { supplier: null, withinDays: 14 }, ctx);
-    expect(all.totals).toMatchObject({ suppliers: 3, cash: [{ currency: "EUR", amount: 120, lines_without_cost: 1 }, { currency: "USD", amount: 25 }] });
-    expect(all.results![2]).toMatchObject({ uri: "gid://keha-inventory/Vendor/none", name: "Products without a vendor", _meta: { grouped_by: "vendor (no supplier set)", cost: null } });
-    const one = orderPlanResponse([group(), usd], { supplier: "pacific", withinDays: 14 }, ctx);
-    expect(one.results!.map((x) => x.name)).toEqual(["Pacific Caps"]);
-    expect(orderPlanResponse([group(), usd], { supplier: "nobody", withinDays: 14 }, ctx).message).toBe(MSG.noSupplierMatch);
-    expect(orderPlanResponse([], { supplier: null, withinDays: 14 }, ctx).message).toBe(MSG.nothingToOrder);
-    expect(orderPlanResponse([group({}, [{ orderBy: "2026-12-01" }])], { supplier: null, withinDays: 14 }, ctx)).toMatchObject({
-      results: [],
-      message: MSG.nothingToOrder,
-    });
+  it("the next 90 days: the whole calendar by supplier, cash per week, unknown costs counted (never 0)", () => {
+    const r = orderPlanResponse(plan, { supplier: null, withinDays: 90 });
+    const totals = cashTotals(plan.events);
+    expect(r.totals).toEqual({ suppliers: 3, orders: totals.lines, units: totals.units, cash: totals.cash, lines_without_cost: totals.missingCost });
+    expect(r.results!.map((x) => x.name)).toEqual(["Lisbon Linen", "Acme", "Cap Co"]);
+    expect(r.results![1]!._meta).toMatchObject({ grouped_by: "vendor (no supplier set)", cost: null, lines_without_cost: 3 });
+    const weeks = r.cash_per_week as { week_of: string; orders: number; cash: number | null }[];
+    expect(weeks.map((w) => [w.week_of, w.orders, w.cash])).toEqual(
+      planWeeks(plan).filter((w) => w.lines > 0).map((w) => [w.weekStart, w.lines, w.cash]),
+    );
+    expect(r.order_by_until).toBe(planEnd(PLAN_TODAY));
+    // 30 days: through 14 Nov.
+    const month = orderPlanResponse(plan, { supplier: null, withinDays: 30 });
+    expect(month.order_by_until).toBe("2026-11-14");
+    expect(month.totals).toMatchObject({ orders: 6 });
+  });
+
+  it("filters by supplier or vendor name; neutral messages when there is nothing", () => {
+    expect(orderPlanResponse(plan, { supplier: "cap", withinDays: 90 }).results!.map((x) => x.name)).toEqual(["Cap Co"]);
+    expect(orderPlanResponse(plan, { supplier: "cap", withinDays: 7 }).message).toBe(MSG.nothingToOrder);
+    expect(orderPlanResponse(plan, { supplier: "nobody", withinDays: 90 }).message).toBe(MSG.noSupplierMatch);
+    expect(orderPlanResponse(orderPlanFixture({ events: [] }), { supplier: null, withinDays: 14 }).message).toBe(MSG.nothingToOrder);
   });
 
   it("shows at most 8 lines per supplier and counts the rest", () => {
-    const r = orderPlanResponse([group({}, Array.from({ length: 11 }, () => ({})))], { supplier: null, withinDays: 14 }, ctx);
-    const meta = r.results![0]!._meta as { lines: unknown[]; more_lines: number; units: number };
+    const meta = orderPlanResponse(plan, { supplier: "lisbon", withinDays: 90 }).results![0]!._meta as { lines: unknown[]; more_lines: number; orders: number };
     expect(meta.lines).toHaveLength(8);
-    expect(meta.more_lines).toBe(3);
-    expect(meta.units).toBe(132);
+    expect(meta.more_lines).toBe(meta.orders - 8);
+  });
+
+  it("the read-only preview: exactly the app's top 10 rows, no suppliers, costs or calendar", () => {
+    const rows = previewRows(plan);
+    const r = orderPreviewResponse(rows, plan);
+    expect(r.url).toBe("app://app/reorder");
+    expect(r.results!.map((x) => [x.uri, x._meta.order_by, x._meta.suggested_order_qty])).toEqual(rows.map((x) => [x.variantId, x.orderBy, x.qty]));
+    expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: "2026-09-29", overdue: true, suggested_order_qty: 61 } });
+    const text = JSON.stringify(r);
+    for (const word of ["supplier", "cost", "cash", "calendar"]) expect(text).not.toContain(word);
+    expect(orderPreviewResponse([], plan).message).toBe(MSG.nothingToOrder);
   });
 });
+
+/** A large forward plan (30 suppliers × 20 variants, an order every week) for the budget test. */
+function bigPlan() {
+  const events = [];
+  const variants: Record<string, PlanVariantInfo> = {};
+  const suppliers: Record<string, PlanSupplierInfo> = {};
+  for (let s = 0; s < 30; s++) {
+    suppliers[`supplier:s${s}`] = { key: `supplier:s${s}`, kind: "supplier", supplierId: `s${s}`, name: `Supplier with a fairly long name ${s}` };
+    for (let i = 0; i < 20; i++) {
+      const id = V(s * 100 + i);
+      variants[id] = { variantId: id, productId: `P${s}-${i}`, productTitle: "A product with a long descriptive title", variantTitle: "Extra large / Midnight blue", sku: `SKU-${s}-${i}`, image: null, daysLeft: 10, neverRunsOut: false, deadline: TODAY, valuePerDay: 1 };
+      for (let w = 0; w < 13; w++) {
+        const day = addDays(TODAY, w * 7);
+        events.push({ variantId: id, productId: `P${s}-${i}`, supplierKey: `supplier:s${s}`, orderBy: day, arrives: addDays(day, 14), qty: 12, unitCost: 2, cost: 24, overdue: false, deadline: day });
+      }
+    }
+  }
+  return orderPlanFixture({ today: TODAY, events, variants, suppliers });
+}
 
 function stockRow(over: Partial<ProductStockIn> = {}): ProductStockIn {
   return {
@@ -232,13 +249,11 @@ describe("token budget", () => {
   });
 
   it("keeps the largest realistic responses under the budget", () => {
-    const groups = Array.from({ length: 30 }, (_, i) =>
-      group({ key: `supplier:s${i}`, supplierId: `s${i}`, name: `Supplier with a fairly long name ${i}` }, Array.from({ length: 20 }, () => ({ productTitle: "A product with a long descriptive title", variantTitle: "Extra large / Midnight blue" }))),
-    );
-    const plan = orderPlanResponse(groups, { supplier: null, withinDays: 90 }, { today: TODAY, cutoff: "2027-01-15", storeCurrency: "EUR" });
+    const plan = orderPlanResponse(bigPlan(), { supplier: null, withinDays: 90 });
     expect(sizeOf(plan)).toBeLessThanOrEqual(RESPONSE_MAX_CHARS);
     expect(plan.note).toMatch(/^Showing \d+ of 30 suppliers; \d+ more are in the app\.$/);
-    expect(plan.totals).toMatchObject({ suppliers: 30, units: 30 * 20 * 12 });
+    expect(plan.totals).toMatchObject({ suppliers: 30, units: 30 * 20 * 13 * 12 });
+    expect((plan.cash_per_week as unknown[]).length).toBe(13);
   });
 });
 
@@ -311,7 +326,8 @@ describe("other tools", () => {
 
   it("no response text breaks the content policy", () => {
     const texts = [
-      orderPlanResponse([group()], { supplier: null, withinDays: 14 }, { today: TODAY, cutoff: "2026-10-31", storeCurrency: "EUR" }),
+      orderPlanResponse(orderPlanFixture(), { supplier: null, withinDays: 90 }),
+      orderPreviewResponse(previewRows(orderPlanFixture()), orderPlanFixture()),
       productStockResponse([stockRow()], { query: "x", total: 1, forecast: true, today: TODAY }),
       accuracyResponse([]),
     ].map((r) => JSON.stringify(r));
