@@ -22,6 +22,7 @@
  */
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
+import { latestMetricRun } from "./metric-writes.server";
 import {
   INSTOCK_PREFIX,
   STORE_ROW,
@@ -90,10 +91,11 @@ async function snapshotMonth(
   if (existing > 0) return "exists";
   const metrics = await prisma.variantMetric.findMany({
     where: { shop, scope: "online" },
-    select: { variantId: true, rate: true, computedAt: true, inputs: true },
+    select: { variantId: true, rate: true, inputs: true },
   });
   if (!metrics.length) return "no_data";
-  const latest = metrics.reduce((m, x) => Math.max(m, x.computedAt.getTime()), 0);
+  // The latest run (rows unchanged since an earlier run keep its computedAt: MetricRun says when it ran).
+  const latest = (await latestMetricRun(shop, "online"))?.getTime() ?? 0;
   if (now.getTime() - latest > FRESH_MS) return "stale_metrics";
   // Non-bundle variants, as compute builds the season groups (collections and product type).
   const variants = await prisma.variant.findMany({

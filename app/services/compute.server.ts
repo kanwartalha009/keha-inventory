@@ -100,7 +100,7 @@ import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
 import { finishLocationMetrics, locationMetricsChunk, prepareLocationMetrics } from "./compute-locations.server";
 import { allLimit, yieldToEventLoop } from "../lib/concurrency-shared";
-import { writeVariantMetrics } from "./metric-writes.server";
+import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
 import { legacyDays, lastSaleBefore, locationDays, type SalesViewWhere } from "../models/fact-days.server";
@@ -703,8 +703,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // Same order as one pass over the catalogue (sums below add up in the same order).
   results.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
-  // Variants no longer tracked / no longer in the catalog lose their metric.
-  await prisma.variantMetric.deleteMany({ where: { shop, scope: SCOPE_ONLINE, computedAt: { lt: startedAt } } });
+  // Variants no longer tracked / no longer in the catalog lose their metric (only rows whose
+  // content changed were rewritten: the run remembers every variant it wrote or confirmed).
+  await sweepVariantMetrics(shop, SCOPE_ONLINE, startedAt);
   if (locationRun) await finishLocationMetrics(shop, locationRun, startedAt);
   const perLocation = { metrics: locationMetrics };
   // Every metric row of this run is written (online pool and locations): plans cached from the

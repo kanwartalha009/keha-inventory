@@ -364,11 +364,31 @@ model VariantMetric {
   role         String    // A | B | C
   orderQty     Int?
   orderBy      DateTime? @db.Date
+  /// When this row's CONTENT last changed (compute writes only changed rows). The latest run of a
+  /// scope is MetricRun.
   computedAt   DateTime
   inputs       Json
+  /// Hash of every column above but computedAt (services/metric-writes.server): unchanged rows are not rewritten.
+  contentHash  String?
 
   @@id([shop, variantId, scope])
   @@index([shop, status])
+  @@index([shop, scope, status])
+  @@index([shop, scope, orderBy])
+}
+
+/// The latest compute run per shop × scope (services/metric-writes.server): when it started and
+/// finished, the rows it confirmed so far and how many of them changed. Freshness checks and the
+/// order-plan cache read this, not VariantMetric.computedAt.
+model MetricRun {
+  shop       String
+  scope      String
+  startedAt  DateTime
+  finishedAt DateTime?
+  rows       Int       @default(0)
+  changed    Int       @default(0)
+
+  @@id([shop, scope])
 }
 
 model Action {

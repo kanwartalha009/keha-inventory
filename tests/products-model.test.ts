@@ -52,6 +52,8 @@ vi.mock("../app/db.server", () => ({
     shop: { findUnique: async () => ({ timezone: "UTC" }) },
     collection: { findFirst: async ({ where }: { where: Row }) => db.collection?.find((r) => matches(r, where)) ?? null },
     location: { findMany: async ({ where }: { where: Row }) => db.location!.filter((r) => matches(r, where)) },
+    // The plan cache's latest run (none here: never cached).
+    metricRun: { findUnique: async () => null },
     variantMetric: {
       findUnique: async () => db.variantMetric![0] ?? null,
       findMany: async ({ where }: { where: Row }) => db.variantMetric!.filter((r) => matches(r, where)),

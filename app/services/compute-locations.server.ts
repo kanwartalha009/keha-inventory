@@ -34,7 +34,7 @@ import { serviceLevelFor, type SafetyLevelKey } from "../lib/engine/safety-share
 import { casePackFor, type SupplierLite } from "../lib/supplier-shared";
 import { planningLocations } from "../lib/locations-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
-import { writeVariantMetrics } from "./metric-writes.server";
+import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
 import { lastSaleBefore, legacyDays, locationDays, type LocationDayRow } from "../models/fact-days.server";
 
@@ -106,12 +106,14 @@ export type LocationRun = {
 export async function prepareLocationMetrics(shop: string, enabled: boolean): Promise<LocationRun | null> {
   if (!enabled) {
     await prisma.variantMetric.deleteMany({ where: { shop, scope: { not: SCOPE_ONLINE } } });
+    await prisma.metricRun.deleteMany({ where: { shop, scope: { not: SCOPE_ONLINE } } });
     return null;
   }
   const rows = await prisma.location.findMany({ where: { shop }, select: { ...POOL_LOCATION_SELECT, name: true, role: true } });
   const planning = planningLocations(rows);
   const byId = new Map(rows.map((r) => [r.id, r]));
   await prisma.variantMetric.deleteMany({ where: { shop, scope: { notIn: keptScopes(planning.map((l) => l.id)) } } });
+  await prisma.metricRun.deleteMany({ where: { shop, scope: { notIn: keptScopes(planning.map((l) => l.id)) } } });
   return {
     planning: planning.map((l) => ({ id: l.id, role: l.role, source: demandSourceFor(l.role, countsForOnline(byId.get(l.id)!)) })),
     // H7: warehouses that count in supplier orders are planned as one pool — each gets its share
@@ -157,7 +159,7 @@ export async function locationMetricsChunk(shop: string, run: LocationRun, input
 
 /** After every chunk: rows of variants no longer carried (or no longer planned) at a location go. */
 export async function finishLocationMetrics(shop: string, run: LocationRun, startedAt: Date): Promise<void> {
-  for (const l of run.planning) await prisma.variantMetric.deleteMany({ where: { shop, scope: l.id, computedAt: { lt: startedAt } } });
+  for (const l of run.planning) await sweepVariantMetrics(shop, l.id, startedAt);
 }
 
 /** All planned variants at once (prepare → one chunk → finish). `enabled` = the plan includes `locations` (fail-open upstream). */

@@ -227,7 +227,8 @@ describe("computeShop", () => {
     expect(sp.rate).not.toBe(1);
     expect(sp.rate).toBeNull();
     expect(sp.status).toBe("not_enough_data");
-    expect((sp.inputs as { dataDays: number }).dataDays).toBe(0);
+    // No day with pool stock data (dataDays 0, not stored: lib/metric-store-shared): no in-stock day either.
+    expect((sp.inputs as { inStockDays: number }).inStockDays).toBe(0);
   });
 
   it("dead works when deadDays > 90 for a never-sold variant (oldest pool stock day starts the no-sale period)", async () => {
@@ -242,7 +243,8 @@ describe("computeShop", () => {
     await applyDays(S, written);
     await computeShop(S, { now: () => NOW });
     expect(metric(C).status).toBe("dead");
-    expect((metric(C).inputs as { noSaleDays: number }).noSaleDays).toBe(200);
+    // The no-sale period starts at the oldest pool stock day (noSaleDays 200 is not stored: it moves every day).
+    expect((metric(C).inputs as { dataSinceDay: string }).dataSinceDay).toBe("2026-03-30");
   });
 
   it("data audit #2: a best seller out of stock 77 of the 90 days keeps a pace from older in-stock days", async () => {
@@ -431,9 +433,10 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     const a = metric(A);
     const inputs = a.inputs as { seasonal: number; trend: number; season: Record<string, unknown> };
     // LY horizon 4/day (3-week smoothed at its end) ÷ LY base (the rate-window blend, ≈ 2/day) → raw ≈ 1.77; one year → shrunk halfway to 1.
-    const raw = (inputs.season as { seasonalRaw: number }).seasonalRaw;
+    // seasonalRaw is not stored (it moves every day): one year of weight 0.5 → raw = 2 × seasonal − 1.
+    const raw = 2 * inputs.seasonal - 1;
     expect(raw).toBeGreaterThan(1.7);
-    expect(inputs.seasonal).toBeCloseTo(1 + 0.5 * (raw - 1), 10);
+    expect((inputs.season as { seasonalWeight: number }).seasonalWeight).toBe(0.5);
     expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, seasonalWeight: 0.5, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
     // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2: measured, not applied.
     expect((inputs.season as { trendMeasured: number }).trendMeasured).toBe(2);
@@ -536,7 +539,7 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     await computeShop(S, { now: () => NOW });
     const c = metric(C);
     expect(c.status).not.toBe("dead");
-    expect(c.inputs).toMatchObject({ offSeason: true, soldLastYearAhead: 31 });
+    expect(c.inputs).toMatchObject({ offSeason: true }); // soldLastYearAhead (31) is not stored: its window slides daily
     expect(action("clear:PC")).toBeUndefined();
   });
 
@@ -544,6 +547,7 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     // 23:30 UTC on 16 Jul is 17 Jul in Madrid: 91 days before today (16 Oct), not 92.
     db.tables.variant.find((v) => v.id === C)!.productCreatedAt = new Date("2026-07-16T23:30:00Z");
     await computeShop(S, { now: () => NOW });
-    expect((metric(C).inputs as { productAgeDays: number }).productAgeDays).toBe(91);
+    // Stored as the day it was created (productAgeDays 91 before today, 16 Oct): fixed, not +1 a day.
+    expect((metric(C).inputs as { productCreatedDay: string }).productCreatedDay).toBe("2026-07-17");
   });
 });

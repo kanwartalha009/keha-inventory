@@ -82,7 +82,13 @@ async function syncHealth(): Promise<SyncHealth> {
 /** Last engine run and the shops with money cards in the last 36 h. Never throws. */
 async function computeHealth(now: Date): Promise<{ lastAt: string | null; shopsComputed: number | null }> {
   try {
-    const agg = await prisma.variantMetric.aggregate({ _max: { computedAt: true } });
+    // The latest compute run anywhere (MetricRun; rows unchanged by a run keep an older computedAt).
+    const [runAgg, rowAgg] = await Promise.all([
+      prisma.metricRun.aggregate({ _max: { startedAt: true } }),
+      prisma.variantMetric.aggregate({ _max: { computedAt: true } }),
+    ]);
+    const latest = [runAgg._max.startedAt, rowAgg._max.computedAt].filter((d): d is Date => d instanceof Date).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    const agg = { _max: { computedAt: latest } };
     // MoneyAtStake.day is the store-local calendar day; compare by date.
     const since = new Date(now.getTime() - COMPUTED_WITHIN_MS);
     const sinceDay = new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));

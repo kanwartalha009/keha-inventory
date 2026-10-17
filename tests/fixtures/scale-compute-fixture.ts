@@ -248,7 +248,11 @@ export function seedScaleFixture(db: FakeDb, opts: FixtureOptions = {}): { varia
 export function computeOutput(db: FakeDb): unknown {
   const plain = (v: unknown): unknown => JSON.parse(JSON.stringify(v));
   const metrics = (db.tables.variantMetric ?? [])
-    .map((m) => plain(m) as Record<string, unknown>)
+    // contentHash is storage bookkeeping (DB scale: change-only writes), not compute output.
+    .map((m) => {
+      const { contentHash: _h, ...rest } = plain(m) as Record<string, unknown>;
+      return rest;
+    })
     .sort((a, b) => `${a.scope}|${a.variantId}`.localeCompare(`${b.scope}|${b.variantId}`));
   const money = (db.tables.moneyAtStake ?? []).map((m) => plain(m));
   const actions = (db.tables.action ?? [])

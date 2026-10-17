@@ -23,6 +23,7 @@
  */
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
+import { latestMetricRun } from "./metric-writes.server";
 import { enqueueJob } from "./jobs/queue.server";
 import { adminAppUrl } from "../lib/admin-url.server";
 import { toSupportedLocale } from "../lib/i18n";
@@ -131,7 +132,8 @@ export async function loadMetrics(shop: string, now: Date): Promise<{ rows: Metr
     where: { shop, scope: SCOPE_ONLINE },
     select: { variantId: true, status: true, role: true, daysLeft: true, orderQty: true, orderBy: true, computedAt: true },
   })) as MetricRowLite[];
-  const newest = rows.reduce((m, r) => Math.max(m, r.computedAt.getTime()), 0);
+  // The latest run, not the rows' computedAt (unchanged rows keep the run that last changed them).
+  const newest = rows.length ? ((await latestMetricRun(shop, SCOPE_ONLINE))?.getTime() ?? 0) : 0;
   return { rows, fresh: newest > 0 && now.getTime() - newest <= MAX_METRIC_AGE_MS };
 }
 

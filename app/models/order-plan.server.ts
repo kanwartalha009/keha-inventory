@@ -519,8 +519,12 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : "");
 
 /** null = nothing to key on (no metric run yet): computed fresh every time. */
 async function planFingerprint(shop: string, scope: string, now: Date): Promise<string | null> {
-  const [shopRow, metric, metricCount, variant, variantCount, supplier, supplierCount, orders] = await Promise.all([
+  const [shopRow, run, metric, metricCount, variant, variantCount, supplier, supplierCount, orders] = await Promise.all([
     prisma.shop.findUnique({ where: { domain: shop }, select: { settings: true, currency: true, timezone: true, lastNightlyAt: true } }),
+    // The latest compute run (DB scale: rows are rewritten only when their content changes, so
+    // the run — when it started, how many rows it confirmed and changed so far, whether it
+    // finished — is what moves; rows written before MetricRun existed fall back to computedAt).
+    prisma.metricRun.findUnique({ where: { shop_scope: { shop, scope } }, select: { startedAt: true, finishedAt: true, rows: true, changed: true } }),
     prisma.variantMetric.aggregate({ where: { shop, scope }, _max: { computedAt: true } }),
     prisma.variantMetric.count({ where: { shop, scope } }),
     prisma.variant.aggregate({ where: { shop }, _max: { updatedAt: true } }),
@@ -532,19 +536,20 @@ async function planFingerprint(shop: string, scope: string, now: Date): Promise<
       select: { id: true, status: true, updatedAt: true, createdAt: true },
     }),
   ]);
-  if (!metric._max.computedAt) return null;
-  // L2: how far the latest run got. A nightly run writes its rows in batches, all stamped with the
-  // run's start, and sweeps the older rows at the end: the number of rows at the newest computedAt
-  // grows with every batch (and metricCount changes with the sweep), so a plan cached from a
-  // half-written run is never reused once another batch lands or the run finishes.
-  const latestRun = await prisma.variantMetric.count({ where: { shop, scope, computedAt: metric._max.computedAt } });
+  if (!metric._max.computedAt && !run) return null;
+  // L2: how far the latest run got. A run writes its rows in batches and sweeps the rows of
+  // variants it no longer computes at the end: MetricRun's rows / changed grow with every batch,
+  // finishedAt is set by the sweep (and metricCount changes with it), and the newest computedAt
+  // moves with every changed row — so a plan cached from a half-written run is never reused once
+  // another batch lands or the run finishes.
+  const runKey = run ? [iso(run.startedAt), iso(run.finishedAt), run.rows, run.changed] : [await prisma.variantMetric.count({ where: { shop, scope, computedAt: metric._max.computedAt! } })];
   return JSON.stringify([
     todayIn(shopRow?.timezone ?? "UTC", now),
     shopRow?.settings ?? null,
     shopRow?.currency ?? null,
     iso(shopRow?.lastNightlyAt),
     iso(metric._max.computedAt),
-    latestRun,
+    runKey,
     metricCount,
     iso(variant._max.updatedAt),
     variantCount,

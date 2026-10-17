@@ -108,7 +108,9 @@ describe("per-location metrics (Pro)", () => {
     expect(m.daysLeft).toBe(0);
     expect((m.inputs as { location: string; onHand: number; outOfStockDays: number }).location).toBe(SHOP1);
     expect((m.inputs as { onHand: number }).onHand).toBe(0);
-    expect((m.inputs as { outOfStockDays: number }).outOfStockDays).toBe(10);
+    // 10 sold-out days of the 90 (stored: in-stock days; outOfStockDays is not stored, lib/metric-store-shared).
+    expect((m.inputs as { historyDays: number; inStockDays: number }).inStockDays).toBe(80);
+    expect((m.inputs as { outSince: string }).outSince).toBe("2026-10-06");
     expect(m.orderQty).toBeGreaterThan(0);
     // The engine's safety stock is stored for transfers' keep level: z × σ × √(lead + cycle).
     const i = m.inputs as { safety: number; z: number; leadTimeDays: number; cycleDays: number };
