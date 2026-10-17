@@ -43,6 +43,7 @@ import { todayIn } from "../lib/dashboard-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { ALL } from "../lib/sync/facts-shared";
 import { kehaOnOrder } from "./reorder.server";
+import { forgetOrderPlan } from "./plan-cache.server";
 
 /** Keha orders that count as "on order" on Products: sent or confirmed (drafts aren't ordered yet). */
 const ON_ORDER_STATUSES = ["sent", "confirmed"] as const;
@@ -267,6 +268,7 @@ export async function supplierFilterOptions(shop: string): Promise<{ id: string;
  */
 export async function setProductCaseSize(shop: string, productId: string, caseQty: number | null): Promise<{ ok: true; count: number } | { ok: false }> {
   const r = await prisma.variant.updateMany({ where: { shop, productId }, data: { caseQty } });
+  if (r.count > 0) forgetOrderPlan(shop);
   return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 

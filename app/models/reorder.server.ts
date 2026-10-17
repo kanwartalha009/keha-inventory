@@ -34,6 +34,7 @@ import { thisWeek } from "../lib/order-plan-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
 import { computeOrderPlan } from "./order-plan.server";
+import { forgetOrderPlan } from "./plan-cache.server";
 import {
   REORDER_HOLD_STATUSES,
   applyDraftEdit,
@@ -366,6 +367,7 @@ export async function setNoReorder(
 ): Promise<{ ok: true; count: number } | { ok: false }> {
   const where = "variantId" in target ? { shop, id: target.variantId } : { shop, productId: target.productId };
   const r = await prisma.variant.updateMany({ where, data: { noReorder: value } });
+  if (r.count > 0) forgetOrderPlan(shop);
   return r.count > 0 ? { ok: true, count: r.count } : { ok: false };
 }
 
@@ -391,10 +393,12 @@ export async function insertWithNumber(
     const existing = await prisma.purchaseOrder.findMany({ where: { shop }, select: { number: true } });
     const number = nextPoNumber(existing.map((e) => e.number));
     try {
-      return await prisma.purchaseOrder.create({
+      const created = await prisma.purchaseOrder.create({
         data: { ...data, shop, number, confirmToken: newConfirmToken() },
         select: { id: true, number: true },
       });
+      forgetOrderPlan(shop);
+      return created;
     } catch (e) {
       if (!isUniqueViolation(e) || i >= attempts) throw e;
     }
@@ -604,6 +608,7 @@ export async function transitionOrder(shop: string, id: string, to: PoStatus, no
     data.cancelledAt = now;
   }
   const r = await prisma.purchaseOrder.updateMany({ where: { id, shop, status: o.status }, data });
+  if (r.count === 1) forgetOrderPlan(shop);
   return r.count === 1 ? { ok: true } : { ok: false, error: "changed" };
 }
 
@@ -631,6 +636,7 @@ export async function updateDraft(shop: string, id: string, quantities: unknown,
     where: { id, shop, source: "keha", status: "draft" },
     data: { lines: r.lines as unknown as Prisma.InputJsonValue },
   });
+  if (u.count === 1) forgetOrderPlan(shop);
   return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };
 }
 
@@ -640,6 +646,7 @@ export async function deleteDraft(shop: string, id: string): Promise<OrderEditRe
   if (!o) return { ok: false, error: "notFound" };
   if (o.source !== "keha" || o.status !== "draft") return { ok: false, error: "notAllowed" };
   const d = await prisma.purchaseOrder.deleteMany({ where: { id, shop, source: "keha", status: "draft" } });
+  if (d.count === 1) forgetOrderPlan(shop);
   return d.count === 1 ? { ok: true } : { ok: false, error: "changed" };
 }
 
@@ -668,6 +675,7 @@ export async function receiveOrder(
     data.receivedAt = now;
   }
   const u = await prisma.purchaseOrder.updateMany({ where: { id, shop, status: o.status }, data });
+  if (u.count === 1) forgetOrderPlan(shop);
   return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };
 }
 
@@ -695,6 +703,7 @@ export async function reopenOrder(shop: string, id: string, now: Date = new Date
       lines: reopenedLines(readPoLines(o.lines), o.status, now) as unknown as Prisma.InputJsonValue,
     },
   });
+  if (u.count === 1) forgetOrderPlan(shop);
   return u.count === 1 ? { ok: true, to } : { ok: false, error: "changed" };
 }
 

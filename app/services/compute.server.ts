@@ -98,6 +98,7 @@ import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
 import { syncLocationMetrics } from "./compute-locations.server";
 import { writeVariantMetrics } from "./metric-writes.server";
+import { forgetOrderPlan } from "../models/plan-cache.server";
 
 const HISTORY_DAYS = 90;
 const TRAFFIC_DAYS = 30;
@@ -460,6 +461,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     curveOf: new Map([...forwardOf].map(([id, f]) => [id, f.seasonCurve])),
     pool: { series, lastSale, dataSince },
   });
+  // Every metric row of this run is written (online pool and locations): plans cached from the
+  // run while it was being written are dropped (L2; the fingerprint also sees the new rows).
+  forgetOrderPlan(shop);
 
   // ---- money at stake ----
   const refresh = MONEY_REFRESH[plan];

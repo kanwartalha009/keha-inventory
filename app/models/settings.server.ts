@@ -4,6 +4,7 @@
  * before that there is nothing to save to and the caller gets `null`.
  */
 import prisma from "../db.server";
+import { forgetOrderPlan } from "./plan-cache.server";
 import { readSettings, type ShopSettings } from "../lib/settings-shared";
 
 export async function getShopSettings(shop: string): Promise<ShopSettings> {
@@ -18,6 +19,7 @@ export async function saveShopSettings(shop: string, next: ShopSettings): Promis
   const stored = (row.settings && typeof row.settings === "object" ? row.settings : {}) as Record<string, unknown>;
   const merged = { ...stored, ...next };
   await prisma.shop.update({ where: { domain: shop }, data: { settings: merged } });
+  forgetOrderPlan(shop);
   return readSettings(merged);
 }
 

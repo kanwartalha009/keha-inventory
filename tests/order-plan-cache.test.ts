@@ -13,7 +13,13 @@ vi.mock("../app/db.server", async () => {
 });
 
 import * as dbModule from "../app/db.server";
-import { cachedOrderPlan, clearOrderPlanCache } from "../app/models/order-plan.server";
+import { cachedOrderPlan, clearOrderPlanCache, computeOrderPlan, forgetOrderPlan } from "../app/models/order-plan.server";
+import { planCache } from "../app/models/plan-cache.server";
+import { deleteDraft, receiveOrder, reopenOrder, setNoReorder, transitionOrder } from "../app/models/reorder.server";
+import { setProductCaseSize } from "../app/models/products.server";
+import { saveSupplier } from "../app/models/suppliers.server";
+import { saveShopSettings } from "../app/models/settings.server";
+import { readSettings } from "../app/lib/settings-shared";
 import { safetyStock } from "../app/lib/engine/order-shared";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
@@ -80,6 +86,48 @@ describe("cachedOrderPlan", () => {
     fake.tables.purchaseOrder = [{ id: "po1", shop: S, source: "keha", status: "draft", createdAt: new Date("2026-10-02T10:03:00Z"), updatedAt: RUN, supplierId: null, confirmedShipDate: null, expectedDate: null, lines: [{ variantId: V(1), qty: 5 }] }];
     const fresh = await qtyOf(NOW); // 13 days 23 h 57 min old: still counts
     expect(await qtyOf(later(5 * 60_000))).toBeGreaterThan(fresh); // 5 minutes later (inside the 10-minute cap) it no longer does
+  });
+
+  it("L2: a plan cached while the nightly run is writing its batches is not reused once the next batch lands", async () => {
+    const OLD = new Date("2026-10-15T03:00:00Z");
+    // First batch of tonight's run written (v1), v2 still last night's row.
+    fake.tables.variantMetric = [metric(1, 10, RUN), metric(2, 10, OLD)];
+    await cachedOrderPlan(S, NOW);
+    // Second batch: v2 now has plenty of stock (no order). Same newest computedAt, same row count.
+    fake.tables.variantMetric = [metric(1, 10, RUN), metric(2, 500, RUN)];
+    const at = later(5 * 60_000);
+    const q = (p: Awaited<ReturnType<typeof computeOrderPlan>>) => p.data.events.filter((e) => e.orderBy === TODAY).map((e) => [e.variantId, e.qty]);
+    expect(q(await cachedOrderPlan(S, at))).toEqual(q(await computeOrderPlan(S, at)));
+  });
+
+  it("L2: the writes that change what the plan reads forget the shop's cached plans", async () => {
+    fake.tables.purchaseOrder = [
+      { id: "d1", shop: S, number: "PO-1", source: "keha", status: "draft", createdAt: NOW, updatedAt: RUN, supplierId: null, confirmedShipDate: null, expectedDate: null, lines: [{ variantId: V(1), qty: 5 }] },
+      { id: "d2", shop: S, number: "PO-2", source: "keha", status: "draft", createdAt: NOW, updatedAt: RUN, supplierId: null, confirmedShipDate: null, expectedDate: null, lines: [{ variantId: V(1), qty: 5 }] },
+    ];
+    const cached = () => planCache.has(`${S}|online`);
+    const other = "other.myshopify.com";
+    const steps: [string, () => Promise<unknown>][] = [
+      ["send", () => transitionOrder(S, "d1", "sent", NOW)],
+      ["receive", () => receiveOrder(S, "d1", [5], false, undefined, NOW)],
+      ["re-open", () => reopenOrder(S, "d1", later(1000))],
+      ["cancel", () => transitionOrder(S, "d1", "cancelled", NOW)],
+      ["delete", () => deleteDraft(S, "d2")],
+      ["don't reorder", () => setNoReorder(S, { productId: "P1" }, true)],
+      ["case size", () => setProductCaseSize(S, "P2", 6)],
+      ["supplier", () => saveSupplier(S, null, { name: "Acme", email: null, leadTimeDays: 20, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"] })],
+      ["settings", () => saveShopSettings(S, { ...readSettings({}), leadTimeDays: 21 })],
+    ];
+    for (const [name, step] of steps) {
+      await cachedOrderPlan(S, NOW);
+      planCache.set(`${other}|online`, planCache.get(`${S}|online`)!);
+      expect(cached(), name).toBe(true);
+      await step();
+      expect(cached(), name).toBe(false);
+      expect(planCache.has(`${other}|online`), name).toBe(true); // other shops keep theirs
+    }
+    forgetOrderPlan(other);
+    expect(planCache.size).toBe(0);
   });
 
   it("no metric run yet: nothing to key on, computed every time", async () => {

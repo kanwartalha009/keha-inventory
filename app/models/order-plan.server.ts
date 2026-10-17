@@ -55,6 +55,7 @@ import {
 import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
+import { clearOrderPlanCache, forgetOrderPlan, planCache } from "./plan-cache.server";
 import { kehaOrdersById, kehaPlanOrders, shopBasics, staleDraftCount, type KehaPlanOrder } from "./reorder.server";
 
 const num = (v: unknown): number | null => {
@@ -465,19 +466,16 @@ async function addLastYear(
 // Products sorts every variant by the plan's order-by date, so each page load needs the whole
 // forward plan (~0.25 s of maths for 3,000 variants, plus the reads). The result only changes
 // when something the plan reads changes, so it is kept per shop + scope and reused while its
-// FINGERPRINT is the same: the store's day and settings, the latest metric run (computedAt), the
+// FINGERPRINT is the same: the store's day and settings, the latest metric run (computedAt and how
+// many rows it has written so far), the
 // catalog, suppliers and Keha orders (newest updatedAt and counts; each open order's status,
 // version and whether it still counts as ordered at `now`). Anything that changes one of them
-// recomputes; PLAN_CACHE_TTL_MS caps the age anyway. One process, bounded (PLAN_CACHE_MAX).
+// recomputes; PLAN_CACHE_TTL_MS caps the age anyway. One process, bounded (PLAN_CACHE_MAX). The
+// writes that change what the plan reads also forget the shop's entries (forgetOrderPlan, L2).
 
 const PLAN_CACHE_TTL_MS = 10 * 60 * 1000;
 const PLAN_CACHE_MAX = 100;
-const planCache = new Map<string, { fingerprint: string; at: number; value: Promise<OrderPlanDetail> }>();
-
-/** Tests: start from an empty cache. */
-export function clearOrderPlanCache(): void {
-  planCache.clear();
-}
+export { clearOrderPlanCache, forgetOrderPlan };
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : "");
 
@@ -497,12 +495,18 @@ async function planFingerprint(shop: string, scope: string, now: Date): Promise<
     }),
   ]);
   if (!metric._max.computedAt) return null;
+  // L2: how far the latest run got. A nightly run writes its rows in batches, all stamped with the
+  // run's start, and sweeps the older rows at the end: the number of rows at the newest computedAt
+  // grows with every batch (and metricCount changes with the sweep), so a plan cached from a
+  // half-written run is never reused once another batch lands or the run finishes.
+  const latestRun = await prisma.variantMetric.count({ where: { shop, scope, computedAt: metric._max.computedAt } });
   return JSON.stringify([
     todayIn(shopRow?.timezone ?? "UTC", now),
     shopRow?.settings ?? null,
     shopRow?.currency ?? null,
     iso(shopRow?.lastNightlyAt),
     iso(metric._max.computedAt),
+    latestRun,
     metricCount,
     iso(variant._max.updatedAt),
     variantCount,

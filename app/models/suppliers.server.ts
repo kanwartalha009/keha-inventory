@@ -6,6 +6,7 @@
  * explicit product assignment wins (lib/supplier-shared supplierFor).
  */
 import prisma from "../db.server";
+import { forgetOrderPlan } from "./plan-cache.server";
 import { decryptSecret, encryptSecret } from "../lib/crypto.server";
 import { readSettings } from "../lib/settings-shared";
 import { readMinOrderScope, type MinOrderScope } from "../lib/supplier-shared";
@@ -98,8 +99,13 @@ function data(input: SupplierInput) {
 
 /** Create (id null) or update this shop's supplier. Returns its id, or null when the id isn't this shop's. */
 export async function saveSupplier(shop: string, id: string | null, input: SupplierInput): Promise<string | null> {
-  if (!id) return (await prisma.supplier.create({ data: { shop, ...data(input) }, select: { id: true } })).id;
+  if (!id) {
+    const created = await prisma.supplier.create({ data: { shop, ...data(input) }, select: { id: true } });
+    forgetOrderPlan(shop);
+    return created.id;
+  }
   const r = await prisma.supplier.updateMany({ where: { id, shop }, data: data(input) });
+  forgetOrderPlan(shop);
   return r.count === 1 ? id : null;
 }
 
@@ -119,6 +125,7 @@ export async function deleteSupplier(shop: string, id: string): Promise<boolean>
     prisma.variant.updateMany({ where: { shop, supplierId: id }, data: { supplierId: null } }),
     prisma.supplier.deleteMany({ where: { id, shop } }),
   ]);
+  forgetOrderPlan(shop);
   return del.count === 1;
 }
 
@@ -128,12 +135,14 @@ export async function assignProducts(shop: string, supplierId: string, productId
   if (!s) return null;
   if (!productIds.length) return 0;
   const r = await prisma.variant.updateMany({ where: { shop, productId: { in: productIds } }, data: { supplierId } });
+  forgetOrderPlan(shop);
   return r.count;
 }
 
 /** Removes the by-product assignments of a supplier (vendor matching applies again). */
 export async function clearProducts(shop: string, supplierId: string): Promise<number> {
   const r = await prisma.variant.updateMany({ where: { shop, supplierId }, data: { supplierId: null } });
+  forgetOrderPlan(shop);
   return r.count;
 }
 

@@ -38,6 +38,7 @@ import { addDays } from "../../lib/engine/dates-shared";
 import { dayDate } from "../../lib/sync/facts-shared";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds } from "../../lib/compute-shared";
 import { syncErrorCode } from "../../lib/sync/errors-shared";
+import { forgetOrderPlan } from "../../models/plan-cache.server";
 
 type PoPage = {
   inventoryPurchaseOrders: { nodes: GqlPurchaseOrder[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
@@ -254,6 +255,7 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
     if (r.count === 1) for (const [v, n] of Object.entries(decision.received)) used.set(v, (used.get(v) ?? 0) + n);
     closed += r.count;
   }
+  if (closed) forgetOrderPlan(shop);
   return closed;
 }
 

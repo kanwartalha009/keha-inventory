@@ -12,6 +12,7 @@ import { clientIp, createRateLimiter } from "../lib/rate-limit-shared";
 import { confirmLinkOpen, supplierLines, supplierTotals, validShipDate, type SupplierLine } from "../lib/purchase-order-shared";
 import { getShopContact } from "./shop-contact.server";
 import { getOrder, hidePricesFor, pricingFor, type OrderDetail } from "../models/reorder.server";
+import { forgetOrderPlan } from "../models/plan-cache.server";
 
 /** 20 requests per 10 minutes, per client address and per token (spec §14). */
 export const CONFIRM_RATE = { limit: 20, windowMs: 10 * 60 * 1000 };
@@ -114,5 +115,7 @@ export async function confirmShipDate(
     where: { confirmToken: token, source: "keha", status: { in: ["sent", "confirmed"] }, confirmExpiresAt: { gt: now } },
     data: { status: "confirmed", confirmedShipDate: new Date(`${date}T00:00:00Z`) },
   });
+  // The arrival moved (ship date + transit): the order plan reads it.
+  if (r.count === 1) forgetOrderPlan(found.shop);
   return r.count === 1 ? { ok: true, date } : { ok: false, error: "invalid" };
 }
