@@ -12,6 +12,7 @@
 name = "Product went dead"
 type = "flow_trigger"
 handle = "product-went-dead"
+uid = "d028e92e-dfbb-39b4-f21f-aa37c59f205e8c8bcebe"
 description = "Fires when a product has had no sale for your dead-stock period while its stock ties up cash. Once per product until it sells again."
 
 [settings]

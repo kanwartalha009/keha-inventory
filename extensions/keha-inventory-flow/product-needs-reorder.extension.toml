@@ -15,6 +15,7 @@
 name = "Product needs reorder"
 type = "flow_trigger"
 handle = "product-needs-reorder"
+uid = "94d4925e-4cfe-b34d-5be8-f69e5f4af501daee4d0d"
 description = "Fires when a product will run out before new stock can arrive and Keha suggests an order. Once per product until it recovers."
 
 [settings]
