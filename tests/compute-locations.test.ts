@@ -108,6 +108,9 @@ describe("per-location metrics (Pro)", () => {
     expect((m.inputs as { onHand: number }).onHand).toBe(0);
     expect((m.inputs as { outOfStockDays: number }).outOfStockDays).toBe(10);
     expect(m.orderQty).toBeGreaterThan(0);
+    // The engine's safety stock is stored for transfers' keep level: z × σ × √(lead + cycle).
+    const i = m.inputs as { safety: number; z: number; leadTimeDays: number; cycleDays: number };
+    expect(i.safety).toBeCloseTo(i.z * Number(m.sigma ?? 0) * Math.sqrt(i.leadTimeDays + i.cycleDays), 6);
   });
 
   it("#4: the pool counts the store by default — its stock and its POS demand (all channels, once)", async () => {

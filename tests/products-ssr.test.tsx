@@ -229,7 +229,7 @@ describe("Variant detail", () => {
     expect(html).toContain("Not used: too few days in stock");
     expect(html).toContain("No seasonal data yet");
     expect(html).toContain("14 days (store default)");
-    expect(html).toContain("12 units"); // safety = 1.65 × σ 2 × √14 = 12.3
+    expect(html).toContain("17 units"); // safety = 1.65 × σ 2 × √(lead 14 + cycle 14) = 17.5 → 17
     expect(html).toContain("Based on: ");
     expect(html).toContain("Recent sales");
     expect(html).toContain("Sold out");

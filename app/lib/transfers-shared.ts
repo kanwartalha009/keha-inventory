@@ -5,9 +5,10 @@
  * and StockNow per location.
  *
  * Keep level of one metric = what the engine wants on hand: forecast demand over lead time +
- * order cycle, plus safety stock — rate × seasonal × trend × (lead + cycle) + z × σ × √lead
- * (engine demand + safetyStock, with the inputs stored on the metric). Unknown (null) when
- * the metric has no sales rate yet (fewer than 14 in-stock days) or its inputs are missing.
+ * order cycle, plus safety stock — rate × seasonal × trend × (lead + cycle) + the engine's
+ * stored safety (inputs.safety = z × σ × √(lead + cycle); rows stored before it fall back to the
+ * same formula from z, σ, lead and cycle). Unknown (null) when the metric has no sales rate yet
+ * (fewer than 14 in-stock days) or its inputs are missing.
  *
  * A store's NEED for a variant (definition):
  *   the store's metric is Out or Running low, its keep level is known, and
@@ -41,6 +42,8 @@
  * Lines are grouped by origin → destination.
  */
 
+import { safetyStock } from "./engine/order-shared";
+
 export type PlanMetric = { status: string; rate: number | null; sigma: number | null; inputs: unknown };
 export type StockAt = { onHand: number; available: number; incoming: number };
 export type PlanVariant = { id: string; productTitle: string; variantTitle: string; sku: string | null; image: string | null };
@@ -59,7 +62,8 @@ export function keepLevel(m: PlanMetric | null | undefined): number | null {
   const seasonal = num(i.seasonal) ?? 1;
   const trend = num(i.trend) ?? 1;
   const sigma = m.sigma !== null && Number.isFinite(m.sigma) ? m.sigma : 0;
-  return Math.max(0, m.rate * seasonal * trend * (lead + cycle) + z * sigma * Math.sqrt(Math.max(0, lead)));
+  const safety = num(i.safety) ?? safetyStock(z, sigma, lead + cycle);
+  return Math.max(0, m.rate * seasonal * trend * (lead + cycle) + safety);
 }
 
 export const NEED_STATUSES: readonly string[] = ["out", "running_low"];

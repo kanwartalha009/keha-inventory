@@ -102,7 +102,7 @@ export interface BacktestData {
   coverage: Coverage;
   variants: readonly BacktestVariant[];
   suppliers?: readonly SupplierLite[];
-  /** SalesDaily location view, channel "all", locationKey in the pool keys; per variant × day. */
+  /** Pool demand (compute-shared demandWhere: channel view, or the location view minus left-out locations); per variant × day. */
   poolSales: readonly SalesDay[];
   /** SalesDaily channel view (locationKey "all"): revenue (ABC, top 20) and unit price. */
   channelSales: readonly SalesDay[];

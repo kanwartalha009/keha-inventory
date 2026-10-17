@@ -223,6 +223,8 @@ async function computeLocation(
         serviceLevel: serviceLevelFor(x.safetyLevel, r.role),
         supplierId,
         kehaOnOrder: 0,
+        // The engine's safety stock (z × σ × √(lead + cycle)): transfers' keep level reads it.
+        safety: r.safety,
       });
       return {
         variantId: r.id,

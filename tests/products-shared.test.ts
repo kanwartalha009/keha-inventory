@@ -216,7 +216,7 @@ describe("detail series", () => {
       { month: "2026-09", sold: null, outDays: 1, dataDays: 0 },
     ]);
   });
-  it("forecast inputs: read defensively, safety = z × σ × √lead time", () => {
+  it("forecast inputs: read defensively, safety = the stored engine safety, else z × σ × √(lead + cycle)", () => {
     const v = readForecastInputs(
       {
         windows: [
@@ -236,7 +236,9 @@ describe("detail series", () => {
     );
     expect(v?.windows).toHaveLength(2);
     expect(v?.windows[1]!.used).toBe(false);
-    expect(v?.safety).toBeCloseTo(1.65 * 2 * 4);
+    expect(v?.safety).toBeCloseTo(1.65 * 2 * Math.sqrt(16 + 14));
+    // The engine's stored figure wins (it is what the order quantity used).
+    expect(readForecastInputs({ z: 1.65, leadTimeDays: 16, cycleDays: 14, safety: 21.5 }, 2)?.safety).toBe(21.5);
     expect(v?.leadTimeSource).toBe("default");
     expect(readForecastInputs({ z: 1.65, leadTimeDays: 14 }, null)?.safety).toBeNull();
     expect(readForecastInputs(null, 1)).toBeNull();

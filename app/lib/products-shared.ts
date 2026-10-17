@@ -384,7 +384,7 @@ export type ForecastInputsView = {
   leadTimeSource: "supplier" | "default" | null;
   cycleDays: number | null;
   z: number | null;
-  /** z × σ × √lead time (engine safetyStock), from VariantMetric.sigma; null when unknown. */
+  /** The engine's safety stock, z × σ × √(lead time + order cycle): stored inputs.safety (rows stored before: the same formula); null when unknown. */
   safety: number | null;
 };
 
@@ -407,7 +407,10 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     : [];
   const lead = n(r.leadTimeDays);
   const z = n(r.z);
-  const safety = z !== null && sigma !== null && Number.isFinite(sigma) && lead !== null ? safetyStock(z, sigma, lead) : null;
+  const cycle = n(r.cycleDays);
+  const safety =
+    n(r.safety) ??
+    (z !== null && sigma !== null && Number.isFinite(sigma) && lead !== null ? safetyStock(z, sigma, lead + (cycle ?? 0)) : null);
   return {
     windows,
     inStockDays: n(r.inStockDays),
@@ -416,7 +419,7 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     trend: n(r.trend),
     leadTimeDays: lead,
     leadTimeSource: r.leadTimeSource === "supplier" || r.leadTimeSource === "default" ? r.leadTimeSource : null,
-    cycleDays: n(r.cycleDays),
+    cycleDays: cycle,
     z,
     safety,
   };

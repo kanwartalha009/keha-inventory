@@ -37,7 +37,9 @@ const stock = (onHand: number, incoming = 0, available = onHand): StockAt => ({ 
 describe("keep level", () => {
   it("is demand over lead time + cycle (with seasonal × trend) plus safety stock", () => {
     expect(keepLevel(metric(2))).toBe(40);
-    expect(keepLevel(metric(2, "healthy", { sigma: 1, inputs: { leadTimeDays: 16, cycleDays: 4, z: 2, seasonal: 1.5, trend: 1 } }))).toBeCloseTo(2 * 1.5 * 20 + 2 * 1 * 4, 10);
+    expect(keepLevel(metric(2, "healthy", { sigma: 1, inputs: { leadTimeDays: 16, cycleDays: 4, z: 2, seasonal: 1.5, trend: 1 } }))).toBeCloseTo(2 * 1.5 * 20 + 2 * 1 * Math.sqrt(20), 10);
+    // The engine's stored safety (z × σ × √(lead + cycle)) wins over the fallback.
+    expect(keepLevel(metric(2, "healthy", { sigma: 1, inputs: { leadTimeDays: 16, cycleDays: 4, z: 2, seasonal: 1.5, trend: 1, safety: 7 } }))).toBeCloseTo(2 * 1.5 * 20 + 7, 10);
   });
 
   it("is unknown without a sales rate or the inputs", () => {
