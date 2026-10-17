@@ -76,7 +76,7 @@ describe("/privacy", () => {
     expect(html).toContain("Shopify Sidekick");
     expect(html).toContain("it collects nothing new and changes nothing in");
     expect(html).toContain("Transfers are created as drafts");
-    expect(html).toContain("planner scenarios");
+    expect(html).toContain("Season plan scenarios");
     expect(html).toContain("privacy@example.com");
     expect(html).toContain("Example Ltd");
     expect(html).not.toContain("rolled up");

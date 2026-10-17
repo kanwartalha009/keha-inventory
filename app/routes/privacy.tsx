@@ -77,7 +77,7 @@ export default function Privacy() {
         <strong>What the merchant enters in the App:</strong> settings (lead
         times, thresholds, safety level); suppliers (name, email address, lead
         time, minimum orders, case packs, the vendors they supply); purchase
-        orders created in the App; planner scenarios (dates and targets) and
+        orders created in the App; Season plan scenarios (dates and targets) and
         revenue goals per collection; each location’s role (warehouse, store)
         and whether it counts for online sales; the stock transfers created
         from the App; the email addresses that should receive the Monday email;

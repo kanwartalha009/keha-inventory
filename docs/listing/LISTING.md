@@ -140,14 +140,14 @@ keep).
 - Shipped — 90-day order calendar with cash per week
 - Shipped — Numbers refreshed daily, and every action
 - Shipped — Preorder bridge and dead-stock discounts
-- Shipped — Season planner (1 scenario) and forecast accuracy
+- Shipped — Season plan (1 scenario) and forecast accuracy
 - Shipped — Slack and Shopify Flow
 
 ### Pro
 
 - Shipped — Planning per location and per POS store
 - Shipped — Transfers from warehouse to stores, created in Shopify
-- Shipped — Unlimited planner scenarios
+- Shipped — Unlimited Season plan scenarios
 
 ## Links and contacts
 

@@ -47,7 +47,7 @@ export const FEATURE_PLAN = {
   clearance: "growth",
   /** Missing sizes, weak product pages, high returns, falling best sellers (Free: shown as a count). */
   fixDetails: "growth",
-  /** Season and growth planner (Growth: 1 scenario; Pro: unlimited — SCENARIO_LIMIT). */
+  /** Season plan (Growth: 1 scenario; Pro: unlimited — SCENARIO_LIMIT). */
   planner: "growth",
   /** Target share of revenue per collection. */
   collectionGoals: "growth",

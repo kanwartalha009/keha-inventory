@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { FEATURE_PLAN, hasFeature, type Feature } from "../app/lib/plan-shared";
-import { FEATURES_AS_LIMITS, PLAN_MATRIX, cellFor, matrixFeatures } from "../app/lib/plan-matrix";
+import { FEATURES_AS_LIMITS, PLAN_MATRIX, PLAN_POINTS, cellFor, matrixFeatures } from "../app/lib/plan-matrix";
 
 describe("plan matrix", () => {
   it("lists every paid feature", () => {
@@ -28,5 +28,17 @@ describe("plan matrix", () => {
         expect(rank(cellFor(r, "growth")), r.label).toBeGreaterThanOrEqual(rank(cellFor(r, "free")));
         expect(rank(cellFor(r, "pro")), r.label).toBeGreaterThanOrEqual(rank(cellFor(r, "growth")));
       }
+  });
+});
+
+describe("plan wording (2026-10-17 click-through)", () => {
+  it("the screen is called Season plan on the Plans page, never 'planner'", () => {
+    const words = [
+      ...Object.values(PLAN_POINTS).flat(),
+      ...PLAN_MATRIX.flatMap((g) => g.rows.map((r) => r.label)),
+    ];
+    for (const w of words) expect(w, w).not.toMatch(/planner/i);
+    expect(PLAN_POINTS.growth).toContain("Season plan (1 scenario) and forecast accuracy");
+    expect(PLAN_POINTS.pro).toContain("Unlimited Season plan scenarios");
   });
 });

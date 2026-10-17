@@ -67,7 +67,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
   {
     title: "Planning",
     rows: [
-      { label: "Season and growth planner with cash needed per week", values: { free: false, growth: "1 scenario", pro: "Unlimited" } },
+      { label: "Season plan scenarios with cash needed per week", values: { free: false, growth: "1 scenario", pro: "Unlimited" } },
       { label: "Revenue goals per collection", feature: "collectionGoals" },
       { label: "Forecast accuracy, shown every month", feature: "accuracy" },
     ],
@@ -108,13 +108,13 @@ export const PLAN_POINTS: Record<PlanCode, string[]> = {
     "90-day order calendar with cash per week",
     "Numbers refreshed daily, and every action",
     "Preorder bridge and dead-stock discounts",
-    "Season planner (1 scenario) and forecast accuracy",
+    "Season plan (1 scenario) and forecast accuracy",
     "Slack and Shopify Flow",
   ],
   pro: [
     "Planning per location and per POS store",
     "Transfers from warehouse to stores, created in Shopify",
-    "Unlimited planner scenarios",
+    "Unlimited Season plan scenarios",
   ],
 };
 export const INHERITS: Record<PlanCode, string | null> = { free: null, growth: "Everything in Free, plus:", pro: "Everything in Growth, plus:" };
