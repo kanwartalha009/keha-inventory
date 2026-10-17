@@ -474,6 +474,8 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
       ),
     );
   }
+  // B5: a sustained level change — the pace is the level since then.
+  if (why.levelShift) out.push(fill(why.levelShift.ratio >= 1 ? t("Sales stepped up on {date}; using the recent level.") : t("Sales dropped on {date}; using the recent level."), { date: shortDay(why.levelShift.day, locale) }));
   if (Math.abs(why.growth - 1) > 1e-9) out.push(fill(t("Growth assumption ×{growth} included in the forecast."), { growth: nf(why.growth, locale, 2) }));
   const r = { qty: nf(why.rounded, locale, 0), pack: nf(why.pack ?? 0, locale, 0), moq: nf(why.moq ?? 0, locale, 0) };
   out.push(

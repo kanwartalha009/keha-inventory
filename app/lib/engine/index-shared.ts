@@ -29,6 +29,7 @@ import {
 } from "./rate-shared";
 import { variantStatus } from "./status-shared";
 import { applyCap, cappedSince, spikeCap, type CappedDay } from "./outliers-shared";
+import { levelShift, type LevelShift } from "./level-shift-shared";
 import { PLAN_LIKE_DAYS, ownWeight, type PlanLikeInput } from "./new-style-shared";
 import { arrivalsFrom, coverDays, demandProjection, lostUnits, type Projection } from "./projection-shared";
 import {
@@ -48,6 +49,7 @@ export * from "./money-shared";
 export * from "./projection-shared";
 export * from "./outliers-shared";
 export * from "./new-style-shared";
+export * from "./level-shift-shared";
 
 export interface VariantInput {
   id: string;
@@ -210,6 +212,8 @@ export interface VariantInputs {
   spikes: { cap: number | null; days: CappedDay[]; count: number; off: boolean };
   /** σ was measured on de-seasonalised demand and scaled by the seasonal index (levels given). */
   sigmaSeasonal: boolean;
+  /** B5: a confirmed sustained level change — the pace is the level since `day` (level-shift-shared). */
+  levelShift: { day: DayKey; before: number; after: number; ratio: number; afterDays: number } | null;
   /**
    * "Plan like…" in use (fewer than PLAN_LIKE_DAYS in-stock days): the reference, its share of
    * this variant, the weight of the reference in the blended pace and the own in-stock days.
@@ -341,14 +345,21 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   // older history included (up to 14 months), before "can't be planned yet".
   let pace: ReturnType<typeof inStockPace> = null;
   if (!r.enoughData && input.olderSeries?.length) pace = inStockPace(applyCap(all, spikes.cap), today, settings);
-  const ownRate = pace ? pace.rate : r.rate;
+  // B5: a sustained change in the sales level (went viral, died) → the level since the change.
+  const shift: LevelShift | null =
+    !pace && r.rate !== null && r.enoughData && settings.levelShiftZ > 0 && input.levels && input.levels.size
+      ? levelShift(capped, today, settings.rateWindows, input.levels, { z: settings.levelShiftZ })
+      : null;
+  const ownRate = pace ? pace.rate : shift ? shift.rate : r.rate;
   // σ on de-seasonalised demand, scaled to the protection period's season (R4); else the raw σ.
   // Used only when it explains part of the variation (de-seasonalised σ below the raw σ): a style
   // whose own sales don't follow its group's shape — a new collection filling up, a group whose
   // level is its product count growing — keeps the raw σ instead of one inflated by ÷ level.
   const levels = !pace && input.levels && input.levels.size ? input.levels : null;
-  const rawSigma = pace ? pace.sigma : sigmaDaily(capped, today, settings.historyDays);
-  const dsSigma = levels && rawSigma !== null ? sigmaDaily(capped, today, settings.historyDays, levels) : null;
+  // After a level shift σ is measured on the days since it (the two levels are not noise).
+  const sigmaDays = shift ? daysBetween(shift.day, today) : settings.historyDays;
+  const rawSigma = pace ? pace.sigma : sigmaDaily(capped, today, sigmaDays);
+  const dsSigma = levels && rawSigma !== null ? sigmaDaily(capped, today, sigmaDays, levels) : null;
   const sigmaSeasonal = dsSigma !== null && rawSigma !== null && dsSigma < rawSigma;
   const ownSigma = rawSigma === null ? null : sigmaSeasonal ? dsSigma! * seasonal : rawSigma;
   // "Plan like…" (R4): a new style borrows a reference pace until it has PLAN_LIKE_DAYS in-stock days.
@@ -538,6 +549,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       pace: pace ? { from: pace.from, inStockDays: pace.inStockDays } : null,
       spikes: { cap: spikes.cap, days: spikeDays.slice(0, 10), count: spikeDays.length, off: capOff && input.noCap === true },
       sigmaSeasonal: sigmaSeasonal && planLike === null,
+      levelShift: shift && planLike === null ? { day: shift.day, before: shift.before, after: shift.after, ratio: shift.ratio, afterDays: shift.afterDays } : null,
       planLike,
       outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,

@@ -380,7 +380,8 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
   let excluded = 0;
   for (const v of store.variants) {
     const m = metricOf.get(v.id);
-    if (!m || m.rate === null || inputsOf(v.id).pace) continue;
+    // A level shift (B5) sets the pace from the level since the change: checked by the engine tests.
+    if (!m || m.rate === null || inputsOf(v.id).pace || inputsOf(v.id).levelShift) continue;
     const raw = (d: number) => {
       const i = v.idx * D + d;
       const sold = store.sold[0]![i]! + store.sold[1]![i]! + store.sold[2]![i]! - store.returned[0]![i]!;

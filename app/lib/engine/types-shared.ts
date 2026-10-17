@@ -83,6 +83,11 @@ export interface EngineSettings {
    * before the pace and σ are measured. 0 = off.
    */
   spikeCapK: number;
+  /**
+   * Level-shift detection (level-shift-shared): |z| a sustained change in the sales level must reach
+   * before the pace uses the level since the change. 0 = off.
+   */
+  levelShiftZ: number;
 }
 
 export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
@@ -105,6 +110,7 @@ export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
   cashStuckCoverDays: 90,
   soldOutTrafficDays: 30,
   spikeCapK: 4,
+  levelShiftZ: 4,
 });
 
 /** Shop overrides on top of ENGINE_DEFAULTS (undefined keys keep the default). */

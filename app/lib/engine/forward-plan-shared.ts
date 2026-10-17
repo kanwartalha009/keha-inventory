@@ -116,6 +116,14 @@ export interface ForwardVariantInput {
   spikes?: SpikesWhy | null;
   /** R4: the style is planned like another product / its product type (inputs.planLike). */
   planLike?: PlanLikeWhy | null;
+  /** B5: a sustained level change — the pace is the level since then (inputs.levelShift). */
+  levelShift?: LevelShiftWhy | null;
+}
+
+/** A level shift in the Why: the first day at the new level and up (> 1) or down. */
+export interface LevelShiftWhy {
+  day: DayKey;
+  ratio: number;
 }
 
 /** Unusual (spike) days capped in the pace: how many, and the largest one. */
@@ -166,6 +174,8 @@ export interface OrderWhy {
   spikes?: SpikesWhy | null;
   /** Planned like another product / its product type (R4). */
   planLike?: PlanLikeWhy | null;
+  /** The pace is the level since a sustained change (B5). */
+  levelShift?: LevelShiftWhy | null;
   /** demand + safety − onHand − onOrder − missed. */
   need: number;
   /** After the case pack and the per-variant minimum. */
@@ -452,6 +462,7 @@ export class VariantProjection {
         paceFrom: this.input.paceFrom ?? null,
         spikes: this.input.spikes ?? null,
         planLike: this.input.planLike ?? null,
+        levelShift: this.input.levelShift ?? null,
         need,
         rounded: 0,
         pack: this.pack,
@@ -548,6 +559,13 @@ function planLikeWhy(raw: unknown): PlanLikeWhy | null {
   const r = raw as Record<string, unknown>;
   if ((r.kind !== "product" && r.kind !== "productType") || typeof r.name !== "string" || !finite(r.pct)) return null;
   return { kind: r.kind, name: r.name, pct: r.pct, days: finite(r.ownDays) ? r.ownDays : 0 };
+}
+
+/** inputs.levelShift (B5) → the Why's day and direction; null when none. */
+export function levelShiftWhy(raw: unknown): LevelShiftWhy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && finite(r.ratio) ? { day: r.day, ratio: r.ratio } : null;
 }
 
 /** inputs.pace.from (data audit #2), or null. */
@@ -649,6 +667,7 @@ export function forwardInputFromMetric(
     paceFrom: paceFromInputs(inputs.pace),
     spikes: spikesWhy(inputs.spikes),
     planLike: planLikeWhy(inputs.planLike),
+    levelShift: levelShiftWhy(inputs.levelShift),
   };
 }
 
