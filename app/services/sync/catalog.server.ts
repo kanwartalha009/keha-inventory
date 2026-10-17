@@ -21,6 +21,7 @@
 import prisma from "../../db.server";
 import type { AdminGraphqlClient } from "../../models/shop.server";
 import { readShopLocale } from "../shop-locale.server";
+import { catalogWriter } from "./catalog-writes.server";
 import {
   ADMIN_MAX_ATTEMPTS,
   BULK_RUN_MUTATION,
@@ -257,42 +258,12 @@ export async function runBulkQuery(admin: AdminGraphqlClient, query: string, dep
 // Variants
 // ---------------------------------------------------------------------------
 
-function variantData(shop: string, r: VariantRow) {
-  return {
-    shop,
-    productId: r.productId,
-    productTitle: r.productTitle,
-    variantTitle: r.variantTitle,
-    handle: r.handle,
-    sku: r.sku,
-    vendor: r.vendor,
-    productType: r.productType,
-    collections: r.collections,
-    image: r.image,
-    tracked: r.tracked,
-    isBundle: r.isBundle,
-    status: r.status,
-    productCreatedAt: r.productCreatedAt,
-    cost: r.cost,
-    costCurrency: r.costCurrency,
-    price: r.price,
-    inventoryPolicy: r.inventoryPolicy,
-  };
-}
-
-/** Upserts Variant rows. Supplier and case-pack fields are never touched. */
+/**
+ * Upserts Variant rows. Supplier and case-pack fields are never touched. Change-only, in chunks
+ * (catalog-writes.server): an unchanged variant is not rewritten and keeps its updatedAt.
+ */
 export async function upsertVariants(shop: string, rows: VariantRow[]): Promise<number> {
-  await inBatches(rows, WRITE_BATCH, (batch) =>
-    prisma.$transaction(
-      batch.map((r) =>
-        prisma.variant.upsert({
-          where: { id: r.id },
-          create: { id: r.id, ...variantData(shop, r) },
-          update: variantData(shop, r),
-        }),
-      ),
-    ),
-  );
+  await catalogWriter().upsertVariants(shop, rows);
   return rows.length;
 }
 
@@ -476,18 +447,9 @@ export async function deleteLocation(shop: string, locationId: string): Promise<
 // Stock now
 // ---------------------------------------------------------------------------
 
+/** StockNow rows, change-only in chunks (catalog-writes.server). */
 async function upsertStock(shop: string, rows: StockLevelRow[]): Promise<void> {
-  await inBatches(rows, WRITE_BATCH, (batch) =>
-    prisma.$transaction(
-      batch.map((r) =>
-        prisma.stockNow.upsert({
-          where: { shop_variantId_locationId: { shop, variantId: r.variantId, locationId: r.locationId } },
-          create: { shop, ...r },
-          update: { available: r.available, incoming: r.incoming, committed: r.committed, onHand: r.onHand },
-        }),
-      ),
-    ),
-  );
+  await catalogWriter().upsertStockNow(shop, rows);
 }
 
 type StockItemData = { inventoryItem: GqlInventoryItem | null };
@@ -528,7 +490,9 @@ export type StockResume = {
  * bucket holds less than the next page's cost, it waits (through throttleSleep) for the
  * refill. `resume` continues a pass from its cursor; `onPage` is told the cursor after each
  * written page so the caller can persist it. Rows not seen since the pass began are removed
- * once the pass completes.
+ * once the pass completes: each page removes the rows of its variants at locations it no longer
+ * lists, the end of the pass the rows of variants no longer in the catalog (DB scale: rows are
+ * written only when they change).
  */
 export async function syncStockNow(
   admin: AdminGraphqlClient,
@@ -555,9 +519,11 @@ export async function syncStockNow(
       cost: AdminCost | null;
     } = await gqlWithCost(admin, STOCK_PAGE_QUERY, { first, levels, after: pass.cursor }, deps);
     const rows: StockLevelRow[] = [];
+    const pageVariants: string[] = [];
     for (const item of data.inventoryItems.nodes) {
       const variantId = itemVariantId(item);
       if (!variantId) continue;
+      pageVariants.push(variantId);
       rows.push(...levelRows(variantId, item.inventoryLevels?.nodes));
       const info = item.inventoryLevels?.pageInfo;
       if (info?.hasNextPage && typeof info.endCursor === "string" && typeof item.id === "string") {
@@ -565,6 +531,8 @@ export async function syncStockNow(
       }
     }
     await upsertStock(shop, rows);
+    // These variants' levels are complete: their rows at any other location are gone.
+    await catalogWriter().reconcileStockNow(shop, pageVariants, rows);
     written += rows.length;
     const info = data.inventoryItems.pageInfo;
     if (!info.hasNextPage || !info.endCursor) break;
@@ -573,7 +541,9 @@ export async function syncStockNow(
     const wait = paceWaitMs(cost, cost?.requestedQueryCost ?? estimate);
     if (wait > 0) await throttleSleep(wait);
   }
-  await prisma.stockNow.deleteMany({ where: { shop, updatedAt: { lt: new Date(pass.startedAt) } } });
+  // Every inventory item was read: rows of variants no longer in the catalog go (unchanged rows
+  // are not rewritten any more, so "not refreshed since the pass began" no longer says unseen).
+  await catalogWriter().removeOrphanStockNow(shop);
   return written;
 }
 

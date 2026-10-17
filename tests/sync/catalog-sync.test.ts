@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakePrisma } from "../helpers/fake-prisma";
+import { useFakeFacts } from "../helpers/fake-facts";
 import type { AdminGraphqlClient } from "../../app/models/shop.server";
 
 const fake = vi.hoisted(() => ({ db: null as unknown }));
@@ -44,6 +45,7 @@ const db = createFakePrisma(
   ["variant", "stockNow"],
 );
 fake.db = db.client;
+useFakeFacts(db);
 
 type Handler = (query: string, variables?: Record<string, unknown>) => unknown;
 
@@ -239,6 +241,8 @@ const level = (loc: string, onHand: number, available = onHand) => ({
 describe("syncStockNow", () => {
   it("pages through inventory items, follows an item's extra levels, removes rows not seen", async () => {
     db.tables.location = [{ id: "L1", shop: S }];
+    // The catalog stage runs first in a pass: the variants read exist; V9 is gone from the catalog.
+    db.tables.variant = [{ id: "gid://shopify/ProductVariant/1001", shop: S }, { id: "gid://shopify/ProductVariant/1002", shop: S }];
     db.tables.stockNow = [{ shop: S, variantId: "gid://shopify/ProductVariant/9", locationId: "gid://shopify/Location/1", updatedAt: new Date(0) }];
     const a = admin((q, v) => {
       if (q.includes("KehaInvStockItem"))
@@ -284,6 +288,29 @@ describe("syncStockNow", () => {
       { shop: S, variantId: "gid://shopify/ProductVariant/1001", locationId: "gid://shopify/Location/2", available: 4, incoming: 0, committed: 0, onHand: 4 },
       { shop: S, variantId: "gid://shopify/ProductVariant/1002", locationId: "gid://shopify/Location/1", available: 0, incoming: 0, committed: 0, onHand: 0 },
     ]);
+  });
+});
+
+describe("stock now: change-only writes (DB scale)", () => {
+  it("a second pass with the same levels rewrites nothing; a level no longer listed goes", async () => {
+    db.tables.location = [{ id: "L1", shop: S }];
+    db.tables.variant = [{ id: "gid://shopify/ProductVariant/1", shop: S }];
+    let levels = [level("gid://shopify/Location/1", 5), level("gid://shopify/Location/2", 3)];
+    const a = admin(() => ({
+      inventoryItems: {
+        nodes: [{ id: "gid://shopify/InventoryItem/1", variants: { nodes: [{ id: "gid://shopify/ProductVariant/1" }] }, inventoryLevels: { nodes: levels, pageInfo: { hasNextPage: false } } }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    }));
+    await syncStockNow(a.client, S);
+    const stamps = db.tables.stockNow.map((r) => (r.updatedAt as Date).getTime());
+    db.calls.length = 0;
+    await syncStockNow(a.client, S);
+    expect(db.calls.filter((c) => c.table === "stockNow" && (c.op === "update" || c.op === "create"))).toEqual([]);
+    expect(db.tables.stockNow.map((r) => (r.updatedAt as Date).getTime())).toEqual(stamps);
+    levels = [level("gid://shopify/Location/1", 4)];
+    await syncStockNow(a.client, S);
+    expect(db.tables.stockNow.map((r) => [r.locationId, r.onHand])).toEqual([["gid://shopify/Location/1", 4]]);
   });
 });
 
@@ -441,6 +468,7 @@ describe("Admin API throttling (review H5)", () => {
 
   it("paces stock pages on the bucket and resumes a pass from its saved cursor", async () => {
     db.tables.location = [{ id: "L1", shop: S }];
+    db.tables.variant = [{ id: "gid://shopify/ProductVariant/1", shop: S }, { id: "gid://shopify/ProductVariant/2", shop: S }];
     db.tables.stockNow = [{ shop: S, variantId: "gid://shopify/ProductVariant/9", locationId: "gid://shopify/Location/1", updatedAt: new Date(0) }];
     const afters: unknown[] = [];
     const client: AdminGraphqlClient = {

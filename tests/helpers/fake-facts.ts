@@ -6,12 +6,17 @@
  * must equal — tests/facts-store-pg.test.ts runs both); retention deletes rows day by day with the
  * same cutoffs as the partitioned store (lib/partitions-shared keepFrom).
  *
- * useFakeFacts(db) installs it; the readers are the fake's own delegates.
+ * useFakeFacts(db) installs it (the readers are the fake's own delegates) and the in-memory
+ * catalog writer (services/sync/catalog-writes.server): change-only Variant / StockNow upserts
+ * with the same rules as the Postgres SQL (a row is rewritten, and its updatedAt moved, only when
+ * a value changed), per-variant StockNow reconcile, orphan removal.
  */
 import { setFactsStore, type FactReader, type FactsStore, type SalesDailyRow, type SessionsDailyRow, type StockDailyRow } from "../../app/services/facts-store.server";
 import { keepFrom } from "../../app/lib/partitions-shared";
 import { retentionCutoff } from "../../app/lib/sync/store-time-shared";
 import type { FakeDb } from "./fake-prisma";
+import { setCatalogWriter, type CatalogWriter } from "../../app/services/sync/catalog-writes.server";
+import { STOCK_NOW_TABLE, VARIANT_TABLE, type BulkTable } from "../../app/lib/bulk-sql-shared";
 
 type Delegate = {
   groupBy: (a: unknown) => Promise<unknown>;
@@ -56,9 +61,68 @@ export function delegateFactsStore(client: Record<string, unknown>): FactsStore 
   };
 }
 
-/** Installs the in-memory facts store over a fake Prisma; returns it. */
+type RowDelegate = {
+  findMany: (a: unknown) => Promise<Record<string, unknown>[]>;
+  create: (a: unknown) => Promise<unknown>;
+  update: (a: unknown) => Promise<unknown>;
+  deleteMany: (a: unknown) => Promise<{ count: number }>;
+};
+
+const same = (a: unknown, b: unknown) => {
+  const n = (v: unknown) => (v instanceof Date ? v.getTime() : v !== null && typeof v === "object" && "toNumber" in (v as object) ? (v as { toNumber: () => number }).toNumber() : typeof v === "string" && v !== "" && !Number.isNaN(Number(v)) && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
+  return JSON.stringify(n(a)) === JSON.stringify(n(b));
+};
+
+/** The catalog writer over Prisma-like delegates (the fake's): what the Postgres upserts do, row by row. */
+export function delegateCatalogWriter(client: Record<string, unknown>): CatalogWriter {
+  const m = (name: string) => client[name] as RowDelegate;
+  const upsert = async (t: BulkTable, delegate: string, rows: readonly Record<string, unknown>[]) => {
+    let n = 0;
+    const keys = t.columns.filter((c) => c.key).map((c) => c.name);
+    const values = t.columns.filter((c) => !c.key && !c.insertOnly).map((c) => c.name);
+    for (const r of rows) {
+      const where = Object.fromEntries(keys.map((k) => [k, r[k]]));
+      const [cur] = await m(delegate).findMany({ where });
+      const data = Object.fromEntries(t.columns.map((c) => [c.name, r[c.name] ?? null]));
+      if (!cur) {
+        await m(delegate).create({ data: { ...data, updatedAt: new Date() } });
+        n++;
+      } else if (values.some((v) => !same(cur[v] ?? null, data[v]))) {
+        const set = Object.fromEntries(values.map((v) => [v, data[v]]));
+        await m(delegate).update({ where, data: { ...set, updatedAt: new Date() } });
+        n++;
+      }
+    }
+    return n;
+  };
+  return {
+    upsertVariants: (shop, rows) => upsert(VARIANT_TABLE, "variant", rows.map((r) => ({ ...r, shop }))),
+    upsertStockNow: (shop, rows) => upsert(STOCK_NOW_TABLE, "stockNow", rows.map((r) => ({ ...r, shop }))),
+    async reconcileStockNow(shop, variantIds, rows) {
+      const keep = new Set(rows.map((r) => `${r.variantId}|${r.locationId}`));
+      const ids = new Set(variantIds);
+      const existing = await m("stockNow").findMany({ where: { shop } });
+      let n = 0;
+      for (const e of existing) {
+        if (!ids.has(String(e.variantId)) || keep.has(`${e.variantId}|${e.locationId}`)) continue;
+        n += (await m("stockNow").deleteMany({ where: { shop, variantId: e.variantId, locationId: e.locationId } })).count;
+      }
+      return n;
+    },
+    async removeOrphanStockNow(shop) {
+      const variants = new Set((await m("variant").findMany({ where: {} })).map((v) => String(v.id)));
+      const existing = await m("stockNow").findMany({ where: { shop } });
+      let n = 0;
+      for (const e of existing) if (!variants.has(String(e.variantId))) n += (await m("stockNow").deleteMany({ where: { shop, variantId: e.variantId, locationId: e.locationId } })).count;
+      return n;
+    },
+  };
+}
+
+/** Installs the in-memory facts store and catalog writer over a fake Prisma; returns the store. */
 export function useFakeFacts(db: FakeDb | { client: Record<string, unknown> }): FactsStore {
   const store = delegateFactsStore(db.client);
   setFactsStore(store);
+  setCatalogWriter(delegateCatalogWriter(db.client));
   return store;
 }
