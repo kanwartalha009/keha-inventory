@@ -91,4 +91,4 @@ automatically_update_urls_on_dev = false
 # Required once the app has a Sidekick extension (deploy fails without it): the
 # operations and data the extensions cover (≤ 256 tokens). Keep it identical in
 # shopify.app.dev.toml (tests/sidekick-extension.test.ts).
-extensions_summary = "Look up stock planning data from Keha Inventory Intelligence: reorder plans by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."
+extensions_summary = "Look up stock planning data from Keha Inventory Intelligence: the 90-day order plan by supplier with order-by dates and cash needed, product stock and days left, open purchase orders, this week's stock actions, money at stake and forecast accuracy."

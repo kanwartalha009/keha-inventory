@@ -112,7 +112,7 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 Sidekick answers from the app's data (order-by dates, days of stock left, expected arrivals)
 and links to the matching page in the app. These tools only read: nothing changes in the store,
 and purchase orders are still created and sent from the Reorder page after a confirm. Each plan
-gets what its own screens show (on Free there is no reorder plan or purchase-order list).
+gets what its own screens show (on Free: the 10 most urgent products of the order-plan preview, and no purchase-order list).
 
 **Why each permission (one line each).**
 
