@@ -4,12 +4,12 @@
  * count, create, createMany (skipDuplicates by `keys`), upsert, update, updateMany, deleteMany,
  * aggregate (_max / _min), groupBy (_sum / _max / _count), and batch $transaction.
  *
- * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains, startsWith }, OR / AND / NOT.
+ * Where-matcher: equality, { in, notIn, lt, lte, gt, gte, not, contains (+ mode: "insensitive"), startsWith }, OR / AND / NOT.
  * Dates compare by time. Compound unique keys (`shop_variantId_locationId: {...}`) are flattened.
  */
 export type Row = Record<string, unknown>;
 
-const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "startsWith", "equals"]);
+const OPS = new Set(["in", "notIn", "lt", "lte", "gt", "gte", "not", "contains", "startsWith", "equals", "mode"]);
 
 function norm(v: unknown): unknown {
   if (v instanceof Date) return v.getTime();
@@ -61,8 +61,14 @@ export function matches(row: Row, where: Row | undefined): boolean {
             return v != null && (v as number) >= (a as number);
           case "not":
             return a === null ? v != null : v !== a;
-          case "contains":
-            return typeof row[k] === "string" && (row[k] as string).includes(arg as string);
+          case "contains": {
+            if (typeof row[k] !== "string") return false;
+            // `mode: "insensitive"` (Postgres ILIKE) compares in lower case.
+            const ci = (cond as Record<string, unknown>).mode === "insensitive";
+            return ci ? (row[k] as string).toLowerCase().includes(String(arg).toLowerCase()) : (row[k] as string).includes(arg as string);
+          }
+          case "mode":
+            return true;
           case "startsWith":
             return typeof row[k] === "string" && (row[k] as string).startsWith(arg as string);
           default:
