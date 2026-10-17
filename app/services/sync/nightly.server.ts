@@ -5,7 +5,8 @@
  *
  *   locations → for EACH history dataset (stock, sales, visits, totals) independently: the
  *   days after its own syncedThrough up to YESTERDAY (normally one day; a missed night is
- *   caught up, at most CATCH_UP_DAYS) → catalog bulk refresh → stock now (resumable at its
+ *   caught up, at most CATCH_UP_DAYS; sales, visits and totals always re-read the last
+ *   REREAD_DAYS days, which Shopify's reports settle late) → catalog bulk refresh → stock now (resumable at its
  *   page cursor) → compute →
  *   retention → lastNightlyAt.
  *
@@ -39,10 +40,32 @@ export const CATCH_UP_DAYS = 62;
 
 export type NightlyOutcome = "not_due" | "skipped" | "done" | "partial" | "throttled" | "error";
 
-/** The days the nightly run must fetch: after syncedThrough up to yesterday (capped). */
-export function nightlyRange(syncedThrough: string | null | undefined, yesterday: string): { since: string; until: string } | null {
+/**
+ * Shopify's sales reports settle late (refunds, edited and late-processed orders land on their
+ * order day hours or days later): every nightly run re-reads the last REREAD_DAYS days
+ * (D−3 … D−1, store-local) of these datasets and replaces their rows — the write is
+ * "delete the range, insert the fresh rows", so re-reading is idempotent. Still never today
+ * (I-12). Stock is not re-read: its daily snapshot is a much larger read (variants × locations)
+ * and is taken from the day's closing level.
+ */
+export const REREAD_DAYS = 3;
+export const REREAD_DATASETS: ReadonlySet<string> = new Set(["sales", "totals", "visits"]);
+
+/**
+ * The days the nightly run must fetch: after syncedThrough up to yesterday (capped), and at least
+ * the last `rereadDays` days (REREAD_DAYS for REREAD_DATASETS, 0 otherwise).
+ */
+export function nightlyRange(
+  syncedThrough: string | null | undefined,
+  yesterday: string,
+  rereadDays = 0,
+): { since: string; until: string } | null {
   const floor = addDays(yesterday, -(CATCH_UP_DAYS - 1));
   let since = syncedThrough ? addDays(syncedThrough, 1) : yesterday;
+  if (rereadDays > 0) {
+    const reread = addDays(yesterday, -(rereadDays - 1));
+    if (since > reread) since = reread;
+  }
   if (since < floor) since = floor;
   return since > yesterday ? null : { since, until: yesterday };
 }
@@ -92,7 +115,7 @@ export async function runNightly(shop: string, deps: DataJobDeps): Promise<Night
 
   for (const ds of HISTORY_DATASETS) {
     const p = state.datasets?.[ds];
-    const range = nightlyRange(p?.syncedThrough ?? state.syncedThrough, yesterday);
+    const range = nightlyRange(p?.syncedThrough ?? state.syncedThrough, yesterday, REREAD_DATASETS.has(ds) ? REREAD_DAYS : 0);
     if (!range) continue;
     try {
       for (const chunk of monthChunks(range.since, range.until)) {

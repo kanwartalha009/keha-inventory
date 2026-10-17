@@ -357,7 +357,11 @@ describe("runNightly", () => {
     // 17 Oct 01:10Z = 03:10 in Madrid.
     const at = Date.parse("2026-10-17T01:10:00Z");
     expect(await runNightly(S, deps(ql, { now: () => at, afterSync }))).toBe("done");
-    expect(calls.map((c) => c.range)).toEqual(Array(5).fill({ since: "2026-10-16", until: "2026-10-16" }));
+    // Stock: the one new day. Sales, visits and totals re-read D−3 … D−1 (R4: reports settle late).
+    expect(calls.filter((c) => c.kind === "stock").map((c) => c.range)).toEqual([{ since: "2026-10-16", until: "2026-10-16" }]);
+    const reread = calls.filter((c) => c.kind !== "stock");
+    expect(reread.length).toBe(4);
+    expect(reread.map((c) => c.range)).toEqual(Array(4).fill({ since: "2026-10-14", until: "2026-10-16" }));
     expect(cat.syncLocations).toHaveBeenCalledTimes(1);
     expect(cat.syncCatalog).toHaveBeenCalledTimes(1);
     expect(cat.syncStockNow).toHaveBeenCalledTimes(1);
@@ -399,10 +403,10 @@ describe("runNightly", () => {
     expect((db.tables.shop[0].lastNightlyAt as Date).getTime()).toBe(at);
     expect(cat.syncCatalog).toHaveBeenCalledTimes(1);
     expect(calls.some((c) => c.kind === "shopDaily")).toBe(true);
-    // Next night: visits catches up two days, the others one.
+    // Next night: visits re-reads its last three days (which include the missed one), stock one.
     const next = fakeQl();
     expect(await runNightly(S, deps(next.ql, { now: () => Date.parse("2026-10-18T01:10:00Z") }))).toBe("done");
-    expect(next.calls.find((c) => c.kind === "sessions")?.range).toEqual({ since: "2026-10-16", until: "2026-10-17" });
+    expect(next.calls.find((c) => c.kind === "sessions")?.range).toEqual({ since: "2026-10-15", until: "2026-10-17" });
     expect(next.calls.find((c) => c.kind === "stock")?.range).toEqual({ since: "2026-10-17", until: "2026-10-17" });
   });
 
@@ -426,5 +430,28 @@ describe("runNightly", () => {
     expect(nightlyRange("2026-10-15", "2026-10-15")).toBeNull();
     expect(nightlyRange(null, "2026-10-15")).toEqual({ since: "2026-10-15", until: "2026-10-15" });
     expect(nightlyRange("2025-01-01", "2026-10-15")).toEqual({ since: "2026-08-15", until: "2026-10-15" });
+  });
+
+  it("nightlyRange re-reads the last days when asked (sales settle late), never today", () => {
+    // Already synced through yesterday: still D−3 … D−1.
+    expect(nightlyRange("2026-10-15", "2026-10-15", 3)).toEqual({ since: "2026-10-13", until: "2026-10-15" });
+    // A longer catch-up keeps its own start.
+    expect(nightlyRange("2026-10-05", "2026-10-15", 3)).toEqual({ since: "2026-10-06", until: "2026-10-15" });
+    expect(nightlyRange(null, "2026-10-15", 3)).toEqual({ since: "2026-10-13", until: "2026-10-15" });
+    expect(nightlyRange("2026-10-15", "2026-10-15", 0)).toBeNull();
+  });
+
+  it("re-reading replaces the rows (idempotent): a correction lands, nothing is added twice", async () => {
+    await finishedShop();
+    const first = fakeQl();
+    await runNightly(S, deps(first.ql, { now: () => Date.parse("2026-10-17T01:10:00Z") }));
+    const before = db.tables.salesDaily.filter((r) => iso(r.day) >= "2026-10-14").length;
+    // The next night re-reads 15–17 Oct: 15 and 16 are replaced, not duplicated.
+    db.tables.shop[0].lastNightlyAt = new Date("2026-10-17T01:10:00Z");
+    const second = fakeQl();
+    await runNightly(S, deps(second.ql, { now: () => Date.parse("2026-10-18T01:10:00Z") }));
+    const rows1516 = db.tables.salesDaily.filter((r) => iso(r.day) === "2026-10-15" || iso(r.day) === "2026-10-16");
+    expect(rows1516.length).toBe((before / 3) * 2);
+    expect(db.tables.salesDaily.every((r) => iso(r.day) < "2026-10-18")).toBe(true); // never today (I-12)
   });
 });
