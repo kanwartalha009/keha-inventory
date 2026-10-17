@@ -1,7 +1,8 @@
 /**
  * Fact builders and the resumable backfill steps (task 1.4b): POS names mapped to Location
- * ids (online when null), the two sales views kept apart, duplicates summed, rows outside the
- * range (today) dropped; steps newest month first, first90Ready after 3 months, finishedAt.
+ * ids (online when null), the two sales views kept apart, exact duplicates REPLACED (audit M10:
+ * overlapping pages never add twice) while distinct source rows on one key are added, rows
+ * outside the range (today) dropped; steps newest month first, first90Ready after 3 months, finishedAt.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -50,7 +51,10 @@ describe("sales facts", () => {
   const rows = [
     { day: "2026-09-02", variantId: V, locationKey: "online", channel: "unknown", sold: 3, gross: 0, returned: 0 },
     { day: "2026-09-02", variantId: V, locationKey: "Madrid Store", channel: "unknown", sold: 2, gross: 0, returned: 0 },
-    { day: "2026-09-02", variantId: V, locationKey: "Madrid Store", channel: "unknown", sold: 1, gross: 0, returned: 0 },
+    // The same source row again (overlapping page): replaces, never adds.
+    { day: "2026-09-02", variantId: V, locationKey: "Madrid Store", channel: "unknown", sold: 2, gross: 0, returned: 0 },
+    // A different source name that matches the same Location: added.
+    { day: "2026-09-02", variantId: V, locationKey: "madrid store ", channel: "unknown", sold: 1, gross: 0, returned: 0 },
     { day: "2026-09-02", variantId: V, locationKey: "Pop-up Lisbon", channel: "unknown", sold: 4, gross: 0, returned: 0 },
     { day: "2026-10-16", variantId: V, locationKey: "online", channel: "unknown", sold: 99, gross: 0, returned: 0 },
   ];
@@ -64,11 +68,11 @@ describe("sales facts", () => {
     expect(unmapped).toEqual(["Pop-up Lisbon"]);
   });
 
-  it("channel view: locationKey = all, gross rounded to cents", () => {
+  it("channel view: locationKey = all, gross rounded to cents; a repeated row replaces the earlier one", () => {
     const facts = salesByChannelFacts(
       [
-        { day: "2026-09-02", variantId: V, locationKey: "unknown", channel: "Online Store", sold: 2, gross: 50.005, returned: 0 },
-        { day: "2026-09-02", variantId: V, locationKey: "unknown", channel: "Online Store", sold: 1, gross: 25, returned: 0 },
+        { day: "2026-09-02", variantId: V, locationKey: "unknown", channel: "Online Store", sold: 9, gross: 999, returned: 0 },
+        { day: "2026-09-02", variantId: V, locationKey: "unknown", channel: "Online Store", sold: 3, gross: 75.005, returned: 0 },
         { day: "2026-09-02", variantId: V, locationKey: "unknown", channel: "Point of Sale", sold: 1, gross: 25, returned: 0 },
         { day: "2026-08-31", variantId: V, locationKey: "unknown", channel: "Online Store", sold: 1, gross: 25, returned: 0 },
       ],
@@ -99,17 +103,37 @@ describe("stock, sessions and totals", () => {
     expect(unmapped).toEqual(["Ghost"]);
   });
 
-  it("sessions and shop totals sum duplicate keys", () => {
+  it("audit M10: stock seen twice (overlapping pages) is replaced, never added; zero / negative stock kept", () => {
+    const { facts } = stockFacts(
+      [
+        { day: "2026-09-02", variantId: V, locationName: "Warehouse", endUnits: 10, outOfStock: false },
+        { day: "2026-09-02", variantId: V, locationName: "Warehouse", endUnits: 10, outOfStock: false },
+        { day: "2026-09-03", variantId: V, locationName: "Warehouse", endUnits: -4, outOfStock: true },
+      ],
+      SEPT,
+      locs,
+    );
+    expect(facts.map((f) => [f.day, f.endUnits])).toEqual([
+      ["2026-09-02", 10],
+      ["2026-09-03", -4],
+    ]);
+  });
+
+  it("sessions and shop totals: a repeated key replaces the earlier row", () => {
     expect(
       sessionsFacts(
         [
           { day: "2026-09-02", landingPath: "/products/tee", trafficType: "google", sessions: 5, checkouts: 1 },
-          { day: "2026-09-02", landingPath: "/products/tee", trafficType: "google", sessions: 2, checkouts: 0 },
+          { day: "2026-09-02", landingPath: "/products/tee", trafficType: "google", sessions: 5, checkouts: 1 },
+          { day: "2026-09-02", landingPath: "/products/tee", trafficType: "direct", sessions: 2, checkouts: 0 },
         ],
         SEPT,
       ),
-    ).toEqual([{ day: "2026-09-02", landingPath: "/products/tee", trafficType: "google", sessions: 7, checkouts: 1 }]);
-    expect(shopDayFacts([{ day: "2026-09-02", orders: 3, gross: 120.5 }, { day: "2026-10-01", orders: 1, gross: 1 }], SEPT)).toEqual([
+    ).toEqual([
+      { day: "2026-09-02", landingPath: "/products/tee", trafficType: "google", sessions: 5, checkouts: 1 },
+      { day: "2026-09-02", landingPath: "/products/tee", trafficType: "direct", sessions: 2, checkouts: 0 },
+    ]);
+    expect(shopDayFacts([{ day: "2026-09-02", orders: 3, gross: 120.5 }, { day: "2026-09-02", orders: 3, gross: 120.5 }, { day: "2026-10-01", orders: 1, gross: 1 }], SEPT)).toEqual([
       { day: "2026-09-02", orders: 3, gross: 120.5 },
     ]);
   });

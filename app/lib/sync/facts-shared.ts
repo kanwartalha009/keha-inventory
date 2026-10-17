@@ -1,17 +1,21 @@
 /**
  * ShopifyQL rows → daily fact rows (spec §6.1, §8; task 1.4b). Pure.
  *
- * SalesDaily holds TWO views of the same sales, told apart by a sentinel, because only the
- * 2-dimension queries are verified (the 3-dimension location × channel query is not):
+ * SalesDaily holds TWO views of the same sales, told apart by a sentinel (the 3-dimension
+ * location × channel query was verified live on 2026-10-17 but is not used yet):
  *   - by location: locationKey = "online" | Location.id | "pos:<name>" (POS name with no
  *     matching Location), channel = ALL;   sold only (gross is not in that query → 0)
  *   - by channel:  locationKey = ALL, channel = sales_channel;   sold and gross
  * Never sum across the two views. Phase 1 compute reads the channel view (all channels =
- * the one online pool). TODO(task 1.4 verification): switch to buildDailySalesQuery (3
- * dimensions, with quantity_returned) once it is verified on a dev store, and drop the views.
+ * the one online pool). TODO: switch to buildDailySalesQuery (3 dimensions, with
+ * quantity_returned, verified) and drop the views — a data-model change compute must follow.
  *
- * Every builder drops rows outside the requested range (today is never stored, I-12) and
- * sums duplicates of the same key, so re-running a month yields identical rows.
+ * Every builder drops rows outside the requested range (today is never stored, I-12).
+ * Duplicates (audit 2026-10-17 M10): a row whose SOURCE identity (day, variant, raw location
+ * name / channel / path) was already seen REPLACES the earlier one — overlapping pages can
+ * never add stock or sales twice (the pager de-duplicates too; this is the second guard).
+ * Only rows with DIFFERENT source identities that land on the same fact key (e.g. two location
+ * names matching one Location) are added together. Re-running a month yields identical rows.
  */
 import type { DayRange, SalesRow, SessionsRow, ShopDayRow, StockRow } from "./shopifyql-shared";
 
@@ -37,6 +41,15 @@ export function locationNameIndex(locations: LocationRef[]): (name: string) => s
 
 const inRange = (day: string, r: DayRange) => day >= r.since && day <= r.until;
 
+/** In-range rows, one per source identity; a later duplicate replaces the earlier one (upsert, never sum). */
+export function latestByIdentity<T extends { day: string }>(rows: readonly T[], range: DayRange, identity: (r: T) => string): T[] {
+  const m = new Map<string, T>();
+  for (const r of rows) if (inRange(r.day, range)) m.set(identity(r), r);
+  return [...m.values()];
+}
+
+const salesIdentity = (r: SalesRow) => `${r.day}|${r.variantId}|${r.locationKey}|${r.channel}`;
+
 /** UTC midnight Date for a `@db.Date` column. */
 export function dayDate(day: string): Date {
   return new Date(`${day}T00:00:00.000Z`);
@@ -59,8 +72,7 @@ export function salesByLocationFacts(
 ): { facts: SalesFact[]; unmapped: string[] } {
   const acc = new Map<string, SalesFact>();
   const unmapped = new Set<string>();
-  for (const r of rows) {
-    if (!inRange(r.day, range)) continue;
+  for (const r of latestByIdentity(rows, range, salesIdentity)) {
     let key: string;
     if (r.locationKey === "online") key = ONLINE;
     else {
@@ -83,8 +95,7 @@ export function salesByLocationFacts(
 /** Channel view of sales (sold + gross). */
 export function salesByChannelFacts(rows: SalesRow[], range: DayRange): SalesFact[] {
   const acc = new Map<string, SalesFact>();
-  for (const r of rows) {
-    if (!inRange(r.day, range)) continue;
+  for (const r of latestByIdentity(rows, range, salesIdentity)) {
     const k = `${r.day}|${r.variantId}|${r.channel}`;
     const f = acc.get(k) ?? { day: r.day, variantId: r.variantId, locationKey: ALL, channel: r.channel, sold: 0, returned: 0, gross: 0 };
     f.sold += r.sold;
@@ -95,7 +106,10 @@ export function salesByChannelFacts(rows: SalesRow[], range: DayRange): SalesFac
   return [...acc.values()].map((f) => ({ ...f, sold: Math.round(f.sold), returned: Math.round(f.returned), gross: round2(f.gross) }));
 }
 
-/** Stock rows → facts. Rows whose location name has no Location are skipped (reported). */
+/**
+ * Stock rows → facts. Rows whose location name has no Location are skipped (reported).
+ * endUnits keeps zero and negative ending stock as reported (never clamped).
+ */
 export function stockFacts(
   rows: StockRow[],
   range: DayRange,
@@ -103,8 +117,7 @@ export function stockFacts(
 ): { facts: StockFact[]; unmapped: string[] } {
   const acc = new Map<string, StockFact>();
   const unmapped = new Set<string>();
-  for (const r of rows) {
-    if (!inRange(r.day, range)) continue;
+  for (const r of latestByIdentity(rows, range, (x) => `${x.day}|${x.variantId}|${x.locationName}`)) {
     const id = locationId(r.locationName);
     if (!id) {
       unmapped.add(r.locationName);
@@ -122,8 +135,7 @@ export function stockFacts(
 
 export function sessionsFacts(rows: SessionsRow[], range: DayRange): SessionsFact[] {
   const acc = new Map<string, SessionsFact>();
-  for (const r of rows) {
-    if (!inRange(r.day, range)) continue;
+  for (const r of latestByIdentity(rows, range, (x) => `${x.day}|${x.landingPath}|${x.trafficType}`)) {
     const k = `${r.day}|${r.landingPath}|${r.trafficType}`;
     const f = acc.get(k) ?? { day: r.day, landingPath: r.landingPath, trafficType: r.trafficType, sessions: 0, checkouts: 0 };
     f.sessions += r.sessions;
@@ -135,8 +147,7 @@ export function sessionsFacts(rows: SessionsRow[], range: DayRange): SessionsFac
 
 export function shopDayFacts(rows: ShopDayRow[], range: DayRange): ShopFact[] {
   const acc = new Map<string, ShopFact>();
-  for (const r of rows) {
-    if (!inRange(r.day, range)) continue;
+  for (const r of latestByIdentity(rows, range, (x) => x.day)) {
     const f = acc.get(r.day) ?? { day: r.day, orders: 0, gross: 0 };
     f.orders += r.orders;
     f.gross += r.gross;
