@@ -5,7 +5,8 @@ Two parts: **A** is what Kanwar pastes into the Partner Dashboard "Testing instr
 on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro stores, for the Order plan,
 for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
 this week", Done in the action menu) and for the merged build (Order now = the next 7 days,
-editable drafts, receiving per line, re-open); labels are the app's English strings.
+editable drafts, receiving per line, re-open) and for the supplier order builder (one purchase
+order per supplier per cycle); labels are the app's English strings.
 
 ---
 
@@ -46,7 +47,7 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 | Plan | Unlocks |
 |---|---|
 | Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
-| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, what to do while a best seller is sold out (back-in-stock sign-ups; the **Bridge** tab of the actions), Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
+| Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders, Build supplier order), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
 | Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
 **Steps (Growth plan, store with history).**
@@ -78,41 +79,51 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    is the part from ship date to arrival (sea or air freight). Under **More options**: the
    minimum per item applies to each size/colour or to each product (split across sizes by
    sales), a minimum order value in the supplier's currency, and — when that currency differs
-   from the store's — the exchange rate.
+   from the store's — the exchange rate. **Order every … days** is how often you order from
+   this supplier (empty = the store's order cycle); order quantities cover the lead time plus it.
 9. **Order plan → Order now:** everything due in the next 7 days (overdue included), grouped by
    supplier, each line on its own order-by date, with case packs and the supplier's minimums →
    **Create order** → confirm (a draft; nothing is sent). On the draft: change quantities or
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
    **Download CSV**, **Email supplier** (or **Copy link**), or **Mark as sent**. A draft not sent
    within 14 days stops counting as ordered (a banner says so).
-10. **Order plan → Next 13 weeks:** every order for the next 13 weeks by week and supplier, with
+10. **Order now → Build supplier order** (on a supplier's card, inside "Can join this order" when
+    it is there): one purchase order for that supplier's whole order cycle — **Due now** and
+    **Due before your next order** (each line with its own order-by date and "Why this quantity"),
+    every line selected and editable; **Add products** adds any other product of that supplier.
+    Units, cost and the supplier's minimums update as you type ("Add 24 units to reach … minimum",
+    **Top up to the minimum**). **Create draft order** → confirm: one draft with every line (nothing
+    is sent). Back on Order now and Next 13 weeks those lines are no longer due. Open the builder
+    again: it offers **Add to PO-00xx** for that draft instead of a second one.
+11. **Order plan → Next 13 weeks:** every order for the next 13 weeks by week and supplier, with
     units, cash per week (a line without a cost price shows "—" and is counted, never 0) and
     order-by dates; open a week → a supplier → **Create order** opens Order now with those lines
-    (the order is still created only after the confirm there). **Download CSV** exports the plan.
-11. Open the supplier link from the email (no login): pick a date → **Confirm ship date**. Back
+    (the order is still created only after the confirm there), **Build supplier order** opens the
+    builder for that week. **Download CSV** exports the plan.
+12. Open the supplier link from the email (no login): pick a date → **Confirm ship date**. Back
     in the app **Order plan → Open orders** shows the ship date and the arrival (ship date + the
     supplier's transit time), sorted by arrival, and **Products** shows "On order with Keha".
     On the order, **Receive items** records a delivery per line ("Received 8 of 20 · 12 still to
     come"; only the rest counts as on order), or closes the rest as short. A received or
     cancelled order can be re-opened within 30 days (**Re-open order**). An order whose stock
     landed is received automatically (and says so, with the date).
-12. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
+13. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
     **More options**: Order cycle, Too much stock after, Dead after, **Safety level** (Lean /
     Balanced / Safe) and **Growth assumption** (off and recommended by default, or add the store's
     year-on-year growth). **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
     incoming-webhook link → **Send a test message**. The Monday email opens with **Order this
     week** (one line per supplier with units, cash and order-by date, **Review order**), and its
     subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").
-13. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
+14. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
     went dead** (Keha Inventory Planner). The app fires them from its hourly job, once per
     product per episode, so a test workflow may need up to an hour after a product qualifies.
-14. **Season plan (Growth):** **Order plan → Season plan** (`/app/reorder/season`) → **New scenario** → pick an event (Black
+15. **Season plan (Growth):** **Order plan → Season plan** (`/app/reorder/season`) → **New scenario** → pick an event (Black
     Friday, Christmas or custom dates) and a target (grow X %, a revenue target, or keep pace) →
     **Save and calculate**. The scenario shows demand per collection, the order list with
     order-by dates, and **Cash needed per week** (chart and table). Below: **Collection goals**
     (pick a collection, set a goal share of revenue, **Save goal**) and **How accurate we were**
     (filled from the first graded month). On Growth a second scenario shows the Pro upgrade note.
-15. **Pro:** switch to **Pro** on Shopify's plan page (no charge on a test store), then:
+16. **Pro:** switch to **Pro** on Shopify's plan page (no charge on a test store), then:
     1. **Settings → Locations:** set one location's role to Warehouse and one to Store → **Save**.
        Numbers per location appear after the next nightly refresh (03:00 store time). (On every
        plan, each location's **Counts in supplier orders** toggle decides which stock is counted;
@@ -124,13 +135,14 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
        in Shopify**); nothing moves until you mark it ready to ship there. Pressing it again the
        same day creates nothing new.
     4. **Season plan:** more than one scenario can be kept.
-16. **Free plan check:** switch to Free on Shopify's plan page → **Order plan → Order now** and
+17. **Free plan check:** switch to Free on Shopify's plan page → **Order plan → Order now** and
     the Dashboard show a read-only preview of the 10 most urgent products (days left, order-by
     date, suggested quantity) with an **Upgrade** button; Next 13 weeks, Season plan and Open
-    orders keep the tab bar and show what they do with an **Upgrade** button; the product page shows locked forecast fields;
+    orders keep the tab bar and show what they do with an **Upgrade** button; Build supplier order
+    (`/app/reorder/build?supplier=…`) shows what it does with that supplier's own numbers and **See plans**; the product page shows locked forecast fields;
     Settings → Locations keeps the **Counts in supplier orders** toggle and shows the roles locked
     with "Pro plan".
-17. **Uninstall:** all stored data for the store is deleted 48 hours later (immediately on
+18. **Uninstall:** all stored data for the store is deleted 48 hours later (immediately on
     Shopify's shop/redact).
 
 **Try it in Sidekick.** Open Sidekick in the Shopify admin and ask, for example:

@@ -27,6 +27,7 @@ import type { ReorderPageData } from "../app/routes/app.reorder";
 import type { CalendarPageData } from "../app/routes/app.reorder_.calendar";
 import type { OpenOrdersPageData } from "../app/routes/app.reorder_.orders";
 import type { OrderPageView } from "../app/routes/app.reorder_.$id";
+import type { BuilderPageData } from "../app/routes/app.reorder_.build";
 import type { ProductsData } from "../app/routes/app.products";
 import type { VariantDetailData } from "../app/routes/app.products_.$variantId";
 import type { SuppliersData } from "../app/routes/app.settings_.suppliers";
@@ -91,7 +92,8 @@ const { computeScenario, createPlannerSeason } = await import("../app/lib/planne
 const { dailySeries, monthlyTotals, pageInfo, readForecastInputs, recentDays, toProductRow } = await import("../app/lib/products-shared");
 const { DEFAULT_SETTINGS, alertsToForm, settingsToForm } = await import("../app/lib/settings-shared");
 const { homeRaw, actionList } = await import("../tests/home-fixtures");
-const { orderPlanFixture, PLAN_TODAY } = await import("../tests/order-plan-fixtures");
+const { orderPlanFixture, orderNowFixture, PLAN_TODAY } = await import("../tests/order-plan-fixtures");
+const { buildSupplierOrder, builderTeaser } = await import("../app/lib/supplier-order-shared");
 
 const { default: Home } = await import("../app/routes/app._index");
 const { default: Reorder } = await import("../app/routes/app.reorder");
@@ -99,6 +101,7 @@ const { default: OrderCalendar } = await import("../app/routes/app.reorder_.cale
 const { default: Planner } = await import("../app/routes/app.reorder_.season");
 const { default: OpenOrders } = await import("../app/routes/app.reorder_.orders");
 const { default: OrderPage } = await import("../app/routes/app.reorder_.$id");
+const { default: SupplierBuilder } = await import("../app/routes/app.reorder_.build");
 const { default: Products } = await import("../app/routes/app.products");
 const { default: VariantDetail } = await import("../app/routes/app.products_.$variantId");
 const { default: Settings } = await import("../app/routes/app.settings");
@@ -130,6 +133,21 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
     // Free: the teaching lock with the store's own totals, as the loader sends it (limit 2 so the fixture has "more").
     orderPlan: plan === "free" ? { kind: "preview", rows: previewRows(fx), teaser: lockTeaser(fx, 2), currency: fx.currency } : { kind: "full", plan: fx },
   };
+}
+
+/** The supplier order builder: Acme Textiles, ordered every 30 days, minimum 200 units (Order now's fixture). */
+function builder(kind: "growth" | "growth-below" | "free"): BuilderPageData {
+  const fx = orderNowFixture({ minOrderTotal: 200 });
+  const view = buildSupplierOrder({
+    plan: fx,
+    supplierKey: "supplier:s1",
+    info: { ...fx.suppliers["supplier:s1"]!, orderCycleDays: kind === "growth-below" ? null : 30, minOrderTotal: 200, exchangeRate: 1.08, currency: "USD" },
+    storeCycleDays: 14,
+    draft: kind === "growth" ? { id: "po5", number: "PO-0004", units: 60, createdAt: "2026-10-12T09:00:00Z", updatedAt: "2026-10-12T09:00:00Z" } : null,
+  });
+  if (kind === "free") return { enabled: false, teaser: builderTeaser(view) };
+  // Below the minimum: the merchant's minimum went up after the plan was read.
+  return { enabled: true, today: fx.today, view: kind === "growth-below" ? { ...view, minOrderTotal: 400 } : view };
 }
 
 const OPEN_ORDERS: OpenOrderRow[] = [
@@ -490,6 +508,9 @@ const screens: Screen[] = [
   S({ slug: "order-now--growth", screen: "Order plan → Order now", state: "Growth", nav: "orderplan", url: "/app/reorder?variants=1", plan: "growth", Component: Reorder, data: () => orderNow("growth"), expect: ["Order plan", "Lisbon Linen", "Create order"] }),
   S({ slug: "order-now--growth-not-ready", screen: "Order plan → Order now", state: "Growth, not enough sales yet", nav: "orderplan", url: "/app/reorder", plan: "growth", Component: Reorder, data: () => ({ ...orderNow("growth"), groups: [], next: null, cantPlan: { noData: 2, dead: 0 }, readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } }), expect: ["Your order plan isn't ready yet", "Next 13 weeks"] }),
   S({ slug: "order-now--pro-2-locations", screen: "Order plan → Order now", state: "Pro, 2 locations + transfers", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), expect: ["Lisbon Linen", "Create transfer in Shopify", "Barcelona"] }),
+  S({ slug: "build-supplier-order--growth", screen: "Order plan → Build supplier order", state: "Growth, 30-day cycle, a fresh draft", nav: "orderplan", url: "/app/reorder/build?supplier=supplier:s1", plan: "growth", Component: SupplierBuilder, data: () => builder("growth"), expect: ["Create draft order", "Due now", "Due before your next order", "Add products", "Minimum reached", "Acme Textiles"] }),
+  S({ slug: "build-supplier-order--growth-below-minimum", screen: "Order plan → Build supplier order", state: "Growth, below the minimum", nav: "orderplan", url: "/app/reorder/build?supplier=supplier:s1", plan: "growth", Component: SupplierBuilder, data: () => builder("growth-below"), expect: ["Below the minimum", "Top up to the minimum", "Create draft order"] }),
+  S({ slug: "build-supplier-order--free", screen: "Order plan → Build supplier order", state: "Free, teaching lock", nav: "orderplan", url: "/app/reorder/build?supplier=supplier:s1", plan: "free", Component: SupplierBuilder, data: () => builder("free"), expect: ["Build supplier order", "See plans", "Acme Textiles"] }),
   S({ slug: "next-13-weeks--growth", screen: "Order plan → Next 13 weeks", state: "Growth", nav: "orderplan", url: "/app/reorder/calendar", plan: "growth", Component: OrderCalendar, data: (): CalendarPageData => ({ enabled: true, plan: orderPlanFixture() }), expect: ["Next 13 weeks", "Lisbon Linen", "Download CSV"] }),
   S({ slug: "season-plan--growth-scenario", screen: "Order plan → Season plan", state: "Growth, with scenario", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner(), expect: ["Season plan", "Black Friday 2026", "Slow Mill"] }),
   S({ slug: "season-plan--growth-empty", screen: "Order plan → Season plan", state: "Growth, empty", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),

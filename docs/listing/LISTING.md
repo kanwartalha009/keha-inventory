@@ -39,7 +39,7 @@ Order best sellers before they sell out, and see the cash each order needs, week
 ## App details
 
 ```text
-Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash each week needs over the next 13 weeks. Sales per day count only the days a product was in stock, and every forecast shows how it was built. Send purchase orders as PDF, CSV or email; suppliers confirm the ship date from a link. Every Monday you get a ranked list of what to reorder, promote, fix or clear, with the money at stake.
+Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash each week needs over the next 13 weeks. Sales per day count only the days a product was in stock, and every forecast shows how it was built. Send one purchase order per supplier per cycle as PDF, CSV or email; suppliers confirm the ship date from a link. Every Monday you get a ranked list of what to reorder, promote, fix or clear, with the money at stake.
 ```
 
 ## Feature list
@@ -67,6 +67,7 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 | Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
 | Cash each week, next 13 weeks | Order plan → Next 13 weeks (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
 | Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
+| One purchase order per supplier per cycle (details text) | The supplier order builder, `app/routes/app.reorder_.build.tsx`, `app/lib/supplier-order-shared.ts`: everything due within the supplier's order cycle (Settings → Suppliers "Order every … days") in one draft, topped up to its minimums (Growth) |
 | Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
 | Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
 | Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
