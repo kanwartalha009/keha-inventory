@@ -94,14 +94,6 @@ export function pooledOutOfStock(s: Pick<PooledStockDay, "endUnits" | "reported"
 }
 
 /**
- * SalesDaily location-view keys of the online orders plus the pool locations' POS sales. Kept
- * for readers that still filter by keys (planner, PO sync); compute reads demandWhere.
- */
-export function poolSalesKeys(pool: string[]): string[] {
-  return ["online", ...pool];
-}
-
-/**
  * Per-variant daily series. A day exists only when the variant has a pool stock row that
  * day (no row = missing data, never a zero-sale or in-stock day). `poolSales` (location view,
  * pool keys) gives units sold; `priceSales` (channel view) gives the day's unit price as

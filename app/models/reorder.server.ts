@@ -74,7 +74,11 @@ async function poolIds(shop: string): Promise<string[]> {
   return poolLocationIds(locations);
 }
 
-/** On-hand and incoming (online pool) per variant. */
+/**
+ * On-hand and incoming over the supplier-order pool (countsForOnline) per variant: the "On hand"
+ * column and the auto-receive baseline. Planning numbers never read it — they come from the
+ * forward plan, which plans from Shopify available (VariantMetric.inputs.onHand, compute).
+ */
 export async function poolStock(shop: string, ids: string[]): Promise<Map<string, { onHand: number | null; incoming: number | null }>> {
   const out = new Map<string, { onHand: number | null; incoming: number | null }>();
   if (!ids.length) return out;

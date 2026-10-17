@@ -35,8 +35,8 @@ import { arrivalWindowStart, autoReceiveDecision, autoReceivedLines } from "../.
 import { poArrival, readPoLines, type PoLine } from "../../lib/supplier-shared";
 import { localDate, safeTimeZone } from "../../lib/sync/store-time-shared";
 import { addDays } from "../../lib/engine/dates-shared";
-import { ALL, dayDate } from "../../lib/sync/facts-shared";
-import { POOL_LOCATION_SELECT, poolLocationIds, poolSalesKeys } from "../../lib/compute-shared";
+import { dayDate } from "../../lib/sync/facts-shared";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere, poolLocationIds } from "../../lib/compute-shared";
 import { syncErrorCode } from "../../lib/sync/errors-shared";
 
 type PoPage = {
@@ -223,7 +223,8 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
         : Promise.resolve([]),
       prisma.salesDaily.groupBy({
         by: ["variantId"],
-        where: { shop, variantId: { in: ids }, channel: ALL, locationKey: { in: poolSalesKeys(pool) }, day: { gte: dayDate(from) } },
+        // Pool demand: the same SalesDaily view compute reads (demandWhere; never both views).
+        where: { shop, variantId: { in: ids }, ...demandWhere(demandScope(locations)), day: { gte: dayDate(from) } },
         _sum: { sold: true },
       }),
     ]);

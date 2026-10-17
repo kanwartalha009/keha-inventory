@@ -28,7 +28,7 @@ import {
 } from "../app/lib/engine/backtest-shared";
 import { addDays } from "../app/lib/engine/dates-shared";
 import { monthEnd, nextMonthStart } from "../app/lib/engine/accuracy-shared";
-import { POOL_LOCATION_SELECT, engineSettingsFrom, poolLocationIds, poolSalesKeys, salesCoverage } from "../app/lib/compute-shared";
+import { POOL_LOCATION_SELECT, demandScope, demandWhere, engineSettingsFrom, poolLocationIds, salesCoverage } from "../app/lib/compute-shared";
 import { readSettings } from "../app/lib/settings-shared";
 import { readBackfillState } from "../app/lib/sync/backfill-shared";
 import { ALL, dayDate } from "../app/lib/sync/facts-shared";
@@ -90,13 +90,14 @@ export async function load(prisma: PrismaClient, shop: string, from: string, to:
     }),
   ]);
   const pool = poolLocationIds(locations);
-  const poolKeys = poolSalesKeys(pool);
+  // Pool demand: the view compute reads (all channels unless a location is left out).
+  const demand = demandWhere(demandScope(locations));
   const range = { gte: dayDate(from), lte: dayDate(to) };
 
   const [poolG, channelG, stockG, outG, lastSaleG, firstStockG, sessionsG, shopDays] = await Promise.all([
     prisma.salesDaily.groupBy({
       by: ["variantId", "day"],
-      where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: range },
+      where: { shop, ...demand, day: range },
       _sum: { sold: true },
     }),
     prisma.salesDaily.groupBy({
@@ -121,7 +122,7 @@ export async function load(prisma: PrismaClient, shop: string, from: string, to:
       : Promise.resolve([]),
     prisma.salesDaily.groupBy({
       by: ["variantId"],
-      where: { shop, channel: ALL, locationKey: { in: poolKeys }, sold: { gt: 0 }, day: { lt: dayDate(from) } },
+      where: { shop, ...demand, sold: { gt: 0 }, day: { lt: dayDate(from) } },
       _max: { day: true },
     }),
     pool.length

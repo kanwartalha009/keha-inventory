@@ -13,7 +13,6 @@ import {
   metricRow,
   moneyDue,
   poolLocationIds,
-  poolSalesKeys,
   pooledOutOfStock,
   productHandleFromPath,
   productTraffic,
@@ -98,8 +97,12 @@ describe("buildSeries", () => {
     expect(buildSeries([{ variantId: "z", day: "2026-10-02", sold: 1, gross: 0 }], []).get("z")).toBeUndefined();
   });
 
-  it("pool sales keys are online + the pool location ids", () => {
-    expect(poolSalesKeys(["L1", "L3"])).toEqual(["online", "L1", "L3"]);
+  it("pool demand: one SalesDaily view (channel view by default, location view minus left-out locations)", () => {
+    expect(demandWhere(demandScope([{ id: "L1", active: true, online: true, onlinePool: null }]))).toEqual({ locationKey: "all" });
+    expect(demandWhere(demandScope([{ id: "L1", active: true, online: true }, { id: "L2", active: true, online: false, onlinePool: false }]))).toEqual({
+      channel: "all",
+      locationKey: { notIn: ["all", "L2"] },
+    });
   });
 
   it("revenue per variant (channel view)", () => {

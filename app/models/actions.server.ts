@@ -39,7 +39,7 @@ async function poolIds(shop: string): Promise<string[]> {
   return poolLocationIds(locations);
 }
 
-/** Cash and units in stock now for these variants (online pool). */
+/** Cash and units in stock now for these variants (supplier-order pool; on hand — what's physically there). */
 export async function stockValue(
   shop: string,
   variantIds: string[],

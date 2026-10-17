@@ -311,7 +311,11 @@ describe("auto-receive", () => {
     fake.tables.stockNow = [{ shop: S, variantId: V1, locationId: WH, onHand: 15, incoming: 0 }];
     // Window of k1 opens 8 Oct (expected 15 Oct − 7): on hand 2 at the end of 7 Oct, 6 sold since.
     fake.tables.stockDaily = [{ shop: S, variantId: V1, locationId: WH, day: new Date("2026-10-07T00:00:00Z"), endUnits: 2 }];
-    fake.tables.salesDaily = [{ shop: S, variantId: V1, locationKey: "online", channel: "all", day: new Date("2026-10-10T00:00:00Z"), sold: 6 }];
+    // Pool demand is the channel view (all channels, demandWhere); the location view is never added.
+    fake.tables.salesDaily = [
+      { shop: S, variantId: V1, locationKey: "all", channel: "Online Store", day: new Date("2026-10-10T00:00:00Z"), sold: 6 },
+      { shop: S, variantId: V1, locationKey: "online", channel: "all", day: new Date("2026-10-10T00:00:00Z"), sold: 6 },
+    ];
     expect(await autoReceiveOrders(S, NOW)).toBe(1); // 15 − 2 + 6 = 19 of 20 (95%); k2's window opens 23 Oct
     const [k1, k2] = fake.tables.purchaseOrder!;
     expect(k1!.status).toBe("received");
