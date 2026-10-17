@@ -19,7 +19,7 @@ import {
   validShipDate,
   type AutoReceiveInput,
 } from "../app/lib/purchase-order-shared";
-import type { PoLine } from "../app/lib/supplier-shared";
+import { poArrival, type PoLine } from "../app/lib/supplier-shared";
 import { confirmUrl, supplierEmail } from "../app/lib/po-email-shared";
 
 describe("PO numbers", () => {
@@ -225,11 +225,22 @@ describe("auto-receive (tightened, merchant audit 2026-10-17)", () => {
     expect(autoReceiveDecision({ ...base, status: "confirmed" }).receive).toBe(true);
   });
 
-  it("the window opens on the ship date, else 7 days before the expected arrival, never before sending", () => {
-    expect(arrivalWindowStart({ confirmedShipDate: "2026-11-01", arrival: "2026-12-06", sentDay: "2026-10-01" })).toBe("2026-11-01");
+  it("the window opens 7 days before the expected arrival (ship date + transit), never before shipping or sending", () => {
+    // M1: shipped 1 Nov with 35 days' transit → arrives 6 Dec: the window opens 29 Nov, not on the ship date.
+    expect(arrivalWindowStart({ confirmedShipDate: "2026-11-01", arrival: "2026-12-06", sentDay: "2026-10-01" })).toBe("2026-11-29");
+    // No transit: the ship date is the arrival; nothing lands before it ships.
+    expect(arrivalWindowStart({ confirmedShipDate: "2026-11-01", arrival: "2026-11-01", sentDay: "2026-10-01" })).toBe("2026-11-01");
+    // Short transit: still never before the ship date.
+    expect(arrivalWindowStart({ confirmedShipDate: "2026-11-01", arrival: "2026-11-04", sentDay: "2026-10-01" })).toBe("2026-11-01");
     expect(arrivalWindowStart({ confirmedShipDate: null, arrival: "2026-11-15", sentDay: "2026-10-01" })).toBe("2026-11-08");
     expect(arrivalWindowStart({ confirmedShipDate: null, arrival: "2026-10-05", sentDay: "2026-10-01" })).toBe("2026-10-01");
     expect(arrivalWindowStart({ confirmedShipDate: null, arrival: null, sentDay: "2026-10-01" })).toBeNull();
+    // Reviewer repro: ship 1 Oct, 35 days' transit (poArrival) → 5 Nov; the window opens 29 Oct.
+    const arrival = poArrival({ confirmedShipDate: new Date("2026-10-01T00:00:00Z"), expectedDate: new Date("2026-11-15T00:00:00Z") }, 35)!
+      .toISOString()
+      .slice(0, 10);
+    expect(arrival).toBe("2026-11-05");
+    expect(arrivalWindowStart({ confirmedShipDate: "2026-10-01", arrival, sentDay: "2026-09-20" })).toBe("2026-10-29");
     expect(ARRIVAL_WINDOW_DAYS).toBe(7);
   });
 

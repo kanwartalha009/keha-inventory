@@ -165,8 +165,8 @@ export async function syncShopifyPurchaseOrders(
 
 /**
  * Closes sent / confirmed Keha orders whose stock has landed (lib/purchase-order-shared
- * autoReceiveDecision): measured from the day the arrival window opened (confirmed ship date,
- * else expected arrival − 7 days; arrival = ship date + the supplier's transit days), every open
+ * autoReceiveDecision): measured from the day the arrival window opened (expected arrival − 7
+ * days, never before the confirmed ship date; arrival = ship date + the supplier's transit days), every open
  * line ≥ 90 %, one delivery never credited to two orders (oldest window first). The order is
  * marked as received automatically (lines' `autoReceived`) so the merchant can re-open it.
  * Returns how many closed.

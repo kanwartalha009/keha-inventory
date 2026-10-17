@@ -176,19 +176,23 @@ export function poFileName(number: string, ext: "pdf" | "csv"): string {
 // ── Auto-receive ───────────────────────────────────────────────────────────
 
 export const AUTO_RECEIVE_SHARE = 0.9;
-/** Without a confirmed ship date, the arrival window opens this many days before the expected arrival. */
+/** The arrival window opens this many days before the expected arrival (ship date + transit, else the estimate). */
 export const ARRIVAL_WINDOW_DAYS = 7;
 
 const addDay = (day: string, n: number) => dayOf(new Date(new Date(`${day}T00:00:00Z`).getTime() + n * DAY_MS));
 
 /**
- * The first day stock for this order can plausibly arrive (audit 2026-10-17): the supplier's
- * confirmed ship date, else the expected arrival − 7 days; never before the order was sent.
+ * The first day stock for this order can plausibly arrive: the expected arrival (poArrival —
+ * the confirmed ship date + the supplier's transit days, else the lead-time estimate) − 7 days
+ * (M1: a ship date 35 days before arrival no longer opens the window on the ship date, when the
+ * goods are still at sea); never before the supplier's confirmed ship date (nothing lands before
+ * it ships) and never before the order was sent. `arrival` must already include the transit.
  * null = no date known (auto-receive waits).
  */
 export function arrivalWindowStart(po: { confirmedShipDate: string | null; arrival: string | null; sentDay: string | null }): string | null {
-  const open = po.confirmedShipDate ?? (po.arrival ? addDay(po.arrival, -ARRIVAL_WINDOW_DAYS) : null);
+  let open = po.arrival ? addDay(po.arrival, -ARRIVAL_WINDOW_DAYS) : po.confirmedShipDate;
   if (!open) return null;
+  if (po.confirmedShipDate && po.confirmedShipDate > open) open = po.confirmedShipDate;
   return po.sentDay && po.sentDay > open ? po.sentDay : open;
 }
 
