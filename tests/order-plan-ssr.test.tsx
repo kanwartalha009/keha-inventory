@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
+import { createElement } from "react";
 import { createRoutesStub } from "react-router";
 
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
@@ -22,7 +23,9 @@ import { getEntitlements } from "../app/services/entitlements.server";
 import { loadOrderPlan } from "../app/models/order-plan.server";
 import { featureMap } from "../app/lib/plan-shared";
 import { EMPTY_ORDER_PLAN, aboveLastYear, dueText, formatWeekRange, lastYearLine, lockTeaser, orderLink, planCsv, planWeeks, previewRows, supplierName, thisWeek, whyLines, whySum } from "../app/lib/order-plan-shared";
-import { translate } from "../app/lib/i18n";
+import { LocaleProvider, translate } from "../app/lib/i18n";
+import { DueLabel } from "../app/components/order-plan";
+import { dueState } from "../app/lib/engine/forward-plan-shared";
 import { PLAN_TODAY, orderPlanFixture } from "./order-plan-fixtures";
 
 function render(data: CalendarPageData) {
@@ -131,6 +134,20 @@ describe("order-plan-shared", () => {
     // M3: late with no date (already out, the day it ran out unknown): "Overdue", never a made-up date.
     expect(dueText(null, "2026-10-16", t, "en", true)).toBe("Overdue");
     expect(dueText("2026-10-27", "2026-10-16", (x) => translate("de", x), "de")).toBe("Bis 27. Okt.");
+  });
+
+  it("one label rule: an order-by date of today is Due today, never overdue — even with the overdue flag", () => {
+    const t = (x: string) => x;
+    expect(dueText("2026-10-16", "2026-10-16", t, "en", true)).toBe("Due today");
+    expect(dueText("2026-10-17", "2026-10-16", t, "en", true)).toBe("Due Oct 17");
+    expect(dueText("2026-10-15", "2026-10-16", t, "en", false)).toBe("Overdue since Oct 15");
+    expect([dueState("2026-10-16", "2026-10-16", true), dueState("2026-10-15", "2026-10-16"), dueState(null, "2026-10-16", true), dueState(null, "2026-10-16")]).toEqual(["today", "overdue", "overdue", null]);
+    // The badge follows the same rule.
+    const html = renderToString(
+      createElement(LocaleProvider, { defaultLocale: "en", children: createElement("div", null, createElement(DueLabel, { deadline: "2026-10-16", today: "2026-10-16", overdue: true })) }),
+    );
+    expect(html).toContain("Due today");
+    expect(html).not.toContain("critical");
   });
 
   it("Why this quantity: the plan's terms, the rounding and the top-up, in the admin language", () => {

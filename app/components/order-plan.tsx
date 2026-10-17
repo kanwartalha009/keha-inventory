@@ -8,7 +8,7 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, notReadyText, type PlanNotReady, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
-import type { OrderWhy } from "../lib/engine/forward-plan-shared";
+import { dueState, type OrderWhy } from "../lib/engine/forward-plan-shared";
 import type { CashSummary, CashWeek as PaidWeek } from "../lib/cash-shared";
 import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
@@ -364,7 +364,7 @@ export function OrderByCell({ orderBy, overdue }: { orderBy: string | null | und
 export function DueLabel({ deadline, today, overdue = false }: { deadline: string | null | undefined; today: string; overdue?: boolean }) {
   const { t, locale } = useLocale();
   const text = dueText(deadline, today, t, locale, overdue);
-  if ((deadline && deadline < today) || (!deadline && overdue)) return <s-badge tone="critical">{text}</s-badge>;
+  if (dueState(deadline, today, overdue) === "overdue") return <s-badge tone="critical">{text}</s-badge>;
   return <span className="keha-nowrap">{text}</span>;
 }
 

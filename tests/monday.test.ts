@@ -735,6 +735,14 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     expect(e.html).toContain(">Overdue</span>");
   });
 
+  it("a line due today reads 'order today' and is not flagged overdue (one label rule)", () => {
+    const p = plan();
+    if (p.kind !== "plan") throw new Error();
+    const e = composeMondayEmail({ ...base, orders: { ...p, lines: [{ ...p.lines[0]!, orderBy: p.today }] } });
+    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · order today");
+    expect(e.text).not.toContain("Overdue");
+  });
+
   it("nothing due: 'Nothing to order this week · next: {supplier} by {date}'", () => {
     const e = composeMondayEmail({ ...base, orders: plan({ lines: [], next: { name: "Acme Textiles", orderBy: "2026-11-04" } }) });
     expect(e.subject).toBe("Nothing to order this week · next: Acme Textiles by Nov 4");

@@ -204,6 +204,10 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
   for (const e of plan.events) {
     expect(Number.isInteger(e.qty) && e.qty > 0, `${e.variantId} qty ${e.qty}`).toBe(true);
     expect(e.orderBy >= today && e.arrives >= e.orderBy, `${e.variantId} ${e.orderBy} → ${e.arrives}`).toBe(true);
+    // One label rule (dueState): an overdue order's date is in the past (or unknown); today is "Due today".
+    const due = dueDay(e);
+    if (e.overdue) expect(due === null || due < today, `${e.variantId} overdue with date ${due}`).toBe(true);
+    else expect(due !== null && due >= today, `${e.variantId} not overdue with date ${due}`).toBe(true);
   }
   counts.events = plan.events.length;
 

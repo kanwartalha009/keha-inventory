@@ -327,7 +327,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
         text: [
           r.variant ? `${r.title} · ${r.variant}` : r.title,
           units(r.qty),
-          r.overdue ? tr("order now") : fill(tr("order by {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
+          r.overdue ? tr("order now") : r.orderBy === orders.today ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
         ].join(" · "),
         overdue: r.overdue,
         flag: r.overdue ? tr("Overdue") : null,
@@ -349,7 +349,8 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
         l.name,
         units(l.units),
         ...(l.cash != null ? [money(l.cash)] : []),
-        l.overdue ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
+        // One label rule (forward-plan dueState): overdue and due today both read "order today".
+        l.overdue || (l.orderBy ?? orders.today) === orders.today ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
       ].join(" · "),
       overdue: l.overdue,
       flag: l.overdue ? tr("Overdue") : null,

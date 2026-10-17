@@ -1109,6 +1109,20 @@ export function dueDay(e: Pick<PlanEvent, "orderBy" | "overdue" | "deadline">): 
   return e.overdue ? e.deadline : (e.deadline ?? e.orderBy);
 }
 
+/** How an order-by date reads (one rule for every screen, the email and Sidekick). */
+export type DueState = "overdue" | "today" | "upcoming";
+
+/**
+ * The label rule (sim check 2026-10-17): a date before today is overdue, today is "Due today" —
+ * never overdue —, a later date is upcoming. Without a date: overdue when the order is late (already
+ * out, run-out day unknown), else unknown (null). The flag never overrides a date of today or later.
+ */
+export function dueState(deadline: DayKey | null | undefined, today: DayKey, overdue = false): DueState | null {
+  if (!deadline) return overdue ? "overdue" : null;
+  if (deadline < today) return "overdue";
+  return deadline === today ? "today" : "upcoming";
+}
+
 /**
  * M2: THE order-by date of a set of orders — a supplier's orders this week, one Order now line —
  * on every screen (Dashboard, Order now, Products, Sidekick, the Monday email): overdue when any

@@ -12,6 +12,7 @@ import {
   byWeek,
   cashTotals,
   dueDay,
+  dueState,
   dueWithin,
   planEnd,
   type CashTotals,
@@ -396,9 +397,11 @@ export function shortDay(day: DayKey, locale: string): string {
  * late with no date (already out, run-out day unknown — M3); "—" unknown.
  */
 export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T, locale: string, overdue = false): string {
-  if (!deadline) return overdue ? t("Overdue") : "—";
-  if (deadline < today) return fill(t("Overdue since {date}"), { date: shortDay(deadline, locale) });
-  if (deadline === today) return t("Due today");
+  const state = dueState(deadline, today, overdue);
+  if (state === null) return "—";
+  if (!deadline) return t("Overdue");
+  if (state === "overdue") return fill(t("Overdue since {date}"), { date: shortDay(deadline, locale) });
+  if (state === "today") return t("Due today");
   return fill(t("Due {date}"), { date: shortDay(deadline, locale) });
 }
 

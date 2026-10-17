@@ -178,7 +178,8 @@ const { writeSimStore } = await import("../app/services/sample-data.server");
 const { computeShop } = await import("../app/services/compute.server");
 const { loadOrderPlan } = await import("../app/models/order-plan.server");
 const { thisWeek, planWeeks, supplierName } = await import("../app/lib/order-plan-shared");
-const { cashTotals, ordersDue } = await import("../app/lib/engine/forward-plan-shared");
+const { cashTotals, dueDay, ordersDue } = await import("../app/lib/engine/forward-plan-shared");
+const { dueText } = await import("../app/lib/order-plan-shared");
 const KEY = "sim-check.myshopify.com";
 const now = new Date(`${store.meta.today}T07:00:00.000Z`);
 let t = performance.now();
@@ -204,7 +205,8 @@ const week = thisWeek(plan);
 line("Order this week", `${week.suppliers.length} suppliers, ${fmt(week.totals.units)} units, ${week.totals.cash === null ? "—" : `${plan.currency} ${fmt(week.totals.cash)}`}`);
 for (const s of week.suppliers) {
   const due = ordersDue(s.events);
-  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, order by ${due.orderBy}${due.overdue ? " (overdue)" : ""}`);
+  // The app's own label rule (forward-plan dueState): "Due today" is never overdue.
+  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue)}`);
 }
 const total = cashTotals(plan.events);
 line("Next 13 weeks", `${fmt(total.lines)} orders, ${fmt(total.units)} units, ${plan.currency} ${fmt(total.cash ?? 0)} (${total.missingCost} lines without a cost)`);
@@ -213,5 +215,5 @@ line("Can't plan yet / dead / don't reorder", `${plan.cantPlan.noData} / ${plan.
 head("Sample plan lines");
 for (const e of plan.events.slice(0, 8)) {
   const v = plan.variants[e.variantId];
-  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units by ${e.orderBy}${e.overdue ? " (overdue)" : ""}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
+  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units, ${dueText(dueDay(e), plan.today, (x) => x, "en-GB", e.overdue)}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
 }
