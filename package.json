@@ -20,6 +20,7 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
     "backtest": "tsx scripts/backtest.ts",
+    "loadtest:db": "tsx scripts/loadtest-db.ts",
     "preview:static": "tsx scripts/preview.tsx"
   },
   "type": "module",

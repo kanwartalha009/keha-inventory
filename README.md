@@ -142,6 +142,13 @@ Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
   compute keeps at most 3 of its reads in flight. With PgBouncer (transaction mode) add
   `pgbouncer=true` to `DATABASE_URL` and run `prisma migrate deploy` against the direct URL — every
   statement is single-statement or a batch transaction, no session locks.
+- **Fact tables for 1,000+ stores** (`docs/SCALE.md`, `docs/OPERATIONS.md`): daily sales, stock and visits
+  live in compact, monthly-partitioned tables (`SalesFact`, `StockMonth` — one row per variant ×
+  location × month —, `SessionsFact`) keyed by `Shop.num`, the variant's GID number and a `FactKey`
+  dictionary; models and services read them through `services/facts-store.server` in their own ids.
+  The store-wide `maintenance` job creates months ahead and drops months past retention (sales and
+  visits 25 months, stock 430 days). VariantMetric, Variant and StockNow are written only when a row
+  changed. Load test: `npm run loadtest:db -- --stores 100`.
 - **Large stores:** stock history is streamed and written a few days at a time (250,000 rows); the
   1,000,000-row read cap splits the date range instead of failing; compute works in chunks of 2,000
   variants and reads stored first / last days (`Variant.firstStockDay` …, `VariantLocationDays`)

@@ -1,0 +1,209 @@
+{
+  "measuredAt": "2026-10-17T17:48:07.559Z",
+  "stores": 100,
+  "mix": {
+    "S": 70,
+    "M": 25,
+    "L": 5
+  },
+  "postgres": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
+  "settings": {
+    "shared_buffers": "128MB",
+    "work_mem": "16MB (session)",
+    "cpus": 2
+  },
+  "generationMs": {
+    "shops+keys": 69,
+    "variants": 2266,
+    "stock now": 7734,
+    "stock pool": 64,
+    "stock history (StockMonth)": 152261,
+    "sales history (SalesFact)": 272077,
+    "visits (SessionsFact)": 44723,
+    "metrics (VariantMetric, MetricRun, VariantLocationDays)": 34532,
+    "vacuum analyze": 57452
+  },
+  "sizeBytes": {
+    "SalesFact": {
+      "bytes": 4996431872,
+      "rows": 33972140
+    },
+    "StockMonth": {
+      "bytes": 7710892032,
+      "rows": 26190000
+    },
+    "SessionsFact": {
+      "bytes": 1711529984,
+      "rows": 9728000
+    },
+    "ShopDaily": {
+      "bytes": 12468224,
+      "rows": 76000
+    },
+    "Variant": {
+      "bytes": 116613120,
+      "rows": 246000
+    },
+    "StockNow": {
+      "bytes": 563666944,
+      "rows": 1746000
+    },
+    "VariantMetric": {
+      "bytes": 1811996672,
+      "rows": 618000
+    },
+    "VariantLocationDays": {
+      "bytes": 512761856,
+      "rows": 1746000
+    },
+    "Location": {
+      "bytes": 114688,
+      "rows": 195
+    },
+    "Shop": {
+      "bytes": 114688,
+      "rows": 100
+    },
+    "FactKey": {
+      "bytes": 106496,
+      "rows": 204
+    },
+    "MetricRun": {
+      "bytes": 73728,
+      "rows": 134
+    }
+  },
+  "totalBytes": 17436770304,
+  "projected": {
+    "stores1000GB": 174.4,
+    "stores5000GB": 871.8
+  },
+  "layout": {
+    "legacySalesDailyBytesPerRow": 309.5,
+    "legacyStockDailyBytesPerRow": 430.3,
+    "compactStockDailyBytesPerRow": 115.2,
+    "salesFactBytesPerRow": 147.1,
+    "stockMonthBytesPerStockDay": 10,
+    "stockMonthTupleBytesPerDay_thisStore": 6.7,
+    "legacyRowsMeasured": 810000
+  },
+  "computeMs": {
+    "S": {
+      "statements": 33,
+      "ms": 247,
+      "p95ms": 13.4,
+      "stockJsMsPerChunk": 75,
+      "stockJsMsTotal": 75,
+      "monthRowsPerChunk": 1200
+    },
+    "M": {
+      "statements": 60,
+      "ms": 995,
+      "p95ms": 73.5,
+      "stockJsMsPerChunk": 498,
+      "stockJsMsTotal": 996,
+      "monthRowsPerChunk": 24000
+    },
+    "L": {
+      "statements": 416,
+      "ms": 16155,
+      "p95ms": 199.3,
+      "stockJsMsPerChunk": 540,
+      "stockJsMsTotal": 8100,
+      "monthRowsPerChunk": 80000
+    }
+  },
+  "nightlySyncWriteMs": {
+    "S": {
+      "stock day (first write)": 13,
+      "stock day (re-read, unchanged)": 3,
+      "sales day": 4,
+      "sales day (re-read, unchanged)": 1
+    },
+    "M": {
+      "stock day (first write)": 120,
+      "stock day (re-read, unchanged)": 64,
+      "sales day": 6,
+      "sales day (re-read, unchanged)": 2
+    },
+    "L": {
+      "stock day (first write)": 4717,
+      "stock day (re-read, unchanged)": 2671,
+      "sales day": 42,
+      "sales day (re-read, unchanged)": 11
+    }
+  },
+  "pageLoadMs": {
+    "S": {
+      "products": {
+        "p50": 2.4,
+        "p95": 3.2
+      },
+      "orderPlan": {
+        "p50": 3.3,
+        "p95": 3.7
+      },
+      "productPage": {
+        "p50": 1.3,
+        "p95": 3.6
+      },
+      "dashboard": {
+        "p50": 1.1,
+        "p95": 5.9
+      },
+      "alertsLastStockDay": {
+        "p50": 0.3,
+        "p95": 0.5
+      }
+    },
+    "M": {
+      "products": {
+        "p50": 11,
+        "p95": 13.4
+      },
+      "orderPlan": {
+        "p50": 32.5,
+        "p95": 45
+      },
+      "productPage": {
+        "p50": 1.3,
+        "p95": 1.8
+      },
+      "dashboard": {
+        "p50": 2.1,
+        "p95": 3.2
+      },
+      "alertsLastStockDay": {
+        "p50": 4.7,
+        "p95": 7
+      }
+    },
+    "L": {
+      "products": {
+        "p50": 65.8,
+        "p95": 89.5
+      },
+      "orderPlan": {
+        "p50": 314.4,
+        "p95": 383.4
+      },
+      "productPage": {
+        "p50": 2.7,
+        "p95": 5.2
+      },
+      "dashboard": {
+        "p50": 11.5,
+        "p95": 16.1
+      },
+      "alertsLastStockDay": {
+        "p50": 60.2,
+        "p95": 91.7
+      }
+    }
+  },
+  "maintenanceMs": 320,
+  "purgeL": {
+    "ms": 32794,
+    "rows": 8960771
+  }
+}
