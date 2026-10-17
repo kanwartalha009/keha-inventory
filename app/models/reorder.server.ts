@@ -31,6 +31,7 @@ import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
 import { buildOrderNow, type ReorderGroup } from "../lib/reorder-shared";
 import { thisWeek } from "../lib/order-plan-shared";
+import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
 import { computeOrderPlan } from "./order-plan.server";
 import {
