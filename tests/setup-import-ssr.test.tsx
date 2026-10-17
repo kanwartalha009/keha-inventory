@@ -49,6 +49,7 @@ const VARIANTS = [1, 2, 3].map((n) => ({
   supplierId: null,
   caseQty: n === 1 ? 6 : null,
   noReorder: false,
+  supplierCode: null,
 }));
 
 describe("Settings → Import & export", () => {

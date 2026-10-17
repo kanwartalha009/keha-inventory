@@ -197,6 +197,7 @@ function ImportCheck() {
     supplierId: n === 1 ? "s1" : null,
     caseQty: n === 1 ? 6 : null,
     noReorder: false,
+    supplierCode: null,
   }));
   const text = "sku,supplier,case_pack,dont_reorder,notes\nLIN-1,Acme Textiles,12,no,\nLIN-2,Lisbon Linen,12,no,\nLIN-3,,0,no,\nLIN-4,Nobody,,yes,\nLIN-99,,6,no,\n";
   const { preview } = planProductsImport(readCsv(text), variants, [

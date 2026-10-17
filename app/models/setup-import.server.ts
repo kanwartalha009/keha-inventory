@@ -1,7 +1,7 @@
 /**
  * Settings → Import & export (lib/setup-import-shared): reads what an import is checked against,
  * streams the exports, and writes a confirmed import. Our database only — the Shopify store is
- * never changed (Variant.supplierId / caseQty / noReorder and Supplier rows, as Settings →
+ * never changed (Variant.supplierId / caseQty / noReorder / supplierCode and Supplier rows, as Settings →
  * Suppliers and the product page write them).
  *
  * Large stores: variants are read in pages of READ_PAGE (cursor on id), the products export is
@@ -45,6 +45,7 @@ const VARIANT_SELECT = {
   supplierId: true,
   caseQty: true,
   noReorder: true,
+  supplierCode: true,
 } as const;
 
 /** Every variant of the shop, page by page (id order). */

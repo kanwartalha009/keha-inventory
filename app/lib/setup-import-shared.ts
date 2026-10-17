@@ -31,6 +31,8 @@ import {
   type SupplierInput,
 } from "./suppliers-shared";
 import { readMinOrderScope } from "./supplier-shared";
+import { isBalanceDue } from "./cash-shared";
+import { readSupplierCode } from "./po-grid-shared";
 
 type T = (s: string) => string;
 
@@ -179,6 +181,8 @@ export type IssueCode =
   | "range"
   | "yesNo"
   | "scope"
+  | "paymentTerms"
+  | "codeLong"
   | "supplier";
 
 export type ImportIssue = {
@@ -218,7 +222,23 @@ export type SupplierColumn = ImportColumn & {
   apply: (f: SupplierForm, cell: string) => Omit<ImportIssue, "line" | "column" | "value"> | null;
 };
 
-const textField = (field: "name" | "email" | "leadTimeDays" | "minOrder" | "minOrderTotal" | "casePack" | "transitDays" | "orderCycleDays" | "minOrderValue" | "exchangeRate" | "currency") => ({
+const textField = (
+  field:
+    | "name"
+    | "email"
+    | "leadTimeDays"
+    | "minOrder"
+    | "minOrderTotal"
+    | "casePack"
+    | "transitDays"
+    | "orderCycleDays"
+    | "minOrderValue"
+    | "exchangeRate"
+    | "currency"
+    | "depositPercent"
+    | "balanceDays"
+    | "landedCostPercent",
+) => ({
   field,
   export: (f: SupplierForm) => String(f[field] ?? ""),
   apply: (f: SupplierForm, cell: string) => {
@@ -291,6 +311,35 @@ export const SUPPLIER_COLUMNS: SupplierColumn[] = [
       return null;
     },
   },
+  // Payment terms and freight & duty (Settings → Suppliers → More options, R3).
+  {
+    header: "payment_terms",
+    aliases: ["balance_due"],
+    role: "value",
+    label: "Payment terms",
+    hint: "When the rest is paid: order (everything when you order), ship, arrival or after_arrival.",
+    example: "arrival",
+    field: "balanceDue",
+    export: (f) => f.balanceDue,
+    apply: (f, cell) => {
+      const c = cell.trim().toLowerCase();
+      if (c === "" || c === "order") f.balanceDue = "order";
+      else if (isBalanceDue(c)) f.balanceDue = c;
+      else return { code: "paymentTerms" };
+      return null;
+    },
+  },
+  { header: "deposit_percent", aliases: ["deposit"], role: "value", label: "Deposit", hint: "Paid when you place the order, in % of the goods. Use 0 for no deposit.", example: "30", ...textField("depositPercent") },
+  { header: "rest_days_after_arrival", aliases: ["balance_days"], role: "value", label: "Rest paid after arrival", hint: "Days after the stock arrives.", example: "30", ...textField("balanceDays") },
+  {
+    header: "freight_duty_percent",
+    aliases: ["landed_cost_percent", "freight_duty"],
+    role: "value",
+    label: "Freight & duty",
+    hint: "Shipping and import duty in % of the goods cost, paid on arrival. In your costs and cash, never on the purchase order to the supplier.",
+    example: "12",
+    ...textField("landedCostPercent"),
+  },
 ];
 
 // ---- Product settings ----
@@ -307,10 +356,12 @@ export type ImportVariant = {
   supplierId: string | null;
   caseQty: number | null;
   noReorder: boolean;
+  /** The supplier's article / style number (product page → Supplier code; purchase orders). */
+  supplierCode: string | null;
 };
 
 /** What a product import may change on a variant (our database only — never the store). */
-export type VariantPatch = { supplierId?: string | null; caseQty?: number | null; noReorder?: boolean };
+export type VariantPatch = { supplierId?: string | null; caseQty?: number | null; noReorder?: boolean; supplierCode?: string | null };
 export type VariantPatchField = keyof VariantPatch;
 
 export type ProductCtx = {
@@ -386,6 +437,21 @@ export const PRODUCT_COLUMNS: ProductColumn[] = [
       return b === null ? { ok: false, issue: { code: "yesNo" } } : { ok: true, value: b };
     },
     show: (v) => yesNo(!!v),
+  },
+  {
+    header: "supplier_code",
+    aliases: ["style_code", "article_code"],
+    role: "value",
+    label: "Supplier code",
+    hint: "The supplier's article or style number for this product. Shown on purchase orders. Leave empty to use the start of the SKUs.",
+    example: "AC-1042",
+    field: "supplierCode",
+    export: (v) => v.supplierCode ?? "",
+    read: (cell) => {
+      const r = readSupplierCode(cell);
+      return r.ok ? { ok: true, value: r.code } : { ok: false, issue: { code: "codeLong" } };
+    },
+    show: (v) => (typeof v === "string" ? v : ""),
   },
 ];
 
@@ -771,7 +837,7 @@ export function fileErrorText(e: FileError, entity: ImportEntity, t: T): string 
       return t("The file needs a name column with the supplier's name.");
     case "noValues":
       return entity === "products"
-        ? t("The file has no column to import. Add supplier, case_pack or dont_reorder.")
+        ? t("The file has no column to import. Add supplier, case_pack, dont_reorder or supplier_code.")
         : t("The file has no column to import.");
     case "duplicateColumn":
       return t("A column appears twice in this file. Keep one of them.");
@@ -801,6 +867,10 @@ export function issueText(issue: ImportIssue, t: T, supplierText: (code: Supplie
       return t("Use yes or no.");
     case "scope":
       return t("Use variant or product.");
+    case "paymentTerms":
+      return t("Use order, ship, arrival or after_arrival.");
+    case "codeLong":
+      return t("Use up to 64 characters.");
     case "supplier":
       return fill(issue.supplierCode ? supplierText(issue.supplierCode) : "", { min: n(issue.min), max: n(issue.max) });
   }

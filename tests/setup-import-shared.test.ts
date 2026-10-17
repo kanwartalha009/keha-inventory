@@ -40,6 +40,7 @@ function variant(n: number, over: Partial<ImportVariant> = {}): ImportVariant {
     supplierId: null,
     caseQty: null,
     noReorder: false,
+    supplierCode: null,
     ...over,
   };
 }

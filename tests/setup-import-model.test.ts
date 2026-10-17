@@ -35,12 +35,15 @@ const S = "acme.myshopify.com";
 const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
 const bytes = (s: string) => Buffer.byteLength(s);
 
+/** R3's supplier columns as the database returns them for a supplier without terms. */
+const TERMS = { depositPercent: null, balanceDue: null, balanceDays: null, landedCostPercent: null, leadSamples: null, leadPromisedDays: null, leadActualDays: null, leadDelayDays: null, leadSigmaDays: null, leadOnTimeShare: null, leadStatsAt: null };
+
 function seed(variants = 4) {
   fake.reset();
   fake.tables.shop = [{ domain: S, currency: "EUR", settings: { leadTimeDays: 21 } }];
   fake.tables.supplier = [
-    { id: "s1", shop: S, name: "Acme Textiles", email: null, leadTimeDays: 30, minOrder: null, minOrderTotal: null, casePack: 6, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"] },
-    { id: "other", shop: "other.myshopify.com", name: "Not yours", email: null, leadTimeDays: 5, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: [] },
+    { id: "s1", shop: S, name: "Acme Textiles", email: null, leadTimeDays: 30, minOrder: null, minOrderTotal: null, casePack: 6, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: ["Acme"], ...TERMS },
+    { id: "other", shop: "other.myshopify.com", name: "Not yours", email: null, leadTimeDays: 5, minOrder: null, minOrderTotal: null, casePack: null, transitDays: null, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: [], ...TERMS },
   ];
   fake.tables.variant = Array.from({ length: variants }, (_, i) => ({
     id: V(i + 1),
@@ -54,6 +57,7 @@ function seed(variants = 4) {
     supplierId: null,
     caseQty: null,
     noReorder: false,
+    supplierCode: null,
   }));
   fake.tables.variant.push({ ...fake.tables.variant[0], id: V(999), shop: "other.myshopify.com", sku: "SKU-1" });
 }
@@ -125,11 +129,11 @@ describe("product settings", () => {
       text += new TextDecoder("utf-8", { ignoreBOM: true }).decode(value); // keep the BOM to check it
     }
     const lines = text.trimEnd().split("\r\n");
-    expect(lines[0]).toBe("﻿variant_id,sku,handle,product,variant_title,vendor,supplier,case_pack,dont_reorder");
+    expect(lines[0]).toBe("﻿variant_id,sku,handle,product,variant_title,vendor,supplier,case_pack,dont_reorder,supplier_code");
     expect(lines.length).toBe(30_001);
     expect(chunks).toBeGreaterThanOrEqual(7); // header + 6 pages of 5,000
     // Every variant: case pack 6.
-    const edited = lines.map((l, i) => (i === 0 ? l : l.replace(/,,no$/, ",6,no"))).join("\r\n");
+    const edited = lines.map((l, i) => (i === 0 ? l : l.replace(/,,no,$/, ",6,no,"))).join("\r\n");
     const { preview } = await planImport(S, "products", edited, bytes(edited));
     expect(preview.changed).toBe(30_000);
     fake.calls.length = 0;
@@ -143,17 +147,47 @@ describe("product settings", () => {
 describe("suppliers", () => {
   it("export with current values; import creates (email encrypted) and updates, never touches other stores", async () => {
     const out = await exportSuppliersCsv(S);
-    expect(out).toContain("Acme Textiles,,30,,,,variant,,,6,,,Acme,no");
+    expect(out).toContain("Acme Textiles,,30,,,,variant,,,6,,,Acme,no,order,,,");
     expect(out).not.toContain("Not yours");
-    const file = out + "Porto Knit,porto@knit.example,60,,,,product,,,,USD,0.92,,yes\r\n";
+    const file = out + "Porto Knit,porto@knit.example,60,,,,product,,,,USD,0.92,,yes,after_arrival,30,45,12.5\r\n";
     const { preview } = await planImport(S, "suppliers", file, bytes(file));
     expect(preview).toMatchObject({ changed: 1, created: 1, unchanged: 1 });
     const r = await applyImport(S, "suppliers", file, bytes(file), preview.fingerprint);
     expect(r).toMatchObject({ ok: true, applied: 1 });
     const porto = fake.tables.supplier.find((s) => s.name === "Porto Knit")!;
-    expect(porto).toMatchObject({ shop: S, leadTimeDays: 60, minOrderScope: "product", currency: "USD", exchangeRate: 0.92, hidePrices: true });
+    expect(porto).toMatchObject({ shop: S, leadTimeDays: 60, minOrderScope: "product", currency: "USD", exchangeRate: 0.92, hidePrices: true, balanceDue: "after_arrival", depositPercent: 30, balanceDays: 45, landedCostPercent: 12.5 });
     expect(porto.email).not.toBe("porto@knit.example");
     expect(decryptSecret(porto.email as string)).toBe("porto@knit.example");
     expect(await importCounts(S)).toEqual({ suppliers: 2, variants: 4 });
+  });
+
+  it("payment terms and freight & duty (R3) round-trip; a wrong payment_terms cell is a problem row, a column left out keeps its value", async () => {
+    const s1 = fake.tables.supplier.find((s) => s.id === "s1")!;
+    Object.assign(s1, { balanceDue: "arrival", depositPercent: 20, landedCostPercent: 8 });
+    const out = await exportSuppliersCsv(S);
+    expect(out.split("\r\n")[0]).toBe("\uFEFFname,email,lead_time_days,transit_days,order_every_days,min_per_item,min_per_item_applies_to,min_order_units,min_order_value,case_pack,currency,exchange_rate,vendors,hide_prices,payment_terms,deposit_percent,rest_days_after_arrival,freight_duty_percent");
+    expect(out).toContain("Acme Textiles,,30,,,,variant,,,6,,,Acme,no,arrival,20,,8");
+    // Re-importing the export changes nothing.
+    expect((await planImport(S, "suppliers", out, bytes(out))).preview).toMatchObject({ changed: 0, unchanged: 1 });
+    const file = "name,payment_terms,freight_duty_percent\r\nAcme Textiles,ship,\r\nNew One,later,\r\n";
+    const { preview } = await planImport(S, "suppliers", file, bytes(file));
+    expect(preview).toMatchObject({ changed: 1, problemRows: 1 });
+    expect(preview.issues[0]).toMatchObject({ line: 3, column: "payment_terms", code: "paymentTerms" });
+    expect(await applyImport(S, "suppliers", file, bytes(file), preview.fingerprint)).toMatchObject({ ok: true, applied: 1 });
+    // ship kept the 20 % deposit (column left out); the empty freight cell cleared it.
+    expect(s1).toMatchObject({ balanceDue: "ship", depositPercent: 20, landedCostPercent: null });
+  });
+});
+
+describe("supplier code (R3) in the product settings file", () => {
+  it("imports per matched variant (a handle row sets every variant), an over-long code is a problem row", async () => {
+    fake.tables.variant[1].productId = fake.tables.variant[0].productId;
+    fake.tables.variant[1].handle = fake.tables.variant[0].handle;
+    const file = `handle,sku,supplier_code\r\nproduct-1,,AC-1042\r\n,SKU-3,${"x".repeat(65)}\r\n,SKU-4,  TR  77 \r\n`;
+    const { preview } = await planImport(S, "products", file, bytes(file));
+    expect(preview).toMatchObject({ problemRows: 1 });
+    expect(preview.issues[0]).toMatchObject({ column: "supplier_code", code: "codeLong" });
+    expect(await applyImport(S, "products", file, bytes(file), preview.fingerprint)).toMatchObject({ ok: true, variants: 3 });
+    expect(fake.tables.variant.filter((v) => v.shop === S).map((v) => v.supplierCode)).toEqual(["AC-1042", "AC-1042", null, "TR 77"]);
   });
 });
