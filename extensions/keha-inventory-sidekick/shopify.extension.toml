@@ -20,7 +20,7 @@
 api_version = "2026-10"
 
 [[extensions]]
-name = "Keha Inventory for Sidekick"
+name = "Keha Inventory Planner"
 handle = "keha-inventory-sidekick"
 uid = "09a5f0cf-5f3b-54eb-a8a6-ff76d7fe43f006799907"
 type = "ui_extension"

@@ -137,12 +137,18 @@ export function readWithinDays(v: string | null | undefined): number {
   return Math.min(MAX_WITHIN_DAYS, Math.max(1, Math.round(n)));
 }
 
-export const ACTION_KIND_INPUTS = ["reorder", "bridge", "push", "fix", "clear"] as const;
-export type ActionKindInput = (typeof ACTION_KIND_INPUTS)[number];
+/** get_action_list `kind` values (tools.json enum): plain words. */
+export const ACTION_KIND_INPUTS = ["reorder", "sold_out", "push", "fix", "clear"] as const;
+/** The app's action tab the kind filters on (actions-shared tabs; "bridge" = a best seller sold out). */
+export type ActionKindInput = "reorder" | "bridge" | "push" | "fix" | "clear";
+/** Tab → the word Sidekick sees (and sent). */
+const PUBLIC_KIND: Record<ActionKindInput, string> = { reorder: "reorder", bridge: "sold_out", push: "push", fix: "fix", clear: "clear" };
 
+/** A kind from Sidekick → the app's tab. "sold_out" (or the old "bridge") is the sold-out tab. */
 export function readActionKind(v: string | null | undefined): ActionKindInput | null {
-  const s = String(v ?? "").trim().toLowerCase();
-  return (ACTION_KIND_INPUTS as readonly string[]).includes(s) ? (s as ActionKindInput) : null;
+  const s = String(v ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "sold_out" || s === "bridge") return "bridge";
+  return s === "reorder" || s === "push" || s === "fix" || s === "clear" ? s : null;
 }
 
 export const PO_STATUS_INPUTS = ["draft", "sent", "confirmed"] as const;
@@ -499,7 +505,7 @@ export function productStockResponse(
 
 export const KIND_WORDS: Record<string, string> = {
   reorder: "Reorder",
-  bridge: "Bridge the gap (preorders or back-in-stock sign-ups)",
+  bridge: "While sold out: collect back-in-stock sign-ups until stock arrives",
   push: "Promote (products with healthy stock)",
   fix_falling: "Fix: falling sales",
   fix_sizes: "Fix: missing sizes",
@@ -525,7 +531,7 @@ export function actionListResponse(
   ctx: { kind: ActionKindInput | null; currency: string; limited: number | null },
 ): SidekickResponse {
   const picked = ctx.kind ? rows.filter((r) => r.tab === ctx.kind) : rows;
-  const base = { kind: ctx.kind ?? "all", currency: ctx.currency, url: appUrl(ctx.kind ? `/app?tab=${ctx.kind}` : "/app") };
+  const base = { kind: ctx.kind ? PUBLIC_KIND[ctx.kind] : "all", currency: ctx.currency, url: appUrl(ctx.kind ? `/app?tab=${ctx.kind}` : "/app") };
   if (!picked.length) return { ...base, results: [], message: MSG.noActions };
   const results = picked.map((r) =>
     link(r.productId, r.productTitle ?? "—", MIME.action, {

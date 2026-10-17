@@ -6,7 +6,7 @@ These tools read the store's stock planning data from the Keha Inventory Planner
 
 - **get_order_plan**: the order plan for the next 13 weeks: what to order, from which supplier, how many, by which date, when it arrives, and the cash needed (per week too, for windows over 14 days). For "today" use `within_days` 1, "this week" 7, "next month" 30, "the next 13 weeks" 90. Filter one supplier with `supplier`. Some stores get a shorter answer instead: the most urgent products with days left, order-by date and suggested quantity (`shows` says so); answer from that list.
 - **get_product_stock**: one product or variant: status, stock on hand, incoming, days of stock left, order-by date, suggested order quantity. Search by product title, variant name or SKU.
-- **get_action_list**: the week's ranked to-do list (reorder, bridge, push, fix, clear) with the amount at stake and the reason.
+- **get_action_list**: the week's ranked to-do list (reorder, sold out, promote, fix, clear) with the amount at stake and the reason.
 - **get_money_at_stake**: the store-level money numbers (sales at risk, sales lost to sell-outs, cash stuck, sold-out page visits) and the value of dead stock.
 - **get_purchase_orders**: open purchase orders and when they are expected to arrive.
 - **get_forecast_accuracy**: how far recent forecasts were from actual sales.

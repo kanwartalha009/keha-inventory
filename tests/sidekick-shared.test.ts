@@ -52,6 +52,9 @@ describe("inputs", () => {
     expect(readMonths("20")).toBe(12);
     expect(readActionKind("Reorder")).toBe("reorder");
     expect(readActionKind("fix_sizes")).toBeNull();
+    // Plain word for the sold-out tab; the old enum value still works.
+    expect(readActionKind("sold_out")).toBe("bridge");
+    expect(readActionKind("bridge")).toBe("bridge");
     expect(readPoStatus("SENT")).toBe("sent");
     expect(readPoStatus("received")).toBeNull();
     expect(readText("   ")).toBeNull();
@@ -281,6 +284,14 @@ describe("other tools", () => {
     expect(clear.url).toBe("app://app?tab=clear");
     expect(clear.note).toBeUndefined();
     expect(actionListResponse(rows, { kind: "push", currency: "EUR", limited: null }).message).toBe(MSG.noActions);
+    // The sold-out kind answers in plain words: kind sold_out, no "bridge" in the text.
+    const soldOut = actionListResponse(
+      [{ kind: "bridge", tab: "bridge", productId: "gid://shopify/Product/3", productTitle: "Boots", variants: [], amount: 90, currency: "EUR", reasonText: "Sold out until 2 Nov.", path: "/app?tab=bridge" }],
+      { kind: "bridge", currency: "EUR", limited: null },
+    );
+    expect(soldOut.kind).toBe("sold_out");
+    expect(soldOut.results![0]!._meta.action).toBe("While sold out: collect back-in-stock sign-ups until stock arrives");
+    expect(JSON.stringify({ ...soldOut, url: undefined, results: soldOut.results!.map((r) => ({ ...r._meta, url: undefined })) })).not.toMatch(/bridge/i);
   });
 
   it("money at stake: card titles, how we got this, dead stock basis", () => {

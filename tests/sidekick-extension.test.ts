@@ -61,6 +61,15 @@ describe("shopify.extension.toml", () => {
     }
   });
 
+  it("is named after the app (Keha Inventory Planner), and no tool text uses the internal word bridge", () => {
+    expect(tomlString(toml, "name")).toBe(tomlString(prod, "name"));
+    expect(tomlString(toml, "name")).toBe("Keha Inventory Planner");
+    const texts = [toml, instructions, ...tools.flatMap((t) => [t.description, ...Object.values(t.inputSchema.properties).flatMap((p) => [p.description ?? "", ...(p.enum ?? [])])])];
+    for (const x of texts) expect(x).not.toMatch(/\bbridge\b/i);
+    // The kind filter takes plain words; the old "bridge" value is still read (contract kept, mapped).
+    expect(tools.find((t) => t.name === "get_action_list")!.inputSchema.properties.kind!.enum).toEqual(["reorder", "sold_out", "push", "fix", "clear"]);
+  });
+
   it("pins the app's API version (2026-10, invariant I-7)", () => {
     expect(tomlString(toml, "api_version")).toBe("2026-10");
     expect(tomlString(prod, "api_version")).toBe("2026-10");
