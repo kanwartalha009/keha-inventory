@@ -485,3 +485,20 @@ describe("Forecast choices (R4): Don't cap and Plan like", () => {
     expect(enqueueJob).toHaveBeenLastCalledWith("acme.myshopify.com", "compute");
   });
 });
+
+describe("How the forecast was built: safety from the forecast's own error, a level shift (B4, B5)", () => {
+  it("shows the fill target, the error over the protection days and the backtest ratio; and a level change", () => {
+    const base = detail(true);
+    const inputs = { ...base.inputs!, error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: 1.7, samples: 13 }, levelShift: { day: "2026-09-01", ratio: 2.4 } };
+    const html = renderDetail({ ...base, inputs });
+    expect(html).toContain("Fill target");
+    expect(html).toContain("95 %");
+    expect(html).toContain("Forecast error over 42 days");
+    expect(html).toContain("± 18 units");
+    expect(html).toContain("last 13 weeks: 1.7× the expected error");
+    expect(html).toContain("Sales stepped up on");
+    expect(renderDetail(base)).not.toContain("Fill target");
+    expect(readForecastInputs({ error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 } }, 1)!.error).toEqual({ horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 });
+    expect(readForecastInputs({}, 1)!.error).toBeNull();
+  });
+});

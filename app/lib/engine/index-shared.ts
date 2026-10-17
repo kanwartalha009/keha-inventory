@@ -30,6 +30,7 @@ import {
 import { variantStatus } from "./status-shared";
 import { applyCap, cappedSince, spikeCap, type CappedDay } from "./outliers-shared";
 import { levelShift, type LevelShift } from "./level-shift-shared";
+import { errorRatio, fillSafetyFactor, normalCdf, paceVarianceFactor, structuralSigma, type ErrorRatio, type ErrorSample } from "./error-shared";
 import { PLAN_LIKE_DAYS, ownWeight, type PlanLikeInput } from "./new-style-shared";
 import { arrivalsFrom, coverDays, demandProjection, lostUnits, type Projection } from "./projection-shared";
 import {
@@ -50,6 +51,7 @@ export * from "./projection-shared";
 export * from "./outliers-shared";
 export * from "./new-style-shared";
 export * from "./level-shift-shared";
+export * from "./error-shared";
 
 export interface VariantInput {
   id: string;
@@ -101,10 +103,16 @@ export interface VariantInput {
   planLike?: PlanLikeInput | null;
   /**
    * Older daily facts of this scope (before the `historyDays` window, up to 14 months back) for every
-   * variant: the spike cap's one-off rule (outliers-shared) reads them. The in-stock pace fallback
-   * still reads `olderSeries` only.
+   * variant: the spike cap's one-off rule (outliers-shared) and the forecast-error backtest
+   * (error-shared) read them. The in-stock pace fallback still reads `olderSeries` only.
    */
   history?: readonly DailyRow[] | null;
+  /**
+   * The forecast-error backtest's origins (error-shared errorOriginDays) with the season multiplier
+   * of the P days from each (seasonal × applied trend; season-shared realisedFactor). Absent: the
+   * model's error only (ρ = 1).
+   */
+  errorOrigins?: readonly { day: DayKey; multiplier: number }[] | null;
   /** "Don't cap" (the product's forecast override): no spike capping for this variant. */
   noCap?: boolean | null;
   /**
@@ -212,6 +220,13 @@ export interface VariantInputs {
   spikes: { cap: number | null; days: CappedDay[]; count: number; off: boolean };
   /** σ was measured on de-seasonalised demand and scaled by the seasonal index (levels given). */
   sigmaSeasonal: boolean;
+  /**
+   * B4: how safety stock was sized (error-shared): the protection days P, the model's error over
+   * them, the backtest's ratio of real to model error (null: no backtest) and the ratio used
+   * (shrunk toward 1), the error σ used (with lead-time spread), the fill target and the factor k
+   * (safety = k × sigma). null with no advice or the old σ model (settings.safetyModel "sigma").
+   */
+  error: { horizonDays: number; model: number; sigma: number; ratio: number | null; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number } | null;
   /** B5: a confirmed sustained level change — the pace is the level since `day` (level-shift-shared). */
   levelShift: { day: DayKey; before: number; after: number; ratio: number; afterDays: number } | null;
   /**
@@ -301,6 +316,70 @@ function laterDay(a: DayKey | null, b: DayKey | null): DayKey | null {
   if (b === null) return a;
   return a > b ? a : b;
 }
+
+/** The order cycle's demand never counts fewer days than one weekly review (Order now, the Monday email). */
+export const MIN_REVIEW_DAYS = 7;
+
+/**
+ * The forecast-error backtest (error-shared): at each origin, the engine's own pace as of that day
+ * (spike cap, rate windows, the in-stock pace fallback, a level shift) × the season multiplier of
+ * the P days from it, against what those days sold (capped at today's cap; sold-out and missing
+ * days left out on both sides, a day it ran out counted at least at the pace).
+ */
+export function pastErrors(
+  hist: ReadonlyMap<number, DailyRow>,
+  today: DayKey,
+  P: number,
+  settings: EngineSettings,
+  capOff: boolean,
+  capNow: number | null,
+  origins: readonly { day: DayKey; multiplier: number }[],
+  levels?: ReadonlyMap<DayKey, number> | null,
+): ErrorSample[] {
+  const t = dayIndex(today);
+  const p = Math.max(1, Math.round(P));
+  const out: ErrorSample[] = [];
+  for (const o of origins) {
+    const oi = dayIndex(o.day);
+    if (oi + p > t || !(o.multiplier >= 0) || !Number.isFinite(o.multiplier)) continue;
+    const sp = spikeCap(hist, o.day, { k: settings.spikeCapK, off: capOff });
+    const capped = applyCap(hist, sp.cap);
+    const r = salesRate(capped, o.day, settings);
+    let rate: number | null = null;
+    let sigma: number | null = null;
+    let vf: number | null = null;
+    if (r.enoughData && r.rate !== null) {
+      const sh = levels && levels.size && settings.levelShiftZ > 0 ? levelShift(capped, o.day, settings.rateWindows, levels, { z: settings.levelShiftZ }) : null;
+      rate = sh ? sh.rate : r.rate;
+      sigma = sigmaDaily(capped, o.day, sh ? daysBetween(sh.day, o.day) : settings.historyDays);
+      vf = sh ? 1 / Math.max(1, sh.afterDays) : paceVarianceFactor(r.windows);
+    } else {
+      const pc = inStockPace(capped, o.day, settings);
+      if (pc) {
+        rate = pc.rate;
+        sigma = pc.sigma;
+        vf = 1 / Math.max(1, pc.inStockDays);
+      }
+    }
+    if (rate === null || sigma === null || vf === null) continue;
+    const daily = rate * o.multiplier;
+    let n = 0;
+    let actual = 0;
+    for (let i = oi; i < oi + p; i++) {
+      const row = hist.get(i);
+      if (!row || soldOutDay(row)) continue;
+      const sold = capNow !== null && row.sold > capNow ? capNow : row.sold;
+      actual += row.partial ? Math.max(sold, daily) : sold;
+      n++;
+    }
+    if (n < FORECAST_ERROR_MIN_SHARE * p) continue;
+    const sd = Math.max(sigma * o.multiplier, Math.sqrt(Math.max(0, daily)));
+    out.push({ day: o.day, forecast: daily * n, actual, model: structuralSigma(sd, n, vf) });
+  }
+  return out;
+}
+
+const FORECAST_ERROR_MIN_SHARE = 0.6;
 
 /** One variant × scope. Returns null for bundles. */
 export function computeVariant(input: VariantInput): VariantResult | null {
@@ -392,7 +471,26 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   // NEXT order lands, i.e. over lead time + order cycle (the protection period), not lead only.
   // Supplier module: + the variability of the supplier's measured lead time (σL), when measured.
   const leadSigma = typeof input.leadTimeSigmaDays === "number" && Number.isFinite(input.leadTimeSigmaDays) && input.leadTimeSigmaDays > 0 ? input.leadTimeSigmaDays : null;
-  const safety = advice ? safetyStockWithLead(z, sigma!, lead.days + cycle, fRate, leadSigma) : null;
+  // B4: safety stock from the forecast's own error (error-shared), sized for the role's fill target.
+  const P = lead.days + cycle;
+  let error: VariantInputs["error"] = null;
+  let safety: number | null = null;
+  if (advice && settings.safetyModel === "sigma") safety = safetyStockWithLead(z, sigma!, P, fRate, leadSigma);
+  else if (advice) {
+    const daily = Math.max(0, fRate!);
+    const sd = Math.max(sigma!, Math.sqrt(daily));
+    const vf = pace ? 1 / Math.max(1, pace.inStockDays) : shift ? 1 / Math.max(1, shift.afterDays) : planLike ? 1 / Math.max(1, settings.minInStockDays) : (paceVarianceFactor(r.windows) ?? 1 / Math.max(1, r.inStockDays));
+    const model = structuralSigma(sd, P, vf);
+    const backtest: ErrorRatio = planLike || !input.errorOrigins?.length
+      ? errorRatio([], P)
+      : errorRatio(pastErrors(hist, today, P, settings, capOff, spikes.cap, input.errorOrigins), P);
+    const sigmaP = model * backtest.used;
+    const total = Math.sqrt(sigmaP * sigmaP + (leadSigma !== null ? daily * daily * leadSigma * leadSigma : 0));
+    const fillTarget = normalCdf(z);
+    const k = fillSafetyFactor(fillTarget, daily * Math.max(cycle, MIN_REVIEW_DAYS), total);
+    safety = k * total;
+    error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k };
+  }
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
 
@@ -549,6 +647,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       pace: pace ? { from: pace.from, inStockDays: pace.inStockDays } : null,
       spikes: { cap: spikes.cap, days: spikeDays.slice(0, 10), count: spikeDays.length, off: capOff && input.noCap === true },
       sigmaSeasonal: sigmaSeasonal && planLike === null,
+      error,
       levelShift: shift && planLike === null ? { day: shift.day, before: shift.before, after: shift.after, ratio: shift.ratio, afterDays: shift.afterDays } : null,
       planLike,
       outSince: ranOutDay(index, today),

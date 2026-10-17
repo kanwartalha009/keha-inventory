@@ -88,6 +88,11 @@ export interface EngineSettings {
    * before the pace uses the level since the change. 0 = off.
    */
   levelShiftZ: number;
+  /**
+   * How safety stock is sized: "error" (default) — the forecast's own error and the fill target
+   * (error-shared); "sigma" — the old z × σ_daily × √(lead time + cycle).
+   */
+  safetyModel: "error" | "sigma";
 }
 
 export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
@@ -111,6 +116,7 @@ export const ENGINE_DEFAULTS: Readonly<EngineSettings> = Object.freeze({
   soldOutTrafficDays: 30,
   spikeCapK: 4,
   levelShiftZ: 4,
+  safetyModel: "error",
 });
 
 /** Shop overrides on top of ENGINE_DEFAULTS (undefined keys keep the default). */

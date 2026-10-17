@@ -112,7 +112,9 @@ describe("safety stock with lead-time variability", () => {
 
   it("the engine uses it: more safety, an earlier order, the σ kept in inputs; absent = unchanged", () => {
     const series = buildSeries({ days: 90, sold: (k) => (k % 2 ? 1 : 3), price: 25 });
-    const base = variantInput({ series, role: "A", onHand: 40, supplierLeadTimeDays: 16 });
+    // The z × σ model (settings safetyModel "sigma"); the default model adds d²σL² to the forecast's
+    // own error the same way (tests/engine/forecast-error.test.ts).
+    const base = variantInput({ series, role: "A", onHand: 40, supplierLeadTimeDays: 16, settings: { safetyModel: "sigma" } });
     const before = computeVariant(base)!;
     const after = computeVariant({ ...base, leadTimeSigmaDays: 5 })!;
     expect(before.safety).toBeCloseTo(1.65 * Math.sqrt(30), 12);

@@ -87,6 +87,7 @@ import { resolveLeadTime } from "../lib/engine/order-shared";
 import { supplierLeadSigma } from "../lib/lead-time-shared";
 import { refreshLeadStats } from "../models/suppliers.server";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
+import { errorOriginDays } from "../lib/engine/error-shared";
 import { PACE_LOOKBACK_DAYS, soldOutDay } from "../lib/engine/rate-shared";
 import { SEASON, seasonFacts, seasonGroupsOf, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
@@ -589,7 +590,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     // series) or the older-series rule below asks whether there is one: exact, per variant.
     await resolveLastSale(shop, lastSale, ids.filter((id) => !seriesSold(series.get(id)) || fewInStock(id)), from, demandFilter);
     // The 14 months before the window, for every variant (forecast quality 2026-10-17): the spike
-    // cap's one-off rule reads them (engine `history`). Data audit #2: variants with too few in-stock
+    // cap's one-off rule and the forecast-error backtest read them (engine `history`). Data audit #2: variants with too few in-stock
     // days in the 90 days but sales before them (out of stock most of the window) also take their
     // pace from them (engine `olderSeries`, inStockPace).
     const history = await loadOlderSeries(shop, { ids, from: addDays(today, -PACE_LOOKBACK_DAYS), before: from, pool, demandFilter });
@@ -623,6 +624,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         series: series.get(v.id) ?? [],
         olderSeries: olderSeries.get(v.id) ?? null,
         history: history.get(v.id) ?? null,
+        // B4: the forecast-error backtest's origins and their season multipliers (error-shared).
+        errorOrigins: seasonCtx.originsFor(season, errorOriginDays(today, horizon), horizon),
         today,
         onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
         incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),

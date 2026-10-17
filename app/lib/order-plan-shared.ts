@@ -455,6 +455,16 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
       vars,
     ),
   ];
+  // B4: what the safety stock covers.
+  if (why.safetyBasis && why.safety > 0)
+    out.push(
+      fill(t("Safety {safety}: the forecast's own error over {n} days (± {error}) for a {pct} % fill target."), {
+        safety: nf(why.safety, locale, 0),
+        n: nf(why.safetyBasis.days, locale, 0),
+        error: nf(why.safetyBasis.error, locale, 0),
+        pct: nf(why.safetyBasis.fill * 100, locale, 0),
+      }),
+    );
   if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while sold out is owed, so it is ordered back."));
   // Data audit #2: out of stock most of the last 90 days — the pace comes from older in-stock days.
   if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));

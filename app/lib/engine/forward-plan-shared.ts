@@ -118,6 +118,15 @@ export interface ForwardVariantInput {
   planLike?: PlanLikeWhy | null;
   /** B5: a sustained level change — the pace is the level since then (inputs.levelShift). */
   levelShift?: LevelShiftWhy | null;
+  /** B4: what the safety stock covers (inputs.error). */
+  safetyBasis?: SafetyBasisWhy | null;
+}
+
+/** Safety stock in the Why: the forecast's own error over `days` days and the fill target. */
+export interface SafetyBasisWhy {
+  days: number;
+  error: number;
+  fill: number;
 }
 
 /** A level shift in the Why: the first day at the new level and up (> 1) or down. */
@@ -176,6 +185,8 @@ export interface OrderWhy {
   planLike?: PlanLikeWhy | null;
   /** The pace is the level since a sustained change (B5). */
   levelShift?: LevelShiftWhy | null;
+  /** What the safety stock covers (B4). */
+  safetyBasis?: SafetyBasisWhy | null;
   /** demand + safety − onHand − onOrder − missed. */
   need: number;
   /** After the case pack and the per-variant minimum. */
@@ -463,6 +474,7 @@ export class VariantProjection {
         spikes: this.input.spikes ?? null,
         planLike: this.input.planLike ?? null,
         levelShift: this.input.levelShift ?? null,
+        safetyBasis: this.input.safetyBasis ?? null,
         need,
         rounded: 0,
         pack: this.pack,
@@ -568,6 +580,13 @@ export function levelShiftWhy(raw: unknown): LevelShiftWhy | null {
   return typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && finite(r.ratio) ? { day: r.day, ratio: r.ratio } : null;
 }
 
+/** inputs.error (B4) → the Why's days, error and fill target; null when none. */
+export function safetyBasisWhy(raw: unknown): SafetyBasisWhy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return finite(r.horizonDays) && finite(r.sigma) && finite(r.fill) ? { days: r.horizonDays, error: r.sigma, fill: r.fill } : null;
+}
+
 /** inputs.pace.from (data audit #2), or null. */
 function paceFromInputs(p: unknown): DayKey | null {
   const from = p && typeof p === "object" ? (p as Record<string, unknown>).from : null;
@@ -668,6 +687,7 @@ export function forwardInputFromMetric(
     spikes: spikesWhy(inputs.spikes),
     planLike: planLikeWhy(inputs.planLike),
     levelShift: levelShiftWhy(inputs.levelShift),
+    safetyBasis: safetyBasisWhy(inputs.error),
   };
 }
 

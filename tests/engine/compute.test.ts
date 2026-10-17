@@ -34,6 +34,9 @@ describe("computeVariant", () => {
         incoming: 10,
         supplierLeadTimeDays: 16,
         caseQty: 6,
+        // The z × σ × √P model (settings safetyModel "sigma"); the default sizes safety from the
+        // forecast's own error (B4, below).
+        settings: { safetyModel: "sigma" },
       }),
     )!;
     expect(r.rate).toBeCloseTo(2, 12);
@@ -73,7 +76,7 @@ describe("computeVariant", () => {
 
   it("M2: running low unless an order lands before the run-out (dated arrivals)", () => {
     // 40 on hand at 2/day → runs out on day 20; lead 16 + safety 4.52.
-    const base = variantInput({ series: alternating, role: "A", onHand: 40, supplierLeadTimeDays: 16 });
+    const base = variantInput({ series: alternating, role: "A", onHand: 40, supplierLeadTimeDays: 16, settings: { safetyModel: "sigma" } });
     expect(computeVariant(base)!.status).toBe("running_low");
     // 30 arriving on day 10 (before the run-out): cover 35 → not running low.
     const early = computeVariant({ ...base, incoming: 30, arrivals: [{ day: ago(-10), units: 30 }] })!;
@@ -250,11 +253,12 @@ describe("computeVariant", () => {
   });
 
   it("seasonal and trend scale days left; plan scales only the order", () => {
-    const base = computeVariant(variantInput({ onHand: 100 }))!;
-    const seasonal = computeVariant(variantInput({ onHand: 100, seasonal: 2 }))!;
+    const sigma = { settings: { safetyModel: "sigma" as const } };
+    const base = computeVariant(variantInput({ onHand: 100, ...sigma }))!;
+    const seasonal = computeVariant(variantInput({ onHand: 100, seasonal: 2, ...sigma }))!;
     // Sells when out of stock: the order covers everything sold over lead time + cycle.
-    const plan = computeVariant(variantInput({ onHand: 10, plan: 2, sellsWhenOut: true }))!;
-    const planBase = computeVariant(variantInput({ onHand: 10, sellsWhenOut: true }))!;
+    const plan = computeVariant(variantInput({ onHand: 10, plan: 2, sellsWhenOut: true, ...sigma }))!;
+    const planBase = computeVariant(variantInput({ onHand: 10, sellsWhenOut: true, ...sigma }))!;
     expect(base.daysLeft).toBe(50);
     expect(seasonal.daysLeft).toBe(25);
     expect(plan.daysLeft).toBe(planBase.daysLeft);
@@ -263,8 +267,8 @@ describe("computeVariant", () => {
     expect(plan.orderQty).toBe(102);
     // Doesn't sell when out (default): the sales missed before the order lands (14 days: 28 − 10,
     // ×2 with the plan) are lost, not ordered back.
-    expect(computeVariant(variantInput({ onHand: 10 }))!.orderQty).toBe(46 - 18);
-    expect(computeVariant(variantInput({ onHand: 10, plan: 2 }))!.orderQty).toBe(102 - 46);
+    expect(computeVariant(variantInput({ onHand: 10, ...sigma }))!.orderQty).toBe(46 - 18);
+    expect(computeVariant(variantInput({ onHand: 10, plan: 2, ...sigma }))!.orderQty).toBe(102 - 46);
   });
 
   it("price: input wins, else sold-weighted series price; cost: input wins, else latest row", () => {

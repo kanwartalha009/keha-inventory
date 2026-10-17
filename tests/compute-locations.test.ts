@@ -112,9 +112,11 @@ describe("per-location metrics (Pro)", () => {
     expect((m.inputs as { historyDays: number; inStockDays: number }).inStockDays).toBe(80);
     expect((m.inputs as { outSince: string }).outSince).toBe("2026-10-06");
     expect(m.orderQty).toBeGreaterThan(0);
-    // The engine's safety stock is stored for transfers' keep level: z × σ × √(lead + cycle).
-    const i = m.inputs as { safety: number; z: number; leadTimeDays: number; cycleDays: number };
-    expect(i.safety).toBeCloseTo(i.z * Number(m.sigma ?? 0) * Math.sqrt(i.leadTimeDays + i.cycleDays), 6);
+    // The engine's safety stock is stored for transfers' keep level: k × the forecast's error over
+    // lead + cycle (B4; a location has no backtest of its own — the model's error).
+    const i = m.inputs as { safety: number; error: { k: number; sigma: number; horizonDays: number; ratio: number | null } };
+    expect(i.safety).toBeCloseTo(i.error.k * i.error.sigma, 6);
+    expect(i.error.ratio).toBeNull();
   });
 
   it("#4: the pool counts the store by default — its stock and its POS demand (all channels, once)", async () => {

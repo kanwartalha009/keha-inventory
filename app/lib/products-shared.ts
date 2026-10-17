@@ -419,7 +419,30 @@ export type ForecastInputsView = {
   planLike?: PlanLikeView | null;
   /** R4: σ was measured on de-seasonalised demand. */
   sigmaSeasonal?: boolean;
+  /** B4: safety stock from the forecast's own error — the days covered, the error, the fill target; null for rows stored without it. */
+  error?: ErrorView | null;
+  /** B5: a sustained level change the pace follows; null when none. */
+  levelShift?: { day: string; ratio: number } | null;
 };
+
+export type ErrorView = { horizonDays: number; sigma: number; fill: number; ratio: number | null; samples: number };
+
+function readError(raw: unknown): ErrorView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const horizonDays = n(r.horizonDays);
+  const sigma = n(r.sigma);
+  const fill = n(r.fill);
+  if (horizonDays === null || sigma === null || fill === null) return null;
+  return { horizonDays, sigma, fill, ratio: n(r.ratio), samples: n(r.samples) ?? 0 };
+}
+
+function readLevelShift(raw: unknown): { day: string; ratio: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const ratio = n(r.ratio);
+  return typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && ratio !== null ? { day: r.day, ratio } : null;
+}
 
 export type SpikesView = { cap: number | null; count: number; off: boolean; days: { day: string; sold: number; cap: number }[] };
 export type PlanLikeView = { kind: "product" | "productType"; name: string; pct: number; ownDays: number; weight: number };
@@ -482,6 +505,8 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     spikes: readSpikes(r.spikes),
     planLike: readPlanLike(r.planLike),
     sigmaSeasonal: r.sigmaSeasonal === true,
+    error: readError(r.error),
+    levelShift: readLevelShift(r.levelShift),
   };
 }
 

@@ -423,6 +423,28 @@ function ForecastInputs({
                 )
               }
             />
+            {forecast && inputs.error && (
+              <>
+                <KvRow label={t("Fill target")} value={`${num(inputs.error.fill * 100, 0)} %`} />
+                <KvRow
+                  label={fill(t("Forecast error over {n} days"), { n: num(inputs.error.horizonDays, 0) })}
+                  value={
+                    <span className="keha-inline">
+                      <span>{fill(t("± {n} units"), { n: num(inputs.error.sigma, 0) })}</span>
+                      {inputs.error.ratio !== null && (
+                        <s-text color="subdued">{fill(t("last 13 weeks: {x}× the expected error"), { x: num(inputs.error.ratio, 1) })}</s-text>
+                      )}
+                    </span>
+                  }
+                />
+              </>
+            )}
+            {inputs.levelShift && (
+              <KvRow
+                label={t("Sales level")}
+                value={fill(inputs.levelShift.ratio >= 1 ? t("Sales stepped up on {date}; using the recent level.") : t("Sales dropped on {date}; using the recent level."), { date: formatDay(inputs.levelShift.day, locale) })}
+              />
+            )}
           </div>
           <s-text color="subdued">
             {t("Based on: sales per day while in stock in the windows above, weighted as shown. Days without data never count as days without sales.")}
