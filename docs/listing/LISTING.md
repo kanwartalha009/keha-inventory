@@ -48,7 +48,7 @@ Keha turns your Shopify sales and stock into an order plan: what to order from e
 Order plan by supplier: what to order, how many, and the last day to order
 Cash needed each week on your suppliers' payment terms, for the next 13 weeks
 Purchase orders as PDF, CSV or email; suppliers confirm ship dates by link
-Forecasts skip sold-out days, and each one shows how it was worked out
+Forecasts that ignore sold-out days, each showing how it was worked out
 Monday to-do list: reorder, promote, fix or clear, ranked by money at stake
 ```
 
@@ -100,13 +100,60 @@ low stock alert
 ```text
 Slack
 Shopify Flow
-Shopify POS
-Shopify Sidekick
 ```
 
-Only what the app itself works with (Slack incoming webhook, Flow triggers, POS locations in
-Settings → Locations, the Sidekick extension). No other Keha app is named anywhere in the listing
-(App Store requirement 4.4: don't reference your other apps).
+Only the other apps Keha connects to: Slack (incoming webhook, Settings → Alerts) and Shopify Flow
+(two triggers, `extensions/keha-inventory-flow`). Shopify POS and Sidekick are not listed (listing
+audit 2026-10-18): POS stores are Shopify locations the app plans for (a feature, in the details and
+Structured features), and the Sidekick extension is part of the app, not an integration. No other
+Keha app is named anywhere in the listing (App Store requirement 4.4: don't reference your other apps).
+
+## Structured features
+
+Partner Dashboard → listing form → the category's **structured features** (shopify.dev "App listing
+categories": each category asks for structured features, up to 25 per category field, editable any
+time without a review appeal). Shopify does not publish the list of options per category, so the
+labels below describe what the app does; tick the closest option the form offers for each one.
+**[Kanwar to confirm in Partner Dashboard]** the exact option labels shown for Orders and shipping →
+Inventory → Inventory optimization, and tick nothing the table below doesn't back.
+
+| What the app does (tick the matching option) | Where in the code |
+|---|---|
+| Demand / sales forecasting per product, seasonality from 13 months of sales | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; product page "How the forecast was built" |
+| Sold-out days left out of the sales rate | `app/lib/engine/rate-shared.ts` |
+| Reorder suggestions: quantity and order-by date per product, by supplier | `app/lib/engine/forward-plan-shared.ts`, Order plan → Order now |
+| Purchase orders: create, PDF, CSV, email to the supplier | `app/routes/app.reorder_.$id*.tsx` |
+| Supplier management: lead time, case packs, minimums, payment terms, order cycle | `app/routes/app.settings_.suppliers.tsx` |
+| Supplier confirms the ship date from a link (no login) | `app/routes/supplier.confirm.$token.tsx` |
+| Low-stock / stock-out alerts by email and Slack | `app/routes/app.settings_.alerts.tsx`, `app/services/monday.server.ts` |
+| Cash-flow planning: cash needed per week for the next 13 weeks | `app/routes/app.reorder_.calendar.tsx`, `app/lib/cash-shared.ts` |
+| Dead-stock / overstock detection and clearance discounts (after a confirm) | `app/services/clearance.server.ts` |
+| Multi-location planning: each warehouse and POS store | `app/routes/app.settings_.locations.tsx`, location switcher |
+| Stock transfers between locations (draft in Shopify, after a confirm) | `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` |
+| Seasonal / event planning (Season plan scenarios) | `app/routes/app.reorder_.season.tsx` |
+| Forecast accuracy report | Order plan → Season plan → How accurate we were |
+| Bundles: a bundle's sales count on its components | `app/services/compute.server.ts` (`isBundle`) |
+| CSV import (suppliers, products) and CSV export (products, orders, the 13-week plan) | `app/routes/app.settings_.import.tsx`, `app.products.csv.tsx`, `app.reorder_.calendar_.csv.tsx` |
+
+Do **not** tick: barcode scanning, receiving stock in the app (orders close when the stock lands in
+Shopify), inventory sync with other platforms or marketplaces, ERP / accounting sync, dropshipping,
+storefront widgets — the app has none of them.
+
+## Languages
+
+The languages the admin is fully translated into (`app/lib/i18n.tsx` `LOCALES`,
+`tests/i18n-coverage.test.ts`; App Store requirement 4.3.2):
+
+```text
+English
+Spanish
+French
+German
+Italian
+Portuguese
+Dutch
+Polish
+```
 
 ## Pricing (plan cards)
 

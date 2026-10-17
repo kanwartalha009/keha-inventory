@@ -133,7 +133,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | No Shopify brand misuse in graphics | 4.4.3 | 🧑 | `SCREENSHOTS.md` (no Shopify logo) | Owner action 10 |
 | Images show the real UI, no browser chrome / logo-only | 4.4.4 | 🧑 | `SCREENSHOTS.md` shot list | Owner action 10 |
 | Each image unique | 4.4.5 | 🧑 | 6 distinct screens planned (`SCREENSHOTS.md` storyboard: Dashboard, Order now, Next 13 weeks, forecast, supplier page, Pro stores) | Owner action 10 |
-| Don't reference your other apps in the listing | 4.4 (intro) | ✅ | `LISTING.md` never names another Keha app (`tests/listing.test.ts` "never names another Keha app"); the Integrations field lists Slack, Shopify Flow, Shopify POS, Shopify Sidekick only; "Preorder bridge" works without any other app (back-in-stock how-to) | — |
+| Don't reference your other apps in the listing | 4.4 (intro) | ✅ | `LISTING.md` never names another Keha app (`tests/listing.test.ts` "never names another Keha app"); the Integrations field lists Slack and Shopify Flow only; "Preorder bridge" works without any other app (back-in-stock how-to) | — |
 | Sales channel classification | 4.5.1 – 4.5.2 | ✅ | Not a sales channel; no channel config in the tomls | — |
 | Demo screencast in English, step by step | 4.5.3 | 🧑 | Script: `SCREENCAST.md` | Owner action 11 |
 | Test credentials in testing instructions | 4.5.4 | 🧑 | `REVIEWER.md` part A has **[Kanwar to provide]** placeholders | Owner action 8 |

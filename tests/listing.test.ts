@@ -39,6 +39,7 @@ describe("listing text", () => {
   const extras = lines(field("Feature list — optional extras (only if the form takes 8)"));
   const terms = lines(field("Search terms"));
   const integrations = lines(field("Integrations"));
+  const languages = lines(field("Languages"));
 
   it("uses the toml app name, ≤ 30 characters", () => {
     const toml = read("shopify.app.toml").match(/^name\s*=\s*"([^"]*)"/m)?.[1];
@@ -79,7 +80,13 @@ describe("listing text", () => {
 
   it("never names another Keha app (rule 4.4), and lists only real integrations", () => {
     expect(listing).not.toMatch(/Keha Preorder/);
-    expect(integrations).toEqual(["Slack", "Shopify Flow", "Shopify POS", "Shopify Sidekick"]);
+    // Listing audit 2026-10-18: only the apps Keha connects to (POS stores are a feature, Sidekick is part of the app).
+    expect(integrations).toEqual(["Slack", "Shopify Flow"]);
+  });
+
+  it("lists the 8 admin languages (rule 4.3.2) and has a structured-features section", () => {
+    expect(languages).toEqual(["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Polish"]);
+    expect(listing).toContain("\n## Structured features\n");
   });
 
   it("search terms from the audit", () => {
