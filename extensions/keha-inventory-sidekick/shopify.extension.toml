@@ -22,6 +22,7 @@ api_version = "2026-10"
 [[extensions]]
 name = "Keha Inventory for Sidekick"
 handle = "keha-inventory-sidekick"
+uid = "09a5f0cf-5f3b-54eb-a8a6-ff76d7fe43f006799907"
 type = "ui_extension"
 description = "Answers questions about this store's stock from Keha Inventory Intelligence: the order plan for the next 90 days (what to reorder, from which supplier, by which order-by date, suggested quantities and the cash needed per week); when a product runs out (days of stock left, stock on hand, incoming, sales per day); open purchase orders and expected arrivals; this week's stock actions (reorder, preorder gap, promote, fix, clear); money at stake (sales at risk, cash stuck in too much or dead stock); forecast accuracy."
 
