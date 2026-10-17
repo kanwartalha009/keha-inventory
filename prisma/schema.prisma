@@ -151,6 +151,8 @@ model Variant {
   price            Decimal?  @db.Decimal(18, 4)
   supplierId       String?
   caseQty          Int?
+  /// Merchant: "Don't reorder" (sell through, discontinued, one-off). Stays in stock numbers, never in orders.
+  noReorder        Boolean   @default(false)
   updatedAt        DateTime  @updatedAt
 
   @@index([shop])
@@ -283,6 +285,15 @@ model Supplier {
   minOrderTotal Int?
   /// Default case pack for this supplier's lines (a variant's own caseQty wins).
   casePack      Int?
+  /// Days from the supplier's ship date to stock arriving (sea/air freight). Arrival = confirmed ship date + transit.
+  /// leadTimeDays stays the total from order to arrival.
+  transitDays   Int?
+  /// Minimum order value in the supplier's currency (optional; alongside the unit minimum).
+  minOrderValue Decimal? @db.Decimal(18, 2)
+  /// What minOrder applies to: "variant" (each size/colour) or "product" (each style, split across its variants by sales share).
+  minOrderScope String   @default("variant")
+  /// 1 unit of the supplier's currency in the store's currency (optional). Without it, costs stay in store currency.
+  exchangeRate  Decimal? @db.Decimal(18, 6)
   currency      String?
   vendorMatch   String[]
   /// Hide unit costs on the supplier confirmation page (spec §14).
