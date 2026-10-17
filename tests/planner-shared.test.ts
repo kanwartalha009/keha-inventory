@@ -44,6 +44,10 @@ import {
   type ScenarioForm,
 } from "../app/lib/planner-shared";
 import { parseVariantsWithQty } from "../app/lib/reorder-shared";
+import { cashSummary, withPayments } from "../app/lib/cash-shared";
+import { cashTotals } from "../app/lib/engine/forward-plan-shared";
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const TODAY = "2026-10-16";
 const SHORT: Coverage = { from: "2026-06-01", to: "2026-10-15" }; // < 13 months: no seasonality
@@ -273,10 +277,10 @@ describe("computeScenario", () => {
     expect(r.groups[0]).toMatchObject({ kind: "supplier", name: "Far Away Ltd", late: true });
     expect(r.order).toEqual({ lines: 1, units: 30, late: 1 });
     // Late lines count in the current week.
-    expect(r.cash.weeks).toEqual([{ weekStart: "2026-10-12", week: "2026-W42", amount: 120, lines: 1, retail: 0, missing: 0, late: true }]);
+    expect(r.cash.weeks).toEqual([{ weekStart: "2026-10-12", week: "2026-W42", amount: 120, lines: 1, retail: 0, missing: 0, late: true, landed: 0 }]);
   });
 
-  it("values at cost, falls back to the retail price (labelled), and '—' without either", () => {
+  it("values at cost only (merchant audit 2026-10-18): no cost price → not in the cash, counted — never the retail price", () => {
     const r = computeScenario(
       input({
         variants: [V(1), V(2, { cost: null }), V(3, { cost: null, price: null }), V(4, { cost: 3, costCurrency: "USD" })],
@@ -284,15 +288,74 @@ describe("computeScenario", () => {
     );
     const byId = new Map(r.groups.flatMap((g) => g.lines).map((l) => [l.variantId, l]));
     expect(byId.get(V(1).id)).toMatchObject({ valueBasis: "cost", unitValue: 4 });
-    expect(byId.get(V(2).id)).toMatchObject({ valueBasis: "retail", unitValue: 20 });
+    expect(byId.get(V(2).id)).toMatchObject({ valueBasis: null, unitValue: null, lineValue: null });
     expect(byId.get(V(3).id)).toMatchObject({ valueBasis: null, unitValue: null, lineValue: null });
-    expect(byId.get(V(4).id)).toMatchObject({ valueBasis: "retail", unitValue: 20 }); // cost in USD: not converted
-    expect(r.cash.retail).toBe(2);
-    expect(r.cash.missing).toBe(1);
+    expect(byId.get(V(4).id)).toMatchObject({ valueBasis: null, unitValue: null }); // cost in USD, no supplier rate: unknown
+    expect(r.cash.retail).toBe(0);
+    expect(r.cash.missing).toBe(3);
     const q = byId.get(V(1).id)!.qty;
-    expect(r.cash.total).toBe(q * 4 + q * 20 + q * 20);
+    expect(r.cash.total).toBe(q * 4);
     expect(r.totals.missingPrice).toBe(1);
-    expect(unitValueOf({ cost: 0, costCurrency: null, price: 9 }, "EUR")).toEqual({ value: 9, basis: "retail" });
+    expect(unitValueOf({ cost: 0, costCurrency: null }, "EUR")).toEqual({ value: null, basis: null });
+    // A cost in the supplier's currency with its exchange rate is converted, as the order plan does.
+    expect(unitValueOf({ cost: 10, costCurrency: "USD" }, "EUR", { currency: "USD", exchangeRate: 0.9 })).toEqual({ value: 9, basis: "cost" });
+  });
+
+  it("payment terms and freight & duty: deposit when ordering, the rest at shipment, freight on arrival", () => {
+    const supplier = {
+      id: "s1",
+      name: "Ningbo Knits",
+      leadTimeDays: 21,
+      minOrder: null,
+      minOrderTotal: null,
+      casePack: null,
+      vendorMatch: ["Acme"],
+      currency: null,
+      transitDays: 14,
+      terms: { depositPct: 30, balanceDue: "ship" as const, balanceDays: 0 },
+      landedPct: 10,
+    };
+    const r = computeScenario(input({ variants: [V(1)], suppliers: [supplier] }));
+    const l = r.groups[0]!.lines[0]!;
+    const goods = l.lineValue!;
+    expect(l.arrives).toBe(addDays(l.orderBy, 21));
+    expect(l.landed).toBe(Math.round(goods * 10) / 100);
+    expect(l.payments!.map((p) => [p.kind, p.day])).toEqual([
+      ["deposit", l.orderBy],
+      ["balance", addDays(l.arrives!, -14)],
+      ["landed", l.arrives],
+    ]);
+    expect(r.cash.total).toBeCloseTo(goods + l.landed!, 2);
+    expect(r.cash.landed).toBe(l.landed);
+    // The weeks follow the payment days, not only the order-by week.
+    expect(r.cash.weeks.reduce((a, w) => a + w.amount, 0)).toBeCloseTo(r.cash.total!, 2);
+    expect(r.cash.weeks.filter((w) => w.amount > 0).length).toBeGreaterThan(1);
+  });
+
+  it("one cash model: the Season plan's cash needed equals Next 13 weeks' (cash-shared) for the same orders", () => {
+    const supplier = {
+      id: "s1",
+      name: "Istanbul Denim",
+      leadTimeDays: 30,
+      minOrder: null,
+      minOrderTotal: null,
+      casePack: null,
+      vendorMatch: ["Acme"],
+      currency: null,
+      transitDays: 10,
+      terms: { depositPct: 40, balanceDue: "after_arrival" as const, balanceDays: 30 },
+      landedPct: 12,
+    };
+    const r = computeScenario(input({ start: "2026-12-20", end: "2027-01-10", variants: [V(1), V(2, { rate: 5 }), V(3, { cost: null })], suppliers: [supplier] }));
+    const lines = r.groups.flatMap((g) => g.lines);
+    expect(lines.length).toBe(3);
+    // The same orders as the forward plan carries them: order day, arrival, goods cost, supplier.
+    const events = lines.map((l) => ({ supplierKey: "supplier:s1", orderBy: l.late ? r.today : l.orderBy, arrives: l.arrives!, cost: l.lineValue }));
+    withPayments(events, { "supplier:s1": { terms: supplier.terms, landedPct: supplier.landedPct, transitDays: supplier.transitDays } });
+    const next13 = cashSummary(events, [], r.today, 13);
+    const totals = cashTotals(events.map((e, i) => ({ ...e, qty: lines[i]!.qty })));
+    expect(r.cash.total).toBeCloseTo(round2(next13.total + next13.later), 2);
+    expect(r.cash.missing).toBe(totals.missingCost);
   });
 
   it("review fix: a supplier group below its order-total minimum is topped up like Reorder (and the cash follows)", () => {
@@ -345,7 +408,7 @@ describe("computeScenario", () => {
     const r = computeScenario(input({ variants: [V(1, { enoughData: false }), V(2, { rate: null }), V(3, { sigma: null })] }));
     expect(r.status).toBe("no_data");
     expect(r.totals).toMatchObject({ units: null, revenue: null, noData: 3 });
-    expect(r.cash).toEqual({ weeks: [], total: null, retail: 0, missing: 0 });
+    expect(r.cash).toEqual({ weeks: [], total: null, retail: 0, missing: 0, landed: 0 });
   });
 
   it("uses seasonality and trend when there are 13 months of history; a current period starts today", () => {
@@ -397,23 +460,34 @@ describe("computeScenario", () => {
 });
 
 describe("cash per week", () => {
-  it("buckets by the ISO week of the order-by date, fills gaps with real zeros, counts retail and missing", () => {
+  it("each payment in the week it is paid (before today: this week), lines in their order week, gaps are real zeros", () => {
     const weeks = cashByWeek(
       [
-        { orderBy: "2026-11-02", late: false, lineValue: 100, valueBasis: "cost" },
-        { orderBy: "2026-11-05", late: false, lineValue: 50, valueBasis: "retail" },
-        { orderBy: "2026-11-20", late: false, lineValue: null, valueBasis: null },
-        { orderBy: "2026-10-01", late: true, lineValue: 10, valueBasis: "cost" },
+        // Deposit on the order day, the rest 3 weeks later, freight on arrival.
+        {
+          orderBy: "2026-11-02",
+          late: false,
+          lineValue: 100,
+          payments: [
+            { day: "2026-11-02", amount: 30, kind: "deposit" },
+            { day: "2026-11-23", amount: 70, kind: "balance" },
+            { day: "2026-11-23", amount: 12, kind: "landed" },
+          ],
+        },
+        { orderBy: "2026-11-05", late: false, lineValue: 50 },
+        { orderBy: "2026-11-20", late: false, lineValue: null, payments: [] },
+        { orderBy: "2026-10-01", late: true, lineValue: 10, payments: [{ day: "2026-10-01", amount: 10, kind: "order" }] },
       ],
       TODAY,
     );
-    expect(weeks.map((w) => [w.weekStart, w.amount, w.lines, w.retail, w.missing, w.late])).toEqual([
-      ["2026-10-12", 10, 1, 0, 0, true],
-      ["2026-10-19", 0, 0, 0, 0, false],
-      ["2026-10-26", 0, 0, 0, 0, false],
-      ["2026-11-02", 150, 2, 1, 0, false],
-      ["2026-11-09", 0, 0, 0, 0, false],
-      ["2026-11-16", 0, 1, 0, 1, false],
+    expect(weeks.map((w) => [w.weekStart, w.amount, w.lines, w.missing, w.late, w.landed])).toEqual([
+      ["2026-10-12", 10, 1, 0, true, 0],
+      ["2026-10-19", 0, 0, 0, false, 0],
+      ["2026-10-26", 0, 0, 0, false, 0],
+      ["2026-11-02", 80, 2, 0, false, 0],
+      ["2026-11-09", 0, 0, 0, false, 0],
+      ["2026-11-16", 0, 1, 1, false, 0],
+      ["2026-11-23", 82, 0, 0, false, 12],
     ]);
     expect(cashByWeek([], TODAY)).toEqual([]);
   });

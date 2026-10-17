@@ -39,7 +39,7 @@ import { featureCopy, planTag } from "../components/plan";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { TabLock } from "../components/order-plan";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, plural, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, formatUpdatedAt } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import type { Feature, PlanCode } from "../lib/plan-shared";
@@ -551,12 +551,15 @@ function Summary({ result }: { result: ScenarioResult }) {
     ...(r.totals.missingPrice ? [fill(t("Variants without a price, not counted: {n}"), { n: formatCount(r.totals.missingPrice, locale) })] : []),
     t("Based on: expected units × each variant's price in Shopify"),
   ];
+  // Merchant audit 2026-10-18: the same cash model as Next 13 weeks — cost only, payment terms, freight & duty.
   const cashLines = [
     fill(t("Order lines: {n}"), { n: formatCount(r.order.lines, locale) }),
     ...(r.order.late ? [fill(t("Late — order now: {n}"), { n: formatCount(r.order.late, locale) })] : []),
-    ...(r.cash.retail ? [fill(t("Lines valued at retail price (no cost in Shopify): {n}"), { n: formatCount(r.cash.retail, locale) })] : []),
-    ...(r.cash.missing ? [fill(t("Lines without a cost or price, not counted: {n}"), { n: formatCount(r.cash.missing, locale) })] : []),
-    t("Based on: units to order × unit cost from Shopify (retail price when the cost is missing)"),
+    ...(r.cash.landed ? [fill(t("Of which freight & duty: {amount}"), { amount: money(r.cash.landed) })] : []),
+    ...(r.cash.missing
+      ? [fill(plural(r.cash.missing, t("1 line without a cost price is not in the cash totals."), t("{n} lines without a cost price are not in the cash totals.")), { n: formatCount(r.cash.missing, locale) })]
+      : []),
+    t("Based on: units to order × unit cost from Shopify, paid on each supplier's payment terms, plus freight & duty. Lines without a cost price are left out."),
   ];
   const ly = r.lastYear;
   const lyRange = periodText(ly.from, ly.to, t, locale);
@@ -581,7 +584,6 @@ function Summary({ result }: { result: ScenarioResult }) {
         id="keha-plan-cash"
         title={t("Cash needed")}
         value={money(r.cash.total)}
-        sub={r.cash.retail ? t("Some lines at retail price") : undefined}
         lines={cashLines}
       />
       <SummaryBox
@@ -646,8 +648,8 @@ function CashChart({ result }: { result: ScenarioResult }) {
               id="keha-plan-weeks"
               title={t("Cash needed per week")}
               lines={[
-                t("Orders are counted in the week of their order-by date. Late orders count in this week."),
-                t("Based on: units to order × unit cost from Shopify (retail price when the cost is missing)"),
+                t("Each payment counts in the week it is paid: the deposit when you order, the rest on the supplier's terms, freight & duty on arrival. Late orders are ordered this week."),
+                t("Based on: units to order × unit cost from Shopify, paid on each supplier's payment terms, plus freight & duty. Lines without a cost price are left out."),
               ]}
             />
             <s-table>
@@ -666,8 +668,7 @@ function CashChart({ result }: { result: ScenarioResult }) {
                     <s-table-cell>
                       {[
                         w.late ? t("Includes late orders") : null,
-                        w.retail ? fill(t("{n} at retail price"), { n: formatCount(w.retail, locale) }) : null,
-                        w.missing ? fill(t("{n} without a cost or price"), { n: formatCount(w.missing, locale) }) : null,
+                        w.missing ? fill(plural(w.missing, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(w.missing, locale) }) : null,
                       ]
                         .filter(Boolean)
                         .join(" · ") || "—"}
@@ -801,7 +802,6 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
                   <s-table-cell>
                     <s-stack direction="block" gap="none">
                       <span>{formatAmount(l.lineValue, currency, locale)}</span>
-                      {l.valueBasis === "retail" && <s-text color="subdued">{t("at retail price")}</s-text>}
                     </s-stack>
                   </s-table-cell>
                 </s-table-row>

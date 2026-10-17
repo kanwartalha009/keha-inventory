@@ -137,15 +137,17 @@ describe("Planner page", () => {
     expect(html).toContain("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming");
     expect(html).not.toContain("Trend (last 28 days vs the same weeks last year)");
     expect(html).not.toMatch(/× trend ×|, trend, plan/);
-    expect(html).toContain("Based on: units to order × unit cost from Shopify (retail price when the cost is missing)");
+    // Merchant audit 2026-10-18: one cash model (cost only, payment terms, freight & duty) — never the retail price.
+    expect(html).toContain("Based on: units to order × unit cost from Shopify, paid on each supplier&#x27;s payment terms, plus freight &amp; duty. Lines without a cost price are left out.");
     // Chart with aria-label + table fallback.
-    expect(html).toMatch(/<svg[^>]*role="img"[^>]*aria-label="Cash needed per week from Oct 12, 2026 to Nov 2, 2026: €480 in total."/);
+    expect(html).toMatch(/<svg[^>]*role="img"[^>]*aria-label="Cash needed per week from Oct 12, 2026 to Nov 2, 2026: €100 in total."/);
     expect(html).toContain("Week of");
     expect(html).toContain("Includes late orders");
-    // Order list: supplier group, late flag, retail label, reorder link.
+    // Order list: supplier group, late flag, reorder link; a line without a cost is "—" and counted.
     expect(html).toContain("Slow Mill");
     expect(html).toContain("Late — order now");
-    expect(html).toContain("at retail price");
+    expect(html).not.toContain("at retail price");
+    expect(html).toContain("1 line without a cost price is not in the cash totals.");
     // Add to order: the saved scenario's quantities, read by Order now on the server (no 250-line cap).
     expect(html).toContain('href="/app/reorder?scenario=sc1"');
     expect(html).toContain("Add to order");

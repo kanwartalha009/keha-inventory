@@ -126,6 +126,15 @@ export function translate(locale: Locale, key: string): string {
   return DICT[locale]?.[key] ?? key;
 }
 
+/**
+ * Singular or plural: `one` when n is exactly 1, else `other` (merchant audit 2026-10-18: "Runs out
+ * in 1 days"). Both are English keys already passed through t(), e.g.
+ * `fill(plural(n, t("1 line without a cost price"), t("{n} lines without a cost price")), { n })`.
+ */
+export function plural(n: number | null | undefined, one: string, other: string): string {
+  return n === 1 ? one : other;
+}
+
 /** Replace `{name}` placeholders. */
 export function fill(text: string, vars: Record<string, string | number>): string {
   return text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));

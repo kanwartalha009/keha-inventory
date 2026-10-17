@@ -29,9 +29,13 @@
  *    (topUpToMinimum, weights = sales per day), before cash per week is summed.
  *  - Order by = start − lead time − safety days (orderByDate with 0 days left); before today →
  *    "Late — order now".
- *  - Cash: unit cost × qty in the store currency (cost in another currency is not converted);
- *    no cost → retail price, labelled "at retail price"; neither → "—". Summed by the ISO week
- *    (Monday) of the order-by date; late lines count in the current week.
+ *  - Cash (merchant audit 2026-10-18: the same model as Next 13 weeks, lib/cash-shared): unit cost
+ *    × qty in the store currency (a cost in the supplier's currency converted with its exchange
+ *    rate, order-plan-shared lineCosts) paid on the supplier's payment terms (deposit when
+ *    ordering, the rest at shipment / arrival / days after), plus freight & duty on arrival. A line
+ *    without a cost price has no payment and is counted ("N lines without a cost price") — never
+ *    valued at its retail price. Each payment counts in the ISO week (Monday) it is paid; a late
+ *    line is ordered today, so its payments start this week.
  *  - Demand per collection: a variant counts in every collection it belongs to, so collection
  *    totals overlap; the store total counts each variant once.
  */
@@ -62,8 +66,10 @@ import {
   type UnitsSeries,
 } from "./engine/season-shared";
 import { absPctError, ACCURACY_TOP, nextMonthStart, STORE_ROW } from "./engine/accuracy-shared";
-import { lineQuantity, supplierGroupKey, topUpToMinimum, unitCostIn, vendorGroupKey } from "./reorder-shared";
+import { lineQuantity, supplierGroupKey, topUpToMinimum, vendorGroupKey } from "./reorder-shared";
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
+import { landedOf, orderPayments, type Payment, type PaymentTerms } from "./cash-shared";
+import { lineCosts } from "./order-plan-shared";
 
 type T = (s: string) => string;
 
@@ -78,7 +84,7 @@ export const TARGET_TYPES = ["growth", "revenue", "keep_pace"] as const;
 export type TargetType = (typeof TARGET_TYPES)[number];
 
 /** Scenario.result format; bump when the shape changes (older results ask for a recalculation). */
-export const RESULT_VERSION = 1;
+export const RESULT_VERSION = 2;
 
 export const SCENARIO_BOUNDS = {
   nameMax: 80,
@@ -451,7 +457,13 @@ export interface PlannerVariant {
   incoming: number;
 }
 
-export type PlannerSupplier = SupplierLite & { currency: string | null };
+export type PlannerSupplier = SupplierLite & {
+  currency: string | null;
+  /** Payment terms (lib/cash-shared readPaymentTerms); null = everything paid when ordering. */
+  terms?: PaymentTerms | null;
+  /** Freight + duty, % of the goods (paid on arrival). */
+  landedPct?: number | null;
+};
 
 export interface PlannerInput {
   today: DayKey;
@@ -478,6 +490,7 @@ export interface LastYearFigures {
   coverage: number;
 }
 
+/** "cost" = valued at its cost price; null = no cost price (not in the cash). "retail" is no longer used (results v1). */
 export type ValueBasis = "cost" | "retail" | null;
 
 export interface PlannerLine {
@@ -503,10 +516,17 @@ export interface PlannerLine {
   safetyDays: number;
   orderBy: DayKey;
   late: boolean;
-  /** Per unit, store currency: cost, else retail price; null when neither is known. */
+  /** Per unit, store currency: the cost price; null when unknown. */
   unitValue: number | null;
   valueBasis: ValueBasis;
+  /** Goods: unit cost × qty; null without a cost price. */
   lineValue: number | null;
+  /** Expected arrival: the day it is ordered (today when late) + lead time. */
+  arrives?: DayKey;
+  /** Freight + duty on the line (supplier landed %); null when none or no cost. */
+  landed?: number | null;
+  /** When the line's money is paid (lib/cash-shared orderPayments). */
+  payments?: Payment[];
 }
 
 export interface PlannerGroup {
@@ -534,14 +554,18 @@ export interface CashWeek {
   /** Monday of the week. */
   weekStart: DayKey;
   week: string;
+  /** Paid in the week: deposits, balances and freight & duty. */
   amount: number;
+  /** Lines ordered in the week. */
   lines: number;
-  /** Lines valued at retail price (no cost). */
+  /** Always 0 since results v2 (no line is valued at its retail price any more). */
   retail: number;
-  /** Lines with neither cost nor price (not in the amount). */
+  /** Lines ordered in the week without a cost price (not in the amount). */
   missing: number;
   /** The week holds late lines (order-by already past). */
   late: boolean;
+  /** Of `amount`: freight & duty. */
+  landed?: number;
 }
 
 export interface CollectionDemand {
@@ -599,7 +623,8 @@ export interface ScenarioResult {
   collections: CollectionDemand[];
   groups: PlannerGroup[];
   order: { lines: number; units: number; late: number };
-  cash: { weeks: CashWeek[]; total: number | null; retail: number; missing: number };
+  /** total = every payment (goods on terms + freight & duty); landed = its freight & duty; missing = lines without a cost price. */
+  cash: { weeks: CashWeek[]; total: number | null; retail: number; missing: number; landed?: number };
   lastYear: LastYearFigures;
 }
 
@@ -607,38 +632,65 @@ const finite = (v: number | null | undefined): v is number => typeof v === "numb
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
-/** Per-unit value in the store currency: cost when it is in the store currency, else retail price. */
-export function unitValueOf(v: Pick<PlannerVariant, "cost" | "costCurrency" | "price">, currency: string): { value: number | null; basis: ValueBasis } {
-  const cost = unitCostIn(v.cost, v.costCurrency, currency, currency);
-  if (cost !== null && cost > 0) return { value: cost, basis: "cost" };
-  if (finite(v.price) && v.price > 0) return { value: v.price, basis: "retail" };
-  return { value: null, basis: null };
+/**
+ * Per-unit value in the store currency: the cost price (a cost in the supplier's currency converted
+ * with its exchange rate, as the order plan does — order-plan-shared lineCosts); null when unknown.
+ * Never the retail price (merchant audit 2026-10-18: one cash model on every screen).
+ */
+export function unitValueOf(
+  v: Pick<PlannerVariant, "cost" | "costCurrency">,
+  currency: string,
+  supplier?: Pick<PlannerSupplier, "currency" | "exchangeRate"> | null,
+): { value: number | null; basis: ValueBasis } {
+  const cost = finite(v.cost) ? lineCosts(v.cost, v.costCurrency, currency, supplier?.currency ?? null, supplier?.exchangeRate ?? null).store : null;
+  return cost !== null && cost > 0 ? { value: cost, basis: "cost" } : { value: null, basis: null };
 }
 
-/** Cash per ISO week of the order-by date; late lines count in this week. Gaps are real zeros. */
-export function cashByWeek(lines: readonly Pick<PlannerLine, "orderBy" | "late" | "lineValue" | "valueBasis">[], today: DayKey): CashWeek[] {
+/**
+ * Cash per ISO week of the day each payment is paid (lib/cash-shared: deposit when ordering, the
+ * rest on the supplier's terms, freight & duty on arrival; a payment before today counts today);
+ * the lines and missing costs in the week they are ordered (late lines: this week). Gaps are real
+ * zeros. A line without `payments` pays its goods on its order day (results before terms).
+ */
+export function cashByWeek(
+  lines: readonly Pick<PlannerLine, "orderBy" | "late" | "lineValue" | "payments">[],
+  today: DayKey,
+): CashWeek[] {
   if (!lines.length) return [];
   const thisWeek = weekStart(today);
   const byWeek = new Map<DayKey, CashWeek>();
+  const week = (ws: DayKey) => byWeek.get(ws) ?? byWeek.set(ws, { weekStart: ws, week: isoWeek(ws), amount: 0, lines: 0, retail: 0, missing: 0, late: false, landed: 0 }).get(ws)!;
   for (const l of lines) {
-    const ws = l.late ? thisWeek : weekStart(l.orderBy);
-    const w = byWeek.get(ws) ?? { weekStart: ws, week: isoWeek(ws), amount: 0, lines: 0, retail: 0, missing: 0, late: false };
+    const w = week(l.late ? thisWeek : weekStart(l.orderBy));
     w.lines++;
     if (l.late) w.late = true;
     if (l.lineValue === null) w.missing++;
-    else {
-      w.amount += l.lineValue;
-      if (l.valueBasis === "retail") w.retail++;
+    const pays = l.payments ?? (l.lineValue !== null && l.lineValue > 0 ? [{ day: l.late ? today : l.orderBy, amount: l.lineValue, kind: "order" as const }] : []);
+    for (const p of pays) {
+      const pw = week(weekStart(p.day < today ? today : p.day));
+      pw.amount += p.amount;
+      if (p.kind === "landed") pw.landed = (pw.landed ?? 0) + p.amount;
     }
-    byWeek.set(ws, w);
   }
   const keys = [...byWeek.keys()].sort();
   const out: CashWeek[] = [];
   for (let ws = keys[0]!; ws <= keys[keys.length - 1]!; ws = addDays(ws, 7)) {
-    const w = byWeek.get(ws) ?? { weekStart: ws, week: isoWeek(ws), amount: 0, lines: 0, retail: 0, missing: 0, late: false };
-    out.push({ ...w, amount: round2(w.amount) });
+    const w = byWeek.get(ws) ?? { weekStart: ws, week: isoWeek(ws), amount: 0, lines: 0, retail: 0, missing: 0, late: false, landed: 0 };
+    out.push({ ...w, amount: round2(w.amount), landed: round2(w.landed ?? 0) });
   }
   return out;
+}
+
+/** A line's payments: ordered on its order-by day (today when late), arriving one lead time later. */
+function linePayments(
+  l: Pick<PlannerLine, "orderBy" | "late" | "lineValue" | "leadTimeDays">,
+  supplier: Pick<PlannerSupplier, "terms" | "landedPct" | "transitDays"> | null,
+  today: DayKey,
+): { arrives: DayKey; landed: number | null; payments: Payment[] } {
+  const orderDay = l.late ? today : l.orderBy;
+  const arrives = addDays(orderDay, Math.max(0, Math.round(l.leadTimeDays)));
+  const landed = landedOf(l.lineValue, supplier?.landedPct ?? null);
+  return { arrives, landed, payments: orderPayments({ orderDay, arrives, transitDays: supplier?.transitDays ?? null }, l.lineValue, landed, supplier?.terms ?? null) };
 }
 
 /** The scenario's order list, demand per collection and cash per week. */
@@ -721,7 +773,7 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
       weightOf.set(r.v.id, r.v.rate!);
       const orderBy = orderByDate(from, 0, lead.days, sDays)!;
       const late = orderBy < today;
-      const value = unitValueOf(r.v, input.currency);
+      const value = unitValueOf(r.v, input.currency, supplier);
       const line: PlannerLine = {
         variantId: r.v.id,
         productId: r.v.productId,
@@ -804,13 +856,16 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
         if (l.lineValue !== null) g.value = round2((g.value ?? 0) + l.lineValue);
       });
     }
+    // When the money is paid (after any top-up): the supplier's terms and freight & duty.
+    const sup = g.supplierId ? (input.suppliers.find((x) => x.id === g.supplierId) ?? null) : null;
+    for (const l of g.lines) Object.assign(l, linePayments(l, sup, today));
   }
   groupList.sort(
     (a, b) => (a.orderBy ?? "9999").localeCompare(b.orderBy ?? "9999") || Number(a.kind === "vendor") - Number(b.kind === "vendor") || a.name.localeCompare(b.name),
   );
   const allLines = groupList.flatMap((g) => g.lines);
   const weeks = cashByWeek(allLines, today);
-  const known = allLines.filter((l) => l.lineValue !== null);
+  const payments = allLines.flatMap((l) => l.payments ?? []);
 
   const storePeriod = store.period;
   return {
@@ -860,9 +915,11 @@ export function computeScenario(input: PlannerInput): ScenarioResult {
     order: { lines: allLines.length, units: allLines.reduce((a, l) => a + l.qty, 0), late: allLines.filter((l) => l.late).length },
     cash: {
       weeks,
-      total: known.length ? round2(known.reduce((a, l) => a + l.lineValue!, 0)) : null,
-      retail: allLines.filter((l) => l.valueBasis === "retail").length,
+      // Every payment of every line (goods on terms + freight & duty); "—" when no line has a cost.
+      total: allLines.some((l) => l.lineValue !== null) ? round2(payments.reduce((a, p) => a + p.amount, 0)) : null,
+      retail: 0,
       missing: allLines.filter((l) => l.lineValue === null).length,
+      landed: round2(payments.filter((p) => p.kind === "landed").reduce((a, p) => a + p.amount, 0)),
     },
     lastYear: input.lastYear,
   };

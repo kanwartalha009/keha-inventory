@@ -127,4 +127,52 @@ export const MERCHANT_TR: Record<string, Tr> = {
     nl: "Gebruik en, es, fr, de, it, pt, nl of pl.",
     pl: "Użyj en, es, fr, de, it, pt, nl lub pl.",
   },
+
+  // ── Season plan cash: the same model as Next 13 weeks ──
+  "Of which freight & duty: {amount}": {
+    es: "De ello, transporte y aranceles: {amount}",
+    fr: "Dont transport et droits de douane : {amount}",
+    de: "Davon Fracht & Zoll: {amount}",
+    it: "Di cui trasporto e dazi: {amount}",
+    pt: "Dos quais transporte e direitos: {amount}",
+    nl: "Waarvan vracht & invoerrechten: {amount}",
+    pl: "W tym transport i cło: {amount}",
+  },
+  "Based on: units to order × unit cost from Shopify, paid on each supplier's payment terms, plus freight & duty. Lines without a cost price are left out.": {
+    es: "Basado en: unidades a pedir × coste unitario de Shopify, pagado según las condiciones de pago de cada proveedor, más transporte y aranceles. Las líneas sin precio de coste no se cuentan.",
+    fr: "Basé sur : unités à commander × coût unitaire dans Shopify, payé selon les conditions de paiement de chaque fournisseur, plus transport et droits. Les lignes sans prix de revient ne sont pas comptées.",
+    de: "Basierend auf: zu bestellende Einheiten × Einkaufspreis aus Shopify, bezahlt nach den Zahlungsbedingungen des Lieferanten, plus Fracht & Zoll. Positionen ohne Einkaufspreis zählen nicht mit.",
+    it: "Basato su: unità da ordinare × costo unitario in Shopify, pagato secondo le condizioni di pagamento di ogni fornitore, più trasporto e dazi. Le righe senza prezzo di costo non sono incluse.",
+    pt: "Com base em: unidades a encomendar × custo unitário no Shopify, pago segundo as condições de pagamento de cada fornecedor, mais transporte e direitos. As linhas sem preço de custo não entram.",
+    nl: "Gebaseerd op: te bestellen eenheden × kostprijs uit Shopify, betaald volgens de betalingsvoorwaarden van elke leverancier, plus vracht & invoerrechten. Regels zonder kostprijs tellen niet mee.",
+    pl: "Na podstawie: jednostki do zamówienia × cena zakupu z Shopify, płatne według warunków płatności każdego dostawcy, plus transport i cło. Pozycje bez ceny zakupu nie są liczone.",
+  },
+  "Each payment counts in the week it is paid: the deposit when you order, the rest on the supplier's terms, freight & duty on arrival. Late orders are ordered this week.": {
+    es: "Cada pago cuenta en la semana en que se paga: el depósito al pedir, el resto según las condiciones del proveedor, el transporte y los aranceles a la llegada. Los pedidos con retraso se hacen esta semana.",
+    fr: "Chaque paiement compte dans la semaine où il est payé : l'acompte à la commande, le reste selon les conditions du fournisseur, le transport et les droits à l'arrivée. Les commandes en retard sont passées cette semaine.",
+    de: "Jede Zahlung zählt in der Woche, in der sie fällig ist: die Anzahlung bei der Bestellung, der Rest nach den Bedingungen des Lieferanten, Fracht & Zoll bei Ankunft. Verspätete Bestellungen werden diese Woche aufgegeben.",
+    it: "Ogni pagamento conta nella settimana in cui si paga: l'acconto all'ordine, il resto secondo le condizioni del fornitore, trasporto e dazi all'arrivo. Gli ordini in ritardo si fanno questa settimana.",
+    pt: "Cada pagamento conta na semana em que é pago: o sinal ao encomendar, o resto segundo as condições do fornecedor, transporte e direitos à chegada. As encomendas atrasadas são feitas esta semana.",
+    nl: "Elke betaling telt in de week waarin ze betaald wordt: de aanbetaling bij het bestellen, de rest volgens de voorwaarden van de leverancier, vracht & invoerrechten bij aankomst. Te late bestellingen worden deze week geplaatst.",
+    pl: "Każda płatność liczy się w tygodniu, w którym jest płacona: zaliczka przy zamówieniu, reszta według warunków dostawcy, transport i cło przy dostawie. Spóźnione zamówienia składa się w tym tygodniu.",
+  },
+  // ── Singular forms (lib/i18n plural) ──
+  "1 line without a cost price": {
+    es: "1 línea sin precio de coste",
+    fr: "1 ligne sans prix de revient",
+    de: "1 Position ohne Einkaufspreis",
+    it: "1 riga senza prezzo di costo",
+    pt: "1 linha sem preço de custo",
+    nl: "1 regel zonder kostprijs",
+    pl: "1 pozycja bez ceny zakupu",
+  },
+  "1 line without a cost price is not in the cash totals.": {
+    es: "1 línea sin precio de coste no está en los totales.",
+    fr: "1 ligne sans prix de revient n'est pas dans les totaux.",
+    de: "1 Position ohne Einkaufspreis ist nicht in den Summen.",
+    it: "1 riga senza prezzo di costo non è nei totali.",
+    pt: "1 linha sem preço de custo não está nos totais.",
+    nl: "1 regel zonder kostprijs zit niet in de totalen.",
+    pl: "1 pozycja bez ceny zakupu nie jest wliczona w sumy.",
+  },
 };

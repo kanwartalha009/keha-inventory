@@ -20,6 +20,7 @@
  *    CHANNEL view (locationKey "all", every channel). The two views are never added together.
  */
 import prisma from "../db.server";
+import { readLandedPct, readPaymentTerms } from "../lib/cash-shared";
 import { facts } from "./facts-store.server";
 import {
   computeScenario,
@@ -257,7 +258,23 @@ export async function computeScenarioFor(shop: string, spec: ScenarioSpec, now: 
     plannerVariants(shop, ctx),
     prisma.supplier.findMany({
       where: { shop },
-      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, currency: true },
+      select: {
+        id: true,
+        name: true,
+        leadTimeDays: true,
+        minOrder: true,
+        minOrderTotal: true,
+        casePack: true,
+        vendorMatch: true,
+        currency: true,
+        exchangeRate: true,
+        transitDays: true,
+        // Payment terms and freight & duty: the Season plan's cash follows the same model as Next 13 weeks.
+        depositPercent: true,
+        balanceDue: true,
+        balanceDays: true,
+        landedCostPercent: true,
+      },
     }),
   ]);
   const [season, lastYear] = await Promise.all([
@@ -273,7 +290,22 @@ export async function computeScenarioFor(shop: string, spec: ScenarioSpec, now: 
     currency: ctx.currency,
     defaultLeadTimeDays: ctx.leadTimeDays,
     variants,
-    suppliers: suppliers as PlannerSupplier[],
+    suppliers: suppliers.map(
+      (x): PlannerSupplier => ({
+        id: x.id,
+        name: x.name,
+        leadTimeDays: x.leadTimeDays,
+        minOrder: x.minOrder,
+        minOrderTotal: x.minOrderTotal,
+        casePack: x.casePack,
+        vendorMatch: x.vendorMatch,
+        currency: x.currency,
+        exchangeRate: x.exchangeRate === null || x.exchangeRate === undefined ? null : Number(String(x.exchangeRate)),
+        transitDays: x.transitDays ?? null,
+        terms: readPaymentTerms(x),
+        landedPct: readLandedPct(x.landedCostPercent),
+      }),
+    ),
     season,
     coverage: ctx.coverage,
     lastYear,
