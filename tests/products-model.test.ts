@@ -47,12 +47,16 @@ vi.mock("../app/db.server", () => ({
       findFirst: async ({ where }: { where: Row }) => db.variant!.find((r) => matches(r, where)) ?? null,
       findMany: async ({ where }: { where: Row }) => db.variant!.filter((r) => matches(r, where)),
       count: async ({ where }: { where: Row }) => db.variant!.filter((r) => matches(r, where)).length,
+      aggregate: async () => ({ _max: { updatedAt: null } }),
     },
     shop: { findUnique: async () => ({ timezone: "UTC" }) },
     location: { findMany: async ({ where }: { where: Row }) => db.location!.filter((r) => matches(r, where)) },
     variantMetric: {
       findUnique: async () => db.variantMetric![0] ?? null,
       findMany: async ({ where }: { where: Row }) => db.variantMetric!.filter((r) => matches(r, where)),
+      // The plan cache's fingerprint (no computedAt in these rows: never cached).
+      aggregate: async () => ({ _max: { computedAt: null } }),
+      count: async ({ where }: { where: Row }) => db.variantMetric!.filter((r) => matches(r, where)).length,
     },
     stockNow: {
       groupBy: groupBy("stockNow"),
@@ -69,7 +73,7 @@ vi.mock("../app/db.server", () => ({
       findMany: async ({ where }: { where: Row }) => db.purchaseOrder!.filter((r) => matches(r, where)),
     },
     // The forward plan (To order, order-by date) reads the suppliers too.
-    supplier: { findMany: async () => [] },
+    supplier: { findMany: async () => [], aggregate: async () => ({ _max: { updatedAt: null } }), count: async () => 0 },
   },
 }));
 

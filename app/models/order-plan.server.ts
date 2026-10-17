@@ -39,7 +39,7 @@ import {
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { REORDER_HOLD_STATUSES } from "../lib/purchase-order-shared";
 import { supplierGroupKey, vendorGroupKey } from "../lib/reorder-shared";
-import { casePackFor, readMinOrderScope, supplierFor, toStoreCurrency, type SupplierLite } from "../lib/supplier-shared";
+import { casePackFor, poCountsAsOrdered, readMinOrderScope, supplierFor, toStoreCurrency, type SupplierLite } from "../lib/supplier-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
@@ -405,6 +405,82 @@ async function addLastYear(
     for (const r of sold.get(e.variantId) ?? []) if (r.day >= s.from && r.day < s.to) total += r.sold;
     e.lastYear = total;
   }
+}
+
+// ── Cache for the screens that read the whole plan on every page load (Products, Sidekick) ──
+//
+// Products sorts every variant by the plan's order-by date, so each page load needs the whole
+// forward plan (~0.25 s of maths for 3,000 variants, plus the reads). The result only changes
+// when something the plan reads changes, so it is kept per shop + scope and reused while its
+// FINGERPRINT is the same: the store's day and settings, the latest metric run (computedAt), the
+// catalog, suppliers and Keha orders (newest updatedAt and counts; each open order's status,
+// version and whether it still counts as ordered at `now`). Anything that changes one of them
+// recomputes; PLAN_CACHE_TTL_MS caps the age anyway. One process, bounded (PLAN_CACHE_MAX).
+
+const PLAN_CACHE_TTL_MS = 10 * 60 * 1000;
+const PLAN_CACHE_MAX = 100;
+const planCache = new Map<string, { fingerprint: string; at: number; value: Promise<OrderPlanDetail> }>();
+
+/** Tests: start from an empty cache. */
+export function clearOrderPlanCache(): void {
+  planCache.clear();
+}
+
+const iso = (d: Date | null | undefined) => (d ? d.toISOString() : "");
+
+/** null = nothing to key on (no metric run yet): computed fresh every time. */
+async function planFingerprint(shop: string, scope: string, now: Date): Promise<string | null> {
+  const [shopRow, metric, metricCount, variant, variantCount, supplier, supplierCount, orders] = await Promise.all([
+    prisma.shop.findUnique({ where: { domain: shop }, select: { settings: true, currency: true, timezone: true, lastNightlyAt: true } }),
+    prisma.variantMetric.aggregate({ where: { shop, scope }, _max: { computedAt: true } }),
+    prisma.variantMetric.count({ where: { shop, scope } }),
+    prisma.variant.aggregate({ where: { shop }, _max: { updatedAt: true } }),
+    prisma.variant.count({ where: { shop } }),
+    prisma.supplier.aggregate({ where: { shop }, _max: { updatedAt: true } }),
+    prisma.supplier.count({ where: { shop } }),
+    prisma.purchaseOrder.findMany({
+      where: { shop, source: "keha", status: { in: [...REORDER_HOLD_STATUSES] } },
+      select: { id: true, status: true, updatedAt: true, createdAt: true },
+    }),
+  ]);
+  if (!metric._max.computedAt) return null;
+  return JSON.stringify([
+    todayIn(shopRow?.timezone ?? "UTC", now),
+    shopRow?.settings ?? null,
+    shopRow?.currency ?? null,
+    iso(shopRow?.lastNightlyAt),
+    iso(metric._max.computedAt),
+    metricCount,
+    iso(variant._max.updatedAt),
+    variantCount,
+    iso(supplier._max.updatedAt),
+    supplierCount,
+    orders
+      .map((o) => `${o.id}:${o.status}:${iso(o.updatedAt)}:${poCountsAsOrdered(o, now) ? 1 : 0}`)
+      .sort(),
+  ]);
+}
+
+/**
+ * computeOrderPlan, reused while nothing it reads changed (see above). For Products and Sidekick;
+ * Order now, the Dashboard and the email compute fresh.
+ */
+export async function cachedOrderPlan(shop: string, now: Date = new Date(), opts: { scope?: string } = {}): Promise<OrderPlanDetail> {
+  const scope = opts.scope ?? METRIC_SCOPE;
+  const key = `${shop}|${scope}`;
+  const fingerprint = await planFingerprint(shop, scope, now);
+  if (fingerprint === null) return computeOrderPlan(shop, now, { scope });
+  const hit = planCache.get(key);
+  if (hit && hit.fingerprint === fingerprint && now.getTime() - hit.at >= 0 && now.getTime() - hit.at < PLAN_CACHE_TTL_MS) return hit.value;
+  const value = computeOrderPlan(shop, now, { scope });
+  planCache.delete(key);
+  planCache.set(key, { fingerprint, at: now.getTime(), value });
+  // A failed computation is not kept.
+  value.catch(() => {
+    if (planCache.get(key)?.value === value) planCache.delete(key);
+  });
+  while (planCache.size > PLAN_CACHE_MAX) planCache.delete(planCache.keys().next().value!);
+  return value;
 }
 
 /** The forward plan (Dashboard, Order plan tabs, Products, Sidekick, the Monday email). */

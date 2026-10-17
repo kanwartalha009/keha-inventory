@@ -25,7 +25,7 @@ import prisma from "../db.server";
 import type { PlanEvent } from "../lib/engine/forward-plan-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
-import { computeOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
+import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
 import {
   CHART_DAYS,
   METRIC_SCOPE,
@@ -97,7 +97,8 @@ const VARIANT_SELECT = {
 export type PlanView = { first: Map<string, PlanEvent>; state: Map<string, PlanVariantState> };
 
 export async function planView(shop: string, scope: string = METRIC_SCOPE, now: Date = new Date()): Promise<PlanView> {
-  const { data, state } = await computeOrderPlan(shop, now, { scope });
+  // The whole plan sorts the table; reused while nothing it reads changed (order-plan.server).
+  const { data, state } = await cachedOrderPlan(shop, now, { scope });
   const first = new Map<string, PlanEvent>();
   for (const e of data.events) if (!first.has(e.variantId)) first.set(e.variantId, e);
   return { first, state };
