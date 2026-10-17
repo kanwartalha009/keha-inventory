@@ -31,6 +31,7 @@ import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, lineRemaining, onOrderByVariant, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
 import { buildOrderNow, type ReorderGroup } from "../lib/reorder-shared";
 import { thisWeek } from "../lib/order-plan-shared";
+import { mergeDraftLines } from "../lib/supplier-order-shared";
 import { todayIn } from "../lib/dashboard-shared";
 import { readScenarioResult, scenarioQuantities } from "../lib/planner-shared";
 import { computeOrderPlan } from "./order-plan.server";
@@ -437,24 +438,8 @@ export async function createOrderFromGroup(
   if (!group) return { ok: false, error: "gone" };
   const picked = group.lines.filter((l) => (quantities[l.variantId] ?? 0) > 0);
   if (!picked.length) return { ok: false, error: "empty" };
-  // Lines are valued in the store currency from Shopify's cost (audit 2026-10-17): the order page,
-  // PDF, CSV, email and supplier page convert to the supplier's currency when it has an exchange rate.
-  const [basics, costs] = await Promise.all([
-    shopBasics(shop),
-    prisma.variant.findMany({ where: { shop, id: { in: picked.map((l) => l.variantId) } }, select: { id: true, cost: true, costCurrency: true } }),
-  ]);
-  const store = basics.currency.toUpperCase();
-  const costOf = new Map(
-    costs.map((c) => [c.id, (c.costCurrency || store).toUpperCase() === store ? num(c.cost) : null] as const),
-  );
-  const lines: PoLine[] = picked.map((l) => ({
-    variantId: l.variantId,
-    qty: quantities[l.variantId]!,
-    unitCost: costOf.get(l.variantId) ?? null,
-    productTitle: l.productTitle,
-    variantTitle: l.variantTitle,
-    sku: l.sku,
-  }));
+  const basics = await shopBasics(shop);
+  const lines = await draftLines(shop, picked.map((l) => ({ ...l, qty: quantities[l.variantId]! })), basics.currency);
   const created = await insertWithNumber(shop, {
     supplierId: group.supplierId,
     supplierName: group.name || null,
@@ -465,6 +450,32 @@ export async function createOrderFromGroup(
     note: view.note,
   });
   return { ok: true, ...created };
+}
+
+/**
+ * Purchase-order lines for these variants and quantities (Order now's "Create order", the supplier
+ * order builder): titles and SKU as snapshots, valued in the store currency from Shopify's cost
+ * (audit 2026-10-17) — the order page, PDF, CSV, email and supplier page convert to the
+ * supplier's currency when it has an exchange rate; a cost in another currency is unknown.
+ */
+export async function draftLines(
+  shop: string,
+  picked: readonly { variantId: string; qty: number; productTitle: string; variantTitle: string; sku: string | null }[],
+  storeCurrency: string,
+): Promise<PoLine[]> {
+  const costs = picked.length
+    ? await prisma.variant.findMany({ where: { shop, id: { in: picked.map((l) => l.variantId) } }, select: { id: true, cost: true, costCurrency: true } })
+    : [];
+  const store = storeCurrency.toUpperCase();
+  const costOf = new Map(costs.map((c) => [c.id, (c.costCurrency || store).toUpperCase() === store ? num(c.cost) : null] as const));
+  return picked.map((l) => ({
+    variantId: l.variantId,
+    qty: l.qty,
+    unitCost: costOf.get(l.variantId) ?? null,
+    productTitle: l.productTitle,
+    variantTitle: l.variantTitle,
+    sku: l.sku,
+  }));
 }
 
 export type OrderSupplier = {
@@ -649,6 +660,36 @@ export async function updateDraft(shop: string, id: string, quantities: unknown,
   const u = await prisma.purchaseOrder.updateMany({
     where: { id, shop, source: "keha", status: "draft" },
     data: { lines: r.lines as unknown as Prisma.InputJsonValue },
+  });
+  if (u.count === 1) forgetOrderPlan(shop);
+  return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };
+}
+
+/**
+ * Add lines to a Keha draft (the supplier order builder's "Add to PO-00xx"): a variant already on
+ * the draft gets the units added to its line, a new one is appended (mergeDraftLines) — one line
+ * per variant, so the order plan, Products and Sidekick count each unit once. Only drafts that
+ * `accept` allows (the same supplier, still counted as ordered); a stale version is refused.
+ */
+export async function addDraftLines(
+  shop: string,
+  id: string,
+  add: readonly PoLine[],
+  version: unknown,
+  accept: (o: { supplierId: string | null; supplierName: string | null; createdAt: Date | null }) => boolean,
+): Promise<OrderEditResult> {
+  const o = await prisma.purchaseOrder.findFirst({
+    where: { id, shop },
+    select: { status: true, source: true, lines: true, updatedAt: true, supplierId: true, supplierName: true, createdAt: true },
+  });
+  if (!o) return { ok: false, error: "notFound" };
+  if (o.source !== "keha" || o.status !== "draft" || !accept(o)) return { ok: false, error: "notAllowed" };
+  if (!sameVersion(o, version)) return { ok: false, error: "changed" };
+  if (!add.some((l) => l.qty > 0)) return { ok: false, error: "empty" };
+  const lines = mergeDraftLines(readPoLines(o.lines), add);
+  const u = await prisma.purchaseOrder.updateMany({
+    where: { id, shop, source: "keha", status: "draft" },
+    data: { lines: lines as unknown as Prisma.InputJsonValue },
   });
   if (u.count === 1) forgetOrderPlan(shop);
   return u.count === 1 ? { ok: true } : { ok: false, error: "changed" };
