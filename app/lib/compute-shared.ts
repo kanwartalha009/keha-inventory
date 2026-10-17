@@ -33,6 +33,7 @@ import type { ActionDraft } from "./actions-shared";
 import { DONE_REOPEN_DAYS, dedupeKey } from "./actions-shared";
 import type { BackfillState } from "./sync/backfill-shared";
 import type { ShopSettings } from "./settings-shared";
+import { poArrival } from "./supplier-shared";
 
 export const SCOPE_ONLINE = "online";
 
@@ -229,6 +230,20 @@ export function kehaOpenUnits(pos: readonly { lines: { variantId: string; qty: n
       if (open > 0) out.set(l.variantId, (out.get(l.variantId) ?? 0) + open);
     }
   return out;
+}
+
+/**
+ * Expected arrival DAY of an open purchase order (H2): the confirmed ship date + the supplier's
+ * transit days, else the lead-time estimate (supplier-shared poArrival). Both columns hold
+ * calendar days stored at UTC midnight (the supplier picks a date; expectedDate is @db.Date), so
+ * the UTC date part IS the store-local day (L1) — never shift it by the store's time zone.
+ */
+export function arrivalDay(
+  po: { confirmedShipDate: Date | null; expectedDate: Date | null },
+  transitDays: number | null | undefined,
+): string | null {
+  const a = poArrival(po, transitDays);
+  return a ? a.toISOString().slice(0, 10) : null;
 }
 
 /** An open purchase order line as the landed estimate reads it. */

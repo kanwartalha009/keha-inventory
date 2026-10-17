@@ -4,9 +4,8 @@
  * variant × scope and returns the `inputs` behind every number (the "how we
  * got this" popover, spec §2.4 / §12).
  */
-import { dayIndex, daysBetween, toDayKey, type DayKey } from "./dates-shared";
+import { addDays, dayIndex, daysBetween, toDayKey, type DayKey } from "./dates-shared";
 import {
-  daysLeft as daysLeftOf,
   demand,
   forecastRate,
   orderByDate,
@@ -22,10 +21,12 @@ import {
   lastSaleDay,
   salesRate,
   sigmaDaily,
+  soldOutDay,
   type RateWindowResult,
   type SeriesIndex,
 } from "./rate-shared";
 import { variantStatus } from "./status-shared";
+import { arrivalsFrom, coverDays, demandProjection, type Projection } from "./projection-shared";
 import {
   resolveSettings,
   type AbcRole,
@@ -40,6 +41,7 @@ export * from "./rate-shared";
 export * from "./order-shared";
 export * from "./status-shared";
 export * from "./money-shared";
+export * from "./projection-shared";
 
 export interface VariantInput {
   id: string;
@@ -65,6 +67,14 @@ export interface VariantInput {
   dataSinceDay?: DayKey | null;
   supplierLeadTimeDays?: number | null;
   cycleDays?: number | null;
+  /** Weekly seasonal shape (season-shared seasonCurve; only when the index was applied). */
+  seasonCurve?: readonly (number | null)[] | null;
+  /** The dated part of `incoming` (open purchase orders). The rest arrives after one lead time. */
+  arrivals?: readonly { day: DayKey; units: number }[] | null;
+  /** Units sold in the coming `deadDays` days last year, weekdays aligned (null = unknown). */
+  soldLastYearAhead?: number | null;
+  /** "Don't reorder" (Variant.noReorder): stock and status as usual, no order advice. */
+  noReorder?: boolean | null;
   caseQty?: number | null;
   minOrder?: number | null;
   /** §7.3 multipliers; default 1.0. `trend` is the APPLIED trend (1 with the growth assumption off). */
@@ -86,8 +96,15 @@ export interface VariantResult {
   /** rate × seasonal × trend. */
   forecastRate: number | null;
   sigma: number | null;
-  /** 0 when onHand ≤ 0; Infinity when the forecast rate is 0; null when no advice. */
+  /**
+   * Days the stock ON HAND lasts at the projected daily forecast (seasonal shape, H6); 0 when
+   * onHand ≤ 0; Infinity when the forecast is 0; null when no advice.
+   */
   daysLeft: number | null;
+  /** Days until the first stock-out counting incoming that lands in time (M2); null when no advice. */
+  coverDays: number | null;
+  /** The daily forecast (rate × trend × seasonal shape) behind daysLeft, cash stuck and sales at risk. */
+  projection: Projection | null;
   safety: number | null;
   safetyDays: number | null;
   orderQty: number | null;
@@ -134,7 +151,16 @@ export interface VariantInputs {
   lastSaleDay: DayKey | null;
   /** Start of the no-sale period when the variant never sold (oldest day with data). */
   dataSinceDay: DayKey | null;
+  /** IN-STOCK days without a sale (sold-out days don't count; days before the series are assumed in stock). */
   noSaleDays: number | null;
+  /** Calendar days without a sale. */
+  noSaleCalendarDays: number | null;
+  /** Sold in the coming `deadDays` last year (weekdays aligned): never Dead / Too much. */
+  offSeason: boolean;
+  soldLastYearAhead: number | null;
+  /** "Don't reorder" (Variant.noReorder): no order quantity, no order-by date. */
+  noReorder: boolean;
+  coverDays: number | null;
   productAgeDays: number | null;
   price: number | null;
   priceSource: "input" | "series" | null;
@@ -224,26 +250,64 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   const safety = advice ? safetyStock(z, sigma!, lead.days + cycle) : null;
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
-  let left: number | null;
-  if (onHand <= 0) left = 0;
-  else if (advice) left = daysLeftOf(onHand, fRate!);
-  else left = null;
 
-  // §7.5 status inputs.
+  // H6: day-by-day projection with the seasonal shape over the days in question (status, days
+  // left, cash stuck, sales at risk), not one rate for the next lead time + cycle.
+  const projection =
+    r.rate === null
+      ? null
+      : demandProjection({
+          rate: r.rate,
+          trend,
+          seasonal,
+          curve: input.seasonCurve ?? null,
+          horizonDays: lead.days + cycle,
+          days: Math.max(settings.tooMuchDays + 1, settings.cashStuckCoverDays, settings.atRiskDays, lead.days + cycle + 1),
+        });
+  // Dated arrivals on their day, the rest of incoming after one lead time (the forward plan's rule).
+  const arrivals = arrivalsFrom(today, incoming, input.arrivals ?? null, lead.days);
+  let left: number | null;
+  let cover: number | null;
+  if (onHand <= 0 && !advice) {
+    left = 0;
+    cover = null;
+  } else if (advice) {
+    // Negative on hand (oversold): 0 days left; incoming fills the backlog first.
+    left = onHand <= 0 ? 0 : coverDays(onHand, projection!);
+    cover = coverDays(onHand, projection!, arrivals);
+  } else {
+    left = null;
+    cover = null;
+  }
+
+  // §7.5 status inputs. Dead counts IN-STOCK days without a sale (M3): a sold-out day can't sell.
   const lastSale = laterDay(
     lastSaleDay(index),
     input.lastSaleDay ? toDayKey(input.lastSaleDay) : null,
   );
+  const soldOutSince = (from: DayKey) => {
+    const f = dayIndex(from);
+    let n = 0;
+    for (const [i, row] of index) if (i >= f && soldOutDay(row)) n++;
+    return n;
+  };
   let noSaleDays: number | null;
+  let noSaleCalendarDays: number | null;
   if (lastSale !== null) {
-    noSaleDays = Math.max(0, daysBetween(lastSale, today) - 1);
+    noSaleCalendarDays = Math.max(0, daysBetween(lastSale, today) - 1);
+    noSaleDays = Math.max(0, noSaleCalendarDays - soldOutSince(addDays(lastSale, 1)));
   } else {
     const first = earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null);
-    noSaleDays = first === null ? null : daysBetween(first, today);
+    noSaleCalendarDays = first === null ? null : daysBetween(first, today);
+    noSaleDays = first === null ? null : Math.max(0, noSaleCalendarDays! - soldOutSince(first));
   }
   const productAgeDays = input.productCreatedAt
     ? daysBetween(toDayKey(input.productCreatedAt), today)
     : null;
+  // Off season (M3): it sold in the coming `deadDays` last year (weekdays aligned) — waiting for
+  // its season, not dead: no Clear, not Too much, still planned with the seasonal shape.
+  const soldAhead = typeof input.soldLastYearAhead === "number" && Number.isFinite(input.soldLastYearAhead) ? input.soldLastYearAhead : null;
+  const offSeason = soldAhead !== null && soldAhead > 0;
 
   const status = variantStatus(
     {
@@ -252,19 +316,22 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       noSaleDays,
       productAgeDays,
       daysLeft: left,
+      coverDays: cover,
       leadTimeDays: lead.days,
       safetyDays: sDays ?? 0,
       trend,
+      offSeason,
     },
     settings,
   );
 
-  // Order advice only with ≥ minInStockDays in-stock days.
+  // Order advice only with ≥ minInStockDays in-stock days, and never for "Don't reorder" variants.
   let orderQty: number | null = null;
   let orderBy: DayKey | null = null;
   let orderNeed: number | null = null;
-  if (advice) {
+  if (advice && !input.noReorder) {
     const need = demand(r.rate!, m, lead.days + cycle);
+    // A negative on hand is a backlog: the order covers it (need grows by the units owed).
     orderNeed = need + safety! - (onHand + incoming);
     orderQty = orderQuantity({
       demand: need,
@@ -274,7 +341,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       caseQty: input.caseQty,
       minOrder: input.minOrder,
     });
-    orderBy = orderByDate(today, left!, lead.days, sDays!);
+    orderBy = orderByDate(today, cover!, lead.days, sDays!);
   }
 
   const inPrice = positive(input.price);
@@ -292,6 +359,8 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     forecastRate: fRate,
     sigma,
     daysLeft: left,
+    coverDays: cover,
+    projection,
     safety,
     safetyDays: sDays,
     orderQty,
@@ -328,6 +397,11 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       lastSaleDay: lastSale,
       dataSinceDay: lastSale === null ? earlierDay(earliestDataDay(index), input.dataSinceDay ? toDayKey(input.dataSinceDay) : null) : null,
       noSaleDays,
+      noSaleCalendarDays,
+      offSeason,
+      soldLastYearAhead: soldAhead,
+      noReorder: input.noReorder === true,
+      coverDays: cover,
       productAgeDays,
       price,
       priceSource: inPrice !== null ? "input" : sPrice !== null ? "series" : null,

@@ -60,12 +60,29 @@ describe("reorder", () => {
     expect(d.reason.facts).toMatchObject({ rate: 2, leadTimeDays: 14, horizonDays: 28 });
   });
 
-  it("review fix: dated incoming arriving after today + 27 doesn't reduce the € figure (boundary day)", () => {
-    // demand 56; onHand 20; incoming 30 of which 24 dated.
+  it("dated incoming counts from its arrival day (sales at risk day by day, H3)", () => {
+    // 2/day; onHand 20 (days 0–9); 6 undated land after the 14-day lead (days 14–16); 24 dated.
     const amount = (arrival: string) =>
       of(generateActions([p({}, [v({ status: "running_low", onHand: 20, incoming: 30, incomingArrivals: [{ arrival, units: 24 }], daysLeft: 10, orderBy: "2026-10-20" })])], CTX), "reorder")!.amount;
-    expect(amount("2026-11-12")).toBe(60); // (56 − 50) × 10
-    expect(amount("2026-11-13")).toBe(300); // (56 − 26) × 10
+    expect(amount("2026-11-12")).toBe(280); // lost days 10–13 and 17–26: 14 days × 2 × 10
+    expect(amount("2026-11-13")).toBe(300); // + day 27
+    expect(amount("2026-10-26")).toBe(60); // lands on day 10 (+ the 6 on day 14): only days 25–27 lost
+  });
+
+  it("item 14: fires when the stored order-by date is within 7 days (Order plan 'due this week'), not only when low", () => {
+    // Healthy (days left 20) but the forward plan's order-by date is in 6 days (today + 6): due this week.
+    const due = of(generateActions([p({}, [v({ status: "healthy", daysLeft: 20, orderBy: "2026-10-22" })])], CTX), "reorder")!;
+    expect(due.reason).toMatchObject({ key: "reorder_low", params: { days: 20, lead: 14, date: "2026-10-22" } });
+    expect(due.amount).toBe(0); // the stock covers the next 28 days: nothing at risk yet (measured 0)
+    // Today + 7: next week → no action.
+    expect(of(generateActions([p({}, [v({ status: "healthy", daysLeft: 20, orderBy: "2026-10-23" })])], CTX), "reorder")).toBeUndefined();
+    // Passed → Order now.
+    expect(of(generateActions([p({}, [v({ status: "healthy", daysLeft: 20, orderBy: "2026-10-01" })])], CTX), "reorder")!.reason.key).toBe("reorder_now");
+  });
+
+  it("'Don't reorder' variants never get a reorder action", () => {
+    expect(of(generateActions([p({}, [v({ status: "running_low", onHand: 20, daysLeft: 10, orderBy: TODAY, noReorder: true })])], CTX), "reorder")).toBeUndefined();
+    expect(of(generateActions([p({}, [v({ status: "out", onHand: 0, daysLeft: 0, noReorder: true })])], CTX), "reorder")).toBeUndefined();
   });
 
   it("order-by today or passed → 'Order now'", () => {

@@ -4,7 +4,8 @@
  * `variantIds` lists the affected variants; `amount` is in the store currency.
  *
  * Rules and their € figure (thresholds in ACTION_RULES):
- *  reorder     Running low, or Out with demand (rate > 0)          → sales at risk (money-card maths)
+ *  reorder     order-by date within 7 days or passed ("due this week" on the Order plan), Running
+ *              low, or Out with demand (rate > 0); never "Don't reorder" → sales at risk (money-card maths)
  *  bridge      orderBy has passed, or the dated arrival is after the run-out day; and real demand
  *              (≥ 5 units in 28 d over those variants, or ≥ 50 sessions/week on the product page)
  *                                                                  → rate × seasonal × trend × gap × price
@@ -32,13 +33,16 @@
  * clear figures may legitimately be 0 (measured); push / fix figures must be > 0.
  */
 import { addDays, dayIndex, type DayKey } from "./dates-shared";
-import { demand, forecastRate } from "./order-shared";
-import { incomingWithin, round2 } from "./money-shared";
+import { forecastRate } from "./order-shared";
+import { atRiskUnits, round2, stuckUnits } from "./money-shared";
+import type { Projection } from "./projection-shared";
 import { ENGINE_DEFAULTS, type AbcRole, type EngineSettings, type VariantStatus } from "./types-shared";
 import type { ActionDraft, ActionKind, ReasonParams } from "../actions-shared";
 
 export const ACTION_RULES = Object.freeze({
   horizonDays: 28,
+  /** Reorder fires when the order-by date is within this many days (today included), as "due this week". */
+  reorderDueDays: 7,
   bridgeMinUnits28: 5,
   bridgeMinSessionsPerWeek: 50,
   pushShare: 0.2,
@@ -90,6 +94,10 @@ export interface RuleVariant {
   /** Net units sold and units returned over the returns window (channel view); null = no data. */
   soldNet90?: number | null;
   returned90?: number | null;
+  /** The day-by-day forecast behind sales at risk / cash stuck (computeVariant); absent = flat. */
+  projection?: Projection | null;
+  /** "Don't reorder" (Variant.noReorder): never in a reorder action. */
+  noReorder?: boolean;
 }
 
 export interface RuleProduct {
@@ -130,15 +138,14 @@ function fRate(v: RuleVariant): number | null {
 }
 
 /**
- * Same maths as the "sales at risk" card: max(0, demand(28) − (onHand + incoming arriving within
- * 28 d)) × price. Dated incoming counts only when it lands by today + 27; undated incoming is
- * assumed to (money-shared incomingWithin).
+ * Same maths as the "sales at risk" card (money-shared atRiskUnits): forecast units the stock
+ * can't serve over the next 28 days, projected day by day (dated incoming on its day, undated
+ * after one lead time), × price.
  */
 export function salesAtRiskOf(v: RuleVariant, today: DayKey): number | null {
   if (!finite(v.rate) || !known(v.price)) return null;
-  const d = demand(v.rate, { seasonal: v.seasonal, trend: v.trend, plan: 1 }, ACTION_RULES.horizonDays);
-  const inc = incomingWithin(v.incoming, v.incomingArrivals, today, ACTION_RULES.horizonDays).units;
-  return Math.max(0, d - (Math.max(0, v.onHand) + inc)) * v.price;
+  const risk = atRiskUnits({ ...v, plan: 1 }, today, ACTION_RULES.horizonDays);
+  return risk === null ? null : risk.units * v.price;
 }
 
 /** Same maths as the "cash stuck" card; retail price when cost is unknown. */
@@ -148,9 +155,9 @@ export function cashStuckOf(v: RuleVariant, settings: EngineSettings): { amount:
   let units: number;
   if (v.status === "dead") units = Math.max(0, v.onHand);
   else {
-    const f = fRate(v);
-    if (f === null) return null;
-    units = Math.max(0, v.onHand - settings.cashStuckCoverDays * f);
+    const u = finite(v.rate) ? stuckUnits(v, settings.cashStuckCoverDays) : null;
+    if (u === null) return null;
+    units = u;
   }
   return { amount: unit * units, retail: !known(v.cost), units };
 }
@@ -181,13 +188,27 @@ const DAY = (d: DayKey | null) => d ?? null;
 
 // ── Reorder ────────────────────────────────────────────────────────────────
 
+/**
+ * Does this variant need a reorder action? (audit 2026-10-17, item 14) — the same set the Order
+ * plan shows as "due this week": its stored order-by date (compute stores the forward plan's
+ * date) is within the next 7 days (today + 6) or has passed; plus Running low, and Out with
+ * demand. Never a "Don't reorder" variant, a Dead / not-enough-data one, or one without sales.
+ */
+export function reorderDue(v: RuleVariant, today: DayKey): boolean {
+  if (v.noReorder) return false;
+  if (!finite(v.rate) || !(v.rate > 0)) return false;
+  if (v.status === "dead" || v.status === "not_enough_data") return false;
+  if (v.status === "running_low" || v.status === "out") return true;
+  return v.orderBy !== null && v.orderBy <= addDays(today, ACTION_RULES.reorderDueDays - 1);
+}
+
 function reorderRule(p: RuleProduct, ctx: RuleContext): ActionDraft | null {
-  const hit = p.variants.filter((v) => v.status === "running_low" || (v.status === "out" && finite(v.rate) && v.rate > 0));
+  const hit = p.variants.filter((v) => reorderDue(v, ctx.today));
   const valued = hit.map((v) => ({ v, risk: salesAtRiskOf(v, ctx.today) })).filter((x) => x.risk !== null);
   if (!valued.length) return null;
   const amount = valued.reduce((a, x) => a + x.risk!, 0);
   const ids = hit.map((v) => v.id);
-  const low = hit.filter((v) => v.status === "running_low" && finite(v.daysLeft));
+  const low = hit.filter((v) => v.status !== "out" && finite(v.daysLeft));
   const facts = (v: RuleVariant) => ({
     variants: hit.length,
     rate: finite(v.rate) ? r1(v.rate) : null,

@@ -31,12 +31,14 @@ describe("computeVariant", () => {
     expect(r.safety).toBeCloseTo(1.65 * Math.sqrt(30), 12); // 9.04
     expect(r.safetyDays).toBeCloseTo((1.65 * Math.sqrt(30)) / 2, 12); // ÷ the daily forecast
     expect(r.daysLeft).toBeCloseTo(20, 12);
-    // 20 < 16 + 4.52 → running low.
-    expect(r.status).toBe("running_low");
+    // M2: the 10 on order (undated → land after the 16-day lead time) arrive before the run-out
+    // on day 20 → cover 16 + (8 + 10) ÷ 2 = 25 ≥ 16 + 4.52 → not running low.
+    expect(r.coverDays).toBeCloseTo(25, 12);
+    expect(r.status).toBe("healthy");
     // ceil(2 × 30 + 9.04 − 50) = 20 → case of 6 → 24.
     expect(r.orderQty).toBe(24);
-    // floor(20 − 16 − 4.52) = −1 → yesterday (overdue).
-    expect(r.orderBy).toBe(ago(1));
+    // floor(25 − 16 − 4.52) = 4.
+    expect(r.orderBy).toBe(ago(-4));
     expect(r.inputs).toMatchObject({
       leadTimeDays: 16,
       leadTimeSource: "supplier",
@@ -55,6 +57,50 @@ describe("computeVariant", () => {
       variantInput({ series: alternating, role: "A", onHand: 40, incoming: 10, supplierLeadTimeDays: 16, caseQty: 6, minOrder: 20 }),
     )!;
     expect(r.orderQty).toBe(24);
+  });
+
+  it("M2: running low unless an order lands before the run-out (dated arrivals)", () => {
+    // 40 on hand at 2/day → runs out on day 20; lead 16 + safety 4.52.
+    const base = variantInput({ series: alternating, role: "A", onHand: 40, supplierLeadTimeDays: 16 });
+    expect(computeVariant(base)!.status).toBe("running_low");
+    // 30 arriving on day 10 (before the run-out): cover 35 → not running low.
+    const early = computeVariant({ ...base, incoming: 30, arrivals: [{ day: ago(-10), units: 30 }] })!;
+    expect(early.coverDays).toBeCloseTo(35, 12);
+    expect(early.status).toBe("healthy");
+    // The same 30 arriving on day 25 (after the run-out): still running low.
+    const late = computeVariant({ ...base, incoming: 30, arrivals: [{ day: ago(-25), units: 30 }] })!;
+    expect(late.coverDays).toBeCloseTo(20, 12);
+    expect(late.status).toBe("running_low");
+  });
+
+  it("H6: days left follow the seasonal shape — a January low is not 'Too much', pre-peak overstock is", () => {
+    // 2/day now; the index for the next 28 days is 0.4 (January), then the year returns to normal.
+    const jan = [0.4, 0.4, 0.4, 0.4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    const v = variantInput({ onHand: 300, supplierLeadTimeDays: 14, seasonal: 0.4, seasonCurve: jan });
+    // Old maths: 300 ÷ (2 × 0.4) = 375 days → Too much. Day by day: 4 weeks at 0.8, then 2/day.
+    const r = computeVariant(v)!;
+    expect(r.daysLeft).toBeCloseTo(28 + (300 - 28 * 0.8) / 2, 9); // 166.8
+    expect(r.status).toBe("healthy");
+    // Before a peak (index 3 for the next 4 weeks, then 0.5): 600 units look like 100 days (old
+    // maths: 600 ÷ (2 × 3)) but the peak sells 168 and the rest lasts far beyond 180 days.
+    const peak = [3, 3, 3, 3, ...new Array(24).fill(0.5)];
+    const pre = computeVariant(variantInput({ onHand: 600, supplierLeadTimeDays: 14, seasonal: 3, seasonCurve: peak }))!;
+    expect(pre.daysLeft!).toBeGreaterThan(180);
+    expect(pre.status).toBe("too_much");
+    // No shape: flat at the index (the old maths, exactly).
+    expect(computeVariant(variantInput({ onHand: 100, seasonal: 2 }))!.daysLeft).toBe(25);
+  });
+
+  it("negative on hand (oversold): Out, 0 days left, the order covers the backlog, no NaN", () => {
+    const r = computeVariant(variantInput({ series: alternating, onHand: -12, incoming: 0, supplierLeadTimeDays: 14 }))!;
+    expect(r.status).toBe("out");
+    expect(r.daysLeft).toBe(0);
+    expect(r.coverDays).toBe(0);
+    const flat = computeVariant(variantInput({ series: alternating, onHand: 0, incoming: 0, supplierLeadTimeDays: 14 }))!;
+    // 12 more than with 0 on hand.
+    expect(r.inputs.orderNeed! - flat.inputs.orderNeed!).toBeCloseTo(12, 12);
+    expect(r.orderQty! - flat.orderQty!).toBe(12);
+    for (const x of [r.daysLeft, r.coverDays, r.safety, r.safetyDays, r.orderQty, r.inputs.orderNeed]) expect(Number.isNaN(x)).toBe(false);
   });
 
   it("running_low when days left < lead time + safety days", () => {
@@ -117,6 +163,39 @@ describe("computeVariant", () => {
     expect(computeVariant(variantInput({ series: at90, onHand: 5 }))!.inputs.noSaleDays).toBe(89);
     expect(computeVariant(variantInput({ series: at90, onHand: 5 }))!.status).not.toBe("dead");
     expect(computeVariant(variantInput({ series: at91, onHand: 5 }))!.status).toBe("dead");
+  });
+
+  it("M3: Dead counts in-stock days only — a product sold out for weeks is not 'not selling'", () => {
+    // No sale for 120 days, but sold out (0 units, nothing sold) for the last 40 of them.
+    const series = buildSeries({ days: 120, sold: (k) => (k === 120 ? 1 : 0), oos: (k) => k <= 40 });
+    const r = computeVariant(variantInput({ series, onHand: 30 }))!;
+    expect(r.inputs.noSaleCalendarDays).toBe(119);
+    expect(r.inputs.noSaleDays).toBe(79);
+    expect(r.status).not.toBe("dead");
+    // The same 120 days all in stock: dead.
+    expect(computeVariant(variantInput({ series: buildSeries({ days: 120, sold: (k) => (k === 120 ? 1 : 0) }), onHand: 30 }))!.status).toBe("dead");
+  });
+
+  it("M3: off season — it sold in the coming weeks last year → not Dead, not Too much", () => {
+    const noSales = buildSeries({ days: 120, sold: 0 });
+    const dead = computeVariant(variantInput({ series: noSales, onHand: 30, soldLastYearAhead: 0 }))!;
+    expect(dead.status).toBe("dead");
+    const off = computeVariant(variantInput({ series: noSales, onHand: 30, soldLastYearAhead: 45 }))!;
+    expect(off.status).toBe("healthy");
+    expect(off.inputs).toMatchObject({ offSeason: true, soldLastYearAhead: 45 });
+    // Unknown last year (null): the old rule.
+    expect(computeVariant(variantInput({ series: noSales, onHand: 30, soldLastYearAhead: null }))!.status).toBe("dead");
+    // A slow seller with a year of stock that sold in these weeks last year: not Too much either.
+    expect(computeVariant(variantInput({ onHand: 1000, soldLastYearAhead: 10 }))!.status).toBe("healthy");
+    expect(computeVariant(variantInput({ onHand: 1000 }))!.status).toBe("too_much");
+  });
+
+  it("'Don't reorder' variants keep stock and status but get no order quantity or order-by date", () => {
+    const r = computeVariant(variantInput({ series: alternating, onHand: 10, supplierLeadTimeDays: 14, noReorder: true }))!;
+    expect(r.status).toBe("running_low");
+    expect(r.daysLeft).toBeCloseTo(5, 12);
+    expect(r).toMatchObject({ orderQty: null, orderBy: null });
+    expect(r.inputs).toMatchObject({ orderNeed: null, noReorder: true });
   });
 
   it("dead is not claimed when the data covers less than 90 days, unless a last sale is known", () => {

@@ -174,19 +174,20 @@ describe("computeShop", () => {
     expect(metric(A).inputs).toMatchObject({ incoming: 28, kehaOnOrder: 80, kehaLanded: 52 });
   });
 
-  it("review fix: sales at risk leaves out dated Keha units arriving after today + 27", async () => {
-    // B is out, Shopify incoming 24: the card is (28 − 24) × 20 = 80. A Keha order of 10 more…
+  it("H3: sales at risk is projected day by day with each order's arrival date", async () => {
+    // B is out (1/day), Shopify incoming 24 (undated: lands after the 14-day lead time). A Keha
+    // order of 10 more…
     const po = (expected: string) => [
       { id: "po2", shop: S, source: "keha", status: "sent", sentAt: new Date("2026-10-14T09:00:00Z"), expectedDate: d(expected), confirmedShipDate: null, lines: [{ variantId: B, qty: 10, baseOnHand: 0 }] },
     ];
-    db.tables.purchaseOrder = po("2026-11-12"); // …arriving on the last day of the window: counted → 0 short.
-    await computeShop(S, { now: () => NOW });
-    expect(db.tables.moneyAtStake[0]!.atRisk).toBe(0);
-    db.tables.moneyAtStake = [];
-    db.tables.purchaseOrder = po("2026-11-13"); // …arriving the day after: not counted → 80.
+    db.tables.purchaseOrder = po("2026-10-20"); // …landing on day 4: days 0–3 lost, then 10 + 24 cover the rest → 4 × 20.
     await computeShop(S, { now: () => NOW });
     expect(db.tables.moneyAtStake[0]!.atRisk).toBe(80);
     expect(action("reorder:PB")!.amount).toBe(80);
+    db.tables.moneyAtStake = [];
+    db.tables.purchaseOrder = po("2026-11-12"); // …landing on the last day: too late to save days 0–13 → 14 × 20.
+    await computeShop(S, { now: () => NOW });
+    expect(db.tables.moneyAtStake[0]!.atRisk).toBe(280);
   });
 
   it("review H2: sales on days with no pool stock data are missing, not in-stock days", async () => {
@@ -228,8 +229,11 @@ describe("computeShop", () => {
     expect(m.soldOutTraffic).toBeCloseTo(142.86, 2);
     // Cash stuck: C is dead, 30 units × cost 10.
     expect(m.cashStuck).toBe(300);
-    // Sales at risk: B is out; demand 28 × rate 1 = 28 − incoming 24 = 4 units × 20.
-    expect(m.atRisk).toBe(80);
+    // Sales at risk (H3, day by day): B is out at 1/day; Shopify's undated incoming (24) lands
+    // after one lead time (14 days, as the forward plan) → 14 days lost × 20. (Old pooled maths:
+    // 28 − 24 = 4 units, as if the 24 were on the shelf today.)
+    expect(m.atRisk).toBe(280);
+    expect((m.basis as MoneyBasisJson).atRisk).toMatchObject({ method: "day_by_day", incomingAssumedWithin28: false });
     // Lost to sell-outs: B out 10 days × rate 1 × 20.
     expect(m.lost90).toBe(200);
     const basis = m.basis as MoneyBasisJson;
@@ -288,8 +292,8 @@ describe("computeShop — action list", () => {
     expect(keys).toEqual(["bridge:PB", "clear:PC", "push:PA", "reorder:PB"]);
     expect(r.actions).toBe(4);
     for (const a of db.tables.action) expect(a).toMatchObject({ shop: S, state: "open", currency: "EUR" });
-    // B is out: demand 28 × 1/day − incoming 24 = 4 units × 20 (the money card's maths).
-    expect(action("reorder:PB")).toMatchObject({ kind: "reorder", productId: "PB", variantIds: [B], amount: 80 });
+    // B is out: 14 days × 1/day lost until the incoming lands after the lead time, × 20 (the money card's maths).
+    expect(action("reorder:PB")).toMatchObject({ kind: "reorder", productId: "PB", variantIds: [B], amount: 280 });
     expect((action("reorder:PB")!.reason as { key: string }).key).toBe("reorder_out");
     // Bridge: no dated order, order-by passed → arrives today + 14; gap 14 days × 1/day × 20.
     expect(action("bridge:PB")).toMatchObject({ amount: 280 });
@@ -312,7 +316,7 @@ describe("computeShop — action list", () => {
     expect(action("clear:PC")).toMatchObject({ id: "a1", amount: 300, state: "snoozed", stateAmount: 50, snoozeUntil: until, variantIds: [C] });
     expect(action("fix_page:PA")).toBeUndefined();
     expect(action("fix_sizes:PA")).toMatchObject({ id: "a3", state: "dismissed" });
-    expect(action("reorder:PB")).toMatchObject({ id: "a4", state: "done", doneAt: until, amount: 80 });
+    expect(action("reorder:PB")).toMatchObject({ id: "a4", state: "done", doneAt: until, amount: 280 });
     // Idempotent: a second run changes nothing.
     const before = JSON.stringify(db.tables.action);
     await computeShop(S, { now: () => NOW });
@@ -420,5 +424,44 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect(a.inputs).toMatchObject({ leadTimeDays: 30, leadTimeSource: "supplier", caseQty: 12, supplierId: "S1", z: 2.05, safetyLevel: "safe", serviceLevel: 0.98 });
     expect((a.orderQty as number) % 12).toBe(0);
     expect(metric(B).inputs).toMatchObject({ leadTimeSource: "default", z: 1.65, serviceLevel: 0.95 }); // role B on Safe
+  });
+
+  it("H2: a confirmed ship date arrives after the supplier's transit days", async () => {
+    db.tables.supplier = [{ id: "S1", shop: S, name: "Acme", leadTimeDays: 40, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: [], transitDays: 21 }];
+    db.tables.purchaseOrder = [
+      { id: "po1", shop: S, supplierId: "S1", source: "keha", status: "confirmed", sentAt: new Date("2026-10-10T09:00:00Z"), confirmedShipDate: d("2026-10-20"), expectedDate: d("2026-11-10"), lines: [{ variantId: B, qty: 30, baseOnHand: 0 }] },
+    ];
+    await computeShop(S, { now: () => NOW });
+    // Ships 20 Oct + 21 days at sea → lands 10 Nov (not 20 Oct).
+    expect((metric(B).inputs as { arrivals: unknown[] }).arrivals).toEqual([{ day: "2026-11-10", units: 30 }]);
+  });
+
+  it("'Don't reorder' variants: status and stock as usual, no order quantity, no order-by, no reorder action", async () => {
+    db.tables.variant.find((v) => v.id === B)!.noReorder = true;
+    await computeShop(S, { now: () => NOW });
+    const b = metric(B);
+    expect(b.status).toBe("out");
+    expect(b).toMatchObject({ orderQty: null, orderBy: null });
+    expect((b.inputs as { noReorder: boolean; orderNeed: unknown }).noReorder).toBe(true);
+    expect(action("reorder:PB")).toBeUndefined();
+  });
+
+  it("M3: a product that sold in the coming 90 days last year is off season, not Dead (no Clear)", async () => {
+    db.tables.shop[0].backfillState = { datasets: { sales: { done: 13, total: 13, doneThrough: "2025-08-01", syncedThrough: "2026-10-15" } } };
+    // C (never sells now) sold 1 a day from 1 Dec 2025 last year: inside today − 364 … + 89.
+    for (const day of daysBetween("2025-12-01", "2025-12-31"))
+      db.tables.salesDaily.push({ shop: S, day: d(day), variantId: C, locationKey: "online", channel: "all", sold: 1, returned: 0, gross: 0 });
+    await computeShop(S, { now: () => NOW });
+    const c = metric(C);
+    expect(c.status).not.toBe("dead");
+    expect(c.inputs).toMatchObject({ offSeason: true, soldLastYearAhead: 31 });
+    expect(action("clear:PC")).toBeUndefined();
+  });
+
+  it("L1: product age is counted in store-local days", async () => {
+    // 23:30 UTC on 16 Jul is 17 Jul in Madrid: 91 days before today (16 Oct), not 92.
+    db.tables.variant.find((v) => v.id === C)!.productCreatedAt = new Date("2026-07-16T23:30:00Z");
+    await computeShop(S, { now: () => NOW });
+    expect((metric(C).inputs as { productAgeDays: number }).productAgeDays).toBe(91);
   });
 });

@@ -7,7 +7,8 @@
  * Bundles are skipped everywhere. Rounding to 2 decimals happens at the end only.
  */
 import { addDays, type DayKey } from "./dates-shared";
-import { demand, forecastRate } from "./order-shared";
+import { forecastRate } from "./order-shared";
+import { arrivalsFrom, cumulativeDemand, flatProjection, lostUnits, type Projection } from "./projection-shared";
 import {
   ENGINE_DEFAULTS,
   type EngineSettings,
@@ -38,8 +39,15 @@ export interface MoneyVariant {
   price: number | null;
   /** Unit cost; null/≤0 = unknown. */
   cost: number | null;
-  /** Out-of-stock days WITH data over the history window (90 d). */
+  /** Sold-out days WITH data over the history window (90 d). */
   outOfStockDays: number;
+  /**
+   * The day-by-day forecast (computeVariant: rate × trend × seasonal shape). Absent → flat at
+   * rate × seasonal × trend (the old maths).
+   */
+  projection?: Projection | null;
+  /** Lead time: undated incoming arrives after it (as the forward plan). Absent → today. */
+  leadTimeDays?: number | null;
 }
 
 export interface MoneyContext {
@@ -81,10 +89,15 @@ export interface AtRiskBasis {
   variantsCounted: number;
   skippedNoRate: number;
   skippedNoPrice: number;
-  /** Incoming WITHOUT an arrival date (Shopify's own) is assumed to arrive within the window. */
-  incomingAssumedWithin28: true;
+  /**
+   * True when some incoming WITHOUT an arrival date was assumed to arrive today (no lead time
+   * known). With a lead time it arrives after one lead time (as the forward order plan).
+   */
+  incomingAssumedWithin28: boolean;
   /** Dated units on order that arrive after the window, left out of the sum (absent on rows stored before). */
   incomingLateUnits?: number;
+  /** "day_by_day": projected per day with dated arrivals (H3, 2026-10-17). Absent on rows stored before. */
+  method?: "day_by_day";
 }
 
 /**
@@ -105,7 +118,39 @@ export function incomingWithin(
   return { units: all - late, late };
 }
 
-/** Σ over running_low / out: max(0, demand(28) − (onHand + incoming)) × price. */
+/** The projection a money card uses: the variant's own, else flat at rate × seasonal × trend. */
+function projectionOf(v: Pick<MoneyVariant, "rate" | "seasonal" | "trend" | "projection">): Projection | null {
+  if (v.rate === null || !Number.isFinite(v.rate)) return null;
+  return v.projection ?? flatProjection(forecastRate(v.rate, { seasonal: mult(v.seasonal), trend: mult(v.trend) }));
+}
+
+/**
+ * Units at risk over the next `days` days for one variant (H3): projected day by day — dated
+ * incoming lands on its day, undated after one lead time (today when unknown) — and every unit
+ * of forecast demand the stock can't serve counts. A negative on hand is a backlog the first
+ * arrivals fill. Null without a rate.
+ */
+export function atRiskUnits(
+  v: Pick<MoneyVariant, "rate" | "seasonal" | "trend" | "plan" | "projection" | "onHand" | "incoming" | "incomingArrivals" | "leadTimeDays">,
+  today: DayKey,
+  days: number,
+): { units: number; late: number; undatedToday: boolean } | null {
+  const p = projectionOf(v);
+  if (!p) return null;
+  const plan = mult(v.plan);
+  const proj = plan === 1 ? p : { daily: p.daily.map((x) => x * plan), tail: p.tail * plan };
+  const lead = typeof v.leadTimeDays === "number" && Number.isFinite(v.leadTimeDays) ? v.leadTimeDays : null;
+  const all = Math.max(0, typeof v.incoming === "number" && Number.isFinite(v.incoming) ? v.incoming : 0);
+  const dated = (v.incomingArrivals ?? []).map((a) => ({ day: a.arrival, units: a.units }));
+  const arr = arrivalsFrom(today, all, dated, lead);
+  const last = days - 1;
+  let late = 0;
+  for (const [off, u] of arr) if (off > last) late += u;
+  const datedUnits = dated.reduce((a, x) => a + Math.max(0, x.units), 0);
+  return { units: lostUnits(v.onHand, proj, days, arr), late, undatedToday: lead === null && all > datedUnits };
+}
+
+/** Σ over running_low / out: forecast units the stock can't serve over 28 d (atRiskUnits) × price. */
 export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext): MoneyCard<AtRiskBasis> {
   const s = ctx.settings ?? ENGINE_DEFAULTS;
   const H = s.atRiskDays;
@@ -115,6 +160,7 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
   let skippedNoRate = 0;
   let skippedNoPrice = 0;
   let lateUnits = 0;
+  let assumedToday = false;
   let sum = 0;
   for (const v of variants) {
     if (v.isBundle) continue;
@@ -129,11 +175,10 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
       skippedNoPrice++;
       continue;
     }
-    const d = demand(v.rate, { seasonal: mult(v.seasonal), trend: mult(v.trend), plan: mult(v.plan) }, H);
-    const inc = incomingWithin(v.incoming, v.incomingArrivals, ctx.today, H);
-    lateUnits += inc.late;
-    const stock = Math.max(0, v.onHand) + inc.units;
-    sum += Math.max(0, d - stock) * v.price;
+    const risk = atRiskUnits(v, ctx.today, H)!;
+    lateUnits += risk.late;
+    if (risk.undatedToday) assumedToday = true;
+    sum += risk.units * v.price;
     counted++;
   }
   return {
@@ -143,8 +188,9 @@ export function salesAtRisk(variants: readonly MoneyVariant[], ctx: MoneyContext
       variantsCounted: counted,
       skippedNoRate,
       skippedNoPrice,
-      incomingAssumedWithin28: true,
+      incomingAssumedWithin28: assumedToday,
       incomingLateUnits: lateUnits,
+      method: "day_by_day",
       window: forward(ctx.today, H),
       currency: ctx.currency,
       costBasis: "retail",
@@ -215,8 +261,19 @@ export interface CashStuckBasis {
 }
 
 /**
- * Σ cost × max(0, onHand − 90 × forecastRate) for too_much, plus cost × onHand
- * for dead. Unknown cost → price, and the whole card is labelled "retail".
+ * Units beyond `coverDays` of forecast for one variant: max(0, onHand − the projected demand
+ * over the next coverDays days) (H6: the days in question, with the seasonal shape — a January
+ * low no longer inflates it, pre-peak stock the peak will sell is not "stuck"). Null without a rate.
+ */
+export function stuckUnits(v: Pick<MoneyVariant, "rate" | "seasonal" | "trend" | "projection" | "onHand">, coverDays: number): number | null {
+  const p = projectionOf(v);
+  if (!p) return null;
+  return Math.max(0, v.onHand - cumulativeDemand(p, coverDays));
+}
+
+/**
+ * Σ cost × stuckUnits(90 days) for too_much, plus cost × onHand for dead. Unknown cost → price,
+ * and the whole card is labelled "retail".
  */
 export function cashStuck(variants: readonly MoneyVariant[], ctx: MoneyContext): MoneyCard<CashStuckBasis> {
   const s = ctx.settings ?? ENGINE_DEFAULTS;
@@ -243,12 +300,12 @@ export function cashStuck(variants: readonly MoneyVariant[], ctx: MoneyContext):
     if (v.status === "dead") {
       units = Math.max(0, v.onHand);
     } else {
-      if (v.rate === null || !Number.isFinite(v.rate)) {
+      const u = stuckUnits(v, cover);
+      if (u === null) {
         skipped++;
         continue;
       }
-      const f = forecastRate(v.rate, { seasonal: mult(v.seasonal), trend: mult(v.trend) });
-      units = Math.max(0, v.onHand - cover * f);
+      units = u;
     }
     if (!known(v.cost)) retail++;
     if (v.status === "dead") dead++;

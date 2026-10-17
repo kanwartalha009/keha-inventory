@@ -49,6 +49,7 @@ import {
 } from "../lib/engine/index-shared";
 import type { StoreConversion } from "../lib/engine/money-shared";
 import {
+  arrivalDay,
   kehaOpenUnits,
   SCOPE_ONLINE,
   buildSeries,
@@ -81,7 +82,7 @@ import { resolveLeadTime } from "../lib/engine/order-shared";
 import { FORWARD_CURVE_DAYS, planVariant } from "../lib/engine/forward-plan-shared";
 import { SEASON, seasonFacts, spanStats, type Coverage, type VariantSeason } from "../lib/engine/season-shared";
 import { serviceLevelFor } from "../lib/engine/safety-shared";
-import { OPEN_PO_STATUSES, casePackFor, poArrival, readPoLines, supplierFor } from "../lib/supplier-shared";
+import { OPEN_PO_STATUSES, casePackFor, readPoLines, supplierFor } from "../lib/supplier-shared";
 import { readBackfillState } from "../lib/sync/backfill-shared";
 import { loadSeasonContext } from "./season.server";
 import { readSettings } from "../lib/settings-shared";
@@ -152,11 +153,12 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         caseQty: true,
         supplierId: true,
         status: true,
+        noReorder: true,
       },
     }),
     prisma.supplier.findMany({
       where: { shop },
-      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true },
+      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true },
     }),
   ]);
   const pool = poolLocationIds(locations);
@@ -263,12 +265,16 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // units: the Reorder screen nets drafts against it, and landed units are in on-hand.
   const openPoRows = await prisma.purchaseOrder.findMany({
     where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
-    select: { source: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true },
+    select: { source: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
   });
-  const rawPos: OpenPo[] = openPoRows.map((po) => {
-    const a = poArrival(po);
-    return { source: po.source, arrival: a ? dayKey(a) : null, sentDay: po.sentAt ? localDate(po.sentAt, tz) : null, lines: readPoLines(po.lines) };
-  });
+  // H2: a confirmed SHIP date lands `transitDays` later (the supplier's freight time).
+  const transitOf = new Map(suppliers.map((x) => [x.id, x.transitDays ?? null]));
+  const rawPos: OpenPo[] = openPoRows.map((po) => ({
+    source: po.source,
+    arrival: arrivalDay(po, po.supplierId ? (transitOf.get(po.supplierId) ?? null) : null),
+    sentDay: po.sentAt ? localDate(po.sentAt, tz) : null,
+    lines: readPoLines(po.lines),
+  }));
   const isKeha = (po: OpenPo) => po.source === "keha";
   const kehaRaw = kehaOpenUnits(rawPos.filter(isKeha));
   const openPos = withLandedEstimate(rawPos, await landedFacts(shop, rawPos.filter(isKeha), pool, poolKeys, to, onHand));
@@ -287,8 +293,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     poolKeys,
     variants: variants.filter((v) => !v.isBundle).map((v) => ({ id: v.id, collections: v.collections ?? [] })),
     coverage,
-    // + the forward plan's seasonal shape (seasonCurve) beyond the horizon, for collection series.
-    maxHorizonDays: plans.reduce((m, p) => Math.max(m, p.horizon), 1) + FORWARD_CURVE_DAYS + 7,
+    // + the seasonal shape (seasonCurve) beyond the horizon — the forward plan's 13 weeks and the
+    // status / cash-stuck projection (Too much threshold) — for collection series.
+    maxHorizonDays: Math.max(plans.reduce((m, p) => Math.max(m, p.horizon), 1) + FORWARD_CURVE_DAYS, settings.tooMuchDays + 1, settings.cashStuckCoverDays) + 7,
     // Growth assumption (audit C4): "off" (default) measures the trend but applies 1.
     trendMode: shopSettings.trendMode,
   });
@@ -300,6 +307,21 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   } catch {
     plan = "pro";
   }
+
+  // Off season (M3): units each variant sold over the coming `deadDays` days LAST YEAR (weekdays
+  // aligned, 364 days back). Null for every variant when the sales history doesn't cover it.
+  const aheadFrom = addDays(today, -SEASON.yearShiftDays);
+  const aheadTo = addDays(aheadFrom, settings.deadDays - 1);
+  const aheadCovered =
+    aheadTo < today && spanStats({ units: new Map(), coverage }, aheadFrom, aheadTo).coverage >= SEASON.minCoverage;
+  const aheadG = aheadCovered
+    ? await prisma.salesDaily.groupBy({
+        by: ["variantId"],
+        where: { shop, channel: ALL, locationKey: { in: poolKeys }, day: { gte: dayDate(aheadFrom), lte: dayDate(aheadTo) } },
+        _sum: { sold: true },
+      })
+    : [];
+  const soldAhead = new Map(aheadG.map((g) => [g.variantId, num(g._sum.sold)]));
 
   // ---- engine ----
   const roles = abcRoles(
@@ -313,6 +335,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
     const season = seasonCtx.forVariant(v.collections ?? [], horizon);
     seasonOf.set(v.id, season);
+    // The weekly seasonal shape (only when the index was applied): the forward plan's 13 weeks and
+    // the status / money projection up to the Too-much threshold (H6).
+    const curve = seasonCtx.curveFor(season, Math.ceil(Math.max(FORWARD_CURVE_DAYS + horizon, settings.tooMuchDays + 1, settings.cashStuckCoverDays) / 7));
+    const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
     const r = computeVariant({
       id: v.id,
       isBundle: false,
@@ -321,7 +347,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
       incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
       role: roles.get(v.id) ?? "C",
-      productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
+      // L1: the store-local day the product was created, not the UTC one.
+      productCreatedAt: v.productCreatedAt ? localDate(v.productCreatedAt, tz) : null,
       lastSaleDay: lastSale.get(v.id) ?? null,
       dataSinceDay: dataSince.get(v.id) ?? null,
       supplierLeadTimeDays: supplier?.leadTimeDays ?? null,
@@ -330,6 +357,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       seasonal: season.seasonal,
       trend: season.trend,
       plan: 1,
+      seasonCurve: curve,
+      arrivals,
+      soldLastYearAhead: aheadCovered ? (soldAhead.get(v.id) ?? 0) : null,
+      noReorder: v.noReorder,
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),
       settings: overrides,
@@ -338,8 +369,6 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       // Order-by date from the forward plan (engine/forward-plan-shared): the same function the
       // Order now screen, the 90-day calendar and the Dashboard use, so there is one date per
       // variant. It adds dated incoming and last year's seasonal shape to the flat formula.
-      const curve = seasonCtx.curveFor(season, Math.ceil((FORWARD_CURVE_DAYS + horizon) / 7));
-      const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
       const fwd = planVariant({
         today,
         status: r.status,
@@ -361,7 +390,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         moq: r.inputs.minOrder,
         days: 0,
       });
-      r.orderBy = fwd.deadline;
+      // "Don't reorder" variants get no order-by date (no order advice at all).
+      r.orderBy = r.inputs.noReorder ? null : fwd.deadline;
       forwardOf.set(v.id, { seasonCurve: curve, arrivals });
       results.push(r);
     }
@@ -453,7 +483,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
 
   const ctx = { today, currency: shopRow.currency, settings };
   const atRisk = salesAtRisk(
-    results.map((r) => ({ ...r, incomingArrivals: dated.get(r.id) })),
+    results.map((r) => ({ ...r, incomingArrivals: dated.get(r.id), leadTimeDays: r.inputs.leadTimeDays })),
     ctx,
   );
   const lost90 = salesLostToSellOuts(results, ctx);
@@ -589,6 +619,8 @@ async function writeActions(
       arrival: arr?.arrival ?? null,
       incomingDated: arr?.units ?? 0,
       incomingArrivals: x.dated.get(v.id),
+      projection: r.projection,
+      noReorder: r.inputs.noReorder,
       soldNet90: ret ? ret.sold : null,
       returned90: ret ? ret.returned : null,
     };

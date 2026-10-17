@@ -9,6 +9,7 @@ import {
   salesAtRisk,
   salesLostToSellOuts,
   soldOutPageTraffic,
+  stuckUnits,
   type ProductTraffic,
 } from "../../app/lib/engine/money-shared";
 import { TODAY, ago, buildSeries, moneyVariant as mv, variantInput } from "./fixtures";
@@ -36,19 +37,37 @@ describe("salesAtRisk", () => {
     });
   });
 
-  it("review fix: dated incoming counts only when it arrives by today + 27 (the last day of the window)", () => {
-    // TODAY 2026-10-16 → window 2026-10-16 … 2026-11-12. demand 2 × 28 = 56; onHand 10.
+  it("H3: projects day by day with dated incoming — out, 10 a day, 300 units arriving on day 25 risks 250", () => {
+    // Old pooled maths: max(0, 280 − 300) = 0 at risk, as if the 300 were on the shelf today.
+    const card = salesAtRisk([mv({ status: "out", rate: 10, onHand: 0, incoming: 300, incomingArrivals: [{ arrival: "2026-11-10", units: 300 }], price: 1 })], ctx);
+    expect(card.amount).toBe(250);
+    expect(card.basis).toMatchObject({ method: "day_by_day", incomingAssumedWithin28: false, incomingLateUnits: 0 });
+  });
+
+  it("dated incoming counts from its own day; after the window it doesn't count at all", () => {
+    // TODAY 2026-10-16 → window 2026-10-16 … 2026-11-12. 2/day; onHand 10 + 10 undated (no lead
+    // time known → today) last 10 days; days 10 … 26 lost (17 × 2 = 34) whether or not 20 units
+    // land on day 27 (they serve only day 27).
     const at = (arrival: string) =>
       salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 30, incomingArrivals: [{ arrival, units: 20 }], price: 1 })], ctx);
-    // 2026-11-12: inside → stock 10 + 30 = 40 → 16 short.
-    expect(at("2026-11-12").amount).toBe(16);
-    // 2026-11-13: outside → the 20 dated units don't count; the 10 undated still do → 36 short.
-    expect(at("2026-11-13").amount).toBe(36);
+    expect(at("2026-11-12").amount).toBe(34);
+    expect(at("2026-11-13").amount).toBe(36); // day 27 lost too
     expect(at("2026-11-13").basis.incomingLateUnits).toBe(20);
-    // Undated incoming keeps the Phase 1 assumption.
+    // Landing on day 5 instead: 10 + 10 cover days 0–9, the 20 cover days 10–19 → days 20–27 lost.
+    expect(at("2026-10-21").amount).toBe(16);
+    // Undated incoming without a lead time: on the shelf today (the old assumption) → 40 cover 20 days.
     expect(salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 30, price: 1 })], ctx).amount).toBe(16);
-    // Never below 0: more dated units than incoming.
+    // With a lead time it lands after it (as the forward plan): days 5–13 lost (18), then 30 cover the rest.
+    const lead = salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 30, leadTimeDays: 14, price: 1 })], ctx);
+    expect(lead.amount).toBe(18);
+    expect(lead.basis.incomingAssumedWithin28).toBe(false);
+    // Never below 0: more dated units than incoming (capped at incoming, arriving after the window).
     expect(salesAtRisk([mv({ status: "running_low", rate: 2, onHand: 10, incoming: 5, incomingArrivals: [{ arrival: "2027-01-01", units: 20 }], price: 1 })], ctx).amount).toBe(46);
+  });
+
+  it("negative on hand (oversold) is a backlog the incoming fills first", () => {
+    // −20 owed; 30 arrive today; 1/day: 10 left for days 0–9, days 10–27 lost.
+    expect(salesAtRisk([mv({ status: "out", rate: 1, onHand: -20, incoming: 30, incomingArrivals: [{ arrival: TODAY, units: 30 }], price: 1 })], ctx).amount).toBe(18);
   });
 
   it("applies seasonal × trend × plan and clamps oversold stock at 0", () => {
@@ -154,6 +173,16 @@ describe("salesLostToSellOuts", () => {
 });
 
 describe("cashStuck", () => {
+  it("H6: the 90-day cover is the projected demand over those 90 days (seasonal shape)", () => {
+    // 2/day; January index 0.4 for 4 weeks, then normal. Old maths: 500 − 90 × 0.8 = 428 stuck.
+    const jan = [0.4, 0.4, 0.4, 0.4, ...new Array(10).fill(1)];
+    const r = computeVariant(variantInput({ onHand: 500, seasonal: 0.4, seasonCurve: jan, supplierLeadTimeDays: 14 }))!;
+    // Day by day: 28 × 0.8 + 62 × 2 = 146.4 sold in 90 days → 353.6 stuck.
+    expect(stuckUnits(r, 90)).toBeCloseTo(500 - (28 * 0.8 + 62 * 2), 9);
+    const card = cashStuck([{ ...r, status: "too_much", cost: 1 }], ctx);
+    expect(card.amount).toBeCloseTo(353.6, 2);
+  });
+
   it("too_much excess at cost + dead at cost; labelled cost", () => {
     const card = cashStuck(
       [
