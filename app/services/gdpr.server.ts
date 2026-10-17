@@ -26,6 +26,7 @@ import { getShopContact } from "./shop-contact.server";
 import { cancelPendingPurge } from "./purge-stamp.server";
 import { logPersonalDataAccess } from "./pii-log.server";
 import { factsStore } from "./facts-store.server";
+import { sampleKey } from "../lib/sample-mode-shared";
 
 export { cancelPendingPurge } from "./purge-stamp.server";
 
@@ -184,6 +185,8 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
     const name = delegateName(model);
     await del(name, () => client[name].deleteMany({ where: { [key]: shop } }));
   }
+  // The store's sample data (`<shop>#sample`, lib/sample-mode-shared) goes with it.
+  for (const [name, n] of Object.entries(await purgeSampleData(shop, plan))) counts[`sample:${name}`] = n;
   // Nova outbox has no shop column: match the shop header / body field. PENDING
   // rows stay so the uninstall / shop-redact forwards still reach the platform.
   await del("novaOutbox", () =>
@@ -199,6 +202,28 @@ export async function purgeShopData(shop: string): Promise<Record<string, number
   if (Object.values(counts).some((n) => n < 0)) throw new PurgeIncompleteError(shop, counts);
   await del(delegateName(session.model), () => client[delegateName(session.model)].deleteMany({ where: { shop } }));
   if (counts[delegateName(session.model)] < 0) throw new PurgeIncompleteError(shop, counts);
+  return counts;
+}
+
+/**
+ * Deletes a store's sample data: every row keyed by `<shop>#sample` in every purged model (Shop by
+ * domain; sample data has no sessions). Used by "Switch to my store" and by every shop purge.
+ * Never throws; a failed table counts -1 (purgeShopData then throws PurgeIncompleteError).
+ */
+export async function purgeSampleData(shop: string, plan = purgePlan()): Promise<Record<string, number>> {
+  const key = sampleKey(shop);
+  const client = prisma as unknown as Record<string, DeleteManyDelegate>;
+  const counts: Record<string, number> = {};
+  for (const { model, key: column } of plan) {
+    if (model === "Session") continue;
+    const name = delegateName(model);
+    try {
+      counts[name] = (await client[name].deleteMany({ where: { [column]: key } })).count;
+    } catch (e) {
+      console.error(`[gdpr] sample purge ${name} failed for ${shop}`, e);
+      counts[name] = -1;
+    }
+  }
   return counts;
 }
 
