@@ -30,11 +30,13 @@ import { CantPlan, CashStrip, PreviewLock, PreviewTable } from "../components/or
 import { hasFeature } from "../lib/plan-shared";
 import { cashTotals } from "../lib/engine/forward-plan-shared";
 import {
+  lockTeaser,
   orderLink,
   planWeeks,
   previewRows,
   supplierName,
   thisWeek,
+  type LockTeaser,
   type OrderPlanData,
   type PreviewRow,
 } from "../lib/order-plan-shared";
@@ -61,7 +63,10 @@ import {
 } from "../lib/dashboard-shared";
 
 /** Growth / Pro: the whole forward plan; Free: only the read-only top 10 (nothing more is sent). */
-export type DashboardOrderPlan = { kind: "full"; plan: OrderPlanData } | { kind: "preview"; rows: PreviewRow[] };
+export type DashboardOrderPlan =
+  | { kind: "full"; plan: OrderPlanData }
+  // Free: the top 10 and the teaching lock with the merchant's own totals (worked out on the server).
+  | { kind: "preview"; rows: PreviewRow[]; teaser?: LockTeaser | null; currency?: string };
 
 export type HomeLoaderData = HomeData & {
   actions?: ActionListView | null;
@@ -86,7 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
   const orderPlan: DashboardOrderPlan | null = forward
     ? hasFeature(plan, "reorderPlan")
       ? { kind: "full", plan: forward }
-      : { kind: "preview", rows: previewRows(forward) }
+      : { kind: "preview", rows: previewRows(forward), teaser: lockTeaser(forward), currency: forward.currency }
     : null;
   return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk };
 };
@@ -209,7 +214,7 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
     return (
       <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
         <PreviewTable rows={op.rows} />
-        <PreviewLock />
+        <PreviewLock teaser={op.teaser} currency={op.currency} />
       </FormCard>
     );
   }

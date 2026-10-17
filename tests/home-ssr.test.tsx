@@ -19,7 +19,7 @@ vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: vi.fn() }));
 
 import Home, { action, loader, type HomeLoaderData } from "../app/routes/app._index";
 import { orderPlanFixture } from "./order-plan-fixtures";
-import { previewRows } from "../app/lib/order-plan-shared";
+import { lockTeaser, previewRows } from "../app/lib/order-plan-shared";
 import { buildHome, type HomeRaw } from "../app/lib/dashboard-shared";
 import type { PlanCode } from "../app/lib/plan-shared";
 import type { ActionListView } from "../app/lib/action-list-shared";
@@ -342,6 +342,14 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     expect(html).not.toContain("keha-orderplan-strip");
     expect(html).not.toContain("Lisbon Linen");
   });
+
+  it("Free: the teaching lock shows the merchant's own totals (lockTeaser)", () => {
+    const rows = previewRows(orderPlanFixture());
+    const html = render({ ...ready("free"), orderPlan: { kind: "preview", rows, teaser: { more: 14, suppliers: 3, cash: 4200, missingCost: 0 }, currency: "EUR" } });
+    expect(html).toContain("Your plan has 14 more products to order from 3 suppliers — €4,200 over the next 13 weeks.");
+    // No teaser (nothing beyond the top 10): just the lock.
+    expect(render({ ...ready("free"), orderPlan: { kind: "preview", rows, teaser: null } })).not.toContain("Your plan has");
+  });
 });
 
 describe("Dashboard loader", () => {
@@ -363,7 +371,7 @@ describe("Dashboard loader", () => {
     expect((await loader(args)).orderPlan?.kind).toBe("full");
     vi.mocked(ent.planFor).mockResolvedValue("free");
     const free = await loader(args);
-    expect(free.orderPlan).toMatchObject({ kind: "preview" });
+    expect(free.orderPlan).toMatchObject({ kind: "preview", teaser: lockTeaser(orderPlanFixture()), currency: orderPlanFixture().currency });
     expect((free.orderPlan as { rows: unknown[] }).rows.length).toBeLessThanOrEqual(10);
     expect(JSON.stringify(free)).not.toContain("Lisbon Linen");
   });
