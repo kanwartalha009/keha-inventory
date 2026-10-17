@@ -6,7 +6,7 @@
  * Visible strings = every `t("…")`, `tr("…")` and `translate(locale, "…")`
  * literal in app/ plus the data that is passed through t() as a variable
  * (plan matrix, plan cards, plan names, settings tabs, action reasons, the
- * Why-dialog fact labels and values).
+ * Why-dialog fact labels and values, the CSV import column reference).
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ import { SETTINGS_ERRORS } from "../app/lib/settings-shared";
 import { ACTION_REASONS } from "../app/lib/actions-shared";
 import { SETTINGS_TABS } from "../app/components/settings-tabs";
 import { factStrings } from "../app/lib/action-facts-shared";
+import { PRODUCT_COLUMNS, SUPPLIER_COLUMNS } from "../app/lib/setup-import-shared";
 
 /** Strings spelled the same in a language (brand words, loanwords). */
 const SAME_WORD: Record<string, string[]> = {
@@ -37,6 +38,8 @@ const SAME_WORD: Record<string, string[]> = {
   Collection: ["fr"],
   Actions: ["fr"],
   "{n} per product": ["nl"],
+  Problem: ["de", "pl"],
+  Email: ["es", "it", "pt"],
 };
 
 function files(dir: string): string[] {
@@ -72,6 +75,11 @@ function dataKeys(): Set<string> {
   for (const v of Object.values(ACTION_REASONS)) out.add(v);
   for (const x of SETTINGS_TABS) out.add(x.label);
   for (const v of factStrings()) out.add(v);
+  // Settings → Import & export: the column reference (label and hint of every CSV column).
+  for (const c of [...SUPPLIER_COLUMNS, ...PRODUCT_COLUMNS]) {
+    out.add(c.label);
+    out.add(c.hint);
+  }
   for (const v of Object.values(PLAN_PITCH)) out.add(v);
   for (const list of Object.values(PLAN_POINTS)) for (const v of list) out.add(v);
   for (const v of Object.values(INHERITS)) if (v) out.add(v);

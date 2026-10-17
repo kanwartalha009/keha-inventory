@@ -83,6 +83,10 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    sales), a minimum order value in the supplier's currency, and — when that currency differs
    from the store's — the exchange rate. **Order every … days** is how often you order from
    this supplier (empty = the store's order cycle); order quantities cover the lead time plus it.
+   **Settings → Import & export** does the same for many suppliers and products at once:
+   **Download CSV** (the current values), change a case pack or a supplier in the file, upload
+   it; the check lists what will change and any row with a problem — nothing is saved until
+   **Import**.
 9. **Order plan → Order now:** everything due in the next 7 days (overdue included), grouped by
    supplier, each line on its own order-by date, with case packs and the supplier's minimums →
    **Create order** → confirm (a draft; nothing is sent). On the draft: change quantities or

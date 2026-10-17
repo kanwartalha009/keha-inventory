@@ -101,6 +101,15 @@ function data(input: SupplierInput) {
   };
 }
 
+/** The row data saveSupplier writes (email encrypted) — the CSV import writes the same. */
+export const supplierWriteData = data;
+
+/** Every supplier as an edit form (emails decrypted), name order — the CSV import / export (models/setup-import). */
+export async function listSupplierForms(shop: string): Promise<{ id: string; form: SupplierForm }[]> {
+  const rows = await prisma.supplier.findMany({ where: { shop }, select: LIST_SELECT, orderBy: [{ name: "asc" }, { id: "asc" }] });
+  return rows.map((s) => ({ id: s.id, form: supplierToForm({ ...plain(s), email: s.email ? decryptSecret(s.email) || null : null }) }));
+}
+
 /** Create (id null) or update this shop's supplier. Returns its id, or null when the id isn't this shop's. */
 export async function saveSupplier(shop: string, id: string | null, input: SupplierInput): Promise<string | null> {
   if (!id) {

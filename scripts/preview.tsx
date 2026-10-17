@@ -108,6 +108,11 @@ const { default: Settings } = await import("../app/routes/app.settings");
 const { default: Suppliers } = await import("../app/routes/app.settings_.suppliers");
 const { default: Locations } = await import("../app/routes/app.settings_.locations");
 const { default: Alerts } = await import("../app/routes/app.settings_.alerts");
+const { default: ImportExport } = await import("../app/routes/app.settings_.import");
+const { PreviewCard } = await import("../app/components/import-preview");
+const { AppPage } = await import("../app/components/ui");
+const { SettingsTabs } = await import("../app/components/settings-tabs");
+const { planProductsImport, readCsv } = await import("../app/lib/setup-import-shared");
 const { default: Plans } = await import("../app/routes/app.plans");
 const { default: SupplierConfirm } = await import("../app/routes/supplier.confirm.$token");
 
@@ -177,6 +182,33 @@ function firstSync(kind: "large" | "small" | "finished", plan: PlanCode): HomeLo
     ),
     renderedAt: NOW.toISOString(),
   };
+}
+
+/** Settings → Import & export, the check after a product settings file was picked (a few changes, problems, a row not found). */
+function ImportCheck() {
+  const variants = [1, 2, 3, 4].map((n) => ({
+    id: VID(n),
+    productId: `gid://shopify/Product/${n}`,
+    sku: `LIN-${n}`,
+    handle: `linen-shirt-${n}`,
+    productTitle: n <= 2 ? "Linen shirt" : "Wool coat",
+    variantTitle: n % 2 ? "S" : "M",
+    vendor: "Acme",
+    supplierId: n === 1 ? "s1" : null,
+    caseQty: n === 1 ? 6 : null,
+    noReorder: false,
+  }));
+  const text = "sku,supplier,case_pack,dont_reorder,notes\nLIN-1,Acme Textiles,12,no,\nLIN-2,Lisbon Linen,12,no,\nLIN-3,,0,no,\nLIN-4,Nobody,,yes,\nLIN-99,,6,no,\n";
+  const { preview } = planProductsImport(readCsv(text), variants, [
+    { id: "s1", name: "Acme Textiles" },
+    { id: "s2", name: "Lisbon Linen" },
+  ]);
+  return (
+    <AppPage heading="Settings">
+      <SettingsTabs current="import" />
+      <PreviewCard preview={preview} fileName="product-settings.csv" busy={false} onImport={() => {}} onCancel={() => {}} />
+    </AppPage>
+  );
 }
 
 /** The supplier order builder: Acme Textiles, ordered every 30 days, minimum 200 units (Order now's fixture). */
@@ -572,6 +604,9 @@ const screens: Screen[] = [
   S({ slug: "settings-defaults", screen: "Settings → Defaults", state: "Growth", nav: "settings", url: "/app/settings", plan: "growth", Component: Settings, data: () => ({ form: settingsToForm(DEFAULT_SETTINGS) }), expect: ["How long do your suppliers take?", "App language"] }),
   S({ slug: "settings-suppliers", screen: "Settings → Suppliers", state: "Growth", nav: "settings", url: "/app/settings/suppliers", plan: "growth", Component: Suppliers, data: () => suppliers, expect: ["Add supplier", "Acme Textiles", "Lisbon Linen"] }),
   S({ slug: "settings-locations", screen: "Settings → Locations", state: "Pro", nav: "settings", url: "/app/settings/locations", plan: "pro", Component: Locations, data: () => locations, expect: ["Counts in supplier orders", "Main warehouse", "Barcelona"] }),
+  S({ slug: "settings-import--growth", screen: "Settings → Import & export", state: "Growth", nav: "settings", url: "/app/settings/import", plan: "growth", Component: ImportExport, data: () => ({ enabled: true, counts: { suppliers: 3, variants: 30_412 } }), expect: ["Import & export", "Product settings", "Download CSV", "Columns in the product settings file", "dont_reorder"] }),
+  S({ slug: "settings-import--free", screen: "Settings → Import & export", state: "Free, teaching lock", nav: "settings", url: "/app/settings/import", plan: "free", Component: ImportExport, data: () => ({ enabled: false, counts: { suppliers: 0, variants: 412 } }), expect: ["Import & export", "Growth plan", "Columns in the suppliers file"] }),
+  S({ slug: "settings-import--check", screen: "Settings → Import & export", state: "Growth, check before importing", nav: "settings", url: "/app/settings/import", plan: "growth", Component: ImportCheck, data: () => ({}), expect: ["Check before importing", "Rows with problems (skipped)", "Not found in your store", "Changes"] }),
   S({ slug: "settings-alerts", screen: "Settings → Alerts", state: "Growth, Slack not connected", nav: "settings", url: "/app/settings/alerts", plan: "growth", Component: Alerts, data: () => alerts, expect: ["Send the Monday email", "Slack webhook link"] }),
 
   S({ slug: "plans--unconfirmed", screen: "Plans", state: "Plan not confirmed (fail open)", nav: "plans", url: "/app/plans", plan: "pro", Component: Plans, data: () => ({ plans: PLANS, plan: "pro", billing: null, comped: false, checked: false, manageUrl: "https://admin.shopify.com/x" }), expect: ["All features on", "Compare plans"] }),

@@ -1,5 +1,5 @@
 /**
- * Settings tabs (spec §5.5): Defaults · Suppliers · Locations · Alerts. Each
+ * Settings tabs (spec §5.5): Defaults · Suppliers · Locations · Alerts · Import & export. Each
  * tab is its own page (`app.settings.tsx`, `app.settings_.<tab>.tsx`) so a
  * save on one never touches another; this strip links them.
  *
@@ -19,6 +19,8 @@ export const SETTINGS_TABS = [
   { id: "suppliers", path: "/app/settings/suppliers", label: "Suppliers" },
   { id: "locations", path: "/app/settings/locations", label: "Locations" },
   { id: "alerts", path: "/app/settings/alerts", label: "Alerts" },
+  // Owner 2026-10-17: CSV import / export for setup at scale (Growth).
+  { id: "import", path: "/app/settings/import", label: "Import & export" },
 ] as const;
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]["id"];
 
