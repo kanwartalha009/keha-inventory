@@ -1,8 +1,10 @@
 /**
  * App Store listing kit (docs/listing/LISTING.md, task 2.7; playbook §8, mistakes #14, #18):
  *  - the name equals shopify.app.toml `name` and fits 30 characters;
- *  - subtitle ≤ 60, introduction ≤ 100, details ≤ 500, each feature ≤ 80, ≤ 5 search terms;
- *  - no prices, statistics, guarantees or "AI" in the text;
+ *  - subtitle ≤ 60, introduction ≤ 100, details ≤ 500, each feature ≤ 80 (5 features, up to 3
+ *    optional extras, 8 in all), ≤ 5 search terms;
+ *  - no prices, statistics, guarantees, "AI", "the first" / "the only", plan names or other Keha
+ *    apps in the text (marketing audit 2026-10-17; App Store rules 4.3.3, 4.4);
  *  - the pricing table equals the plan catalog, and the plan-card lines equal PLAN_POINTS.
  */
 import { readFileSync } from "node:fs";
@@ -26,7 +28,7 @@ function field(heading: string): string {
 }
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
-const LIMITS = { name: 30, subtitle: 60, intro: 100, details: 500, feature: 80, searchTerms: 5 } as const;
+const LIMITS = { name: 30, subtitle: 60, intro: 100, details: 500, feature: 80, features: 5, extras: 3, searchTerms: 5 } as const;
 
 describe("listing text", () => {
   const name = field("App name");
@@ -34,7 +36,9 @@ describe("listing text", () => {
   const intro = field("App introduction");
   const details = field("App details");
   const features = lines(field("Feature list"));
+  const extras = lines(field("Feature list — optional extras (only if the form takes 8)"));
   const terms = lines(field("Search terms"));
+  const integrations = lines(field("Integrations"));
 
   it("uses the toml app name, ≤ 30 characters", () => {
     const toml = read("shopify.app.toml").match(/^name\s*=\s*"([^"]*)"/m)?.[1];
@@ -49,19 +53,37 @@ describe("listing text", () => {
     expect(intro.length).toBeLessThanOrEqual(LIMITS.intro);
     expect(details.length).toBeGreaterThan(0);
     expect(details.length).toBeLessThanOrEqual(LIMITS.details);
-    expect(features.length).toBeGreaterThanOrEqual(3);
-    for (const f of features) expect(f.length, f).toBeLessThanOrEqual(LIMITS.feature);
+    expect(features.length).toBe(LIMITS.features);
+    expect(extras.length).toBeLessThanOrEqual(LIMITS.extras);
+    for (const f of [...features, ...extras]) expect(f.length, f).toBeLessThanOrEqual(LIMITS.feature);
+    expect(new Set([...features, ...extras]).size).toBe(features.length + extras.length);
     expect(terms.length).toBeGreaterThan(0);
     expect(terms.length).toBeLessThanOrEqual(LIMITS.searchTerms);
     // Single-line fields stay on one line.
     for (const s of [name, subtitle, intro, details]) expect(s).not.toContain("\n");
   });
 
-  it("makes no price, statistic, guarantee or AI claim", () => {
-    for (const s of [subtitle, intro, details, ...features]) {
+  it("makes no price, statistic, guarantee, AI or 'first / only' claim", () => {
+    for (const s of [subtitle, intro, details, ...features, ...extras]) {
       expect(s, s).not.toMatch(/[$€£%]|\bper month\b|\/mo\b|\bfree trial\b/i);
-      expect(s, s).not.toMatch(/\bAI\b|artificial intelligence|machine learning|guarantee|#1|\bbest\b/i);
+      expect(s, s).not.toMatch(/\bAI\b|artificial intelligence|machine learning|guarantee|#1|\bbest\b(?! sellers?\b)/i); // "best sellers" names products, not a claim
+      expect(s, s).not.toMatch(/\bthe (first|only)\b/i);
     }
+  });
+
+  it("names no plan in the text (plans live in the plan cards)", () => {
+    for (const s of [subtitle, intro, details, ...features, ...extras]) {
+      expect(s, s).not.toMatch(/\b(Free|Growth|Pro)\b(?! of)|\bplan only\b|\bon (the )?(Free|Growth|Pro)\b|\bupgrade\b/);
+    }
+  });
+
+  it("never names another Keha app (rule 4.4), and lists only real integrations", () => {
+    expect(listing).not.toMatch(/Keha Preorder/);
+    expect(integrations).toEqual(["Slack", "Shopify Flow", "Shopify POS", "Shopify Sidekick"]);
+  });
+
+  it("search terms from the audit", () => {
+    expect(terms).toEqual(["inventory forecasting", "purchase orders", "inventory planning", "demand forecasting", "low stock alert"]);
   });
 });
 

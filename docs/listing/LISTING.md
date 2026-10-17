@@ -1,15 +1,25 @@
 # App Store listing — Keha Inventory Intelligence
 
+> **Recommendation for Kanwar (owner's call, not applied):** rename the app to
+> **"Keha Inventory Planner"** (22 characters). The marketing audit of 2026-10-17 found that
+> "Intelligence" says nothing about the job, while "Planner" matches what merchants search for
+> (inventory planning, purchase orders) and what the app leads with (the order plan). Changing it
+> means `shopify.app.toml` `name`, this file and the Partner Dashboard listing in one go
+> (`tests/listing.test.ts` holds name = toml). Everything below keeps the current name.
+
 Partner Dashboard → Apps → Keha Inventory Intelligence → Distribution → Manage listing.
 English is the primary listing. Every claim below is something the code does today
-(checked 2026-10-16, task 2.7; rechecked 2026-10-17 after the Planner and Pro stores merged, and for the Order plan, which now leads the app); `tests/listing.test.ts` enforces the limits, the name and the
-pricing table. Edit a value only inside its ```text block, then run `npx vitest run tests/listing.test.ts`.
+(checked 2026-10-16, task 2.7; rewritten 2026-10-17 from the marketing audit: the order plan leads,
+no plan names in the text, no other Keha app named); `tests/listing.test.ts` enforces the limits,
+the name and the pricing table. Edit a value only inside its ```text block, then run
+`npx vitest run tests/listing.test.ts`.
 
 Limits used (shopify.dev "App Store requirements checklist", playbook §8):
 name ≤ 30 and equal to `shopify.app.toml` `name`; introduction ≤ 100; details ≤ 500; each
-feature ≤ 80; up to 5 search terms. Shopify publishes no length for the app card subtitle; the
-test holds it to ≤ 60 (the shortest limit found in third-party guides — see the report).
-No prices, statistics, outcome guarantees or "AI" in the text (prices live in the plan cards).
+feature ≤ 80 (5 required, up to 8 when the form allows); up to 5 search terms. Shopify publishes
+no length for the app card subtitle; the test holds it to ≤ 60 (the shortest limit found in
+third-party guides). No prices, statistics, outcome guarantees, "AI", "the first" / "the only",
+or plan names in the text (prices and plans live in the plan cards).
 
 ## App name
 
@@ -26,66 +36,79 @@ Know what to order, from whom, by when and the cash it takes
 ## App introduction
 
 ```text
-Plan what to order, from which supplier, by when and the cash it takes, from your own Shopify sales.
+Order best sellers before they sell out, and see the cash each order needs, week by week.
 ```
 
 ## App details
 
 ```text
-Keha plans your stock orders from your Shopify sales and stock: what to order, from which supplier, by when, and the cash each week needs over the next 90 days. Sales per day count only in-stock days, so sell-outs never drag a forecast down. It puts a money figure on sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits, ranks what to reorder, push, fix and clear every Monday, and sends purchase orders suppliers confirm by link. On Pro, plan each warehouse and POS store.
+Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash each week needs over the next 13 weeks. Sales per day count only the days a product was in stock, and every forecast shows how it was built. Send purchase orders as PDF, CSV or email; suppliers confirm the ship date from a link. Every Monday you get a ranked list of what to reorder, promote, fix or clear, with the money at stake.
 ```
 
 ## Feature list
 
 ```text
-Order plan: what to order, from whom, by when, and the cash needed each week
-A 90-day order calendar by week and supplier, with the cash needed per week
-Money at stake: sales at risk, lost to sell-outs, cash stuck, sold-out visits
-A weekly to-do list to reorder, push, fix and clear, ranked by money at stake
-Forecasts ignore sold-out days and use seasonality once 13 months exist
-Purchase orders per supplier as PDF, CSV or email, with a ship-date link
-Clear dead stock with a Shopify discount, created only after you confirm
-Monday email in your store's language, plus Slack and Shopify Flow alerts
-Season planner: order list with order-by dates and cash needed per week
-Pro: plan each warehouse and POS store, and create draft transfers in Shopify
-Ask Shopify Sidekick what to reorder, when stock runs out and what is on order
+Order plan by supplier: what to order, how many, and the last day to order
+Cash needed each week for every planned order over the next 13 weeks
+Purchase orders as PDF, CSV or email; suppliers confirm ship dates by link
+Forecasts skip sold-out days, and each one shows how it was worked out
+Monday to-do list: reorder, promote, fix or clear, ranked by money at stake
 ```
 
-Where each claim lives in the code:
+## Feature list — optional extras (only if the form takes 8)
+
+```text
+Clear dead stock with a Shopify discount, created only after you confirm
+Plan each warehouse and POS store, and draft stock transfers in Shopify
+Season plan: an order list with order-by dates and cash needed per week
+```
+
+Where each claim lives in the code (the plan each one needs is in the plan cards, never in the text):
 
 | Claim | Code |
 |---|---|
-| Order plan: what, from whom, by when, cash per week | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
-| 90-day order calendar, cash per week | Order plan → Next 90 days (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth) |
-| Four money numbers | `app/lib/engine/money-shared.ts`, Dashboard cards |
-| Ranked to-do list (reorder, push, fix, clear, bridge) | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs |
-| Sold-out days ignored; seasonality from 13 months | `app/lib/engine/rate-shared.ts`, `season-shared.ts` |
-| Purchase orders PDF / CSV / email, ship-date link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
-| Discount only after confirm | `app/services/clearance.server.ts` (Growth) |
-| Monday email translated, Slack, Flow | `app/services/monday.server.ts`, `slack.server.ts`, `flow.server.ts` (Slack, Flow: Growth) |
-| Season planner: order list, order-by dates, cash per week (also collection goals, accuracy scorecard) | Order plan → Season plan, `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
-| Plan per warehouse and POS store | `app/routes/app.settings_.locations.tsx` (roles), location switcher on Products and Order plan → Order now (Pro) |
-| Draft transfers in Shopify | Order plan → Order now → "Transfers: warehouse → stores" (shown when the store plans two or more locations), `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
-| Ask Sidekick (reorder, run-out dates, open orders) | `extensions/keha-inventory-sidekick` (`admin.app.tools.data`), `app/routes/api.sidekick.$tool.tsx` (read-only; each plan gets what its screens show) |
+| Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
+| Cash each week, next 13 weeks | Order plan → Next 90 days (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 12-week cash strip |
+| Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
+| Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
+| Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
+| Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
+| Plan each warehouse and POS store, draft transfers | `app/routes/app.settings_.locations.tsx` (roles), location switcher, `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
+| Season plan: order list, order-by dates, cash per week | Order plan → Season plan, `app/routes/app.planner.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks
-as "Store" in Settings → Locations.
+as "Store" in Settings → Locations. "The last day to order" is the order-by date: lead time
+(including transit) before the stock would run out.
 
 ## Search terms
 
 ```text
 inventory forecasting
-reorder
-dead stock
 purchase orders
-stock alerts
+inventory planning
+demand forecasting
+low stock alert
 ```
 
 ## Categories
 
-- Primary: the Partner Dashboard's inventory-management category (Store management → Inventory). **[Kanwar to confirm]** the exact category and tags shown in the form.
+- Primary: **Orders and shipping → Inventory → Inventory optimization.** **[Kanwar to confirm]**
+  the exact labels shown in the form.
 - No secondary category unless the form asks for one.
+
+## Integrations
+
+```text
+Slack
+Shopify Flow
+Shopify POS
+Shopify Sidekick
+```
+
+Only what the app itself works with (Slack incoming webhook, Flow triggers, POS locations in
+Settings → Locations, the Sidekick extension). No other Keha app is named anywhere in the listing
+(App Store requirement 4.4: don't reference your other apps).
 
 ## Pricing (plan cards)
 

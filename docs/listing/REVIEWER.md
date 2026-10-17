@@ -2,7 +2,9 @@
 
 Two parts: **A** is what Kanwar pastes into the Partner Dashboard "Testing instructions" field;
 **B** is the checklist for Kanwar before pressing Submit. Every step was written from the code
-on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro stores and for the Order plan; labels are the app's English strings.
+on 2026-10-16 (task 2.7) and updated on 2026-10-17 for the Planner and Pro stores, for the Order plan
+and for the UX pass (suppliers' transit time and minimums, locations on every plan, Monday "Order
+this week", Done in the action menu); labels are the app's English strings.
 
 ---
 
@@ -18,9 +20,9 @@ Monday email. It has no storefront part and stores no shopper data.
 
 1. Products with **Track quantity** on, at least one location that fulfils online orders.
 2. **Sales history:** the numbers come from Shopify's own analytics (ShopifyQL), so a brand-new
-   store with no orders shows the empty state "We need at least 14 days of sales to give
-   advice". To see numbers and actions, use our demo store below, or a test store with
-   at least 14 days of orders on tracked products.
+   store with no orders shows the empty state "Your first order plan needs 14 days of sales —
+   we'll show it here on <date>". To see numbers and actions, use our demo store below, or a
+   test store with at least 14 days of orders on tracked products.
 3. Shopify Flow (free app) installed, only to see the two Flow triggers.
 4. For the Pro features: at least two active locations — one with spare stock to act as the
    warehouse, one selling through Shopify POS as a store — with stock of the same products.
@@ -37,25 +39,28 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
 
 | Plan | Unlocks |
 |---|---|
-| Free | The four money numbers (refreshed monthly), the top 10 actions, the Monday email (top 10), and a read-only preview of the order plan: the 10 most urgent products with days left, order-by date and suggested quantity |
+| Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
 | Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 90 days with its CSV, Open orders), purchase orders (PDF / CSV / email) and the supplier confirmation link, the preorder bridge, Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
-| Pro | Everything in Growth, plus Settings → Locations (warehouse / store roles), the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
+| Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
 **Steps (Growth plan, store with history).**
 
 1. Install the app and pick **Growth** on Shopify's plan page. You land on the **Dashboard**.
    The app menu is **Dashboard · Order plan · Products · Settings · Plans**.
-2. The Dashboard says "First sync in progress" and shows "Reading your store…" with progress per
-   dataset (products, stock history, sales history, store visits). The newest 90 days are read
-   first; the numbers appear when they are in (minutes on a small store).
+2. The Dashboard says "First sync in progress" and shows the **Setup guide** first (Lead times,
+   Suppliers, Product costs, Monday email), then "Reading your store…" with progress per dataset
+   (products, stock history, sales history, store visits). The newest 90 days are read first; the
+   numbers appear when they are in (minutes on a small store), and the header then shows the
+   real update time.
 3. **Dashboard → Order this week** (first on the page): each supplier with orders due in the
    next 7 days (overdue ones included) — products, units, cash and order-by date — with
    **Review order**, which opens Order now for that supplier at the planned quantities. Below it,
    the cash needed for the next 12 weeks with **See the next 90 days**.
 4. **Dashboard → money cards:** open "How we got this" on any card to see the inputs. A dash (—)
    means not enough data, never zero.
-5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Bridge, Push, Fix, Clear). Each
-   row's "…" menu has Snooze, Dismiss and Done.
+5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Bridge, Promote, Fix, Clear).
+   Each row's "…" menu has **Mark as done**, **Snooze 7 days**, **Dismiss** and **Why** (Undo
+   appears after Done, Snooze and Dismiss).
 6. **Clear** tab → **Create discount** → a confirm dialog shows the products and the
    percentage → confirm. The discount appears in Shopify → Discounts. Nothing is created
    without this confirm.
@@ -63,7 +68,11 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
    product page shows 13 months of sales with sold-out days shaded and "How the forecast was
    built".
 8. **Settings → Suppliers:** add a supplier with an email address you can read and assign it
-   by vendor.
+   by vendor. Lead time is the total from placing the order to stock arriving; **Transit time**
+   is the part from ship date to arrival (sea or air freight). Under **More options**: the
+   minimum per item applies to each size/colour or to each product (split across sizes by
+   sales), a minimum order value in the supplier's currency, and — when that currency differs
+   from the store's — the exchange rate.
 9. **Order plan → Order now:** what to order today, grouped by supplier with order-by dates →
    **Create order** → confirm (a draft; nothing is sent) → on the order: **Download PDF**,
    **Download CSV**, **Email supplier** (or **Copy link**).
@@ -75,7 +84,9 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
     in the app **Order plan → Open orders** shows the confirmed date, and **Products** shows "On
     order with Keha".
 12. **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
-    incoming-webhook link → **Send a test message**.
+    incoming-webhook link → **Send a test message**. The Monday email opens with **Order this
+    week** (one line per supplier with units, cash and order-by date, **Review order**), and its
+    subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").
 13. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
     went dead** (Keha Inventory Intelligence). The app fires them from its hourly job, once per
     product per episode, so a test workflow may need up to an hour after a product qualifies.
@@ -87,7 +98,9 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
     (filled from the first graded month). On Growth a second scenario shows the Pro upgrade note.
 15. **Pro:** switch to **Pro** on Shopify's plan page (no charge on a test store), then:
     1. **Settings → Locations:** set one location's role to Warehouse and one to Store → **Save**.
-       Numbers per location appear after the next nightly refresh (03:00 store time).
+       Numbers per location appear after the next nightly refresh (03:00 store time). (On every
+       plan, each location's **Counts in supplier orders** toggle decides which stock is counted;
+       POS stores count unless left out.)
     2. **Products** and **Order plan → Order now:** use the **Location** switcher to see one store's own sales per
        day, days left and order advice.
     3. **Order now → Transfers: warehouse → stores** (shown once two or more locations are planned): adjust quantities → **Create transfer in
@@ -99,7 +112,8 @@ switch later: **Plans** in the app menu → **Choose plan** (opens Shopify's pla
     the Dashboard show a read-only preview of the 10 most urgent products (days left, order-by
     date, suggested quantity) with an **Upgrade** button; Next 90 days, Season plan and Open
     orders keep the tab bar and show what they do with an **Upgrade** button; the product page shows locked forecast fields;
-    Settings → Locations is read-only with an Upgrade banner.
+    Settings → Locations keeps the **Counts in supplier orders** toggle and shows the roles locked
+    with "Pro plan".
 17. **Uninstall:** all stored data for the store is deleted 48 hours later (immediately on
     Shopify's shop/redact).
 
@@ -120,7 +134,7 @@ gets what its own screens show (on Free: the 10 most urgent products of the orde
 |---|---|
 | `read_products` | Products and variants (titles, SKUs, vendors, collections, prices, costs) — what the store sells. |
 | `read_inventory` | Stock per location now and per day — in stock, running low, sold out. |
-| `read_locations` | Which locations fulfil online orders (the online stock pool). |
+| `read_locations` | The store's locations: which are active and which fulfil online orders, so their stock is counted in supplier orders. |
 | `read_locales` | The store's primary language, so owner emails, the supplier page and the admin open in it. |
 | `read_reports` | ShopifyQL analytics: daily sales totals per variant / location / channel, stock history, sessions per landing page. |
 | `read_inventory_purchase_orders` | Shopify purchase orders, so stock already ordered counts as incoming. |

@@ -123,17 +123,17 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | Pricing only in Pricing details | 4.2.3 | ✅ | `tests/listing.test.ts:60` (no price in listing text) | — |
 | "Merchant must have online store" only for storefront apps | 4.3.1 | 🧑 | No theme extension | Leave it unticked |
 | Languages = merchant UI languages | 4.3.2 | 🧑 | 8 languages (`app/lib/i18n.tsx:36`, `tests/i18n-coverage.test.ts`) | Owner action 9 |
-| No stats, unsubstantiated claims, "the first / best / only" in text | 4.3.3 | ✅ | `tests/listing.test.ts:60` (no `best`, `#1`, guarantee, AI, price); text read 2026-10-17: no "the first", no "the only" | Optional: add `the first` / `the only` to that test's regex (file owned by the listing builder) |
+| No stats, unsubstantiated claims, "the first / best / only" in text | 4.3.3 | ✅ | `tests/listing.test.ts` "makes no price, statistic, guarantee, AI or 'first / only' claim" (no `best` except "best sellers", `#1`, guarantee, AI, price, `the first`, `the only`) and "names no plan in the text" | — |
 | Same for images | 4.3.4 | 🧑 | `SCREENSHOTS.md` (feature image has no numbers) | Owner action 10 |
-| Accurate tags | 4.3.5 | 🧑 | `LISTING.md` → Categories | Owner action 9 |
+| Accurate tags | 4.3.5 | 🧑 | `LISTING.md` → Categories (Orders and shipping → Inventory → Inventory optimization), Integrations, Search terms | Owner action 9 |
 | No reviews / testimonials in images or text | 4.3.6 – 4.3.7 | ✅ / 🧑 | None in `LISTING.md` | Keep screenshots free of them |
 | Geographic or API-permission requirements stated | 4.3.8 | ⚠️ | No geographic limit. Pro features need a POS location; Flow triggers need Shopify Flow (both in `REVIEWER.md`) | Live: confirm ShopifyQL `sales` / `sessions` answer on a Basic-plan store; if a dataset is plan-limited, say so in the details. Not verified here |
-| App card subtitle: concise value, no keywords, no stats | 4.4.1 | ✅ | "Know what to reorder, push, fix and clear, every Monday" (`LISTING.md`) | — |
+| App card subtitle: concise value, no keywords, no stats | 4.4.1 | ✅ | "Know what to order, from whom, by when and the cash it takes" (`LISTING.md`, ≤ 60 in `tests/listing.test.ts`) | — |
 | App details explain functionality, no keyword stuffing | 4.4.2 | ✅ | ≤ 500 chars, prose (`tests/listing.test.ts:45`) | — |
 | No Shopify brand misuse in graphics | 4.4.3 | 🧑 | `SCREENSHOTS.md` (no Shopify logo) | Owner action 10 |
 | Images show the real UI, no browser chrome / logo-only | 4.4.4 | 🧑 | `SCREENSHOTS.md` shot list | Owner action 10 |
-| Each image unique | 4.4.5 | 🧑 | 5–6 distinct screens planned | Owner action 10 |
-| Don't reference your other apps in the listing | 4.4 (intro) | ✅ | `LISTING.md` never names Keha Preorder; "Preorder bridge" works without it (back-in-stock how-to) | — |
+| Each image unique | 4.4.5 | 🧑 | 6 distinct screens planned (`SCREENSHOTS.md` storyboard: Dashboard, Order now, Next 90 days, forecast, supplier page, Pro stores) | Owner action 10 |
+| Don't reference your other apps in the listing | 4.4 (intro) | ✅ | `LISTING.md` never names another Keha app (`tests/listing.test.ts` "never names another Keha app"); the Integrations field lists Slack, Shopify Flow, Shopify POS, Shopify Sidekick only; "Preorder bridge" works without any other app (back-in-stock how-to) | — |
 | Sales channel classification | 4.5.1 – 4.5.2 | ✅ | Not a sales channel; no channel config in the tomls | — |
 | Demo screencast in English, step by step | 4.5.3 | 🧑 | Script: `SCREENCAST.md` | Owner action 11 |
 | Test credentials in testing instructions | 4.5.4 | 🧑 | `REVIEWER.md` part A has **[Kanwar to provide]** placeholders | Owner action 8 |
@@ -189,7 +189,7 @@ None of these blocks App Store approval; all are Built for Shopify items.
    App Bridge contextual save bar (`<form data-save-bar …>`) on the settings forms (BFS 4.1.5).
 3. `app/root.tsx` + `app/routes/app.tsx` — App Bridge script as the first element of `<head>` (BFS 3.1.1).
 4. Sidekick extension (when it merges) — 2.2.8 / 2.2.9 rows above.
-5. `tests/listing.test.ts:63` — optionally also ban `the first` / `the only` (4.3.3 names them).
+5. ~~`tests/listing.test.ts` — also ban `the first` / `the only`~~ — done 2026-10-17 (4.3.3).
 
 ## Summary
 

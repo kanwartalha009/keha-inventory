@@ -15,7 +15,7 @@ channel connected, the Monday email of the latest Monday in the inbox.
 
 | Time | On screen | Voice-over |
 |---|---|---|
-| 0:00 | Shopify admin, App Store listing, click **Install** | "This is Keha Inventory Intelligence. It plans your stock orders: what to order, from which supplier, by when, and the cash it takes. Every Monday it also ranks what to reorder, push, fix or clear. Let's install it." |
+| 0:00 | Shopify admin, App Store listing, click **Install** | "This is Keha Inventory Intelligence. It plans your stock orders: what to order, from which supplier, by when, and the cash it takes. Every Monday it also ranks what to reorder, promote, fix or clear. Let's install it." |
 | 0:20 | OAuth screen: the permissions list | "It asks to read products, stock, locations and Shopify's analytics reports. It never asks for orders or customers: sales come in as daily totals per product, so no shopper data is stored. It can create a discount, or on Pro a draft stock transfer, but only when you press confirm." |
 | 0:45 | Shopify's plan page: Free / Growth / Pro; pick **Growth** (test store) | "Pricing is on Shopify's own plan page. Free shows the money, the top ten actions and a read-only preview of the ten most urgent orders. I'll pick Growth for the full order plan." |
 | 1:00 | Dashboard: "First sync in progress", "Reading your store…" with a progress bar per dataset | "There's nothing to set up. Keha reads your products, stock history, sales history and store visits. The newest ninety days come first, so numbers appear quickly; older months fill in behind." |
