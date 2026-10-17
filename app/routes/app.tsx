@@ -113,14 +113,16 @@ function Content({ plan }: { plan: PlanCode | "none" }) {
 
 function AppNav() {
   const { t } = useLocale();
-  // Spec §2: five screens (Home, Products, Reorder, Planner, Settings) + Plans.
-  // Each screen joins the nav in the task that builds it.
+  // Kanwar 2026-10-17: Dashboard · Order plan · Products · Settings · Plans. "Order plan" holds
+  // the tabs Order now (/app/reorder), Next 90 days, Season plan (/app/planner) and Open orders.
+  // Highlighting is App Bridge's (by URL path): the /app/reorder/* tabs share the link's path;
+  // Season plan keeps its old /app/planner URL (links already point at it), so the admin may not
+  // highlight "Order plan" there — not verifiable outside the admin.
   return (
     <s-app-nav>
-      <s-link href="/app">{t("Home")}</s-link>
+      <s-link href="/app">{t("Dashboard")}</s-link>
+      <s-link href="/app/reorder">{t("Order plan")}</s-link>
       <s-link href="/app/products">{t("Products")}</s-link>
-      <s-link href="/app/reorder">{t("Reorder")}</s-link>
-      <s-link href="/app/planner">{t("Planner")}</s-link>
       <s-link href="/app/settings">{t("Settings")}</s-link>
       <s-link href="/app/plans">{t("Plans")}</s-link>
     </s-app-nav>

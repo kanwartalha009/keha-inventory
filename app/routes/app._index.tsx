@@ -1,11 +1,16 @@
 /**
- * Home (/app) — spec §5.1, §4 J1. Money at stake (4 cards, each with "How we
- * got this"), the setup guide (ticked from real state), sync progress per
- * dataset and the empty states. The loader reads only the database
- * (models/dashboard.server.ts, models/actions.server.ts). "This week's
- * actions" (task 2.3) show once the store is ready; the only Shopify call is
- * the cached, time-boxed "is Keha Preorder installed?" check, made only when a
- * Growth store has a Bridge row to show.
+ * Dashboard (/app) — spec §5.1, §4 J1; led by the order plan (Kanwar 2026-10-17).
+ *
+ *  1. "Order this week" from the forward order plan (models/order-plan.server): per supplier
+ *     the products, units, cash and earliest order-by date, with "Review order" (Order now with
+ *     those lines at the planned quantities, that supplier only); then a 12-week cash strip
+ *     linking to Order plan · Next 90 days. Free: the read-only top-10 preview and the teaching
+ *     lock instead (suppliers, purchase orders and the calendar are Growth).
+ *  2. Money at stake (4 cards, each with "How we got this").
+ *  3. The setup guide while incomplete, sync progress per dataset and the empty states.
+ *  4. "This week's actions" (task 2.3) once the store is ready.
+ * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
+ * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
  */
 import type { ReactNode } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -14,6 +19,19 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { planFor } from "../services/entitlements.server";
 import { getHomeData } from "../models/dashboard.server";
+import { loadOrderPlan } from "../models/order-plan.server";
+import { CantPlan, CashStrip, PreviewLock, PreviewTable } from "../components/order-plan";
+import { hasFeature } from "../lib/plan-shared";
+import { cashTotals } from "../lib/engine/forward-plan-shared";
+import {
+  orderLink,
+  planWeeks,
+  previewRows,
+  supplierName,
+  thisWeek,
+  type OrderPlanData,
+  type PreviewRow,
+} from "../lib/order-plan-shared";
 import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
@@ -29,24 +47,38 @@ import {
   formatCount,
   formatDay,
   formatPercent,
-  formatUpdatedAt,
   moneyCardTitle,
+  updatedLabel,
   type Fmt,
   type HomeData,
 } from "../lib/dashboard-shared";
 
-export type HomeLoaderData = HomeData & { actions?: ActionListView | null };
+/** Growth / Pro: the whole forward plan; Free: only the read-only top 10 (nothing more is sent). */
+export type DashboardOrderPlan = { kind: "full"; plan: OrderPlanData } | { kind: "preview"; rows: PreviewRow[] };
+
+export type HomeLoaderData = HomeData & {
+  actions?: ActionListView | null;
+  orderPlan?: DashboardOrderPlan | null;
+  /** Server clock for the "Updated … today" line. */
+  renderedAt?: string;
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
   const { admin, session } = await authenticate.admin(request);
   const plan = await planFor(session.shop);
   const now = new Date();
   const home = await getHomeData(session.shop, plan, now);
-  const actions =
-    home.state === "ready"
-      ? await getActionList(session.shop, plan, now, { preorderInstalled: () => kehaPreorderInstalled(admin, session.shop) })
-      : null;
-  return { ...home, actions };
+  const ready = home.state === "ready";
+  const [actions, forward] = await Promise.all([
+    ready ? getActionList(session.shop, plan, now, { preorderInstalled: () => kehaPreorderInstalled(admin, session.shop) }) : null,
+    ready ? loadOrderPlan(session.shop, now) : null,
+  ]);
+  const orderPlan: DashboardOrderPlan | null = forward
+    ? hasFeature(plan, "reorderPlan")
+      ? { kind: "full", plan: forward }
+      : { kind: "preview", rows: previewRows(forward) }
+    : null;
+  return { ...home, actions, orderPlan, renderedAt: now.toISOString() };
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -57,11 +89,13 @@ const SHOPIFY_PRODUCTS = "shopify://admin/products";
 export default function Home() {
   const { t, locale } = useLocale();
   const data = useLoaderData<typeof loader>() as HomeLoaderData;
-  const updated = formatUpdatedAt(data.lastNightlyAt, data.timezone, locale);
+  const updated = updatedLabel(data.lastNightlyAt, data.timezone, locale, data.renderedAt ? new Date(data.renderedAt) : new Date(), t);
 
   return (
-    <AppPage heading={data.storeName || t("Home")} intro={fill(t("Data updated {time}"), { time: updated })}>
+    <AppPage heading={t("Dashboard")} intro={updated}>
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
+
+      <OrderThisWeek data={data} />
 
       {data.state === "ready" && <MoneyAtStake data={data} />}
 
@@ -90,6 +124,129 @@ export default function Home() {
 
       {!data.setup.allDone && <SetupGuide data={data} />}
     </AppPage>
+  );
+}
+
+/** The lead block: what to order this week, by supplier, and the cash needed over 12 weeks. */
+function OrderThisWeek({ data }: { data: HomeLoaderData }) {
+  const { t } = useLocale();
+  const heading = t("Order this week");
+  if (data.state === "syncing") {
+    return (
+      <s-section heading={heading}>
+        <s-paragraph color="subdued">{t("Your order plan appears here once your products, stock and sales are read.")}</s-paragraph>
+      </s-section>
+    );
+  }
+  const op = data.orderPlan;
+  if (data.state !== "ready" || !op) return null;
+  if (op.kind === "preview") {
+    return (
+      <s-section heading={heading}>
+        <s-stack direction="block" gap="base">
+          <s-paragraph color="subdued">{t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}</s-paragraph>
+          <PreviewTable rows={op.rows} />
+          <PreviewLock />
+        </s-stack>
+      </s-section>
+    );
+  }
+  return <OrderPlanBlock plan={op.plan} heading={heading} />;
+}
+
+function OrderPlanBlock({ plan, heading }: { plan: OrderPlanData; heading: string }) {
+  const { t, locale } = useLocale();
+  const link = useLinkProps();
+  const week = thisWeek(plan);
+  const weeks = planWeeks(plan, 12);
+  const strip = cashTotals(weeks.flatMap((w) => w.suppliers.flatMap((s) => s.events)));
+  const money = (v: number | null) => formatAmount(v, plan.currency, locale);
+  return (
+    <s-section heading={heading}>
+      <s-stack direction="block" gap="base">
+        {week.suppliers.length === 0 ? (
+          <s-paragraph>
+            {week.next
+              ? fill(t("Nothing to order this week. Next order: {supplier} by {date}."), {
+                  supplier: supplierName(plan, week.next.supplierKey, t),
+                  date: formatDay(week.next.orderBy, locale),
+                })
+              : t("No orders needed in the next 90 days.")}
+          </s-paragraph>
+        ) : (
+          <>
+            <s-text fontWeight="medium">
+              {fill(t("{units} units from {suppliers} · {cash}"), {
+                units: formatCount(week.totals.units, locale),
+                suppliers: fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) }),
+                cash: money(week.totals.cash),
+              })}
+            </s-text>
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
+                <s-table-header listSlot="labeled">{t("Products")}</s-table-header>
+                <s-table-header listSlot="labeled">{t("Units")}</s-table-header>
+                <s-table-header listSlot="labeled">{t("Cash needed")}</s-table-header>
+                <s-table-header listSlot="labeled">{t("Order by")}</s-table-header>
+                <s-table-header>{t("Order")}</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {week.suppliers.map((s) => (
+                  <s-table-row key={s.supplierKey}>
+                    <s-table-cell>
+                      <s-text fontWeight="medium">{supplierName(plan, s.supplierKey, t)}</s-text>
+                    </s-table-cell>
+                    <s-table-cell>{formatCount(s.products, locale)}</s-table-cell>
+                    <s-table-cell>{formatCount(s.units, locale)}</s-table-cell>
+                    <s-table-cell>
+                      <s-stack direction="block" gap="none">
+                        <span>{money(s.cash)}</span>
+                        {s.missingCost > 0 && (
+                          <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(s.missingCost, locale) })}</s-text>
+                        )}
+                      </s-stack>
+                    </s-table-cell>
+                    <s-table-cell>
+                      <s-stack direction="inline" gap="small-200" alignItems="center">
+                        <span>{formatDay(s.overdue ? (s.events.find((e) => e.overdue)?.deadline ?? s.orderByFrom) : s.orderByFrom, locale)}</span>
+                        {s.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+                      </s-stack>
+                    </s-table-cell>
+                    <s-table-cell>
+                      <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
+                        {t("Review order")}
+                      </s-button>
+                    </s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
+          </>
+        )}
+        {!plan.suppliersSetUp && (
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text color="subdued">{t("Grouped by vendor until you add your suppliers.")}</s-text>
+            <s-link {...link("/app/settings/suppliers")}>{t("Add suppliers")}</s-link>
+          </s-stack>
+        )}
+        <CantPlan plan={plan} />
+        {strip.lines > 0 && (
+          <s-stack direction="block" gap="small-200">
+            <div className="keha-row-between">
+              <s-text fontWeight="medium">{fill(t("Cash needed, next 12 weeks: {cash}"), { cash: money(strip.cash) })}</s-text>
+              <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
+            </div>
+            <CashStrip weeks={weeks} currency={plan.currency} compact />
+            {strip.missingCost > 0 && (
+              <s-text color="subdued">
+                {fill(t("{n} lines without a cost price are not in the cash totals."), { n: formatCount(strip.missingCost, locale) })}
+              </s-text>
+            )}
+          </s-stack>
+        )}
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -187,13 +344,15 @@ function SyncProgress({ data }: { data: HomeData }) {
         </s-paragraph>
         {data.sync.datasets.map((d) => {
           const label = datasetLabel(d.key, t);
+          // Nothing read yet: say so instead of drawing an empty bar.
+          const waiting = d.percent <= 0 && !d.failed;
           return (
             <s-stack key={d.key} direction="block" gap="small-200">
               <div className="keha-row-between">
                 <s-text>{label}</s-text>
-                <s-text color="subdued">{formatPercent(d.percent / 100, locale)}</s-text>
+                <s-text color="subdued">{waiting ? t("Waiting to start") : formatPercent(d.percent / 100, locale)}</s-text>
               </div>
-              <s-progress value={d.percent} max={100} accessibilityLabel={label} tone={d.failed ? "critical" : "auto"} />
+              {!waiting && <s-progress value={d.percent} max={100} accessibilityLabel={label} tone={d.failed ? "critical" : "auto"} />}
               {d.failed && <s-text color="subdued">{t("We hit a problem reading this. We're retrying automatically.")}</s-text>}
             </s-stack>
           );

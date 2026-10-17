@@ -164,9 +164,14 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
   const base = rate * (finite(input.trend) ? input.trend : 1) * (finite(input.plan) ? input.plan : 1);
   const safety = finite(input.safety) ? Math.max(0, input.safety) : null;
   const notCounted = Math.max(0, finite(input.notCounted) ? input.notCounted : 0);
-  // No advice at all (no rate / no safety): nothing to project.
-  if (base <= 0 || safety === null || (input.need === null && !finite(input.orderQty))) {
-    return { skip: skip ?? "no_data", deadline: null, needNow: null, orders: [] };
+  const needNow = skip ? null : netNeed(input.need, input.orderQty, notCounted);
+  // Nothing to project with (no sales rate, or a row without safety stock): today's order
+  // only, from the stored need, as Order now — no order-by date, no later orders.
+  if (base <= 0 || safety === null) {
+    const orders: ForwardOrder[] = [];
+    const qty = needNow !== null && needNow > EPS && N > 0 ? lineQuantity(needNow, input.pack, input.moq) : 0;
+    if (qty > 0) orders.push({ day: 0, orderBy: today, arrives: addDays(today, L), qty, need: needNow!, overdue: false, deadline: null });
+    return { skip, deadline: null, needNow, orders };
   }
 
   // Demand per day and its prefix sums (P[d] = demand over days 0 … d − 1).
@@ -218,9 +223,9 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
     deadline = addDays(today, found);
   }
 
-  if (skip) return { skip, deadline, needNow: null, orders: [] };
-
   const orders: ForwardOrder[] = [];
+  if (skip) return { skip, deadline, needNow: null, orders };
+
   const place = (t: number, need: number, overdue: boolean, dl: DayKey | null) => {
     const qty = lineQuantity(need, input.pack, input.moq);
     if (!(qty > 0)) return;
@@ -231,7 +236,7 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
   };
 
   // Day 0: the Reorder screen's rule.
-  const needNow = netNeed(input.need, input.orderQty, notCounted);
+  if (needNow === null) return { skip, deadline, needNow, orders };
   if (N > 0 && needNow > EPS) place(0, needNow, deadline !== null && deadline < today, deadline);
 
   // Later days: order when tomorrow would be too late.

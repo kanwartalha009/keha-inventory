@@ -29,6 +29,8 @@ import { readSettings } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, poArrival, type PoLine } from "../lib/supplier-shared";
+import { forwardInputFromMetric, planVariant } from "../lib/engine/forward-plan-shared";
+import { todayIn } from "../lib/dashboard-shared";
 import {
   buildReorderGroups,
   type ReorderGroup,
@@ -216,11 +218,12 @@ export async function loadReorder(
   selected: string[] = [],
   scope: string = METRIC_SCOPE,
   planned: ReadonlyMap<string, number> = new Map(),
+  now: Date = new Date(),
 ): Promise<ReorderData> {
   const basics = await shopBasics(shop);
   const metrics = await prisma.variantMetric.findMany({
     where: { shop, scope, OR: [{ orderQty: { gt: 0 } }, ...(selected.length ? [{ variantId: { in: selected } }] : [])] },
-    select: { variantId: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true, inputs: true },
+    select: { variantId: true, status: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, rate: true, inputs: true },
   });
   const ids = [...new Set([...metrics.map((m) => m.variantId), ...selected])];
   const [variants, suppliers, onOrder, stock, open] = await Promise.all([
@@ -249,19 +252,29 @@ export async function loadReorder(
     scope === METRIC_SCOPE ? poolStock(shop, ids) : locationStock(shop, ids, scope),
     openOrders(shop),
   ]);
+  // One rule with the forward order plan (engine/forward-plan-shared): a variant it can't plan
+  // (dead, not enough data, no sales) isn't suggested; the online view shows its order-by date,
+  // with the open Keha units compute didn't count yet (location views keep the stored date).
+  const today = todayIn(basics.timezone, now);
   const metricMap = new Map<string, ReorderMetricIn>(
-    metrics.map((m) => [
-      m.variantId,
-      {
-        orderQty: m.orderQty,
-        orderBy: dayOf(m.orderBy),
-        daysLeft: m.daysLeft,
-        neverRunsOut: m.neverRunsOut,
-        rate: m.rate,
-        kehaCounted: kehaCountedOf(m.inputs),
-        need: needOf(m.inputs),
-      },
-    ]),
+    metrics.map((m) => {
+      const kehaCounted = kehaCountedOf(m.inputs);
+      const notCounted = Math.max(0, (onOrder.get(m.variantId)?.qty ?? 0) - kehaCounted);
+      const fwd = planVariant(forwardInputFromMetric(m, { today, pack: null, moq: null, notCounted, days: 0 }));
+      return [
+        m.variantId,
+        {
+          orderQty: m.orderQty,
+          orderBy: scope === METRIC_SCOPE ? fwd.deadline : dayOf(m.orderBy),
+          daysLeft: m.daysLeft,
+          neverRunsOut: m.neverRunsOut,
+          rate: m.rate,
+          kehaCounted,
+          need: needOf(m.inputs),
+          plannable: fwd.skip === null,
+        },
+      ];
+    }),
   );
   const variantRows: ReorderVariantIn[] = variants.map((v) => ({ ...v, cost: num(v.cost) }));
   const known = new Set(variantRows.map((v) => v.id));

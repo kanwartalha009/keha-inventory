@@ -1,6 +1,7 @@
 /**
- * Planner (/app/planner) — spec §4 J6, §5.4, §7.8; task 2.5. Growth (`planner`; the page is
- * gated in PAGE_FEATURE and every action checks the plan on the server too).
+ * Order plan · Season plan (/app/planner) — spec §4 J6, §5.4, §7.8; task 2.5. Growth (`planner`;
+ * every action checks the plan on the server too). One of the Order plan tabs (Kanwar
+ * 2026-10-17): below Growth the tab bar stays and the tab shows what it does (ORDER_PLAN_PATHS).
  *
  *  - Scenarios: an event (Black Friday, Christmas, custom dates), a period and a target (grow
  *    X %, a revenue target, or keep pace). Growth keeps 1 scenario, Pro unlimited — checked on
@@ -34,7 +35,9 @@ import {
 import { plannerShop } from "../services/planner.server";
 import { AppPage, FormCard, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
-import { LockedPage, featureCopy, planTag } from "../components/plan";
+import { featureCopy, planTag } from "../components/plan";
+import { OrderPlanTabs } from "../components/order-plan-tabs";
+import { TabLock } from "../components/order-plan";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, formatUpdatedAt } from "../lib/dashboard-shared";
@@ -160,11 +163,18 @@ export default function Planner() {
   const { t } = useLocale();
   const data = useLoaderData<typeof loader>() as PlannerData;
   const navigate = useNavigate();
-  if (!data.enabled) return <LockedPage feature="planner" />;
+  if (!data.enabled) {
+    return (
+      <AppPage heading={t("Order plan")}>
+        <OrderPlanTabs current="season" />
+        <TabLock feature="planner" />
+      </AppPage>
+    );
+  }
   const selected = data.selected;
   return (
     <AppPage
-      heading={t("Planner")}
+      heading={t("Order plan")}
       intro={t("Plan a season or a growth target: what to order, by when, and the cash you need each week.")}
       primaryAction={
         data.canAdd && !data.editing ? (
@@ -174,6 +184,7 @@ export default function Planner() {
         ) : undefined
       }
     >
+      <OrderPlanTabs current="season" />
       {!data.history.enough && <s-banner tone="warning">{t("Based on the last 90 days only; we don't have last year's sales yet.")}</s-banner>}
       {data.editing && <ScenarioEditor key={data.editing.id ?? "new"} editing={data.editing} today={data.today} />}
       <Scenarios data={data} />

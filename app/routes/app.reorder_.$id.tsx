@@ -224,7 +224,7 @@ function OrderView({ data }: { data: OrderPageView }) {
   return (
     <AppPage
       heading={order.number}
-      breadcrumb={{ label: t("Reorder"), to: "/app/reorder" }}
+      breadcrumb={{ label: t("Open orders"), to: "/app/reorder/orders" }}
       meta={
         <s-stack direction="inline" gap="small-200">
           <s-badge tone={poStatusTone(order.status)}>{poStatusLabel(order.status, t)}</s-badge>

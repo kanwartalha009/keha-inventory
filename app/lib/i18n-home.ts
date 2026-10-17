@@ -8,7 +8,6 @@ import type { Tr } from "./i18n";
 
 export const HOME_TR: Record<string, Tr> = {
   // ---- Header and banners ----
-  "Data updated {time}": { es: "Datos actualizados: {time}", fr: "Données mises à jour : {time}", de: "Daten aktualisiert: {time}", it: "Dati aggiornati: {time}", pt: "Dados atualizados: {time}", nl: "Gegevens bijgewerkt: {time}", pl: "Dane zaktualizowane: {time}" },
   "Data is late — no action needed, we're retrying.": { es: "Los datos llegan con retraso; no tienes que hacer nada, lo estamos reintentando.", fr: "Les données sont en retard — aucune action requise, nous réessayons.", de: "Die Daten sind verspätet – du musst nichts tun, wir versuchen es erneut.", it: "I dati sono in ritardo — non devi fare nulla, stiamo riprovando.", pt: "Os dados estão atrasados — não precisa de fazer nada, estamos a tentar novamente.", nl: "De gegevens zijn laat — je hoeft niets te doen, we proberen het opnieuw.", pl: "Dane się spóźniają — nic nie musisz robić, ponawiamy próbę." },
 
   // ---- Money at stake ----

@@ -45,6 +45,8 @@ describe("spec §3 feature table", () => {
     fullActionList: "growth",
     forecast: "growth",
     reorderPlan: "growth",
+    // Kanwar 2026-10-17: the 90-day order calendar (Order plan · Next 90 days).
+    orderCalendar: "growth",
     suppliers: "growth",
     poExport: "growth",
     supplierConfirm: "growth",
@@ -89,8 +91,11 @@ describe("spec §3 feature table", () => {
 });
 
 describe("locked pages", () => {
-  it("locks Reorder and Planner on Free only", () => {
-    expect(lockedPageFeature("/app/reorder", "free")).toBe("reorderPlan");
+  it("locks a purchase order page on Free; the Order plan tabs teach inside the tab instead", () => {
+    // Kanwar 2026-10-17: Free sees Order now as a read-only preview; the other tabs keep the tab bar.
+    for (const path of ["/app/reorder", "/app/reorder/", "/app/reorder/calendar", "/app/reorder/orders", "/app/planner"])
+      expect(lockedPageFeature(path, "free"), path).toBeNull();
+    expect(lockedPageFeature("/app/reorder/po_123", "free")).toBe("reorderPlan");
     expect(lockedPageFeature("/app/planner/new", "none")).toBe("planner");
     expect(lockedPageFeature("/app/reorder", "growth")).toBeNull();
     expect(lockedPageFeature("/app/products", "free")).toBeNull();

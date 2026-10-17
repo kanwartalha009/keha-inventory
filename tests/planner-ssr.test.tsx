@@ -109,7 +109,10 @@ function data(over: Partial<PlannerData> = {}): PlannerData {
 describe("Planner page", () => {
   it("Growth with a scenario: summary, cash per week, order list, demand per collection, popovers", () => {
     const html = render("/app/planner", data());
-    expect(html).toContain("Planner");
+    // One of the Order plan tabs (Kanwar 2026-10-17): the tab bar, Season plan selected.
+    expect(html).toContain('heading="Order plan"');
+    for (const tab of ["Order now", "Next 90 days", "Season plan", "Open orders"]) expect(html).toContain(tab);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Season plan</);
     expect(html).toContain("Based on the last 90 days only; we don&#x27;t have last year&#x27;s sales yet.");
     expect(html).toContain("Black Friday 2026");
     expect(html).toContain("Calculated Oct 16, 10:00 AM");
@@ -164,9 +167,11 @@ describe("Planner page", () => {
     expect(html).toContain("New scenario");
   });
 
-  it("Free: the locked teaching page", () => {
+  it("Free: the tab bar stays, the tab teaches (what it does + See plans)", () => {
     const html = render("/app/planner", { ...data(), enabled: false, plan: "free" });
-    expect(html).toContain("Planner · Growth plan");
+    expect(html).toContain("Season plan · Growth plan");
+    expect(html).toContain("keha-tabs");
+    expect(html).toContain('href="/app/plans?upgrade=planner"');
     expect(html).toContain("Plan a season or a growth target");
     expect(html).toContain("See plans");
     expect(html).not.toContain("Scenarios");

@@ -14,8 +14,11 @@ vi.mock("../app/services/entitlements.server", () => ({ planFor: vi.fn(), getEnt
 vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn() }));
 vi.mock("../app/models/actions.server", () => ({ getActionList: vi.fn() }));
 vi.mock("../app/services/keha-preorder.server", () => ({ kehaPreorderInstalled: vi.fn() }));
+vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: vi.fn() }));
 
-import Home, { type HomeLoaderData } from "../app/routes/app._index";
+import Home, { loader, type HomeLoaderData } from "../app/routes/app._index";
+import { orderPlanFixture } from "./order-plan-fixtures";
+import { previewRows } from "../app/lib/order-plan-shared";
 import { buildHome, type HomeRaw } from "../app/lib/dashboard-shared";
 import type { PlanCode } from "../app/lib/plan-shared";
 import type { ActionListView } from "../app/lib/action-list-shared";
@@ -38,9 +41,17 @@ describe("Home", () => {
     const html = home({ shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 });
     expect(html).toContain("Reading your store…");
     for (const label of ["Products", "Stock history", "Sales history", "Store visits"]) expect(html).toContain(label);
-    expect(count(html, "<s-progress")).toBe(4);
+    // Nothing read yet: each dataset says "Waiting to start" instead of an empty bar.
+    expect(count(html, "<s-progress")).toBe(0);
+    expect(count(html, "Waiting to start")).toBe(4);
     expect(html).not.toContain("Money at stake");
-    expect(html).toContain("Data updated —");
+    // Header: a quiet subtitle, never a lone dash.
+    expect(html).toContain('heading="Dashboard"');
+    expect(html).toContain("First sync in progress");
+    expect(html).not.toContain("—</span></div>");
+    // The order block waits for the sync.
+    expect(html).toContain("Order this week");
+    expect(html).toContain("Your order plan appears here once your products, stock and sales are read.");
     expect(html).toContain("Setup guide");
   });
 
@@ -67,8 +78,8 @@ describe("Home", () => {
     expect(html).toContain("Older months are still loading.");
     expect(count(html, "<s-progress")).toBe(4);
     // Header: store name + update time in the store's time zone (Madrid = UTC+2).
-    expect(html).toContain("acme");
-    expect(html).toContain("06:10");
+    expect(html).toContain('heading="Dashboard"');
+    expect(html).toContain("Updated Oct 16, 06:10");
     expect(html).not.toContain("Data is late");
   });
 
@@ -231,10 +242,87 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(html).not.toContain('role="tablist"');
   });
 
+  it("no order block numbers before the store is ready", () => {
+    const raw = homeRaw();
+    raw.salesDays = 3;
+    const html = render({ ...buildHome(raw, "growth", NOW), orderPlan: { kind: "full", plan: orderPlanFixture() } });
+    expect(html).not.toContain("Review order");
+  });
+
   it("no action list before the store is ready", () => {
     const raw = homeRaw();
     raw.salesDays = 3;
     const html = render({ ...buildHome(raw, "growth", NOW), actions: actionList("growth") });
     expect(html).not.toContain("This week&#x27;s actions");
+  });
+});
+
+describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
+  const ready = (plan: PlanCode = "growth") => buildHome(homeRaw(), plan, NOW);
+
+  it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 12-week strip", () => {
+    const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
+    expect(html.indexOf("Order this week")).toBeLessThan(html.indexOf("Money at stake"));
+    expect(html).toContain("Lisbon Linen");
+    expect(html).toContain("Overdue");
+    expect(html).toContain("Review order");
+    expect(html).toMatch(/href="\/app\/reorder\?variants=1:61,2:\d+&amp;supplier=supplier:s1"/);
+    expect(html).toMatch(/[\d,]+ units from 1 supplier · €[\d,]+/);
+    expect(html).toMatch(/Cash needed, next 12 weeks: €[\d,]+/);
+    expect(html).toContain("keha-orderplan-strip");
+    expect(html).toContain('href="/app/reorder/calendar"');
+    expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
+  });
+
+  it("nothing due this week: names the next order; nothing at all: says so", () => {
+    const fx = orderPlanFixture();
+    const later = { ...fx, events: fx.events.filter((e) => e.orderBy > "2026-10-22") };
+    const next = render({ ...ready(), orderPlan: { kind: "full", plan: later } });
+    expect(next).toMatch(/Nothing to order this week\. Next order: (Lisbon Linen|Cap Co|Acme) by [A-Z][a-z]{2} \d+, 2026\./);
+    const none = render({ ...ready(), orderPlan: { kind: "full", plan: { ...fx, events: [] } } });
+    expect(none).toContain("No orders needed in the next 90 days.");
+    expect(none).not.toContain("keha-orderplan-strip");
+  });
+
+  it("no suppliers yet: still grouped (by vendor), with a one-line nudge to Settings → Suppliers", () => {
+    const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture({ suppliersSetUp: false }) } });
+    expect(html).toContain("Grouped by vendor until you add your suppliers.");
+    expect(html).toContain('href="/app/settings/suppliers"');
+    expect(html).toContain("Review order");
+  });
+
+  it("Free: the read-only top 10 and the teaching lock — no suppliers, buttons or calendar", () => {
+    const rows = previewRows(orderPlanFixture());
+    const html = render({ ...ready("free"), orderPlan: { kind: "preview", rows } });
+    expect(html).toContain("Linen shirt");
+    expect(html).toContain("Group by supplier, send purchase orders, see the next 90 days");
+    expect(html).not.toContain("Review order");
+    expect(html).not.toContain("keha-orderplan-strip");
+    expect(html).not.toContain("Lisbon Linen");
+  });
+});
+
+describe("Dashboard loader", () => {
+  it("Growth and Pro get the whole plan; Free only the top-10 preview", async () => {
+    const { authenticate } = await import("../app/shopify.server");
+    const ent = await import("../app/services/entitlements.server");
+    const dash = await import("../app/models/dashboard.server");
+    const acts = await import("../app/models/actions.server");
+    const op = await import("../app/models/order-plan.server");
+    vi.mocked(authenticate.admin).mockResolvedValue({ admin: {}, session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(dash.getHomeData).mockResolvedValue(buildHome(homeRaw(), "growth", NOW));
+    vi.mocked(acts.getActionList).mockResolvedValue(null as never);
+    vi.mocked(op.loadOrderPlan).mockResolvedValue(orderPlanFixture());
+    const args = { request: new Request("https://app.test/app"), params: {}, context: {} } as never;
+    vi.mocked(ent.planFor).mockResolvedValue("growth");
+    expect((await loader(args)).orderPlan?.kind).toBe("full");
+    // planFor fails open to Pro when the plan check fails (entitlements.server).
+    vi.mocked(ent.planFor).mockResolvedValue("pro");
+    expect((await loader(args)).orderPlan?.kind).toBe("full");
+    vi.mocked(ent.planFor).mockResolvedValue("free");
+    const free = await loader(args);
+    expect(free.orderPlan).toMatchObject({ kind: "preview" });
+    expect((free.orderPlan as { rows: unknown[] }).rows.length).toBeLessThanOrEqual(10);
+    expect(JSON.stringify(free)).not.toContain("Lisbon Linen");
   });
 });

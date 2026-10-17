@@ -22,6 +22,8 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
       return { title: t("Days of stock left"), body: t("See how many days each variant will last and how many to order.") };
     case "reorderPlan":
       return { title: t("Reorder plan"), body: t("Know what to order from each supplier, how much, and by which date.") };
+    case "orderCalendar":
+      return { title: t("90-day order calendar"), body: t("Every order for the next 13 weeks, by week and supplier, with the cash you need each week.") };
     case "suppliers":
       return { title: t("Suppliers"), body: t("Keep lead times, minimum orders and case packs for each supplier.") };
     case "poExport":
@@ -35,7 +37,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "fixDetails":
       return { title: t("Fix what's holding sales back"), body: t("Missing sizes, weak product pages, high returns and falling best sellers, product by product.") };
     case "planner":
-      return { title: t("Planner"), body: t("Plan a season or a growth target: what to order, by when, and the cash you need each week.") };
+      return { title: t("Season plan"), body: t("Plan a season or a growth target: what to order, by when, and the cash you need each week.") };
     case "collectionGoals":
       return { title: t("Collection goals"), body: t("Set a revenue share per collection and see which products hold it back.") };
     case "accuracy":

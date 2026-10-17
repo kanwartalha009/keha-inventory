@@ -103,11 +103,13 @@ keep).
 - Shipped — Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits
 - Shipped — Numbers refreshed monthly
 - Shipped — Top 10 actions and a Monday email
+- Shipped — Order plan preview (top 10)
 
 ### Growth
 
 - Shipped — Numbers refreshed daily, and every action
 - Shipped — Reorder plan with suppliers and purchase orders
+- Shipped — 90-day order calendar
 - Shipped — Preorder bridge and dead-stock discounts
 - Shipped — Season planner (1 scenario) and forecast accuracy
 - Shipped — Slack and Shopify Flow

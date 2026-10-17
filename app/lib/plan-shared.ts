@@ -31,8 +31,10 @@ export const FEATURE_PLAN = {
   fullActionList: "growth",
   /** Per-variant days of stock left and suggested order quantity. */
   forecast: "growth",
-  /** Reorder screen: what to order, from whom, by when. */
+  /** Order now in full: what to order from each supplier, by when (Free: read-only top 10 preview). */
   reorderPlan: "growth",
+  /** Order plan · Next 90 days: every order-by date, by week and supplier, with the cash needed. */
+  orderCalendar: "growth",
   /** Supplier list with lead times, minimum orders and case packs. */
   suppliers: "growth",
   /** Purchase orders as PDF / CSV / email to the supplier. */
@@ -141,8 +143,17 @@ export const PAGE_FEATURE: { path: string; feature: Feature }[] = [
   { path: "/app/planner", feature: "planner" },
 ];
 
+/**
+ * The Order plan tabs (Order now · Next 90 days · Season plan · Open orders) gate themselves:
+ * they keep the tab bar and teach inside the tab (Free sees Order now as a read-only preview).
+ * Everything else under PAGE_FEATURE (a purchase order page) shows the plan page instead.
+ */
+export const ORDER_PLAN_PATHS = ["/app/reorder", "/app/reorder/calendar", "/app/reorder/orders", "/app/planner"] as const;
+
 export function lockedPageFeature(pathname: string, plan: PlanCode | "none"): Feature | null {
   const p = plan === "none" ? "free" : plan;
+  const clean = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if ((ORDER_PLAN_PATHS as readonly string[]).includes(clean)) return null;
   const hit = PAGE_FEATURE.find((x) => pathname === x.path || pathname.startsWith(`${x.path}/`));
   return hit && !hasFeature(p, hit.feature) ? hit.feature : null;
 }

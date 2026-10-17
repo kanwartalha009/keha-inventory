@@ -47,10 +47,16 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     ],
   },
   {
-    title: "Reorder",
+    title: "Order plan",
     rows: [
+      {
+        label: "What to order, how much and by when",
+        hint: "Free shows your 10 most urgent products, read only.",
+        values: { free: "Order plan preview (top 10)", growth: "All", pro: "All" },
+      },
       { label: "Days of stock left and suggested order quantity per variant", feature: "forecast" },
       { label: "Reorder plan by supplier, with order-by dates", feature: "reorderPlan" },
+      { label: "90-day order calendar", hint: "Every order for the next 13 weeks, by week and supplier, with the cash you need each week.", feature: "orderCalendar" },
       { label: "Suppliers with lead times, minimum orders and case packs", feature: "suppliers" },
       { label: "Purchase orders as PDF, CSV or email", feature: "poExport" },
       { label: "Supplier confirms the ship date through a link", feature: "supplierConfirm" },
@@ -94,10 +100,12 @@ export const PLAN_POINTS: Record<PlanCode, string[]> = {
     "Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits",
     "Numbers refreshed monthly",
     "Top 10 actions and a Monday email",
+    "Order plan preview (top 10)",
   ],
   growth: [
     "Numbers refreshed daily, and every action",
     "Reorder plan with suppliers and purchase orders",
+    "90-day order calendar",
     "Preorder bridge and dead-stock discounts",
     "Season planner (1 scenario) and forecast accuracy",
     "Slack and Shopify Flow",

@@ -1,24 +1,25 @@
 /**
- * Reorder (/app/reorder) — spec §5.3, J3, Growth (`reorderPlan`; the page is
- * gated in PAGE_FEATURE and every action checks the plan on the server too).
+ * Order plan · Order now (/app/reorder) — spec §5.3, J3; Order plan tabs (Kanwar 2026-10-17).
  *
- * What to order, grouped by supplier (unassigned products grouped by vendor):
- * lead time, order-by date, lines with an editable quantity (rounded to the
- * case pack and the supplier's minimums), totals. "Create order" saves a
- * Draft for one group and opens it (/app/reorder/:id) — nothing is sent
- * until the merchant emails it or marks it sent. `?variants=gid,gid` (Home
- * "Add to reorder plan") highlights those lines. Open orders below include
- * purchase orders read from Shopify, marked "From Shopify".
+ * Growth (`reorderPlan`; every action checks the plan on the server too): what to order today,
+ * grouped by supplier (unassigned products grouped by vendor): lead time, order-by date, lines
+ * with an editable quantity (rounded to the case pack and the supplier's minimums), totals.
+ * A line is here exactly when the forward order plan (engine/forward-plan-shared) has an order
+ * today, with the same quantity. "Create order" saves a Draft for one group and opens it
+ * (/app/reorder/:id) — nothing is sent until the merchant emails it or marks it sent.
+ * `?variants=gid,gid` (actions) or `id:qty` (Planner, Dashboard, Next 90 days) highlights those
+ * lines at those quantities; `?supplier=<group key>` shows that supplier only.
  *
- * Pro (`locations`): a location switcher (`?location=`) shows one warehouse's
- * or store's own needs (store-level replenishment, still grouped by
- * supplier); an order created there records the location in its note. The
- * server ignores `?location` below Pro.
+ * Free: a read-only preview — the 10 most urgent products with days left, order-by date and
+ * suggested quantity — and the teaching lock. The page is not plan-locked (ORDER_PLAN_PATHS).
  *
- * Pro (`transfers`): "Transfers: warehouse → stores" below the supplier
- * groups — the transfer plan (lib/transfers-shared) with editable quantities
- * and "Create transfer in Shopify" behind a confirm (POST /app/transfers).
- * Below Pro the section shows what it does and the plans link.
+ * Pro (`locations`): a location switcher (`?location=`) shows one warehouse's or store's own
+ * needs; an order created there records the location in its note. The server ignores
+ * `?location` below Pro.
+ *
+ * Transfers (Pro `transfers`): only when the store plans at least two locations; below Pro the
+ * section teaches only when the store has two or more locations (otherwise nothing is shown).
+ * Open orders moved to their own tab (/app/reorder/orders).
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -26,8 +27,12 @@ import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
-import { createOrderFromGroup, loadReorder, type OpenOrderRow, type ReorderData } from "../models/reorder.server";
-import { listPlanningLocations } from "../models/locations.server";
+import { createOrderFromGroup, loadReorder, type ReorderData } from "../models/reorder.server";
+import { activeLocations, listPlanningLocations } from "../models/locations.server";
+import { loadOrderPlan } from "../models/order-plan.server";
+import { OrderPlanTabs } from "../components/order-plan-tabs";
+import { PreviewLock, PreviewTable } from "../components/order-plan";
+import { previewRows, type PreviewRow } from "../lib/order-plan-shared";
 import { LocationSwitcher } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
 import { loadTransfers } from "../models/transfers.server";
@@ -47,36 +52,65 @@ import {
   type ReorderGroup,
   type ReorderLine,
 } from "../lib/reorder-shared";
-import { formatPrice, poStatusLabel, poStatusTone } from "../lib/purchase-order-shared";
+import { formatPrice } from "../lib/purchase-order-shared";
 import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 
 type LocationView = { locationsEnabled: boolean; locations: PlanningLocation[]; location: PlanningLocation | null };
 const NO_LOCATIONS: LocationView = { locationsEnabled: false, locations: [], location: null };
 
+/** Active locations (the transfers teaching state only; never fails the page). */
+async function activeLocationCount(shop: string): Promise<number> {
+  try {
+    return (await activeLocations(shop)).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Transfers need somewhere to move stock: two planned locations (Pro), or two locations to teach (below Pro). */
+export function showTransfers(input: { transfersEnabled: boolean; planningLocations: number; activeLocations: number }): boolean {
+  return input.transfersEnabled ? input.planningLocations >= 2 : input.activeLocations >= 2;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPageData> => {
   const { session } = await authenticate.admin(request);
   const { features } = await getEntitlements(session.shop);
-  // Locked page (app.tsx shows the plan page): send nothing.
+  // Free: the read-only preview of the forward order plan, nothing else.
   if (!features.reorderPlan) {
-    return { groups: [], openOrders: [], currency: "USD", missingSelected: 0, enabled: false, ...NO_LOCATIONS, transfers: LOCKED_TRANSFERS };
+    const plan = await loadOrderPlan(session.shop);
+    return {
+      ...EMPTY_REORDER,
+      currency: plan.currency,
+      enabled: false,
+      preview: previewRows(plan),
+    };
   }
   const url = new URL(request.url);
-  // `?variants=id,id` (Home) or `id:qty,…` (Planner: the planned quantities start those lines).
+  // `?variants=id,id` (actions) or `id:qty,…` (Planner, Dashboard, Next 90 days: the planned quantities start those lines).
   const { ids: selected, planned } = parseVariantsWithQty(url.searchParams.get("variants"));
+  const supplierKey = url.searchParams.get("supplier");
   const locations = features.locations ? await listPlanningLocations(session.shop) : [];
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
+  const active = features.transfers ? 0 : await activeLocationCount(session.shop);
+  const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
   const [reorder, transfers] = await Promise.all([
     loadReorder(session.shop, selected, view.scope, planned),
-    features.transfers ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
+    features.transfers && transfersShown ? loadTransfers(session.shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
   ]);
+  const only = supplierKey ? reorder.groups.find((g) => g.key === supplierKey) : undefined;
   return {
     ...reorder,
+    groups: only ? [only] : reorder.groups,
+    supplierFilter: only ? { key: only.key, name: only.name, kind: only.kind } : null,
+    hiddenGroups: only ? reorder.groups.length - 1 : 0,
     enabled: true,
     locationsEnabled: features.locations,
     locations,
     location: view.location,
     transfers,
+    showTransfers: transfersShown,
+    preview: null,
   };
 };
 
@@ -109,17 +143,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
-export type ReorderPageData = ReorderData & { enabled: boolean } & LocationView & { transfers: TransfersView };
+export type ReorderPageData = ReorderData & {
+  enabled: boolean;
+  /** Free: the 10 most urgent products (read only); null on Growth / Pro. */
+  preview?: PreviewRow[] | null;
+  /** `?supplier=` matched a group: only that group is shown. */
+  supplierFilter?: { key: string; name: string; kind: "supplier" | "vendor" } | null;
+  hiddenGroups?: number;
+  showTransfers?: boolean;
+} & LocationView & { transfers: TransfersView };
+
+const EMPTY_REORDER: Omit<ReorderPageData, "enabled" | "preview"> = {
+  groups: [],
+  openOrders: [],
+  currency: "USD",
+  missingSelected: 0,
+  ...NO_LOCATIONS,
+  transfers: LOCKED_TRANSFERS,
+  supplierFilter: null,
+  hiddenGroups: 0,
+  showTransfers: false,
+};
 
 export default function Reorder() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const link = useLinkProps();
   const data = useLoaderData<typeof loader>() as ReorderPageData;
   const anySelected = data.groups.some((g) => g.selected);
   const fromPlanner = data.groups.some((g) => g.lines.some((l) => l.fromPlanner));
   const location = data.location;
+  if (!data.enabled) {
+    return (
+      <AppPage heading={t("Order plan")} intro={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
+        <OrderPlanTabs current="now" />
+        <s-section heading={t("What to order, and by when")}>
+          <s-stack direction="block" gap="base">
+            <PreviewTable rows={data.preview ?? []} />
+            <PreviewLock />
+          </s-stack>
+        </s-section>
+      </AppPage>
+    );
+  }
+  const filter = data.supplierFilter;
   return (
     <AppPage
-      heading={t("Reorder")}
+      heading={t("Order plan")}
       intro={
         location
           ? fill(t("What {location} needs, from each supplier, and by which date: its own sales and stock. Quantities are rounded up to case packs and minimum orders."), {
@@ -128,11 +197,20 @@ export default function Reorder() {
           : t("What to order from each supplier, how much, and by which date. Quantities are rounded up to case packs and minimum orders.")
       }
     >
+      <OrderPlanTabs current="now" />
       <LocationSwitcher enabled={data.locationsEnabled} locations={data.locations} current={location} />
+      {filter && (
+        <s-banner tone="info">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text>{fill(t("Showing {supplier} only."), { supplier: groupTitle(filter, t) })}</s-text>
+            {(data.hiddenGroups ?? 0) > 0 && <s-link {...link("/app/reorder")}>{t("Show all suppliers")}</s-link>}
+          </s-stack>
+        </s-banner>
+      )}
       {anySelected && (
         <s-banner tone="info">
           {fromPlanner
-            ? t("The products from the planner are highlighted, starting at the quantities you planned.")
+            ? t("The products from your order plan are highlighted, starting at the planned quantities.")
             : t("The products from your action list are highlighted.")}
         </s-banner>
       )}
@@ -146,13 +224,19 @@ export default function Reorder() {
             <s-paragraph color="subdued">
               {t("Products show up here when their stock will run out before a new order would arrive.")}
             </s-paragraph>
+            <s-link {...link("/app/reorder/calendar")}>{t("See the next 90 days")}</s-link>
           </s-stack>
         </s-section>
       ) : (
         data.groups.map((g) => <GroupCard key={g.key} group={g} location={location} />)
       )}
-      <TransfersSection view={data.transfers} />
-      <OpenOrders orders={data.openOrders} />
+      {data.showTransfers !== false && <TransfersSection view={data.transfers} />}
+      {data.openOrders.length > 0 && (
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-text color="subdued">{fill(t("Open orders: {n}"), { n: formatCount(data.openOrders.length, locale) })}</s-text>
+          <s-link {...link("/app/reorder/orders")}>{t("See open orders")}</s-link>
+        </s-stack>
+      )}
     </AppPage>
   );
 }
@@ -187,7 +271,7 @@ function GroupCard({ group, location }: { group: ReorderGroup; location: Plannin
         <s-stack direction="inline" gap="base" alignItems="center">
           {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
           {group.selected && (
-            <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the planner") : t("From your action list")}</s-badge>
+            <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From your order plan") : t("From your action list")}</s-badge>
           )}
           <s-text color="subdued">{`${t("Lead time")}: ${leadLabel}`}</s-text>
           <s-text color="subdued">{`${t("Order by")}: ${formatDay(group.orderBy, locale)}`}</s-text>
@@ -306,7 +390,7 @@ function LineRow({
           <s-stack direction="block" gap="none">
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
-            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From the planner") : t("From your action list")}</s-badge>}
+            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From your order plan") : t("From your action list")}</s-badge>}
           </s-stack>
         </div>
       </s-table-cell>
@@ -335,47 +419,5 @@ function LineRow({
       <s-table-cell>{formatPrice(l.unitCost, currency, locale)}</s-table-cell>
       <s-table-cell>{formatPrice(l.unitCost === null || n === 0 ? null : l.unitCost * n, currency, locale)}</s-table-cell>
     </s-table-row>
-  );
-}
-
-function OpenOrders({ orders }: { orders: OpenOrderRow[] }) {
-  const { t, locale } = useLocale();
-  const link = useLinkProps();
-  return (
-    <s-section heading={t("Open orders")}>
-      {orders.length === 0 ? (
-        <s-paragraph color="subdued">{t("No open orders. Orders you create here, and purchase orders in Shopify, show up here.")}</s-paragraph>
-      ) : (
-        <s-table>
-          <s-table-header-row>
-            <s-table-header listSlot="primary">{t("Order")}</s-table-header>
-            <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Supplier")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Units")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Cost")}</s-table-header>
-            <s-table-header listSlot="labeled">{t("Expected arrival")}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {orders.map((o) => (
-              <s-table-row key={o.id}>
-                <s-table-cell>
-                  <s-stack direction="inline" gap="small-200" alignItems="center">
-                    <s-link {...link(`/app/reorder/${o.id}`)}>{o.number}</s-link>
-                    {o.source === "shopify" && <s-badge tone="neutral">{t("From Shopify")}</s-badge>}
-                  </s-stack>
-                </s-table-cell>
-                <s-table-cell>
-                  <s-badge tone={poStatusTone(o.status)}>{poStatusLabel(o.status, t)}</s-badge>
-                </s-table-cell>
-                <s-table-cell>{o.supplierName || "—"}</s-table-cell>
-                <s-table-cell>{formatCount(o.units, locale)}</s-table-cell>
-                <s-table-cell>{formatPrice(o.cost, o.currency, locale)}</s-table-cell>
-                <s-table-cell>{formatDay(o.arrival, locale)}</s-table-cell>
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
-      )}
-    </s-section>
   );
 }

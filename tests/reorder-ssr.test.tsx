@@ -9,8 +9,14 @@ import { createRoutesStub } from "react-router";
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() }, unauthenticated: { admin: vi.fn() } }));
 vi.mock("../app/db.server", () => ({ default: {} }));
 vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn(), upgradeResponse: vi.fn() }));
+vi.mock("../app/models/order-plan.server", async () => {
+  const { orderPlanFixture } = await import("./order-plan-fixtures");
+  return { loadOrderPlan: vi.fn(async () => orderPlanFixture()) };
+});
 
-import Reorder, { type ReorderPageData } from "../app/routes/app.reorder";
+import Reorder, { loader as reorderLoader, showTransfers, type ReorderPageData } from "../app/routes/app.reorder";
+import OpenOrdersPage, { type OpenOrdersPageData } from "../app/routes/app.reorder_.orders";
+import type { PreviewRow } from "../app/lib/order-plan-shared";
 import OrderPage, { loader as orderLoader, type OrderPageData, type OrderPageView } from "../app/routes/app.reorder_.$id";
 import { authenticate } from "../app/shopify.server";
 import { getEntitlements } from "../app/services/entitlements.server";
@@ -73,9 +79,11 @@ function reorderData(): ReorderPageData {
   };
 }
 
-describe("Reorder page", () => {
-  it("groups by supplier, falls back to vendor, shows totals, top-up note, selection and open orders", () => {
+describe("Reorder page (Order plan · Order now)", () => {
+  it("groups by supplier, falls back to vendor, shows totals, top-up note, selection; open orders are a tab now", () => {
     const html = render("/app/reorder?variants=1", "reorder", Reorder, reorderData());
+    expect(html).toContain('heading="Order plan"');
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Order now</);
     expect(html).toContain("Acme Textiles");
     expect(html).toContain("No supplier — grouped by vendor");
     expect(html).toContain("Beta");
@@ -90,17 +98,96 @@ describe("Reorder page", () => {
     // Unknown cost on one Acme line → the group cost is unknown.
     expect(html).toContain("Cost: —");
     expect(html).toContain("Create order");
-    expect(html).toContain("Open orders");
-    expect(html).toContain("PO-0001");
-    expect(html).toContain("From Shopify");
-    expect(html).toContain('href="/app/reorder/po2"');
+    // The open orders list moved to its own tab (no duplicate): a count and a link stay.
+    expect(html).not.toContain("PO-0001");
+    expect(html).toContain("Open orders: 2");
+    expect(html).toContain('href="/app/reorder/orders"');
     for (const h of ["Stock now", "Incoming", "Days of stock left", "Quantity", "Unit cost", "Line total"]) expect(html).toContain(h);
   });
 
-  it("shows the empty state", () => {
+  it("shows the empty state with the way to the next 90 days", () => {
     const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], openOrders: [] });
     expect(html).toContain("Nothing to reorder right now");
-    expect(html).toContain("No open orders.");
+    expect(html).toContain('href="/app/reorder/calendar"');
+    expect(html).not.toContain("Open orders: ");
+  });
+
+  it("?supplier= shows that supplier only, with the way back", () => {
+    const d = reorderData();
+    const only = d.groups.find((g) => g.kind === "supplier")!;
+    const html = render("/app/reorder?supplier=supplier:s1", "reorder", Reorder, {
+      ...d,
+      groups: [only],
+      supplierFilter: { key: only.key, name: only.name, kind: only.kind },
+      hiddenGroups: d.groups.length - 1,
+    });
+    expect(html).toContain("Showing Acme Textiles only.");
+    expect(html).toContain("Show all suppliers");
+    expect(html).not.toContain("No supplier — grouped by vendor");
+  });
+
+  it("transfers only when the store has somewhere to move stock", () => {
+    const hidden = render("/app/reorder", "reorder", Reorder, { ...reorderData(), showTransfers: false });
+    expect(hidden).not.toContain("Transfers: warehouse → stores");
+    expect(hidden).not.toContain("Set up warehouses and stores");
+    const locked = render("/app/reorder", "reorder", Reorder, { ...reorderData(), showTransfers: true });
+    expect(locked).toContain("Transfers: warehouse → stores");
+    expect(locked).toContain("Pro plan");
+    expect(showTransfers({ transfersEnabled: true, planningLocations: 1, activeLocations: 5 })).toBe(false);
+    expect(showTransfers({ transfersEnabled: true, planningLocations: 2, activeLocations: 0 })).toBe(true);
+    expect(showTransfers({ transfersEnabled: false, planningLocations: 0, activeLocations: 1 })).toBe(false);
+    expect(showTransfers({ transfersEnabled: false, planningLocations: 0, activeLocations: 2 })).toBe(true);
+  });
+
+  it("Free: a read-only preview of the 10 most urgent products and the teaching lock", () => {
+    const preview: PreviewRow[] = [
+      { variantId: v(1).id, productTitle: "Shirt 1", variantTitle: "M", daysLeft: 2.4, neverRunsOut: false, orderBy: "2026-10-01", overdue: true, qty: 61 },
+      { variantId: v(2).id, productTitle: "Mug", variantTitle: "Default Title", daysLeft: 30, neverRunsOut: false, orderBy: "2026-11-12", overdue: false, qty: 28 },
+    ];
+    const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview });
+    expect(html).toContain("keha-tabs");
+    expect(html).toContain("Shirt 1");
+    expect(html).toContain("Overdue");
+    expect(html).toContain("61");
+    expect(html).toContain("Nov 12, 2026");
+    expect(html).toContain("Group by supplier, send purchase orders, see the next 90 days");
+    expect(html).toContain('href="/app/plans?upgrade=reorderPlan"');
+    // Read only: no quantities to edit, no purchase order, no CSV.
+    expect(html).not.toContain("Create order");
+    expect(html).not.toContain("<s-number-field");
+    expect(html).not.toContain("Download CSV");
+  });
+});
+
+describe("Order now loader", () => {
+  it("Free: only the top-10 preview of the forward plan — no groups, no suppliers, no open orders", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "free", features: featureMap("free"), comped: false, checked: true } as never);
+    const d = await reorderLoader({ request: new Request("https://app.test/app/reorder"), params: {}, context: {} } as never);
+    expect(d.enabled).toBe(false);
+    expect(d.preview!.length).toBeGreaterThan(0);
+    expect(d.preview!.length).toBeLessThanOrEqual(10);
+    expect(d.groups).toEqual([]);
+    expect(d.openOrders).toEqual([]);
+    expect(JSON.stringify(d)).not.toContain("Lisbon Linen");
+  });
+});
+
+describe("Open orders tab", () => {
+  it("lists Keha and Shopify orders with links to their pages", () => {
+    const html = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders: reorderData().openOrders } satisfies OpenOrdersPageData);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Open orders</);
+    expect(html).toContain("PO-0001");
+    expect(html).toContain("From Shopify");
+    expect(html).toContain('href="/app/reorder/po2"');
+    expect(html).toContain("Expected arrival");
+  });
+
+  it("empty, and Free (the tab teaches)", () => {
+    expect(render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders: [] })).toContain("No open orders.");
+    const free = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: false, orders: [] });
+    expect(free).toContain("Purchase orders · Growth plan");
+    expect(free).toContain("keha-tabs");
   });
 });
 

@@ -14,6 +14,7 @@ import {
   storeLabel,
   toMoneySnapshot,
   todayIn,
+  updatedLabel,
   type Fmt,
   type HomeRaw,
 } from "../app/lib/dashboard-shared";
@@ -180,3 +181,13 @@ describe("basisLines", () => {
 // Type check: the fixture really is a HomeRaw.
 const _raw: HomeRaw = homeRaw();
 void _raw;
+
+describe("updatedLabel (Dashboard header)", () => {
+  it("today: the time only; another day: date and time; never run: first sync, never a dash", () => {
+    // 04:10 UTC = 06:10 in Madrid, the same store day as NOW (12:00 Madrid).
+    expect(updatedLabel("2026-10-16T04:10:00Z", "Europe/Madrid", "en", NOW, id)).toBe("Updated 06:10 AM today");
+    expect(updatedLabel("2026-10-15T04:10:00Z", "Europe/Madrid", "en", NOW, id)).toBe("Updated Oct 15, 06:10 AM");
+    expect(updatedLabel(null, "Europe/Madrid", "en", NOW, id)).toBe("First sync in progress");
+    expect(updatedLabel("not a date", null, "en", NOW, id)).toBe("First sync in progress");
+  });
+});

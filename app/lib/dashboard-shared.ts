@@ -245,6 +245,25 @@ export function formatUpdatedAt(iso: string | null, timeZone: string | null, loc
   }
 }
 
+/**
+ * The Dashboard's quiet header line: "Updated 06:10 today", "Updated 16 Oct, 06:10", or
+ * "First sync in progress" before the first nightly run (never a lone dash).
+ */
+export function updatedLabel(iso: string | null, timeZone: string | null, locale: string, now: Date, t: T): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || !Number.isFinite(d.getTime())) return t("First sync in progress");
+  if (todayIn(timeZone, d) === todayIn(timeZone, now)) {
+    let time: string;
+    try {
+      time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: timeZone || "UTC" }).format(d);
+    } catch {
+      time = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(d);
+    }
+    return fill(t("Updated {time} today"), { time });
+  }
+  return fill(t("Updated {time}"), { time: formatUpdatedAt(iso, timeZone, locale) });
+}
+
 /** Today's calendar day in the store's time zone, "YYYY-MM-DD". */
 export function todayIn(timeZone: string | null | undefined, now: Date): string {
   try {

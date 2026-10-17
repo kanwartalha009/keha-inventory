@@ -719,3 +719,25 @@ s-table { font-variant-numeric: tabular-nums; }
 .keha-legend__swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
 .keha-legend__swatch--bar { background: var(--keha-accent); }
 .keha-legend__swatch--out { background: var(--tile-rose-bg); border: 1px solid var(--tile-rose-fg); }
+
+/* Order plan */
+/* Order plan · Next 90 days: one row per ISO week that opens to its suppliers; the cash strip. */
+.keha-orderplan-strip { width: 100%; }
+.keha-orderplan-weeks { display: flex; flex-direction: column; border-top: 1px solid var(--keha-border-secondary); }
+.keha-orderplan-week { border-bottom: 1px solid var(--keha-border-secondary); }
+.keha-orderplan-week--empty { display: flex; align-items: center; gap: 12px; padding: 10px 4px; }
+.keha-orderplan-week__head {
+  display: grid; grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(80px, 1fr)) minmax(120px, 1.4fr) 20px;
+  gap: 12px; align-items: center; width: 100%; padding: 10px 4px; background: none; border: 0; cursor: pointer;
+  text-align: left; font: inherit; color: var(--keha-text);
+}
+.keha-orderplan-week__head:hover { background: var(--keha-surface-hover); }
+.keha-orderplan-week__head:focus-visible { outline: 2px solid var(--keha-accent, #5b4fd6); outline-offset: -2px; }
+.keha-orderplan-week__when { display: inline-flex; align-items: center; gap: 8px; font-weight: var(--keha-weight-semibold); }
+.keha-orderplan-week__cash { font-variant-numeric: tabular-nums; font-weight: var(--keha-weight-semibold); }
+.keha-orderplan-week__by { color: var(--keha-text-secondary); }
+.keha-orderplan-week__body { display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 16px; }
+@media (max-width: 760px) {
+  .keha-orderplan-week__head { grid-template-columns: 1fr 1fr 20px; }
+  .keha-orderplan-week__head > :nth-child(5) { grid-column: 1 / 3; }
+}
