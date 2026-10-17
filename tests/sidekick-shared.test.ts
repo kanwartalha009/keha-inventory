@@ -215,7 +215,8 @@ describe("product stock", () => {
       forecast: true,
       today: TODAY,
     });
-    expect(never.results![0]!._meta).toMatchObject({ days_left: "never runs out at the current pace", status: null, on_order_with_keha: 20, keha_order_arrival: "2026-11-02" });
+    // Stock but no sale to measure a pace from: unknown (null) with the reason, never "never runs out".
+    expect(never.results![0]!._meta).toMatchObject({ days_left: null, days_left_why: "no recent sales", status: null, on_order_with_keha: 20, keha_order_arrival: "2026-11-02" });
   });
 
   it("leaves the forecast fields out when the store's plan doesn't show them", () => {
@@ -333,5 +334,16 @@ describe("other tools", () => {
       accuracyResponse([]),
     ].map((r) => JSON.stringify(r));
     expect(texts.flatMap(policyViolations)).toEqual([]);
+  });
+});
+
+describe("daysLeftMeta (2026-10-17: no recent sales is unknown, never ∞)", () => {
+  it("null with the reason when there is stock but no sales pace; whole days otherwise", async () => {
+    const { daysLeftMeta, NO_RECENT_SALES } = await import("../app/lib/sidekick-shared");
+    expect(daysLeftMeta(null, true)).toEqual({ days_left: null, days_left_why: NO_RECENT_SALES });
+    expect(daysLeftMeta(null, false)).toEqual({ days_left: null });
+    expect(daysLeftMeta(9.7, false)).toEqual({ days_left: 9 });
+    expect(daysLeftMeta(-2, false)).toEqual({ days_left: 0 });
+    expect(JSON.stringify(daysLeftMeta(null, true))).not.toMatch(/never|∞/);
   });
 });

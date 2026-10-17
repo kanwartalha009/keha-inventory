@@ -20,7 +20,7 @@ Common combinations:
 
 - Money is in the currency given next to it (`currency` or `store_currency`); never add amounts of different currencies together.
 - `cost` and `cash` count only lines with a unit cost; `lines_without_cost` says how many lines have no cost, so the real amount is higher. Say so when it is set.
-- A `null` value means not known yet (for example, not enough sales history). Say "not known yet", never zero.
+- A `null` value means not known yet (for example, not enough sales history). Say "not known yet", never zero. `days_left_why: "no recent sales"` means the product has stock but no recent sale to measure a pace from.
 - Days of stock left, order-by dates, suggested quantities and money at stake are forecasts: say "about" ("runs out in about 12 days").
 - Dates come as `YYYY-MM-DD` plus a readable label such as "Fri 24 Oct 2026 (in 7 days)". `overdue: true` (an order-by date in the past) means the order is already late: the lead time no longer covers the gap, so it is due today.
 - Status words are the app's own: Out, Running low, Healthy, Too much, Dead, Not enough data.

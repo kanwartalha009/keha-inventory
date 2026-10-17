@@ -9,7 +9,8 @@ import { SaveBar } from "@shopify/app-bridge-react";
 import { useLinkProps } from "./wc";
 import { UpgradeFromQuery } from "./plan";
 import { useLocale } from "../lib/i18n";
-import { formatPercent } from "../lib/dashboard-shared";
+import { formatCount, formatPercent } from "../lib/dashboard-shared";
+import { daysLeftView } from "../lib/products-shared";
 import { ProductIcon } from "@shopify/polaris-icons";
 
 export type TileTone = "violet" | "teal" | "amber" | "rose" | "sky" | "emerald" | "slate";
@@ -590,6 +591,24 @@ export function FormCard({
  * control takes a full row below 600px (`.keha-toolbar` in app.css). Pass
  * `slot="filters"` to put it in an `<s-table>`'s filter area.
  */
+/**
+ * Days of stock left, everywhere (Products, the product page, Order now, the Free preview): whole
+ * days rounded down; "—" when unknown; "—" with the tooltip "No recent sales" when there is stock
+ * but no sale to measure a pace from (never "∞" — I-5). `id` must be unique on the page.
+ */
+export function DaysLeft({ id, daysLeft, neverRunsOut }: { id: string; daysLeft: number | null; neverRunsOut: boolean }) {
+  const { t, locale } = useLocale();
+  const view = daysLeftView({ daysLeft, neverRunsOut });
+  if (view.kind === "days") return <>{formatCount(view.days, locale)}</>;
+  if (view.kind === "none") return <>—</>;
+  return (
+    <>
+      <s-text interestFor={id}>—</s-text>
+      <s-tooltip id={id}>{t("No recent sales")}</s-tooltip>
+    </>
+  );
+}
+
 export function Toolbar({ search, filters, slot }: { search?: ReactNode; filters?: ReactNode; slot?: string }) {
   return (
     <div className="keha-toolbar" slot={slot}>

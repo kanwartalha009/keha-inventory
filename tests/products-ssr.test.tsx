@@ -1,7 +1,7 @@
 /**
  * SSR: Products (task 1.7). Rows render; Free shows the forecast columns
  * locked (plan tag in the header, empty cells) and a locked CSV button;
- * Growth shows the values, "∞" for never-runs-out and "—" for unknowns.
+ * Growth shows the values, and "—" for unknowns (with "No recent sales" when stock has no sales to measure from).
  * Plus the variant detail page.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -105,10 +105,10 @@ describe("Products page", () => {
     expect(count(html, 'format="numeric"')).toBe(5);
   });
 
-  it("Growth: forecast values, ∞ with an accessible label, and dashes for unknowns", () => {
+  it("Growth: forecast values; no sales to measure from → a dash with \"No recent sales\" (never ∞); dashes for unknowns", () => {
     const html = render(data(true));
-    expect(html).toContain('aria-label="Never runs out at current sales"');
-    expect(html).toContain("∞");
+    expect(html).not.toContain("∞");
+    expect(html).toMatch(/<s-text interestFor="keha-left-\d+">—<\/s-text><s-tooltip id="keha-left-\d+">No recent sales<\/s-tooltip>/);
     expect(html).toMatch(/<s-table-cell>9<\/s-table-cell>/); // 9.7 days → 9
     expect(html).toContain("Oct 20, 2026");
     expect(html).toMatch(/<s-table-cell>30<\/s-table-cell>/);
@@ -234,6 +234,13 @@ describe("Variant detail", () => {
     expect(html).toContain("Recent sales");
     expect(html).toContain("Sold out");
     expect(html).toContain('href="/app/products"');
+  });
+
+  it("days of stock left with no recent sales: a dash with the reason, never ∞", () => {
+    const d = detail(true);
+    const html = renderDetail({ ...d, row: { ...d.row, daysLeft: null, neverRunsOut: true } });
+    expect(html).not.toContain("∞");
+    expect(html).toContain('<s-text interestFor="keha-detail-left">—</s-text><s-tooltip id="keha-detail-left">No recent sales</s-tooltip>');
   });
 
   it("layout: every card uses the shared head; count columns are right-aligned; no header wraps", () => {

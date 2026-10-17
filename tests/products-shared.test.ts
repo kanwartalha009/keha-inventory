@@ -119,8 +119,8 @@ describe("rows", () => {
     expect(r).toMatchObject({ status: null, onHand: null, incoming: null, rate: null, daysLeft: null, orderQty: null });
     expect(toProductRow(variant, { ...metric, status: "weird" }, null, true).status).toBeNull();
   });
-  it("days left: ∞ when never runs out, dash when unknown, whole days rounded down", () => {
-    expect(daysLeftView({ daysLeft: null, neverRunsOut: true })).toEqual({ kind: "never" });
+  it("days left: no recent sales (shown as a dash) when the pace is zero, dash when unknown, whole days rounded down", () => {
+    expect(daysLeftView({ daysLeft: null, neverRunsOut: true })).toEqual({ kind: "noSales" });
     expect(daysLeftView({ daysLeft: null, neverRunsOut: false })).toEqual({ kind: "none" });
     expect(daysLeftView({ daysLeft: 9.7, neverRunsOut: false })).toEqual({ kind: "days", days: 9 });
     expect(daysLeftView({ daysLeft: 0, neverRunsOut: false })).toEqual({ kind: "days", days: 0 });
@@ -160,7 +160,7 @@ describe("CSV", () => {
   it("file has a BOM and CRLF line ends", () => {
     expect(toCsv(["h"], [["v"]])).toBe("﻿h\r\nv\r\n");
   });
-  it("products CSV: Growth includes forecast columns, ∞ for never", () => {
+  it("products CSV: Growth includes forecast columns, a dash (never ∞) when there are no recent sales", () => {
     const rows: ProductRow[] = [
       toProductRow(variant, metric, { onHand: 12, incoming: 0 }, true),
       toProductRow({ ...variant, id: "gid://shopify/ProductVariant/7", variantTitle: "Default Title", productTitle: "=cmd" }, { ...metric, status: "too_much", neverRunsOut: true, daysLeft: null }, null, true),
@@ -168,7 +168,7 @@ describe("CSV", () => {
     const lines = productsCsv(rows, id, true).replace("﻿", "").trim().split("\r\n");
     expect(lines[0]).toBe("Product,Variant,SKU,Vendor,Status,Stock now,Incoming,Sales per day while in stock,Days of stock left,Order by,Suggested qty");
     expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Running low,12,0,2.3,9,2026-10-20,30");
-    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Too much,,,2.3,∞,2026-10-20,30");
+    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Too much,,,2.3,—,2026-10-20,30");
     const free = productsCsv([toProductRow(variant, metric, null, false)], id, false).trim().split("\r\n");
     expect(free[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Running low,,,2.3,,,");
   });

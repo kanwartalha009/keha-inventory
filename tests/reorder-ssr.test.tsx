@@ -216,6 +216,21 @@ describe("Reorder page (Order plan · Order now)", () => {
   });
 });
 
+describe("Days left with no recent sales (2026-10-17 click-through: never ∞)", () => {
+  it("Order now lines and the Free preview show a dash with \"No recent sales\"", () => {
+    const d = reorderData();
+    const g = d.groups[0]!;
+    const line = { ...g.lines[0]!, daysLeft: null, neverRunsOut: true };
+    const html = render("/app/reorder", "reorder", Reorder, { ...d, groups: [{ ...g, lines: [line, ...g.lines.slice(1)] }] });
+    expect(html).not.toContain("∞");
+    expect(html).toMatch(/<s-text interestFor="keha-left-[\w]+-\d+">—<\/s-text><s-tooltip id="keha-left-[\w]+-\d+">No recent sales<\/s-tooltip>/);
+    const preview: PreviewRow[] = [{ variantId: V(9), productTitle: "Beanie", variantTitle: "Default Title", daysLeft: null, neverRunsOut: true, orderBy: "2026-11-12", overdue: false, qty: 4 }];
+    const free = render("/app/reorder", "reorder", Reorder, { ...d, groups: [], enabled: false, preview });
+    expect(free).not.toContain("∞");
+    expect(free).toContain('<s-text interestFor="keha-prev-left-9">—</s-text><s-tooltip id="keha-prev-left-9">No recent sales</s-tooltip>');
+  });
+});
+
 describe("Order now loader", () => {
   it("Free: only the top-10 preview of the forward plan — no groups, no suppliers, no open orders", async () => {
     vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);

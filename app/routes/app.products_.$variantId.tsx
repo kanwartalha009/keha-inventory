@@ -18,7 +18,7 @@ import { authenticate } from "../shopify.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { getVariantDetail, setProductCaseSize } from "../models/products.server";
 import { setNoReorder } from "../models/reorder.server";
-import { AppPage, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import { AppPage, DaysLeft, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { flag, val } from "../components/wc";
@@ -28,7 +28,6 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
 import {
   dailySeries,
-  daysLeftView,
   formatRate,
   isNeutralMultiplier,
   monthlyTotals,
@@ -126,7 +125,6 @@ export default function VariantDetailPage() {
   const data = useLoaderData<typeof loader>() as VariantDetailData;
   const { row, forecast } = data;
   const variant = variantName(row.variantTitle);
-  const left = daysLeftView(row);
   const locked = planTag("forecast", t);
 
   return (
@@ -158,17 +156,7 @@ export default function VariantDetailPage() {
             <KvRow
               label={t("Days of stock left")}
               value={
-                !forecast ? (
-                  locked
-                ) : left.kind === "never" ? (
-                  <span role="img" aria-label={t("Never runs out at current sales")}>
-                    ∞
-                  </span>
-                ) : left.kind === "days" ? (
-                  formatCount(left.days, locale)
-                ) : (
-                  "—"
-                )
+                !forecast ? locked : <DaysLeft id="keha-detail-left" daysLeft={row.daysLeft} neverRunsOut={row.neverRunsOut} />
               }
             />
             <KvRow

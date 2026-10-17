@@ -27,7 +27,6 @@ import {
   supplierName,
   type OrderPlanData,
   type PlanSupplierInfo,
-  type PlanVariantInfo,
   type PreviewRow,
 } from "./order-plan-shared";
 
@@ -288,9 +287,17 @@ export function windowEnd(today: DayKey, withinDays: number): DayKey {
   return last < end ? last : end;
 }
 
-/** Days left, rounded down like the screens; "never" when it never runs out at this pace. */
-const daysLeftOf = (v: PlanVariantInfo | undefined): number | string | null =>
-  !v ? null : v.neverRunsOut ? "never runs out at the current pace" : v.daysLeft === null || !Number.isFinite(v.daysLeft) ? null : Math.max(0, Math.floor(v.daysLeft));
+/** Why days_left is null when there is stock but no sale to measure a pace from (I-5: unknown, never ∞). */
+export const NO_RECENT_SALES = "no recent sales";
+
+/**
+ * Days left, rounded down like the screens. Unknown is null; with stock and a measured pace of
+ * zero it is null too, with `days_left_why: "no recent sales"` (as the screens show "—").
+ */
+export function daysLeftMeta(daysLeft: number | null | undefined, neverRunsOut: boolean | undefined): { days_left: number | null; days_left_why?: string } {
+  if (neverRunsOut) return { days_left: null, days_left_why: NO_RECENT_SALES };
+  return { days_left: daysLeft === null || daysLeft === undefined || !Number.isFinite(daysLeft) ? null : Math.max(0, Math.floor(daysLeft)) };
+}
 
 /** order_by_label of an overdue order with no date (already out, the day it ran out unknown — M3). */
 const OVERDUE_NO_DATE = "overdue — already out of stock, the day it ran out isn't known";
@@ -343,7 +350,7 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
           overdue: e.overdue || undefined,
           arrives: e.arrives,
           cost: money(e.cost),
-          days_left: daysLeftOf(v),
+          ...daysLeftMeta(v?.daysLeft, v?.neverRunsOut),
         };
       }),
       more_lines: g.events.length > shown.length ? g.events.length - shown.length : undefined,
@@ -373,7 +380,7 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
     shows: `The ${rows.length} most urgent products to order, most urgent first.`,
     results: rows.map((r) =>
       link(r.variantId, displayName(r.productTitle || "—", r.variantTitle), MIME.variant, {
-        days_left: r.neverRunsOut ? "never runs out at the current pace" : r.daysLeft === null || !Number.isFinite(r.daysLeft) ? null : Math.max(0, Math.floor(r.daysLeft)),
+        ...daysLeftMeta(r.daysLeft, r.neverRunsOut),
         order_by: r.orderBy,
         order_by_label: dueLabel(r.orderBy, r.overdue, data.today),
         overdue: r.overdue || undefined,
@@ -436,7 +443,7 @@ export function productStockResponse(
       sales_per_day: r.rate === null ? null : Math.round(r.rate * 10) / 10,
     };
     if (ctx.forecast) {
-      meta.days_left = r.neverRunsOut ? "never runs out at the current pace" : r.daysLeft === null ? null : Math.max(0, Math.floor(r.daysLeft));
+      Object.assign(meta, daysLeftMeta(r.daysLeft, r.neverRunsOut));
       meta.order_by = r.orderBy;
       meta.order_by_label = dayLabel(r.orderBy, ctx.today);
       meta.suggested_order_qty = r.orderQty;

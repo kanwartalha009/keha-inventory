@@ -22,7 +22,7 @@ import { setNoReorder } from "../models/reorder.server";
 import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
-import { AppPage, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
+import { AppPage, DaysLeft, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { UpgradeBanner, planName, planTag } from "../components/plan";
 import { requiredPlan } from "../lib/plan-shared";
@@ -30,7 +30,6 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatCount } from "../lib/dashboard-shared";
 import {
   STATUS_ORDER,
-  daysLeftView,
   filtersToParams,
   formatRate,
   parseFilters,
@@ -325,7 +324,6 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
   const [ask, setAsk] = useState<null | { scope: "product" | "variant"; value: boolean }>(null);
   const variant = variantName(r.variantTitle);
   const sub = [variant, r.sku].filter(Boolean).join(" · ");
-  const left = daysLeftView(r);
   const name = [r.productTitle, variant].filter(Boolean).join(" — ");
   const menuId = `keha-prod-menu-${r.numericId}`;
   return (
@@ -355,17 +353,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
       </s-table-cell>
       <s-table-cell>{formatRate(r.rate, locale)}</s-table-cell>
       <s-table-cell>
-        {locked ? (
-          ""
-        ) : left.kind === "never" ? (
-          <span role="img" aria-label={t("Never runs out at current sales")}>
-            ∞
-          </span>
-        ) : left.kind === "days" ? (
-          formatCount(left.days, locale)
-        ) : (
-          "—"
-        )}
+        {locked ? "" : <DaysLeft id={`keha-left-${r.numericId}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />}
       </s-table-cell>
       <s-table-cell>
         {locked ? (

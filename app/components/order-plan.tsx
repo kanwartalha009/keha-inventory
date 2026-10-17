@@ -13,7 +13,7 @@ import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
 import { useLinkProps } from "./wc";
-import { HeaderLabel } from "./ui";
+import { DaysLeft, HeaderLabel } from "./ui";
 import type { Feature } from "../lib/plan-shared";
 
 const STRIP_W = 640;
@@ -80,7 +80,6 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
       <s-table-body>
         {rows.map((r) => {
           const variant = variantName(r.variantTitle);
-          const days = r.neverRunsOut ? "∞" : r.daysLeft === null ? "—" : formatCount(Math.max(0, Math.floor(r.daysLeft)), locale);
           return (
             <s-table-row key={r.variantId}>
               <s-table-cell>
@@ -89,7 +88,9 @@ export function PreviewTable({ rows }: { rows: PreviewRow[] }) {
                   {variant && <s-text color="subdued">{variant}</s-text>}
                 </s-stack>
               </s-table-cell>
-              <s-table-cell>{days}</s-table-cell>
+              <s-table-cell>
+                <DaysLeft id={`keha-prev-left-${r.variantId.replace(/\D/g, "")}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />
+              </s-table-cell>
               <s-table-cell>
                 <OrderByCell orderBy={r.orderBy} overdue={r.overdue} />
               </s-table-cell>

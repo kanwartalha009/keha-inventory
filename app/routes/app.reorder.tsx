@@ -45,7 +45,7 @@ import { lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type
 import { LocationSwitcher, switcherMode } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
 import { loadTransfers } from "../models/transfers.server";
-import { AppPage, EmptyState, FormCard, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
+import { AppPage, DaysLeft, EmptyState, FormCard, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
 import { fill, useLocale } from "../lib/i18n";
@@ -628,7 +628,6 @@ function LineRow({
     : offPack
       ? fill(t("Not a whole number of cases ({n} per case)."), { n: formatCount(l.pack, locale) })
       : undefined;
-  const days = l.neverRunsOut ? "∞" : l.daysLeft === null ? "—" : formatCount(Math.max(0, Math.floor(l.daysLeft)), locale);
   const unitSupplier = group.currency !== group.storeCurrency ? l.unitCost : null;
   const menuId = `keha-line-menu-${l.variantId.replace(/\D/g, "")}`;
   return (
@@ -658,7 +657,9 @@ function LineRow({
           )}
         </s-stack>
       </s-table-cell>
-      <s-table-cell>{days}</s-table-cell>
+      <s-table-cell>
+        <DaysLeft id={`keha-left-${group.key.replace(/\W/g, "")}-${l.variantId.replace(/\D/g, "")}`} daysLeft={l.daysLeft} neverRunsOut={l.neverRunsOut} />
+      </s-table-cell>
       <s-table-cell>
         <s-stack direction="block" gap="small-200">
           <s-number-field

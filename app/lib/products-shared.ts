@@ -241,11 +241,15 @@ export function formatRate(rate: number | null, locale: string): string {
   }
 }
 
-export type DaysLeftView = { kind: "never" } | { kind: "none" } | { kind: "days"; days: number };
+/**
+ * Days of stock left. "noSales": stock but a measured sales rate of zero — the days are unknown
+ * (I-5: "—", with "No recent sales" as the reason), never "∞" (2026-10-17 click-through).
+ */
+export type DaysLeftView = { kind: "noSales" } | { kind: "none" } | { kind: "days"; days: number };
 
 /** Whole days left, rounded DOWN (2.9 days is not 3 days of stock). */
 export function daysLeftView(row: Pick<ProductRow, "daysLeft" | "neverRunsOut">): DaysLeftView {
-  if (row.neverRunsOut) return { kind: "never" };
+  if (row.neverRunsOut) return { kind: "noSales" };
   if (row.daysLeft === null || !Number.isFinite(row.daysLeft)) return { kind: "none" };
   return { kind: "days", days: Math.max(0, Math.floor(row.daysLeft)) };
 }
@@ -303,7 +307,7 @@ export function productsCsv(rows: readonly ProductRow[], t: T, forecast: boolean
       r.onHand,
       r.incoming,
       r.rate === null ? null : Math.round(r.rate * 10) / 10,
-      !forecast ? null : left.kind === "never" ? "∞" : left.kind === "days" ? left.days : null,
+      !forecast ? null : left.kind === "noSales" ? "—" : left.kind === "days" ? left.days : null,
       forecast ? r.orderBy : null,
       forecast ? r.orderQty : null,
     ];
