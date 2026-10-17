@@ -21,7 +21,7 @@
 import type { MoneyCardKey } from "./money-shared";
 import type { MoneyRefresh } from "./plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
-import { byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd, type PlanEvent } from "./engine/forward-plan-shared";
+import { byWeek, bySupplier, cashTotals, dueDay, ordersDue, planEnd } from "./engine/forward-plan-shared";
 import {
   orderLink,
   supplierName,
