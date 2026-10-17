@@ -22,6 +22,7 @@ import {
 } from "./engine/forward-plan-shared";
 import { toCsv, variantName } from "./products-shared";
 import { fill } from "./i18n";
+import type { TrendMode } from "./settings-shared";
 
 type T = (s: string) => string;
 
@@ -88,6 +89,8 @@ export type OrderPlanData = {
   staleDrafts?: number;
   /** Products marked "Don't reorder" (left out of every order). */
   notReordered?: number;
+  /** Growth assumption: the trend is in the forecast only with "store" (absent = "off"). */
+  trendMode?: TrendMode;
 };
 
 export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UTC"): OrderPlanData => ({
@@ -418,4 +421,15 @@ export function lockTeaser(data: Pick<OrderPlanData, "events" | "variants">, lim
   if (more <= 0) return null;
   const totals = cashTotals(data.events);
   return { more, suppliers: new Set(data.events.map((e) => e.supplierKey)).size, cash: totals.cash, missingCost: totals.missingCost };
+}
+
+/**
+ * Next 90 days' footnote: what an order-by date is and what it is based on. The trend is named
+ * only when the growth assumption is on (Settings → Defaults, trendMode "store"): with it off the
+ * forecast doesn't use it (2026-10-17 click-through).
+ */
+export function orderByFootnote(trendMode: TrendMode | undefined, t: T): string {
+  return trendMode === "store"
+    ? t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, the trend, stock now and stock on order with its dates.")
+    : t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, stock now and stock on order with its dates.");
 }

@@ -218,3 +218,15 @@ describe("loaders: the plan gates on the server too", () => {
     expect(((await csvLoader(args("https://app.test/app/reorder/calendar/csv"))) as Response).status).toBe(403);
   });
 });
+
+describe("Next 90 days footnote names the trend only when the growth assumption is on (2026-10-17)", () => {
+  it("off (default): sales pace, last year's season, stock and stock on order — no trend", () => {
+    const html = render({ enabled: true, plan: orderPlanFixture() });
+    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, stock now and stock on order with its dates.");
+    expect(html).not.toContain("the trend");
+  });
+  it("store: the trend is named", () => {
+    const html = render({ enabled: true, plan: { ...orderPlanFixture(), trendMode: "store" } });
+    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, the trend, stock now and stock on order with its dates.");
+  });
+});

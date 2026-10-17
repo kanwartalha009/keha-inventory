@@ -232,6 +232,15 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
     nl: "Uiterste besteldatum: de laatste dag om te bestellen zodat de levering er is voordat je voorraad onder het veiligheidsniveau zakt. Gebaseerd op verkopen per dag met voorraad, het seizoen van vorig jaar, de trend, de huidige voorraad en bestelde voorraad met de data.",
     pl: "Termin zamówienia: ostatni dzień, w którym możesz zamówić, aby dostawa dotarła, zanim zapas spadnie poniżej poziomu bezpieczeństwa. Na podstawie sprzedaży dziennej przy dostępnym zapasie, sezonu z zeszłego roku, trendu, obecnego zapasu i zamówionego towaru z datami.",
   },
+  "Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, stock now and stock on order with its dates.": {
+    es: "Fecha límite: el último día para pedir y que la entrega llegue antes de que tu stock baje de su nivel de seguridad. Basado en las ventas diarias con stock, la temporada del año pasado, el stock actual y el stock pedido con sus fechas.",
+    fr: "Date limite : le dernier jour pour commander afin que la livraison arrive avant que votre stock passe sous son niveau de sécurité. Basé sur les ventes par jour en stock, la saison de l'an dernier, le stock actuel et le stock commandé avec ses dates.",
+    de: "Bestelldatum: der letzte Tag, an dem du bestellen kannst, damit die Lieferung ankommt, bevor dein Bestand unter den Sicherheitsbestand fällt. Basierend auf den Verkäufen pro Tag mit Bestand, der Saison des Vorjahres, dem aktuellen Bestand und bestellter Ware mit ihren Terminen.",
+    it: "Data limite: l'ultimo giorno per ordinare in modo che la consegna arrivi prima che lo stock scenda sotto il livello di sicurezza. Basato sulle vendite al giorno con stock, la stagione dell'anno scorso, lo stock attuale e lo stock ordinato con le sue date.",
+    pt: "Data limite: o último dia para encomendar de modo que a entrega chegue antes de o stock descer abaixo do nível de segurança. Com base nas vendas por dia com stock, na época do ano passado, no stock atual e no stock encomendado com as suas datas.",
+    nl: "Uiterste besteldatum: de laatste dag om te bestellen zodat de levering er is voordat je voorraad onder het veiligheidsniveau zakt. Gebaseerd op verkopen per dag met voorraad, het seizoen van vorig jaar, de huidige voorraad en bestelde voorraad met de data.",
+    pl: "Termin zamówienia: ostatni dzień, w którym możesz zamówić, aby dostawa dotarła, zanim zapas spadnie poniżej poziomu bezpieczeństwa. Na podstawie sprzedaży dziennej przy dostępnym zapasie, sezonu z zeszłego roku, obecnego zapasu i zamówionego towaru z datami.",
+  },
 
   // ---- Open orders ----
   "Orders you created here and purchase orders in Shopify that haven't arrived yet.": {

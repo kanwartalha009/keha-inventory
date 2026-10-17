@@ -25,7 +25,7 @@
 import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import { readSettings } from "../lib/settings-shared";
+import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { POOL_LOCATION_SELECT, poolLocationIds } from "../lib/compute-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
 import { readPoLines, lineRemaining, onOrderByVariant, poArrival, poCountsAsOrdered, type PoLine } from "../lib/supplier-shared";
@@ -58,7 +58,14 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-export type ShopBasics = { currency: string; timezone: string; locale: string; leadTimeDays: number };
+export type ShopBasics = {
+  currency: string;
+  timezone: string;
+  locale: string;
+  leadTimeDays: number;
+  /** Growth assumption (Settings → Defaults): "store" applies the trend; "off" (default) doesn't. */
+  trendMode: TrendMode;
+};
 
 export async function shopBasics(shop: string): Promise<ShopBasics> {
   const row = await prisma.shop.findUnique({ where: { domain: shop }, select: { currency: true, timezone: true, locale: true, settings: true } });
@@ -67,6 +74,7 @@ export async function shopBasics(shop: string): Promise<ShopBasics> {
     timezone: row?.timezone ?? "UTC",
     locale: row?.locale ?? "en",
     leadTimeDays: readSettings(row?.settings).leadTimeDays,
+    trendMode: readSettings(row?.settings).trendMode,
   };
 }
 

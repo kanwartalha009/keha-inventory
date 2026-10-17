@@ -106,6 +106,18 @@ function data(over: Partial<PlannerData> = {}): PlannerData {
   };
 }
 
+describe("Season plan: the trend is named only when the scenario used it", () => {
+  it("growth assumption on: the trend line and both Based on lines include it", () => {
+    const d = data();
+    const result = d.selected!.result!;
+    const on = { ...d, selected: { ...d.selected!, result: { ...result, season: { ...result.season, trendApplied: true, trend: 1.12 } } } };
+    const html = render("/app/reorder/season", on);
+    expect(html).toContain("Trend (last 28 days vs the same weeks last year): × 1.12");
+    expect(html).toContain("Based on: sales per day while in stock × seasonal index × trend × plan × 5 days");
+    expect(html).toContain("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming");
+  });
+});
+
 describe("Planner page", () => {
   it("Growth with a scenario: summary, cash per week, order list, demand per collection, popovers", () => {
     const html = render("/app/reorder/season", data());
@@ -120,7 +132,11 @@ describe("Planner page", () => {
     for (const h of ["Expected sales (units)", "Expected revenue", "Cash needed", "Last year, same period"]) expect(html).toContain(h);
     // Every number has a popover ending with "Based on: …".
     expect((html.match(/How we got this/g) ?? []).length).toBeGreaterThanOrEqual(6);
-    expect(html).toContain("Based on: sales per day while in stock × seasonal index × trend × plan × 5 days");
+    // Growth assumption off (the default): the trend isn't used, so it isn't named (2026-10-17).
+    expect(html).toContain("Based on: sales per day while in stock × seasonal index × plan × 5 days");
+    expect(html).toContain("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming");
+    expect(html).not.toContain("Trend (last 28 days vs the same weeks last year)");
+    expect(html).not.toMatch(/× trend ×|, trend, plan/);
     expect(html).toContain("Based on: units to order × unit cost from Shopify (retail price when the cost is missing)");
     // Chart with aria-label + table fallback.
     expect(html).toMatch(/<svg[^>]*role="img"[^>]*aria-label="Cash needed per week from Oct 12, 2026 to Nov 2, 2026: €480 in total."/);

@@ -35,6 +35,7 @@ import {
   formatDayRange,
   formatWeekRange,
   lockTeaser,
+  orderByFootnote,
   orderLink,
   planWeeks,
   supplierName,
@@ -125,9 +126,7 @@ function Calendar({ plan }: { plan: OrderPlanData }) {
           </div>
         </FormCard>
       )}
-      <s-paragraph color="subdued">
-        {t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, the trend, stock now and stock on order with its dates.")}
-      </s-paragraph>
+      <s-paragraph color="subdued">{orderByFootnote(plan.trendMode, t)}</s-paragraph>
     </>
   );
 }

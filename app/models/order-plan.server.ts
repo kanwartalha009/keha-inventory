@@ -408,6 +408,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       batches: plan.batches,
       staleDrafts,
       notReordered,
+      trendMode: basics.trendMode,
     },
     state,
     suppliers: supplierRows,

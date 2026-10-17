@@ -539,12 +539,12 @@ function Summary({ result }: { result: ScenarioResult }) {
         ]
       : []),
     ...(season.collectionVariants ? [fill(t("Variants using their collection's own index: {n}"), { n: formatCount(season.collectionVariants, locale) })] : []),
-    fill(t("Trend (last 28 days vs the same weeks last year): × {x}"), { x: num2(season.trend, locale) }),
+    // The trend is named only when the scenario used it (growth assumption on — 2026-10-17).
+    ...(season.trendApplied ? [fill(t("Trend (last 28 days vs the same weeks last year): × {x}"), { x: num2(season.trend, locale) })] : []),
     planLine,
-    fill(t("Based on: sales per day while in stock × seasonal index × trend × plan × {n} days, {range}"), {
-      n: formatCount(r.period.days, locale),
-      range,
-    }),
+    season.trendApplied
+      ? fill(t("Based on: sales per day while in stock × seasonal index × trend × plan × {n} days, {range}"), { n: formatCount(r.period.days, locale), range })
+      : fill(t("Based on: sales per day while in stock × seasonal index × plan × {n} days, {range}"), { n: formatCount(r.period.days, locale), range }),
   ];
   const revenueLines = [
     fill(t("Expected units: {n}"), { n: formatCount(Math.round(r.totals.units ?? 0), locale) }),
@@ -711,7 +711,9 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
                 t("Units to order = expected sales in the period + safety stock − stock expected when the period starts, rounded up to case packs and minimum orders."),
                 t("Stock expected at the start = stock now + incoming − expected sales until the period starts (never below 0)."),
                 t("Order by = period start − lead time − safety days. Past dates show “Late — order now”."),
-                t("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming, supplier lead times, case packs and minimums"),
+                result.season.trendApplied
+                  ? t("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming, supplier lead times, case packs and minimums")
+                  : t("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming, supplier lead times, case packs and minimums"),
               ]}
             />
             {result.groups.map((g) => (
