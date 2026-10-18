@@ -33,6 +33,14 @@
  *     95 / 90 / 85 % by ABC): the expected shortage per order cycle σ_P·G(k) (G = the standard
  *     normal loss function) equals (1 − β) × the demand of one cycle — the textbook fill-rate rule
  *     for a periodic review. k ≥ 0. safety = k × σ_P.
+ *  6. Long lead times (accuracy audit 2026-10-18, `longLeadFloor`): for A items k is at least
+ *     1.5 × the role's z, ramped in from a 42-day to a 90-day lead time. At a lead time of 75 days
+ *     and a 60-day cycle the fill-rate rule gave k ≈ 0–0.5 (the cycle's own stock "covers" the
+ *     target on paper), and on the real store's service simulation with late deliveries and supplier
+ *     minimums A items reached 90.5 % (lead 90) / 92.7 % (lead 135) against 95 %: their real error at
+ *     those horizons runs larger than the backtest measures (fast sellers grow; the forecast lags).
+ *     With the floor 94.3 % / 94.3 %, for 58 % / 40 % more A stock (docs/ACCURACY.md). B and C
+ *     already overshoot their targets there (minimums, slow sellers): no floor.
  */
 import { addDays, dayIndex, type DayKey } from "./dates-shared";
 
@@ -51,6 +59,16 @@ export const FORECAST_ERROR = Object.freeze({
   /** Safety factor bounds. */
   maxK: 4,
 });
+
+/** k ≥ LONG_LEAD.multiple × z for A items, ramped in from `fromDays` to `fullDays` of lead time. */
+export const LONG_LEAD = Object.freeze({ fromDays: 42, fullDays: 90, multiple: 1.5 });
+
+/** The long-lead floor on the safety factor (see the module header, 6); 0 when none applies. */
+export function longLeadFloor(role: string, leadDays: number, z: number): number {
+  if (role !== "A" || !(leadDays > LONG_LEAD.fromDays) || !(z > 0)) return 0;
+  const ramp = Math.min(1, (leadDays - LONG_LEAD.fromDays) / (LONG_LEAD.fullDays - LONG_LEAD.fromDays));
+  return LONG_LEAD.multiple * z * ramp;
+}
 
 /** The standard normal density and distribution function. */
 export function normalPdf(z: number): number {

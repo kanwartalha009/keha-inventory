@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 import {
   FORECAST_ERROR,
+  LONG_LEAD,
+  longLeadFloor,
   computeVariant,
   errorOriginDays,
   errorRatio,
@@ -131,5 +133,35 @@ describe("computeVariant: safety from the forecast's own error", () => {
     const line = whyLines(why, (x) => x, "en").find((l) => l.startsWith("Safety "))!;
     expect(line).toBe(`Safety ${Math.round(r.safety!)}: the forecast's own error over 28 days (± ${Math.round(r.inputs.error!.sigma)}) for a 95 % fill target.`);
     expect(whyLines(why, (x) => translate("de", x), "de").some((l) => l.includes("Lieferquote"))).toBe(true);
+  });
+});
+
+describe("long lead times: a safety floor for A items (accuracy audit 2026-10-18)", () => {
+  it("longLeadFloor: 1.5 × z for A, ramped in from 42 to 90 days of lead time; none for B / C or short leads", () => {
+    expect(LONG_LEAD).toEqual({ fromDays: 42, fullDays: 90, multiple: 1.5 });
+    expect(longLeadFloor("A", 14, 1.65)).toBe(0);
+    expect(longLeadFloor("A", 42, 1.65)).toBe(0);
+    expect(longLeadFloor("A", 66, 1.65)).toBeCloseTo(1.5 * 1.65 * 0.5, 12);
+    expect(longLeadFloor("A", 90, 1.65)).toBeCloseTo(2.475, 12);
+    expect(longLeadFloor("A", 135, 1.65)).toBeCloseTo(2.475, 12);
+    expect(longLeadFloor("B", 135, 1.28)).toBe(0);
+    expect(longLeadFloor("C", 135, 1.04)).toBe(0);
+  });
+
+  it("lead 75 + cycle 60 on 1,350 units of demand: the fill-rate rule alone gave k 0 and no safety; an A item now keeps k 1.70", () => {
+    const at = (role: "A" | "B") => computeVariant(variantInput({ series: buildSeries({ days: 90, sold: (k) => (k % 2 ? 8 : 12) }), role, supplierLeadTimeDays: 75, cycleDays: 60, onHand: 0 }))!;
+    const a = at("A");
+    expect(a.forecastRate! * 135).toBeCloseTo(1350, 6);
+    expect(a.inputs.error!.k).toBeCloseTo(1.5 * 1.65 * (33 / 48), 9);
+    expect(a.inputs.error!.floor).toBe(true);
+    expect(a.safety!).toBeCloseTo(a.inputs.error!.k * a.inputs.error!.sigma, 9);
+    expect(a.safety!).toBeGreaterThan(100);
+    // B: the fill-rate rule's k (0 here), no floor.
+    const b = at("B");
+    expect(b.inputs.error!.k).toBe(0);
+    expect(b.inputs.error!.floor).toBeUndefined();
+    // Short lead times are untouched.
+    const short = computeVariant(variantInput({ series: buildSeries({ days: 90, sold: (k) => (k % 2 ? 8 : 12) }), role: "A", supplierLeadTimeDays: 14, cycleDays: 14, onHand: 0 }))!;
+    expect(short.inputs.error!.floor).toBeUndefined();
   });
 });

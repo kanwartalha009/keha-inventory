@@ -30,7 +30,7 @@ import {
 import { variantStatus } from "./status-shared";
 import { applyCap, cappedSince, spikeCap, type CappedDay, type RecurringSpikes } from "./outliers-shared";
 import { levelShift, type LevelShift } from "./level-shift-shared";
-import { errorRatio, fillSafetyFactor, normalCdf, paceVarianceFactor, structuralSigma, type ErrorRatio, type ErrorSample } from "./error-shared";
+import { errorRatio, fillSafetyFactor, longLeadFloor, normalCdf, paceVarianceFactor, structuralSigma, type ErrorRatio, type ErrorSample } from "./error-shared";
 import { PLAN_LIKE_DAYS, ownWeight, type PlanLikeInput } from "./new-style-shared";
 import { arrivalsFrom, coverDays, demandProjection, lostUnits, type Projection } from "./projection-shared";
 import {
@@ -235,7 +235,7 @@ export interface VariantInputs {
    * and the ratio used (pooled with it), the error σ used (with lead-time spread), the fill target and the factor k
    * (safety = k × sigma). null with no advice or the old σ model (settings.safetyModel "sigma").
    */
-  error: { horizonDays: number; model: number; sigma: number; ratio: number | null; prior: number; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number } | null;
+  error: { horizonDays: number; model: number; sigma: number; ratio: number | null; prior: number; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number; floor?: boolean } | null;
   /** B5: a confirmed sustained level change — the pace is the level since `day` (level-shift-shared). */
   levelShift: { day: DayKey; before: number; after: number; ratio: number; afterDays: number } | null;
   /**
@@ -507,9 +507,12 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     const sigmaP = model * backtest.used;
     const total = Math.sqrt(sigmaP * sigmaP + (leadSigma !== null ? daily * daily * leadSigma * leadSigma : 0));
     const fillTarget = normalCdf(z);
-    const k = fillSafetyFactor(fillTarget, daily * Math.max(cycle, MIN_REVIEW_DAYS), total);
+    const kFill = fillSafetyFactor(fillTarget, daily * Math.max(cycle, MIN_REVIEW_DAYS), total);
+    // Long lead times (error-shared longLeadFloor): A items keep at least 1.5 × z.
+    const floor = longLeadFloor(input.role, lead.days, z);
+    const k = Math.max(kFill, floor);
     safety = k * total;
-    error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, prior, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k };
+    error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, prior, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k, ...(floor > kFill ? { floor: true } : {}) };
   }
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
