@@ -419,6 +419,39 @@ model Action {
   @@index([shop, state])
 }
 
+/// The weekly backtest cache (perf 2026-10-18, lib/backtest-cache-shared): per variant, the history
+/// rows compute's 14-month read built on `day` ([day − 427, day − 84), encoded) and that night's
+/// forecast-error backtest. Compute reuses it for up to 6 nights instead of re-reading 14 months.
+model VariantBacktest {
+  shop       String
+  variantId  String
+  /// The night it was read (store-local).
+  day        DateTime @db.Date
+  /// Lead time + cycle the backtest ran for.
+  horizon    Int
+  /// Pool, demand view, engine settings, backfill coverage, format (backtestScopeKey).
+  scopeKey   String
+  backtested Boolean
+  ratio      Float?
+  windows    Float
+  samples    Int
+  bias       Float?
+  /// encodeHistory text; null = no sales in the window (rows not stored).
+  history    String?
+
+  @@id([shop, variantId])
+}
+
+/// The ABC roles' pooled forecast-error ratios a shop uses for a week (lib/backtest-cache-shared).
+model BacktestRun {
+  shop     String   @id
+  day      DateTime @db.Date
+  scopeKey String
+  priorA   Float
+  priorB   Float
+  priorC   Float
+}
+
 model MoneyAtStake {
   shop           String
   day            DateTime @db.Date

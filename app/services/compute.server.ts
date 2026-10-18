@@ -113,6 +113,27 @@ import { lastProductPaces, overridesFor } from "../models/forecast-overrides.ser
 import { resolveReference, variantShares, type PlanLikeReference } from "../lib/forecast-override-shared";
 import { bundleSalesForComponents, bundlesOf, componentBundles } from "../lib/bundles-shared";
 import { SHARED_LOOP_WARN_VARIANTS, sharedLoopWarning, workerMode } from "../lib/jobs-shared";
+import {
+  BACKTEST_CACHE,
+  anySales,
+  backtestOf,
+  backtestReusable,
+  backtestScopeKey,
+  cacheFrom,
+  cacheTo,
+  cachedHistory,
+  encodeHistory,
+  factsStamp,
+  historyUsable,
+  pooledUsed,
+  priorsUsable,
+  rolePriorsFrom,
+  withCachedBacktest,
+  type BacktestCache,
+} from "../lib/backtest-cache-shared";
+import { readBacktestRun, readBacktests, storedBacktestRatios, writeBacktestRun, writeBacktests, type BacktestRow } from "../models/backtest-cache.server";
+import { SPIKE_CAP } from "../lib/engine/outliers-shared";
+import { dayIndex } from "../lib/engine/dates-shared";
 
 const HISTORY_DAYS = 90;
 
@@ -159,7 +180,22 @@ export type ComputeOptions = {
   buildDays?: boolean;
   /** Variants per chunk (default COMPUTE_CHUNK); the equality tests run several sizes. */
   chunkSize?: number;
+  /**
+   * The weekly backtest cache (lib/backtest-cache-shared; default true). false reads 14 months for
+   * every variant and runs every backtest, as before — the equality tests compare both.
+   */
+  backtestCache?: boolean;
 };
+
+/** A cache read / write that fails is "no cache": compute goes on as without it (logged once a run). */
+async function cacheStep<T>(shop: string, what: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`[compute] ${shop}: backtest cache ${what} failed; reading the facts instead`, e);
+    return null;
+  }
+}
 
 /**
  * The plans in chunks of at most `size` variants that never split a product (a product larger
@@ -267,19 +303,46 @@ const numOrNull = (v: unknown) => (v === null || v === undefined ? null : Number
  */
 async function loadOlderSeries(
   shop: string,
-  x: { ids: string[]; from: string; before: string; pool: string[]; demandFilter: ReturnType<typeof demandWhere> },
+  x: {
+    ids: string[];
+    from: string;
+    before: string;
+    pool: string[];
+    demandFilter: ReturnType<typeof demandWhere>;
+    /**
+     * Perf 2026-10-18: variants for which the rows don't matter when they sold nothing in the
+     * range (backtest-cache-shared header): their stock is not read when the sales show none;
+     * they are added to `skipped` and get no rows.
+     */
+    skipStock?: (id: string) => boolean;
+    skipped?: Set<string>;
+  },
 ): Promise<Map<string, DailyRow[]>> {
   if (!x.ids.length || !x.pool.length) return new Map();
   const range = { gte: dayDate(x.from), lt: dayDate(x.before) };
   const sales: SalesDay[] = [];
   const stock: PooledStockDay[] = [];
+  const stockOf = (ids: string[]) =>
+    ids.length
+      ? Promise.all([
+          facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range }, _sum: { endUnits: true }, _count: { _all: true } }),
+          facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range, outOfStock: true }, _count: { _all: true } }),
+        ])
+      : Promise.resolve([[], []] as const);
   for (let i = 0; i < x.ids.length; i += 500) {
     const ids = x.ids.slice(i, i + 500);
-    const [salesG, stockG, outG] = await Promise.all([
-      facts.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...x.demandFilter, variantId: { in: ids }, day: range }, _sum: { sold: true } }),
-      facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range }, _sum: { endUnits: true }, _count: { _all: true } }),
-      facts.stockDaily.groupBy({ by: ["variantId", "day"], where: { shop, locationId: { in: x.pool }, variantId: { in: ids }, day: range, outOfStock: true }, _count: { _all: true } }),
-    ]);
+    const salesRead = facts.salesDaily.groupBy({ by: ["variantId", "day"], where: { shop, ...x.demandFilter, variantId: { in: ids }, day: range }, _sum: { sold: true } });
+    let salesG: Awaited<typeof salesRead>;
+    let stockG: Awaited<ReturnType<typeof stockOf>>[0];
+    let outG: Awaited<ReturnType<typeof stockOf>>[1];
+    if (x.skipStock) {
+      salesG = await salesRead;
+      const sold = new Set(salesG.filter((g) => num(g._sum.sold) !== 0).map((g) => g.variantId));
+      const skip = ids.filter((id) => !sold.has(id) && x.skipStock!(id));
+      for (const id of skip) x.skipped?.add(id);
+      const skipSet = new Set(skip);
+      [stockG, outG] = await stockOf(ids.filter((id) => !skipSet.has(id)));
+    } else [salesG, [stockG, outG]] = await Promise.all([salesRead, stockOf(ids)]);
     const out = new Map(outG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, g._count._all]));
     for (const g of salesG) sales.push({ variantId: g.variantId, day: dayKey(g.day), sold: num(g._sum.sold), gross: 0 });
     for (const g of stockG)
@@ -523,10 +586,35 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     settings,
   );
 
-  // B4: each ABC role's pooled forecast-error ratio, before any chunk (roleErrorPriors).
-  const errorPriors = settings.safetyModel === "sigma"
-    ? new Map<AbcRole, number>()
-    : await roleErrorPriors(shop, { today, plans, roles, revenue, seasonCtx, pool, demandFilter, overrides, historyDays: settings.historyDays, batch: opts.chunkSize ?? COMPUTE_CHUNK });
+  // Perf 2026-10-18: the weekly backtest cache (lib/backtest-cache-shared) — its scope is
+  // everything besides the calendar that changes the history rows or the backtest.
+  const cacheOn = opts.backtestCache !== false;
+  const scopeKey = backtestScopeKey({ pool, demand: demandFilter, settings, facts: factsStamp(readBackfillState(shopRow.backfillState)) });
+
+  // B4: each ABC role's pooled forecast-error ratio, before any chunk. Perf #6: the week's stored
+  // priors (BacktestRun); due again → from the stored per-variant backtests; none stored (first
+  // run) → the pre-pass (roleErrorPriors).
+  const errorPriors = settings.safetyModel === "sigma" ? new Map<AbcRole, number>() : await weekErrorPriors();
+  async function weekErrorPriors(): Promise<Map<AbcRole, number>> {
+    const run = cacheOn ? await cacheStep(shop, "read (priors)", () => readBacktestRun(shop)) : null;
+    if (run && priorsUsable(run, { today, scopeKey })) return run.priors;
+    let priors: Map<AbcRole, number> | null = null;
+    if (cacheOn) {
+      const stored = await cacheStep(shop, "read (ratios)", () => storedBacktestRatios(shop));
+      if (stored) {
+        const horizonOf = new Map(plans.map((p) => [p.v.id, p.horizon]));
+        const ratioOf = new Map<string, number | null>();
+        for (const [id, c] of stored) {
+          const age = dayIndex(today) - dayIndex(c.day);
+          if (c.scopeKey === scopeKey && c.backtested && age >= 0 && age <= BACKTEST_CACHE.refreshDays && c.horizon === horizonOf.get(id)) ratioOf.set(id, c.ratio);
+        }
+        priors = rolePriorsFrom(plans.map((p) => ({ id: p.v.id })), roles, revenue, ratioOf, rolePrior);
+      }
+    }
+    priors ??= await roleErrorPriors(shop, { today, plans, roles, revenue, seasonCtx, pool, demandFilter, overrides, historyDays: settings.historyDays, batch: opts.chunkSize ?? COMPUTE_CHUNK });
+    if (cacheOn) await cacheStep(shop, "write (priors)", () => writeBacktestRun(shop, { day: today, scopeKey, priors: priors! }));
+    return priors;
+  }
 
   // Per-product forecast choices (R4): "Don't cap" and "Plan like…" — the reference paces are the
   // last run's (VariantMetric), so a style planned like another reads yesterday's pace.
@@ -588,7 +676,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   for (const chunk of productChunks(plans, opts.chunkSize ?? COMPUTE_CHUNK)) {
     const ids = chunk.map((p) => p.v.id);
     const inChunk = { in: ids };
-    const [channelG, poolSalesG, stockG, outG, days, stockNow] = await allLimit(COMPUTE_QUERY_CONCURRENCY, [
+    const [channelG, poolSalesG, stockG, outG, days, stockNow, cached] = await allLimit(COMPUTE_QUERY_CONCURRENCY, [
       // Channel view: unit price, returns, 28-day revenue.
       () =>
         facts.salesDaily.groupBy({
@@ -624,6 +712,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       // never-sold variants): stored days, never the whole history (DB scale #3).
       () => poolDays(shop, chunk.map((p) => p.v), { ready: daysReady, from, pool, demand, view: demandFilter }),
       () => poolStockNow(shop, pool, ids),
+      // Perf #5: the chunk's cached history rows and backtests.
+      async () => (cacheOn ? ((await cacheStep(shop, "read", () => readBacktests(shop, ids))) ?? new Map<string, BacktestCache>()) : new Map<string, BacktestCache>()),
     ] as const);
 
     const channelSales: SalesDay[] = channelG.map((g) => ({
@@ -675,8 +765,35 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     // cap's one-off rule and the forecast-error backtest read them (engine `history`). Data audit #2: variants with too few in-stock
     // days in the 90 days but sales before them (out of stock most of the window) also take their
     // pace from them (engine `olderSeries`, inStockPace).
-    const history = await loadOlderSeries(shop, { ids, from: addDays(today, -PACE_LOOKBACK_DAYS), before: from, pool, demandFilter });
     const paceFallback = new Set(ids.filter((id) => lastSale.get(id) && fewInStock(id)));
+    // Perf #5: from the weekly cache where it is usable (the same rows a read gives); the rest is
+    // read — through the cache window's end, for the cache — and the stock part is skipped for
+    // variants that sold nothing in the 14 months and whose output doesn't depend on the rows then
+    // (nothing sold in the 90 days either, enough in-stock days for the spike cap, no pace fallback).
+    const noSaleSkip = (id: string) => {
+      const rows = series.get(id);
+      return !anySales(rows) && (rows ?? []).filter((r) => !soldOutDay(r)).length >= Math.max(SPIKE_CAP.minDays, settings.minInStockDays) && !paceFallback.has(id);
+    };
+    const history = new Map<string, DailyRow[]>();
+    const reread: string[] = [];
+    for (const id of ids) {
+      const c = cached.get(id);
+      if (c && historyUsable(c, { variantId: id, today, scopeKey }) && (c.history !== null || noSaleSkip(id))) history.set(id, cachedHistory(c, today, from));
+      else reread.push(id);
+    }
+    const skipped = new Set<string>();
+    const fresh = await loadOlderSeries(shop, {
+      ids: reread,
+      from: addDays(today, -PACE_LOOKBACK_DAYS),
+      before: cacheOn ? cacheTo(today, HISTORY_DAYS) : from,
+      pool,
+      demandFilter,
+      skipStock: noSaleSkip,
+      skipped,
+    });
+    for (const [id, rows] of fresh) history.set(id, cacheOn ? rows.filter((r) => r.day < from) : rows);
+    const freshIds = new Set(reread);
+    const cacheWrites: BacktestRow[] = [];
     const olderSeries = new Map([...history].filter(([id]) => paceFallback.has(id)));
     const onHand = stockNow;
 
@@ -706,6 +823,17 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       const arrivals = (dated.get(v.id) ?? []).map((a) => ({ day: a.arrival, units: a.units }));
       const ref = references.get(v.productId);
       const share = shareOf.get(v.id) ?? 0;
+      // Perf #5: a cached backtest is reused from the night after it ran (same horizon, it ran,
+      // no "Plan like…"); otherwise the backtest runs on tonight's history (read or cached).
+      const role = roles.get(v.id) ?? "C";
+      const prior = errorPriors.get(role) ?? null;
+      const c = cached.get(v.id);
+      const reuse =
+        !!c &&
+        !freshIds.has(v.id) &&
+        settings.safetyModel !== "sigma" &&
+        dayIndex(today) > dayIndex(c.day) &&
+        backtestReusable(c, { horizon, planLike: !!ref });
       const r = computeVariant({
         id: v.id,
         isBundle: false,
@@ -713,8 +841,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         olderSeries: olderSeries.get(v.id) ?? null,
         history: history.get(v.id) ?? null,
         // B4: the forecast-error backtest's origins and their season multipliers (error-shared).
-        errorOrigins: seasonCtx.originsFor(season, errorOriginDays(today, horizon), horizon),
-        errorPrior: errorPriors.get(roles.get(v.id) ?? "C") ?? null,
+        // Reused: no origins, and the ratio used pooled with tonight's prior is the prior.
+        errorOrigins: reuse ? null : seasonCtx.originsFor(season, errorOriginDays(today, horizon), horizon),
+        errorPrior: reuse ? pooledUsed(c!, prior ?? 1) : prior,
         today,
         onHand: stockNowRow.available, // planning position: available (may be negative), not on_hand (C2)
         incoming: stockNowRow.incoming + (kehaOpen.get(v.id) ?? 0),
@@ -748,6 +877,15 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         cost: numOrNull(v.cost),
         settings: overrides,
       });
+      if (r && reuse) r.inputs.error = withCachedBacktest(r.inputs.error, c!, prior ?? 1);
+      if (r && cacheOn) {
+        const bt = backtestOf(r.inputs.error);
+        if (freshIds.has(v.id))
+          cacheWrites.push({ variantId: v.id, day: today, horizon, scopeKey, ...bt, history: skipped.has(v.id) ? null : encodeHistory(fresh.get(v.id) ?? [], cacheFrom(today)) });
+        else if (c && !reuse && (c.horizon !== horizon || c.backtested !== bt.backtested || c.ratio !== bt.ratio || c.windows !== bt.windows || c.samples !== bt.samples || c.bias !== bt.bias))
+          // The backtest ran again on the cached history (new horizon, no backtest before, "Plan like…"): kept with it.
+          cacheWrites.push({ variantId: v.id, ...c, horizon, ...bt });
+      }
       if (r) {
         // Order-by date from the forward plan (engine/forward-plan-shared): the same function the
         // Order now screen, the 90-day calendar and the Dashboard use, so there is one date per
@@ -786,6 +924,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       sold28.set(v.id, soldOver(series.get(v.id), today, ACTION_WINDOW));
     }
 
+    if (cacheWrites.length) await cacheStep(shop, "write", () => writeBacktests(shop, cacheWrites));
     await writeVariantMetrics(
       shop,
       SCOPE_ONLINE,
