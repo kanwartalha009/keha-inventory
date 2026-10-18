@@ -203,7 +203,7 @@ const kinds = new Map<string, number>();
 for (const a of db.tables.action ?? []) kinds.set(a.kind as string, (kinds.get(a.kind as string) ?? 0) + 1);
 line("Actions", [...kinds].map(([k, n]) => `${k} ${n}`).join(", ") || "none");
 const week = thisWeek(plan);
-line("Order this week", `${week.suppliers.length} suppliers, ${fmt(week.totals.units)} units, ${week.totals.cash === null ? "—" : `${plan.currency} ${fmt(week.totals.cash)}`}`);
+line("Due this week", `${week.suppliers.length} suppliers, ${fmt(week.totals.units)} units, ${week.totals.cash === null ? "—" : `${plan.currency} ${fmt(week.totals.cash)}`}`);
 for (const s of week.suppliers) {
   const due = ordersDue(s.events);
   // The app's own label rule (forward-plan dueState): "Due today" is never overdue.

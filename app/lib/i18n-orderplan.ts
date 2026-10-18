@@ -11,9 +11,8 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   // ---- Navigation and tabs ----
   "Dashboard": { es: "Panel", fr: "Tableau de bord", de: "Übersicht", it: "Pannello", pt: "Painel", nl: "Overzicht", pl: "Pulpit" },
   "Order plan": { es: "Plan de pedidos", fr: "Plan de commandes", de: "Bestellplan", it: "Piano ordini", pt: "Plano de encomendas", nl: "Bestelplan", pl: "Plan zamówień" },
-  "Order now": { es: "Pedir ahora", fr: "À commander", de: "Jetzt bestellen", it: "Da ordinare ora", pt: "Encomendar agora", nl: "Nu bestellen", pl: "Zamów teraz" },
-  "Next 13 weeks": { es: "Próximas 13 semanas", fr: "13 prochaines semaines", de: "Nächste 13 Wochen", it: "Prossime 13 settimane", pt: "Próximas 13 semanas", nl: "Komende 13 weken", pl: "Najbliższe 13 tygodni" },
-  "Season plan": { es: "Plan de temporada", fr: "Plan de saison", de: "Saisonplan", it: "Piano stagionale", pt: "Plano de temporada", nl: "Seizoensplan", pl: "Plan sezonowy" },
+  "Order calendar": { es: "Calendario de pedidos", fr: "Calendrier des commandes", de: "Bestellkalender", it: "Calendario ordini", pt: "Calendário de encomendas", nl: "Bestelkalender", pl: "Kalendarz zamówień" },
+  "Season planner": { es: "Planificador de temporada", fr: "Planificateur de saison", de: "Saisonplaner", it: "Pianificatore stagionale", pt: "Planeador de temporada", nl: "Seizoensplanner", pl: "Planer sezonowy" },
 
   // ---- Dashboard header and sync ----
   "First sync in progress": { es: "Primera sincronización en curso", fr: "Première synchronisation en cours", de: "Erste Synchronisierung läuft", it: "Prima sincronizzazione in corso", pt: "Primeira sincronização em curso", nl: "Eerste synchronisatie bezig", pl: "Pierwsza synchronizacja w toku" },
@@ -22,7 +21,7 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   "Waiting to start": { es: "Pendiente de empezar", fr: "En attente de démarrage", de: "Wartet auf den Start", it: "In attesa di iniziare", pt: "À espera de começar", nl: "Wacht op start", pl: "Czeka na rozpoczęcie" },
 
   // ---- Dashboard: Order this week ----
-  "Order this week": { es: "Pedir esta semana", fr: "À commander cette semaine", de: "Diese Woche bestellen", it: "Da ordinare questa settimana", pt: "Encomendar esta semana", nl: "Deze week bestellen", pl: "Zamów w tym tygodniu" },
+  "Due this week": { es: "Para pedir esta semana", fr: "À commander cette semaine", de: "Diese Woche fällig", it: "Da ordinare questa settimana", pt: "A encomendar esta semana", nl: "Deze week nodig", pl: "Do zamówienia w tym tygodniu" },
   "Your order plan appears here once your products, stock and sales are read.": {
     es: "Tu plan de pedidos aparecerá aquí cuando hayamos leído tus productos, stock y ventas.",
     fr: "Votre plan de commandes s'affichera ici une fois vos produits, stocks et ventes lus.",
@@ -82,7 +81,7 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
     nl: "Benodigd geld, komende 13 weken: {cash}",
     pl: "Potrzebna gotówka, najbliższe 13 tygodni: {cash}",
   },
-  "See the next 13 weeks": { es: "Ver las próximas 13 semanas", fr: "Voir les 13 prochaines semaines", de: "Nächste 13 Wochen ansehen", it: "Vedi le prossime 13 settimane", pt: "Ver as próximas 13 semanas", nl: "Bekijk de komende 13 weken", pl: "Zobacz najbliższe 13 tygodni" },
+  "See the order calendar": { es: "Ver el calendario de pedidos", fr: "Voir le calendrier des commandes", de: "Bestellkalender ansehen", it: "Vedi il calendario ordini", pt: "Ver o calendário de encomendas", nl: "Bekijk de bestelkalender", pl: "Zobacz kalendarz zamówień" },
   "{n} lines without a cost price are not in the cash totals.": {
     es: "{n} líneas sin precio de coste no están en los totales.",
     fr: "{n} lignes sans prix de revient ne sont pas dans les totaux.",

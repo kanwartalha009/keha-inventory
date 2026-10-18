@@ -189,7 +189,7 @@ async function mondayExtras(
 }
 
 /**
- * "Order this week" (Growth and Pro: every supplier's order due in the next 7 days, overdue
+ * "Due this week" (Growth and Pro: every supplier's order due in the next 7 days, overdue
  * first) or Free's top-10 preview. Null when the plan can't be read (the email still goes).
  */
 export async function mondayOrders(shop: string, plan: PlanCode, locale: Locale, now: Date): Promise<MondayOrders | null> {

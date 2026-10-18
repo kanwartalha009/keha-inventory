@@ -64,7 +64,7 @@ describe("Supplier order builder (Growth)", () => {
   it("due now, due before the next order with their own dates, live totals, Why this quantity, Create draft order in the title bar", () => {
     const html = page(growth(view()));
     expect(html).toContain('heading="Order from Acme Textiles"');
-    expect(html).toMatch(/slot="breadcrumb-actions"[^>]*>Order now</);
+    expect(html).toMatch(/slot="breadcrumb-actions"[^>]*>Due now</);
     expect(html).toMatch(/<s-button[^>]*slot="primary-action"[^>]*>Create purchase order</);
     expect(html).toContain("Due now");
     expect(html).toContain("Orders due in the next 7 days, overdue ones included.");

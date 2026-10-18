@@ -97,7 +97,7 @@ describe("Products page", () => {
     for (const h of ["Stock now", "Incoming", "Sales/day", "Days left", "Order by", "To order"]) {
       expect(html).toContain(h);
     }
-    for (const h of ["Sales per day while in stock", "Days of stock left", "The next planned order (the same as Order now)"]) {
+    for (const h of ["Sales per day while in stock", "Days of stock left", "The next planned order (the same as Due now)"]) {
       expect(html).toContain(`<s-tooltip id="keha-col-`);
       expect(html).toContain(h);
     }
@@ -317,7 +317,7 @@ describe("Products: the plan's To order, Don't reorder, sort and supplier filter
     expect(html).toContain("All suppliers");
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Sort: order-by date");
-    expect(html).toContain("The next planned order (the same as Order now)");
+    expect(html).toContain("The next planned order (the same as Due now)");
   });
 
   it("actions: Don't reorder a variant or a product; the product's case size (validated)", async () => {

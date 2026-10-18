@@ -788,12 +788,12 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const e = composeMondayEmail({ ...base, orders: plan(), actions });
     expect(e.subject).toBe("2 orders due this week · first by Wed, Oct 21");
     expect(e.html).toContain(">€4,601 at stake · 1 thing to do</div>");
-    expect(e.html.indexOf("Order this week")).toBeLessThan(e.html.indexOf("Sales at risk"));
-    expect(e.text.indexOf("Order this week")).toBeLessThan(e.text.indexOf("€4,601 at stake this week"));
-    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · order by Wed, Oct 21");
+    expect(e.html.indexOf("Due this week")).toBeLessThan(e.html.indexOf("Sales at risk"));
+    expect(e.text.indexOf("Due this week")).toBeLessThan(e.text.indexOf("€4,601 at stake this week"));
+    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · Due Wed, Oct 21");
     expect(e.text).toContain("  Review order: https://x/app/reorder?supplier=s%3A1");
     // Unknown cost: left out, never "€0".
-    expect(e.text).toContain("- Lisbon Linen · 40 units · order by Fri, Oct 23");
+    expect(e.text).toContain("- Lisbon Linen · 40 units · Due Fri, Oct 23");
     expect(e.html).toContain('href="https://x/app/reorder?supplier=s%3A2"');
     // Still there: unsubscribe and the money rows.
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
@@ -810,7 +810,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const lines = [p.lines[0]!, { ...p.lines[1]!, overdue: true, orderBy: "2026-10-19" }];
     const e = composeMondayEmail({ ...base, orders: { ...p, lines } });
     expect(e.subject).toBe("Lisbon Linen order is overdue · 40 units");
-    expect(e.text).toContain("- Overdue: Lisbon Linen · 40 units · order today");
+    expect(e.text).toContain("- Overdue: Lisbon Linen · 40 units · Due today");
     expect(e.html).toContain(">Overdue</span>");
   });
 
@@ -818,7 +818,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const p = plan();
     if (p.kind !== "plan") throw new Error();
     const e = composeMondayEmail({ ...base, orders: { ...p, lines: [{ ...p.lines[0]!, orderBy: p.today }] } });
-    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · order today");
+    expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · Due today");
     expect(e.text).not.toContain("Overdue");
   });
 
@@ -841,7 +841,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const orders: MondayOrders = { kind: "notReady", today: "2026-10-19", readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } };
     const e = composeMondayEmail({ ...base, orders, actions });
     expect(e.subject).toBe("€4,601 at stake this week — 1 thing to do");
-    expect(e.text).toContain("Order this week");
+    expect(e.text).toContain("Due this week");
     expect(e.text).toContain("Your order plan isn't ready yet. Your first order plan needs 14 days of sales — expected on Oct 31.");
     expect(e.text).not.toContain("Nothing to order");
     expect(e.html).not.toContain("Nothing to order");
@@ -874,8 +874,8 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const e = composeMondayEmail({ ...base, refresh: "weekly", orders });
     expect(e.subject).toBe("2 products to order by Nov 2");
     expect(e.text).toContain("Your most urgent products");
-    expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · order now");
-    expect(e.text).toContain("- Cap · 6 units · order by Nov 2");
+    expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · Due today");
+    expect(e.text).toContain("- Cap · 6 units · Due Nov 2");
     expect(e.text).not.toContain("Review order"); // read-only
     expect(e.text).toContain("See plans: https://x/app/plans");
     expect(e.text).toContain("Refreshed weekly on Free");
@@ -886,14 +886,14 @@ describe("Monday email: Order this week first, subject leads with the job", () =
   it("translated (es), and without order data the money subject stays", () => {
     const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", orders: plan() });
     expect(e.subject).toMatch(/^2 pedidos para esta semana · el primero antes del /);
-    expect(e.text).toContain("Pedir esta semana");
+    expect(e.text).toContain("Para pedir esta semana");
     expect(composeMondayEmail({ ...base, orders: null }).subject).toBe("€4,601 at stake this week");
   });
 
   it("Slack leads with the same job line and lists the orders with a Review order link", () => {
     const msg = buildSlackMonday(mondaySummary({ ...base, orders: plan() }));
     expect(msg.text).toMatch(/^\*2 orders due this week · first by Wed, Oct 21\*/);
-    expect(msg.text).toContain("• Acme Textiles · 120 units · €1,830 · order by Wed, Oct 21 <https://x/app/reorder?supplier=s%3A1|Review order>");
+    expect(msg.text).toContain("• Acme Textiles · 120 units · €1,830 · Due Wed, Oct 21 <https://x/app/reorder?supplier=s%3A1|Review order>");
     expect(msg.text).toContain("*€4,601 at stake this week*");
     expect(buildSlackMonday(mondaySummary(base)).text).toMatch(/^\*€4,601 at stake this week\*/);
   });
@@ -938,7 +938,7 @@ describe("runMondayEmails: Order this week from the order plan", () => {
     expect(payload.Subject).toBe("Acme Textiles order is overdue · 30 units");
     expect(payload["Orders due this week"]).toBe("1");
     expect(payload["Cash due this week"]).toBe("€450");
-    expect(payload["Summary text"]).toContain("- Overdue: Acme Textiles · 30 units · €450 · order today");
+    expect(payload["Summary text"]).toContain("- Overdue: Acme Textiles · 30 units · €450 · Due today");
   });
 
   it("Growth: one line per supplier with Review order into Order now for that supplier", async () => {
@@ -948,7 +948,7 @@ describe("runMondayEmails: Order this week from the order plan", () => {
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string; headers?: Record<string, string> };
     expect(sent.subject).toBe("Acme Textiles order is overdue · 30 units");
-    expect(sent.text).toContain("- Overdue: Acme Textiles · 30 units · €450 · order today");
+    expect(sent.text).toContain("- Overdue: Acme Textiles · 30 units · €450 · Due today");
     expect(sent.text).toContain("Review order: https://admin.shopify.com/store/acme/apps/keha-inventory/app/reorder?supplier=s%3A1");
     expect(JSON.stringify(sent)).toContain("List-Unsubscribe");
   });
@@ -961,7 +961,7 @@ describe("runMondayEmails: Order this week from the order plan", () => {
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
     expect(sent.subject).toBe("1 product to order by Oct 28");
-    expect(sent.text).toContain("- Linen shirt · M · 30 units · order by Oct 28");
+    expect(sent.text).toContain("- Linen shirt · M · 30 units · Due Oct 28");
     expect(sent.text).not.toContain("Review order");
   });
 

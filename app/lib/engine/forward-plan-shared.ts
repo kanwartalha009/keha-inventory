@@ -3,7 +3,7 @@
  *
  * Per variant, a day-by-day projection from today with the nightly engine's own numbers (no new
  * data): what to order, when, and how much — and, for the whole store, the cash needed per week.
- * ONE rule for every screen (Dashboard "Order this week", Order now, Next 13 weeks, Products,
+ * ONE rule for every screen (Dashboard "Due this week", Order now, Next 13 weeks, Products,
  * Sidekick, the Monday email): an order is placed ON its order-by date.
  *
  * Inputs are exactly what compute stored for the variant (VariantMetric + inputs):
@@ -48,7 +48,7 @@
  *    quantity lineQuantity(need(t)); it arrives on t + lead and the projection continues, so a
  *    fast seller can need several orders in 13 weeks. `why` keeps the terms of that sum.
  *  - Supplier minimums (planStore): orders are batched per supplier — batch 0 = the next 7 days
- *    (what Order now and "Order this week" show), then every 7 days after. In each batch,
+ *    (what Order now and "Due this week" show), then every 7 days after. In each batch,
  *    after the per-line rounding: the minimum per style (minOrderScope "product": the product's
  *    total raised to the minimum, split across its variants by share of sales, largest
  *    remainder, whole case packs), then the order minimum in units, then the order minimum in
@@ -64,7 +64,7 @@ export const PLAN_WEEKS = 13;
 export const DEADLINE_SCAN_DAYS = 400;
 /** Days of seasonal shape compute keeps beyond the horizon (≥ the calendar). */
 export const FORWARD_CURVE_DAYS = 91;
-/** "Order now" / "Order this week": orders due in the next 7 days (today included, overdue too). */
+/** "Order now" / "Due this week": orders due in the next 7 days (today included, overdue too). */
 export const ORDER_NOW_DAYS = 7;
 /**
  * Off season (A1): a lead time + cycle selling less than this share of the year's best one. A

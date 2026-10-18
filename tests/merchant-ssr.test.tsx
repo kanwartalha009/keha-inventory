@@ -197,7 +197,7 @@ describe("Fit to budget → Apply / Undo", () => {
     };
     const h = render("/app/reorder", "reorder", Reorder, data);
     expect(h).toContain("1 order waits until next month to fit your budget.");
-    expect(h).toContain("See or undo on Next 13 weeks");
+    expect(h).toContain("See or undo in the Order calendar");
   });
 });
 

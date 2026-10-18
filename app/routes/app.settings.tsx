@@ -161,7 +161,7 @@ export default function Settings() {
               />
               <s-number-field
                 label={t("Monthly budget for stock")}
-                details={t("Optional. Next 13 weeks compares each month's cash out with it and suggests which orders could wait. Leave empty for no budget.")}
+                details={t("Optional. The Order calendar compares each month's supplier payments with it and suggests which orders could wait. Leave empty for no budget.")}
                 value={form.monthlyBudget ?? ""}
                 suffix={currency}
                 inputMode="decimal"

@@ -76,15 +76,7 @@ export const ENGINE_TR: Record<string, Tr> = {
     pl: "Następny sezon: zamów do {date}",
   },
   "Next season": { es: "Próxima temporada", fr: "Prochaine saison", de: "Nächste Saison", it: "Prossima stagione", pt: "Próxima estação", nl: "Volgend seizoen", pl: "Następny sezon" },
-  "Overdue · sold out since {date}": {
-    es: "Atrasado · agotado desde el {date}",
-    fr: "En retard · épuisé depuis le {date}",
-    de: "Überfällig · ausverkauft seit {date}",
-    it: "In ritardo · esaurito dal {date}",
-    pt: "Atrasado · esgotado desde {date}",
-    nl: "Te laat · uitverkocht sinds {date}",
-    pl: "Po terminie · wyprzedane od {date}",
-  },
+  "Overdue · out of stock since {date}": { es: "Atrasado · sin stock desde el {date}", fr: "En retard · en rupture depuis le {date}", de: "Überfällig · nicht vorrätig seit {date}", it: "In ritardo · esaurito dal {date}", pt: "Atrasado · sem stock desde {date}", nl: "Te laat · niet op voorraad sinds {date}", pl: "Po terminie · brak w magazynie od {date}" },
   "Overdue · runs out {date}": {
     es: "Atrasado · se agota el {date}",
     fr: "En retard · rupture le {date}",
@@ -94,18 +86,10 @@ export const ENGINE_TR: Record<string, Tr> = {
     nl: "Te laat · uitverkocht op {date}",
     pl: "Po terminie · skończy się {date}",
   },
-  "sold out since {date}": { es: "agotado desde el {date}", fr: "épuisé depuis le {date}", de: "ausverkauft seit {date}", it: "esaurito dal {date}", pt: "esgotado desde {date}", nl: "uitverkocht sinds {date}", pl: "wyprzedane od {date}" },
+  "out of stock since {date}": { es: "sin stock desde el {date}", fr: "en rupture depuis le {date}", de: "nicht vorrätig seit {date}", it: "esaurito dal {date}", pt: "sem stock desde {date}", nl: "niet op voorraad sinds {date}", pl: "brak w magazynie od {date}" },
   "runs out {date}": { es: "se agota el {date}", fr: "rupture le {date}", de: "ausverkauft am {date}", it: "si esaurisce il {date}", pt: "esgota a {date}", nl: "uitverkocht op {date}", pl: "skończy się {date}" },
   // ---- Below the supplier's minimum (A2) ----
-  "Below the supplier's minimum — wait for the next season or add to a larger order": {
-    es: "Por debajo del mínimo del proveedor: espera a la próxima temporada o añádelo a un pedido mayor",
-    fr: "En dessous du minimum du fournisseur — attendez la prochaine saison ou ajoutez-le à une commande plus grande",
-    de: "Unter dem Mindestbestellwert des Lieferanten — warte auf die nächste Saison oder nimm es in eine größere Bestellung",
-    it: "Sotto il minimo del fornitore: aspetta la prossima stagione o aggiungilo a un ordine più grande",
-    pt: "Abaixo do mínimo do fornecedor — espera pela próxima estação ou junta-o a uma encomenda maior",
-    nl: "Onder het minimum van de leverancier — wacht op het volgende seizoen of voeg het toe aan een grotere bestelling",
-    pl: "Poniżej minimum dostawcy — poczekaj na następny sezon albo dodaj do większego zamówienia",
-  },
+  "Below minimum order": { es: "Por debajo del pedido mínimo", fr: "En dessous du minimum de commande", de: "Unter der Mindestbestellmenge", it: "Sotto l'ordine minimo", pt: "Abaixo da encomenda mínima", nl: "Onder de minimale bestelling", pl: "Poniżej minimalnego zamówienia" },
   "{product}: needs {n} of a minimum of {min} per style": {
     es: "{product}: necesita {n} de un mínimo de {min} por modelo",
     fr: "{product} : besoin de {n} pour un minimum de {min} par modèle",
@@ -115,4 +99,5 @@ export const ENGINE_TR: Record<string, Tr> = {
     nl: "{product}: nodig {n} bij een minimum van {min} per model",
     pl: "{product}: potrzeba {n} przy minimum {min} na model",
   },
+  "Wait for the next season, or add it to a larger order.": { es: "Espera a la próxima temporada o añádelo a un pedido mayor.", fr: "Attendez la prochaine saison ou ajoutez-le à une commande plus grande.", de: "Warte auf die nächste Saison oder nimm es in eine größere Bestellung.", it: "Aspetta la prossima stagione o aggiungilo a un ordine più grande.", pt: "Espere pela próxima temporada ou junte-o a uma encomenda maior.", nl: "Wacht op het volgende seizoen of voeg het toe aan een grotere bestelling.", pl: "Poczekaj na następny sezon albo dodaj to do większego zamówienia." },
 };

@@ -36,7 +36,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
       },
       { label: "Days of stock left and suggested order quantity per variant", feature: "forecast" },
       { label: "Order plan by supplier, with order-by dates", feature: "reorderPlan" },
-      { label: "Next 13 weeks", hint: "Every order for the next 13 weeks, by week and supplier, with the cash you need each week.", feature: "orderCalendar" },
+      { label: "Order calendar", hint: "Every order for the next 13 weeks, by week and supplier, with the cash you need each week.", feature: "orderCalendar" },
       { label: "Suppliers with lead times, minimum orders and case packs", feature: "suppliers" },
       { label: "Purchase orders as PDF, CSV or email", feature: "poExport" },
       { label: "Supplier confirms the ship date through a link", feature: "supplierConfirm" },

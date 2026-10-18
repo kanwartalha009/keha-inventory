@@ -1,6 +1,6 @@
 /**
  * Order plan (Kanwar 2026-10-17; ordering audit 2026-10-17): the forward order plan
- * (engine/forward-plan-shared) shaped for the screens — Dashboard "Order this week", Order now,
+ * (engine/forward-plan-shared) shaped for the screens — Dashboard "Due this week", Order now,
  * Order plan · Next 13 weeks, the Free preview and the 13-week CSV. Pure, client-safe; the
  * database part is models/order-plan.server.ts.
  */
@@ -218,7 +218,7 @@ export type ThisWeekView = {
   next: { supplierKey: string; orderBy: DayKey } | null;
 };
 
-/** "Order this week" = Order now: orders due in the next 7 days (overdue ones included), by supplier. */
+/** "Due this week" = Order now: orders due in the next 7 days (overdue ones included), by supplier. */
 export function thisWeek(data: Pick<OrderPlanData, "events" | "today">): ThisWeekView {
   const due = dueWithin(data.events, data.today, ORDER_NOW_DAYS);
   const later = data.events.filter((e) => e.orderBy > addDays(data.today, ORDER_NOW_DAYS - 1)).sort((a, b) => a.orderBy.localeCompare(b.orderBy) || (a.supplierKey < b.supplierKey ? -1 : 1));
@@ -246,7 +246,7 @@ export function paidSummary(data: Pick<OrderPlanData, "events" | "today" | "comm
   return cashSummary(data.events, data.committed ?? [], data.today, weeks);
 }
 
-/** The cash paid in the next `days` days (today included; "Order this week"'s window): orders to place + still due on open orders. */
+/** The cash paid in the next `days` days (today included; "Due this week"'s window): orders to place + still due on open orders. */
 export function paidWithin(data: Pick<OrderPlanData, "events" | "today" | "committed">, days: number = ORDER_NOW_DAYS): { total: number; committed: number } {
   const last = addDays(data.today, days - 1);
   const inWindow = (d: DayKey) => (d < data.today ? data.today : d) <= last;
@@ -412,7 +412,7 @@ export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T
   if (state === null) return "—";
   if (!deadline) {
     // A1: long overdue — the day it sold out, or will, instead of a date months back.
-    if (note?.soldOutSince) return fill(t("Overdue · sold out since {date}"), { date: shortDay(note.soldOutSince, locale) });
+    if (note?.soldOutSince) return fill(t("Overdue · out of stock since {date}"), { date: shortDay(note.soldOutSince, locale) });
     if (note?.runsOut) return fill(t("Overdue · runs out {date}"), { date: shortDay(note.runsOut, locale) });
     return t("Overdue");
   }

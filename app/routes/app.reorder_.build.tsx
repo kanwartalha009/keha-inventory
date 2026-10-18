@@ -119,14 +119,14 @@ export default function SupplierOrderBuilder() {
   const data = useLoaderData<typeof loader>() as BuilderPageData;
   if (!data.enabled) {
     return (
-      <AppPage heading={t("Order plan")} breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}>
+      <AppPage heading={t("Order plan")} breadcrumb={{ label: t("Due now"), to: "/app/reorder" }}>
         <BuilderLock teaser={data.teaser} />
       </AppPage>
     );
   }
   if (!data.view) {
     return (
-      <AppPage heading={t("Build purchase order")} breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}>
+      <AppPage heading={t("Build purchase order")} breadcrumb={{ label: t("Due now"), to: "/app/reorder" }}>
         <s-section>
           <EmptyState body={t("This supplier doesn't exist any more. Reload the page.")} />
         </s-section>
@@ -271,7 +271,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
   return (
     <AppPage
       heading={fill(t("Order from {supplier}"), { supplier: title })}
-      breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}
+      breadcrumb={{ label: t("Due now"), to: "/app/reorder" }}
       meta={view.kind === "vendor" ? <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge> : undefined}
       intro={t("One purchase order for everything this supplier needs until your next order. Change quantities or add products, then create the draft. Nothing is sent until you email it or mark it as ordered.")}
       primaryAction={

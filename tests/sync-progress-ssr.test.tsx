@@ -155,7 +155,7 @@ describe("after the first months: compact card and labels", () => {
     expect(html.split("Based on the last 90 days so far").length - 1).toBe(3); // the order block, the money line, the card
     expect(html).toContain("Still reading older months");
     expect(html).not.toContain("Setting up your order plan");
-    expect(html.indexOf("Order this week")).toBeLessThan(html.indexOf("Still reading older months"));
+    expect(html.indexOf("Due this week")).toBeLessThan(html.indexOf("Still reading older months"));
     // Free's preview says it too.
     const free = render({ ...buildHome(raw, "free", NOW), orderPlan: { kind: "preview", rows: previewRows(orderPlanFixture()) } });
     expect(free.split("Based on the last 90 days so far").length - 1).toBe(3);

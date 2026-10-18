@@ -1,7 +1,7 @@
 /**
  * Dashboard (/app) — spec §5.1, §4 J1; led by the order plan (Kanwar 2026-10-17).
  *
- *  1. "Order this week" from the forward order plan (models/order-plan.server): per supplier
+ *  1. "Due this week" from the forward order plan (models/order-plan.server): per supplier
  *     the products, units, cash and earliest order-by date, with "Review order" (Order now with
  *     those lines at the planned quantities, that supplier only); then a 13-week cash strip
  *     linking to Order plan · Next 13 weeks. Free: the read-only top-10 preview and the teaching
@@ -243,7 +243,7 @@ function ReviewAsk() {
 /** The lead block: what to order this week, by supplier, and the cash needed over the next 13 weeks. */
 function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const { t, locale } = useLocale();
-  const heading = t("Order this week");
+  const heading = t("Due this week");
   if (data.state === "syncing") {
     // Not ready: what will appear here, never "nothing to order" (2026-10-17 click-through); how
     // far the reading is lives in the sync screen above.
@@ -387,7 +387,7 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
           <s-stack direction="block" gap="small-200">
             <div className="keha-row-between">
               <s-text fontWeight="medium">{fill(t("Cash needed, next 13 weeks: {cash}"), { cash: money(cashOut.any ? cashOut.total : null) })}</s-text>
-              <s-link {...link("/app/reorder/calendar")}>{t("See the next 13 weeks")}</s-link>
+              <s-link {...link("/app/reorder/calendar")}>{t("See the order calendar")}</s-link>
             </div>
             <CashStrip cash={paid} currency={plan.currency} compact />
             <CashBreakdown summary={cashOut} currency={plan.currency} />

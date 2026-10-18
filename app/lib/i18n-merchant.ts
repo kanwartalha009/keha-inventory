@@ -548,15 +548,7 @@ export const MERCHANT_TR: Record<string, Tr> = {
     nl: "{n} bestellingen uit {month} verplaatsen?",
     pl: "Przenieść zamówienia ({n}) poza {month}?",
   },
-  "{amount} moves to next month. These orders wait in Order now, Next 13 weeks and the Dashboard until their new date. Nothing changes in Shopify or for your suppliers. You can undo it here.": {
-    es: "{amount} pasa al mes siguiente. Estos pedidos esperan en Pedir ahora, Próximas 13 semanas y el Panel hasta su nueva fecha. No cambia nada en Shopify ni para tus proveedores. Puedes deshacerlo aquí.",
-    fr: "{amount} passe au mois suivant. Ces commandes attendent dans « À commander », « 13 prochaines semaines » et le Tableau de bord jusqu'à leur nouvelle date. Rien ne change dans Shopify ni pour vos fournisseurs. Vous pouvez annuler ici.",
-    de: "{amount} wandert in den nächsten Monat. Diese Bestellungen warten in Jetzt bestellen, Nächste 13 Wochen und im Dashboard bis zu ihrem neuen Datum. In Shopify und für deine Lieferanten ändert sich nichts. Du kannst es hier rückgängig machen.",
-    it: "{amount} passa al mese successivo. Questi ordini aspettano in Da ordinare ora, Prossime 13 settimane e nella Dashboard fino alla nuova data. In Shopify e per i fornitori non cambia nulla. Puoi annullare qui.",
-    pt: "{amount} passa para o mês seguinte. Estas encomendas esperam em Encomendar agora, Próximas 13 semanas e no Painel até à nova data. Nada muda no Shopify nem para os fornecedores. Pode anular aqui.",
-    nl: "{amount} schuift naar volgende maand. Deze bestellingen wachten in Nu bestellen, Komende 13 weken en het Dashboard tot hun nieuwe datum. Er verandert niets in Shopify of voor je leveranciers. Je kunt het hier ongedaan maken.",
-    pl: "{amount} przechodzi na następny miesiąc. Te zamówienia czekają w Zamów teraz, Najbliższe 13 tygodni i w Panelu do nowej daty. Nic nie zmienia się w Shopify ani dla dostawców. Możesz to tu cofnąć.",
-  },
+  "{amount} moves to next month. These orders wait in Due now, the Order calendar and the Dashboard until their new date. Nothing changes in Shopify or for your suppliers. You can undo it here.": { es: "{amount} pasa al mes siguiente. Estos pedidos esperan en Para pedir ya, el Calendario de pedidos y el Panel hasta su nueva fecha. No cambia nada en Shopify ni para tus proveedores. Puedes deshacerlo aquí.", fr: "{amount} passe au mois suivant. Ces commandes attendent dans « À commander maintenant », le Calendrier des commandes et le Tableau de bord jusqu'à leur nouvelle date. Rien ne change dans Shopify ni pour vos fournisseurs. Vous pouvez annuler ici.", de: "{amount} wandert in den nächsten Monat. Diese Bestellungen warten in Jetzt fällig, im Bestellkalender und in der Übersicht bis zu ihrem neuen Datum. In Shopify und für deine Lieferanten ändert sich nichts. Du kannst es hier rückgängig machen.", it: "{amount} passa al mese successivo. Questi ordini aspettano in Da ordinare ora, nel Calendario ordini e nel Pannello fino alla nuova data. In Shopify e per i fornitori non cambia nulla. Puoi annullare qui.", pt: "{amount} passa para o mês seguinte. Estas encomendas esperam em A encomendar já, no Calendário de encomendas e no Painel até à nova data. Nada muda no Shopify nem para os fornecedores. Pode anular aqui.", nl: "{amount} schuift naar volgende maand. Deze bestellingen wachten in Nu nodig, de Bestelkalender en het Overzicht tot hun nieuwe datum. Er verandert niets in Shopify of voor je leveranciers. Je kunt het hier ongedaan maken.", pl: "{amount} przechodzi na następny miesiąc. Te zamówienia czekają w Do zamówienia teraz, Kalendarzu zamówień i na Pulpicie do nowej daty. Nic nie zmienia się w Shopify ani dla dostawców. Możesz to tu cofnąć." },
   "Fit to budget: 1 order moved out of {month} ({amount}, {suppliers}), waiting until {date}.": {
     es: "Ajuste al presupuesto: 1 pedido sacado de {month} ({amount}, {suppliers}), espera hasta el {date}.",
     fr: "Ajusté au budget : 1 commande sortie de {month} ({amount}, {suppliers}), en attente jusqu'au {date}.",
@@ -593,13 +585,5 @@ export const MERCHANT_TR: Record<string, Tr> = {
     nl: "{n} bestellingen wachten tot volgende maand om binnen je budget te blijven.",
     pl: "Zamówienia ({n}) czekają do następnego miesiąca, by zmieścić się w budżecie.",
   },
-  "See or undo on Next 13 weeks": {
-    es: "Ver o deshacer en Próximas 13 semanas",
-    fr: "Voir ou annuler dans 13 prochaines semaines",
-    de: "In Nächste 13 Wochen ansehen oder rückgängig machen",
-    it: "Vedi o annulla in Prossime 13 settimane",
-    pt: "Ver ou anular em Próximas 13 semanas",
-    nl: "Bekijken of ongedaan maken in Komende 13 weken",
-    pl: "Zobacz lub cofnij w Najbliższe 13 tygodni",
-  },
+  "See or undo in the Order calendar": { es: "Ver o deshacer en el Calendario de pedidos", fr: "Voir ou annuler dans le Calendrier des commandes", de: "Im Bestellkalender ansehen oder rückgängig machen", it: "Vedi o annulla nel Calendario ordini", pt: "Ver ou anular no Calendário de encomendas", nl: "Bekijken of ongedaan maken in de Bestelkalender", pl: "Zobacz lub cofnij w Kalendarzu zamówień" },
 };

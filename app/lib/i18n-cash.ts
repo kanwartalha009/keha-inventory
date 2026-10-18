@@ -131,15 +131,7 @@ export const CASH_TR: Record<string, Tr> = {
 
   // ---- Monthly budget (Settings → Defaults, Next 13 weeks) ----
   "Monthly budget for stock": { es: "Presupuesto mensual de stock", fr: "Budget mensuel de stock", de: "Monatsbudget für Ware", it: "Budget mensile per la merce", pt: "Orçamento mensal de stock", nl: "Maandbudget voor voorraad", pl: "Miesięczny budżet na towar" },
-  "Optional. Next 13 weeks compares each month's cash out with it and suggests which orders could wait. Leave empty for no budget.": {
-    es: "Opcional. Próximas 13 semanas compara con él lo que pagas cada mes y sugiere qué pedidos pueden esperar. Déjalo vacío si no tienes presupuesto.",
-    fr: "Facultatif. 13 prochaines semaines compare chaque mois vos décaissements à ce budget et suggère les commandes qui peuvent attendre. Laissez vide pour aucun budget.",
-    de: "Optional. Nächste 13 Wochen vergleicht jeden Monat deine Ausgaben damit und schlägt vor, welche Bestellungen warten können. Leer lassen für kein Budget.",
-    it: "Facoltativo. Prossime 13 settimane confronta ogni mese le uscite con il budget e suggerisce quali ordini possono aspettare. Lascia vuoto per nessun budget.",
-    pt: "Opcional. Próximas 13 semanas compara os pagamentos de cada mês com ele e sugere que encomendas podem esperar. Deixe vazio para não ter orçamento.",
-    nl: "Optioneel. Komende 13 weken vergelijkt elke maand je uitgaven ermee en stelt voor welke bestellingen kunnen wachten. Laat leeg voor geen budget.",
-    pl: "Opcjonalnie. Następne 13 tygodni porównuje z nim wydatki w każdym miesiącu i podpowiada, które zamówienia mogą poczekać. Zostaw puste, jeśli nie masz budżetu.",
-  },
+  "Optional. The Order calendar compares each month's supplier payments with it and suggests which orders could wait. Leave empty for no budget.": { es: "Opcional. El Calendario de pedidos compara con él los pagos a proveedores de cada mes y sugiere qué pedidos pueden esperar. Déjalo vacío si no tienes presupuesto.", fr: "Facultatif. Le Calendrier des commandes compare chaque mois vos paiements fournisseurs à ce budget et suggère les commandes qui peuvent attendre. Laissez vide pour aucun budget.", de: "Optional. Der Bestellkalender vergleicht jeden Monat deine Zahlungen an Lieferanten damit und schlägt vor, welche Bestellungen warten können. Leer lassen für kein Budget.", it: "Facoltativo. Il Calendario ordini confronta ogni mese i pagamenti ai fornitori con il budget e suggerisce quali ordini possono aspettare. Lascia vuoto per nessun budget.", pt: "Opcional. O Calendário de encomendas compara os pagamentos a fornecedores de cada mês com ele e sugere que encomendas podem esperar. Deixe vazio para não ter orçamento.", nl: "Optioneel. De Bestelkalender vergelijkt elke maand je betalingen aan leveranciers ermee en stelt voor welke bestellingen kunnen wachten. Laat leeg voor geen budget.", pl: "Opcjonalnie. Kalendarz zamówień porównuje z nim płatności dla dostawców w każdym miesiącu i podpowiada, które zamówienia mogą poczekać. Zostaw puste, jeśli nie masz budżetu." },
   "Enter an amount like 5000 or 4999.99, or leave it empty.": {
     es: "Escribe un importe como 5000 o 4999,99, o déjalo vacío.",
     fr: "Saisissez un montant comme 5000 ou 4999,99, ou laissez vide.",

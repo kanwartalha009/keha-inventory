@@ -53,7 +53,7 @@ describe("Home", () => {
     expect(html).toContain("First sync in progress");
     expect(html).not.toContain("—</span></div>");
     // The order block waits for the sync.
-    expect(html).toContain("Order this week");
+    expect(html).toContain("Due this week");
     expect(html).toContain("Your order plan appears here once your products, stock and sales are read.");
     // …and how far the reading is (never "nothing to order").
     expect(html).toContain("Still reading your store: 0%.");
@@ -63,7 +63,7 @@ describe("Home", () => {
     // Owner 2026-10-17: the sync screen leads (with what to do meanwhile), then the setup guide, then the order block.
     expect(html).toContain("While you wait");
     expect(html.indexOf("Setting up your order plan")).toBeLessThan(html.indexOf("Setup guide"));
-    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Order this week"));
+    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Due this week"));
     // Suppliers step (Growth): what suppliers are for.
     expect(html).toContain("Add your suppliers&#x27; lead times and case packs — they set every order-by date.");
   });
@@ -362,7 +362,7 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
 
   it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 13-week strip", () => {
     const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
-    expect(html.indexOf("Order this week")).toBeLessThan(html.indexOf("Money at stake"));
+    expect(html.indexOf("Due this week")).toBeLessThan(html.indexOf("Money at stake"));
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Overdue");
     expect(html).toContain("Review order");

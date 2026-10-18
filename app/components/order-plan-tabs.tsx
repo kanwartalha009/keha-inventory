@@ -20,11 +20,11 @@ type T = (s: string) => string;
 export function orderPlanTabLabel(id: OrderPlanTabId, t: T): string {
   switch (id) {
     case "now":
-      return t("Order now");
+      return t("Due now");
     case "calendar":
-      return t("Next 13 weeks");
+      return t("Order calendar");
     case "season":
-      return t("Season plan");
+      return t("Season planner");
     case "orders":
       return t("Purchase orders");
   }

@@ -324,7 +324,7 @@ export type ReorderData = {
 
 /**
  * Order now: the forward plan's orders due in the next 7 days, grouped by supplier — the same
- * function, orders and quantities as the Dashboard's "Order this week" (models/order-plan.server)
+ * function, orders and quantities as the Dashboard's "Due this week" (models/order-plan.server)
  * — and the open orders. `scope`: "online" or a Location.id. `selected` (?variants=) and
  * `planned` (the Season plan's quantities) add those variants; `link` (orderLink: a supplier
  * and a date range) shows that supplier's planned orders in the range instead of the next 7

@@ -28,7 +28,7 @@
  *    the supplier's order-total minimum: a group below it is topped up exactly as Reorder
  *    (topUpToMinimum, weights = sales per day), before cash per week is summed.
  *  - Order by = start − lead time − safety days (orderByDate with 0 days left); before today →
- *    "Late — order now".
+ *    "Overdue".
  *  - Cash (merchant audit 2026-10-18: the same model as Next 13 weeks, lib/cash-shared): unit cost
  *    × qty in the store currency (a cost in the supplier's currency converted with its exchange
  *    rate, order-plan-shared lineCosts) paid on the supplier's payment terms (deposit when

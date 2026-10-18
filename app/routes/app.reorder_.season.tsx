@@ -554,7 +554,7 @@ function Summary({ result }: { result: ScenarioResult }) {
   // Merchant audit 2026-10-18: the same cash model as Next 13 weeks — cost only, payment terms, freight & duty.
   const cashLines = [
     fill(t("Order lines: {n}"), { n: formatCount(r.order.lines, locale) }),
-    ...(r.order.late ? [fill(t("Late — order now: {n}"), { n: formatCount(r.order.late, locale) })] : []),
+    ...(r.order.late ? [fill(t("Overdue: {n}"), { n: formatCount(r.order.late, locale) })] : []),
     ...(r.cash.landed ? [fill(t("Of which freight & duty: {amount}"), { amount: money(r.cash.landed) })] : []),
     ...(r.cash.missing
       ? [fill(plural(r.cash.missing, t("1 line without a cost price is not in the cash totals."), t("{n} lines without a cost price are not in the cash totals.")), { n: formatCount(r.cash.missing, locale) })]
@@ -711,7 +711,7 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
               lines={[
                 t("Units to order = expected sales in the period + safety stock − stock expected when the period starts, rounded up to case packs and minimum orders."),
                 t("Stock expected at the start = stock now + incoming − expected sales until the period starts (never below 0)."),
-                t("Order by = period start − lead time − safety days. Past dates show “Late — order now”."),
+                t("Order by = period start − lead time − safety days. Past dates show “Overdue”."),
                 result.season.trendApplied
                   ? t("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming, supplier lead times, case packs and minimums")
                   : t("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming, supplier lead times, case packs and minimums"),
@@ -738,7 +738,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-heading>{groupName(group, t)}</s-heading>
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
-            {group.late && <s-badge tone="critical">{t("Late — order now")}</s-badge>}
+            {group.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
           </s-stack>
           <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), scenarioId ? { scenarioId, groupKey: group.key } : undefined))}>{t("Add to purchase order")}</s-link>
         </s-stack>
@@ -796,7 +796,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
                   <s-table-cell>
                     <s-stack direction="block" gap="none">
                       <span>{formatDay(l.orderBy, locale)}</span>
-                      {l.late && <s-badge tone="critical">{t("Late — order now")}</s-badge>}
+                      {l.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
                     </s-stack>
                   </s-table-cell>
                   <s-table-cell>

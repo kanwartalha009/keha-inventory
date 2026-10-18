@@ -358,7 +358,7 @@ export function OrderByCell({ orderBy, overdue, note = null }: { orderBy: string
       {overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
       {/* A1: the season's first order after an off season; a long-overdue line's context. */}
       {!overdue && note?.nextSeason && <s-badge tone="info">{t("Next season")}</s-badge>}
-      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("sold out since {date}"), { date: formatDay(note.soldOutSince, locale) })}</s-text>}
+      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("out of stock since {date}"), { date: formatDay(note.soldOutSince, locale) })}</s-text>}
       {overdue && !orderBy && note?.runsOut && <s-text color="subdued">{fill(t("runs out {date}"), { date: formatDay(note.runsOut, locale) })}</s-text>}
     </span>
   );
@@ -401,8 +401,8 @@ export function NoReorderConfirm({
       message={
         value
           ? scope === "product"
-            ? t("Every variant of this product leaves Order now, Next 13 weeks, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
-            : t("This variant leaves Order now, Next 13 weeks, the Dashboard and Products' To order. It stays in your stock numbers, and you can turn it back on any time.")
+            ? t("Every variant of this product leaves Due now, the Order calendar, the Dashboard and Products' Suggested qty. It stays in your stock numbers, and you can turn it back on any time.")
+            : t("This variant leaves Due now, the Order calendar, the Dashboard and Products' Suggested qty. It stays in your stock numbers, and you can turn it back on any time.")
           : t("It comes back into your order plan from the next refresh of this page.")
       }
       confirmLabel={value ? t("Don't reorder") : t("Reorder again")}

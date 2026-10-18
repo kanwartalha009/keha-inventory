@@ -3,7 +3,7 @@
  * ordering audit 2026-10-17.
  *
  * Growth (`reorderPlan`; every action checks the plan on the server too): everything due in the
- * next 7 days (overdue included) — exactly the Dashboard's "Order this week", from the same
+ * next 7 days (overdue included) — exactly the Dashboard's "Due this week", from the same
  * forward plan (models/order-plan.server): each order on its order-by date, the supplier's
  * minimums (per line, per style, per order in units and money) already applied. Grouped by
  * supplier (unassigned products by vendor), lines by product then size, each with its real
@@ -274,28 +274,29 @@ export default function Reorder() {
       {anySelected && (
         <s-banner tone="info">
           {fromPlanner
-            ? t("The products from your Season plan are highlighted, starting at the planned quantities.")
+            ? t("The products from the Season planner are highlighted, starting at the planned quantities.")
             : t("The products from your action list are highlighted.")}
         </s-banner>
       )}
       {data.missingSelected > 0 && (
         <s-banner tone="warning">{t("Some products from the link aren't tracked in your store any more.")}</s-banner>
       )}
-      {data.scenarioMissing && <s-banner tone="warning">{t("This Season plan scenario no longer exists.")}</s-banner>}
+      {data.scenarioMissing && <s-banner tone="warning">{t("This Season planner scenario no longer exists.")}</s-banner>}
       <StaleDrafts n={data.staleDrafts} />
       {!!data.held && (
         // Merchant audit 2026-10-18: orders moved by Fit to budget wait here too — never silently.
         <s-banner tone="info">
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-text>{fill(plural(data.held, t("1 order waits until next month to fit your budget."), t("{n} orders wait until next month to fit your budget.")), { n: formatCount(data.held, locale) })}</s-text>
-            <s-link {...link("/app/reorder/calendar")}>{t("See or undo on Next 13 weeks")}</s-link>
+            <s-link {...link("/app/reorder/calendar")}>{t("See or undo in the Order calendar")}</s-link>
           </s-stack>
         </s-banner>
       )}
       {/* A2: a small need of a slow style is never raised to the supplier's minimum per style. */}
       {!!data.belowMinimum?.length && (
-        <s-banner tone="info" heading={t("Below the supplier's minimum — wait for the next season or add to a larger order")}>
+        <s-banner tone="info" heading={t("Below minimum order")}>
           <s-stack gap="small-200">
+            <s-text>{t("Wait for the next season, or add it to a larger order.")}</s-text>
             {data.belowMinimum.map((b) => (
               <span key={`${b.supplierKey}|${b.productTitle}`} className="keha-inline">
                 <s-text>{fill(t("{product}: needs {n} of a minimum of {min} per style"), { product: b.productTitle, n: formatCount(b.units, locale), min: formatCount(b.styleMin, locale) })}</s-text>
@@ -339,7 +340,7 @@ export default function Reorder() {
               action={
                 <s-stack direction="block" gap="small" alignItems="center">
                   {data.cantPlan && <CantPlan plan={{ cantPlan: data.cantPlan }} />}
-                  <s-link {...link("/app/reorder/calendar")}>{t("See the next 13 weeks")}</s-link>
+                  <s-link {...link("/app/reorder/calendar")}>{t("See the order calendar")}</s-link>
                 </s-stack>
               }
             />
@@ -421,7 +422,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             {group.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.selected && (
-              <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From your Season plan") : t("From your action list")}</s-badge>
+              <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the Season planner") : t("From your action list")}</s-badge>
             )}
           </span>
         ) : undefined
@@ -716,7 +717,7 @@ function LineRow({
           <s-stack direction="block" gap="none">
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
-            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From your Season plan") : t("From your action list")}</s-badge>}
+            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From the Season planner") : t("From your action list")}</s-badge>}
             {l.noReorder && <s-badge tone="neutral">{t("Don't reorder")}</s-badge>}
           </s-stack>
         </div>

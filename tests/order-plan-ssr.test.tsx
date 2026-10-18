@@ -33,10 +33,10 @@ function render(data: CalendarPageData) {
   return renderToString(<Stub initialEntries={["/app/reorder/calendar"]} hydrationData={{ loaderData: { cal: data } }} />);
 }
 
-describe("Next 13 weeks", () => {
+describe("Order calendar", () => {
   it("Growth: summary, cash strip, 13 week rows, the first busy week open with its suppliers and lines", () => {
     const html = render({ enabled: true, plan: orderPlanFixture() });
-    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Next 13 weeks</);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Order calendar</);
     expect(html).toMatch(/\d+ orders in the next 13 weeks · [\d,]+ units · €[\d,]+/);
     expect(html).toContain("keha-orderplan-strip");
     expect(html.split("keha-orderplan-week ").length - 1 + (html.split("keha-orderplan-week\"").length - 1)).toBe(13);
@@ -93,7 +93,7 @@ describe("Next 13 weeks", () => {
   it("Free (and below Growth): the tab bar stays and the tab teaches", () => {
     const html = render({ enabled: false, plan: EMPTY_ORDER_PLAN("") });
     expect(html).toContain("keha-tabs");
-    expect(html).toContain("Next 13 weeks · Growth plan");
+    expect(html).toContain("Order calendar · Growth plan");
     expect(html).toContain('href="/app/plans?upgrade=orderCalendar"');
     expect(html).not.toContain("Download CSV");
   });

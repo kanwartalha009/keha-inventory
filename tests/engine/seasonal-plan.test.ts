@@ -76,15 +76,15 @@ describe("off season (A1)", () => {
     expect(planVariant(item({ curve: [...new Array(20).fill(1), ...new Array(20).fill(2)], seasonal: 1 })).nextSeason).toBeUndefined();
   });
 
-  it("labels: Next season: order by {date}; Overdue · sold out since / runs out {date}; translated", () => {
+  it("labels: Next season: order by {date}; Overdue · out of stock since / runs out {date}; translated", () => {
     const p = planVariant(item());
     const e = eventsOf(p, { variantId: "v", productId: "p", supplierKey: "s", unitCost: 1 });
     expect(dueNote(e)).toEqual({ nextSeason: true });
     const t = (x: string) => x;
     expect(dueText(e[0]!.orderBy, TODAY, t, "en", false, dueNote(e))).toMatch(/^Next season: order by /);
-    expect(dueText(null, TODAY, t, "en", true, { soldOutSince: "2026-05-05" })).toBe("Overdue · sold out since May 5");
+    expect(dueText(null, TODAY, t, "en", true, { soldOutSince: "2026-05-05" })).toBe("Overdue · out of stock since May 5");
     expect(dueText(null, TODAY, t, "en", true, { runsOut: "2026-10-20" })).toBe("Overdue · runs out Oct 20");
-    expect(dueText(null, TODAY, (x) => translate("de", x), "de", true, { soldOutSince: "2026-05-05" })).toBe("Überfällig · ausverkauft seit 5. Mai");
+    expect(dueText(null, TODAY, (x) => translate("de", x), "de", true, { soldOutSince: "2026-05-05" })).toBe("Überfällig · nicht vorrätig seit 5. Mai");
   });
 });
 

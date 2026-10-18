@@ -139,7 +139,7 @@ function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanRe
     <>
       <StaleDrafts n={plan.staleDrafts} />
       <FormCard
-        title={notReady ? t("Your order plan isn't ready yet") : t("Next 13 weeks")}
+        title={notReady ? t("Your order plan isn't ready yet") : t("Order calendar")}
         sub={
           notReady
             ? // Still reading the store / fewer than 14 days of sales: say why — never "No orders needed".
@@ -495,7 +495,7 @@ function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
         open={confirm}
         destructive={false}
         title={fill(plural(fit.deferrals.length, t("Move 1 order out of {month}?"), t("Move {n} orders out of {month}?")), { n: formatCount(fit.deferrals.length, locale), month })}
-        message={fill(t("{amount} moves to next month. These orders wait in Order now, Next 13 weeks and the Dashboard until their new date. Nothing changes in Shopify or for your suppliers. You can undo it here."), { amount: money(moved) })}
+        message={fill(t("{amount} moves to next month. These orders wait in Due now, the Order calendar and the Dashboard until their new date. Nothing changes in Shopify or for your suppliers. You can undo it here."), { amount: money(moved) })}
         confirmLabel={t("Apply")}
         onCancel={() => setConfirm(false)}
         onConfirm={() => {

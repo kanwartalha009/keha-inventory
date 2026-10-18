@@ -446,7 +446,7 @@ describe("invariant: Order now lists exactly the plan's orders due in the next 7
     const lines = new Map(groups.flatMap((g) => g.lines.map((l) => [l.variantId, l.suggested] as const)));
     expect([...lines].sort()).toEqual([...sum].sort());
     expect(lines.size).toBeGreaterThan(50);
-    // …and the Dashboard's "Order this week" is the same orders: same units, same cash.
+    // …and the Dashboard's "Due this week" is the same orders: same units, same cash.
     const week = thisWeek(plan);
     expect(week.totals.units).toBe([...sum.values()].reduce((a, b) => a + b, 0));
     expect(week.totals.cash).toBe(cashTotals(due).cash);

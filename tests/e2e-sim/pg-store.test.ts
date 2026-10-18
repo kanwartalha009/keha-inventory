@@ -59,7 +59,7 @@ describe.skipIf(!PG_AVAILABLE)("simulated stores on real Postgres", () => {
       const counts = await checkInvariants(loaded, screens);
       for (const locale of ["en", "de"] as const) {
         const html = renderScreens(screens.screens, locale);
-        expectTranslated(html.get("dashboard")!, locale, ["Order this week", "Money at stake"]);
+        expectTranslated(html.get("dashboard")!, locale, ["Due this week", "Money at stake"]);
       }
       console.info(`[e2e-sim] ${size} postgres: ${JSON.stringify(counts)} (write ${loaded.ms.write} ms, compute ${loaded.ms.compute} ms)`);
     }, 1_800_000);

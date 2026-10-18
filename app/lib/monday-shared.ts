@@ -7,7 +7,7 @@
  * actions (each with a button into the app), on Free the Fix rows only as a
  * count, the accuracy line, and the unsubscribe link.
  *
- * Audit 2026-10-17: the email leads with the job. An "Order this week" block
+ * Audit 2026-10-17: the email leads with the job. An "Due this week" block
  * comes first (one line per supplier: units, cash, order-by date, overdue
  * flagged, "Review order" → Order now for that supplier; Free: its top-10
  * preview, read-only), and the subject says what to order:
@@ -199,13 +199,13 @@ export type MondayEmailInput = {
   lockedFixes?: { count: number; link: string } | null;
   /** Last month's absolute % error on the store total (AccuracyMonth.storeErrorPct); null/undefined = no line. */
   accuracyPct?: number | null;
-  /** "Order this week" (paid) or the top-10 preview (Free); absent/null = no order data (old subject, no block). */
+  /** "Due this week" (paid) or the top-10 preview (Free); absent/null = no order data (old subject, no block). */
   orders?: MondayOrders | null;
 };
 
 export type MondayEmailContent = { subject: string; text: string; html: string };
 
-/** The "Order this week" block, worded. */
+/** The "Due this week" block, worded. */
 export type MondayOrderBlock = {
   heading: string;
   lines: { text: string; overdue: boolean; flag: string | null; link: string | null; label: string | null }[];
@@ -311,7 +311,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
   if (orders.kind === "notReady") {
     const pct = numberFormat([numLocale, "en"], { style: "percent", maximumFractionDigits: 0 });
     return {
-      heading: tr("Order this week"),
+      heading: tr("Due this week"),
       lines: [],
       empty: `${tr("Your order plan isn't ready yet")}. ${notReadyText(orders.readiness, tr, {
         day: (d) => formatEmailDay(d, numLocale, false),
@@ -327,7 +327,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
         text: [
           r.variant ? `${r.title} · ${r.variant}` : r.title,
           units(r.qty),
-          r.overdue ? tr("order now") : r.orderBy === orders.today ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
+          r.overdue ? tr("Due today") : r.orderBy === orders.today ? tr("Due today") : fill(tr("Due {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
         ].join(" · "),
         overdue: r.overdue,
         flag: r.overdue ? tr("Overdue") : null,
@@ -343,14 +343,14 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
     };
   }
   return {
-    heading: tr("Order this week"),
+    heading: tr("Due this week"),
     lines: orders.lines.map((l) => ({
       text: [
         l.name,
         units(l.units),
         ...(l.cash != null ? [money(l.cash)] : []),
-        // One label rule (forward-plan dueState): overdue and due today both read "order today".
-        l.overdue || (l.orderBy ?? orders.today) === orders.today ? tr("order today") : fill(tr("order by {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
+        // One label rule (forward-plan dueState): overdue and due today both read "Due today".
+        l.overdue || (l.orderBy ?? orders.today) === orders.today ? tr("Due today") : fill(tr("Due {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
       ].join(" · "),
       overdue: l.overdue,
       flag: l.overdue ? tr("Overdue") : null,

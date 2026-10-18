@@ -1,7 +1,7 @@
 /**
  * Order plan · Order now (spec §5.3, J3; ordering audit 2026-10-17): the forward plan's orders
  * due in the next 7 days (overdue included) grouped by supplier — the very orders and
- * quantities of the Dashboard's "Order this week" (one function: models/order-plan.server). Pure,
+ * quantities of the Dashboard's "Due this week" (one function: models/order-plan.server). Pure,
  * client-safe.
  *
  * Minimums (Kanwar 2026-10-16; audit 2026-10-17) are applied in the forward plan itself

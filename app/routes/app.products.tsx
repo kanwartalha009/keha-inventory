@@ -284,7 +284,7 @@ export default function Products() {
               <HeaderLabel id="keha-col-by" label={t("Order by")} badge={lockBadge} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("The next planned order (the same as Order now)")} badge={lockBadge} />
+              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("The next planned order (the same as Due now)")} badge={lockBadge} />
             </s-table-header>
             <s-table-header>
               <HeaderLabel id="keha-col-act" label={t("Actions")} />

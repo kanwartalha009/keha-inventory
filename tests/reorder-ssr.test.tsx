@@ -65,7 +65,7 @@ describe("Reorder page (Order plan · Order now)", () => {
   it("groups by supplier, falls back to vendor, shows totals, top-up note, selection; open orders are a tab now", () => {
     const html = render("/app/reorder?variants=1", "reorder", Reorder, reorderData());
     expect(html).toContain('heading="Order plan"');
-    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Order now</);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Due now</);
     expect(html).toContain("Acme Textiles");
     expect(html).toContain("No supplier — grouped by vendor");
     expect(html).toContain("Beta");
@@ -96,10 +96,11 @@ describe("Reorder page (Order plan · Order now)", () => {
 
   it("A2: a slow style held back below the supplier's minimum is named, with the builder to add it by hand", () => {
     const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), belowMinimum: [{ supplierKey: "supplier:s1", supplier: "Acme Textiles", productTitle: "Lido swimsuit", units: 12, styleMin: 240 }] });
-    expect(html).toContain("Below the supplier&#x27;s minimum — wait for the next season or add to a larger order");
+    expect(html).toContain("Below minimum order");
+    expect(html).toContain("Wait for the next season, or add it to a larger order.");
     expect(html).toContain("Lido swimsuit: needs 12 of a minimum of 240 per style");
     expect(html).toContain('<s-link href="/app/reorder/build?supplier=supplier:s1">Build purchase order</s-link>');
-    expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Below the supplier");
+    expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Below minimum order");
   });
 
   it("each line shows its real deadline, never 'today' unless it is (audit 2026-10-17)", () => {
