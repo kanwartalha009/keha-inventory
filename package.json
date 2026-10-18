@@ -22,7 +22,8 @@
     "backtest": "tsx scripts/backtest.ts",
     "loadtest:db": "tsx scripts/loadtest-db.ts",
     "preview:static": "tsx scripts/preview.tsx",
-    "sim:check": "tsx scripts/sim-check.ts"
+    "sim:check": "tsx scripts/sim-check.ts",
+    "accuracy": "tsx scripts/accuracy/run.ts"
   },
   "type": "module",
   "engines": {
