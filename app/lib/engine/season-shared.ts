@@ -3,7 +3,11 @@
  *
  * Level: store, collection or product type — never per variant. A variant uses the most specific
  * (fewest products) of its collections and its product type that sold ≥ 2,000 units in the last
- * 12 months and is not a catch-all (≥ 60 % of the store: CATCH_ALL_SHARE); otherwise the store's.
+ * 12 months and is not a catch-all (≥ 60 % of the store: CATCH_ALL_SHARE). Without one, the
+ * best-selling of its smaller groups (≥ 50 units) is BLENDED with the store's (accuracy audit
+ * 2026-10-18, `groupWeight`): index = group^w × store^(1 − w), w grows with the group's units, so
+ * a small store's swimwear keeps most of its own summer shape instead of the store's flat one
+ * (swimwear and coats cancel out in the store's total). Otherwise the store's.
  *
  * Definitions (all spans are inclusive calendar days; "today" is the store-local day):
  *  - Coverage. A day counts only when the sales history covers it (`Coverage`): inside
@@ -77,6 +81,10 @@ export const SEASON = Object.freeze({
   trendMax: 2,
   /** A collection uses its own index from this many units in the last 12 months. */
   collectionMinUnits12m: 2000,
+  /** Below that, a group from this many units is blended with the store's (groupWeight). */
+  blendMinUnits12m: 50,
+  /** The blend's shrinkage constant K (groupWeight). */
+  blendK: 100,
   units12mDays: 365,
 });
 
@@ -536,6 +544,29 @@ export function buildSeasonGroups(
   return { groups, members };
 }
 
+/**
+ * How much of a season group's own shape a variant gets (accuracy audit 2026-10-18): 1 from
+ * 2,000 units in 12 months (the group's own index, as before); below, a shrinkage weight
+ * u / (u + K) rescaled to reach 1 at 2,000 units — u(2000 + K) ÷ (2000(u + K)), K = 100:
+ * 50 units → 0.35, 200 → 0.70, 600 → 0.90, 1,000 → 0.95. The rest is the store's index. Below
+ * blendMinUnits12m, 0 (too few sales to show any shape).
+ */
+export function groupWeight(units12m: number): number {
+  const u = Math.max(0, Number.isFinite(units12m) ? units12m : 0);
+  const full = SEASON.collectionMinUnits12m;
+  if (u >= full) return 1;
+  if (u < SEASON.blendMinUnits12m) return 0;
+  const K = SEASON.blendK;
+  return (u * (full + K)) / (full * (u + K));
+}
+
+/** Geometric blend group^w × store^(1 − w) (values floored at 0.01 so an empty week stays finite). */
+export function blendIndex(group: number, store: number, w: number): number {
+  const g = Math.max(0.01, Number.isFinite(group) ? group : 1);
+  const st = Math.max(0.01, Number.isFinite(store) ? store : 1);
+  return Math.exp(w * Math.log(g) + (1 - w) * Math.log(st));
+}
+
 export type SeasonLevel = "store" | "collection" | "productType";
 
 export interface SeasonSourceChoice {
@@ -562,6 +593,30 @@ export function chooseSeasonSource(groupIds: readonly string[], groups: Readonly
   return choiceOf(rankedSources(groupIds, groups)[0] ?? null);
 }
 
+/**
+ * No qualifying group: the variant's group blended with the store's (groupWeight) — among its
+ * non-catch-all groups with ≥ blendMinUnits12m units, the best-selling (then fewest products, then
+ * id). Null when it has a qualifying group or none of these.
+ */
+export function chooseBlendSource(groupIds: readonly string[], groups: ReadonlyMap<string, SeasonGroup>): (SeasonSourceChoice & { weight: number }) | null {
+  if (rankedSources(groupIds, groups).length) return null;
+  const g = [...new Set(groupIds)]
+    .map((id) => groups.get(id))
+    .filter((x): x is SeasonGroup => !!x && !x.catchAll && x.units12m >= SEASON.blendMinUnits12m)
+    .sort((a, b) => b.units12m - a.units12m || a.products - b.products || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+  return g ? { ...choiceOf(g), weight: groupWeight(g.units12m) } : null;
+}
+
+/** The group ids whose series a context needs for blending (season.server loads them). */
+export function blendGroupIds(variants: readonly { collections?: readonly string[] | null; productType?: string | null }[], groups: ReadonlyMap<string, SeasonGroup>): string[] {
+  const out = new Set<string>();
+  for (const v of variants) {
+    const b = chooseBlendSource(seasonGroupsOf(v), groups);
+    if (b?.groupId) out.add(b.groupId);
+  }
+  return [...out].sort();
+}
+
 /** The variant's qualifying groups, most specific first (chooseSeasonSource's order). */
 function rankedSources(groupIds: readonly string[], groups: ReadonlyMap<string, SeasonGroup>): SeasonGroup[] {
   return [...new Set(groupIds)]
@@ -580,6 +635,14 @@ export interface VariantSeason {
   productType: string | null;
   seasonalResult: SeasonalResult;
   trendResult: TrendResult;
+  /**
+   * Share of the group's own shape (accuracy audit 2026-10-18): 1 = the group's index; below 1 the
+   * index, shape, levels and backtest multipliers are group^w × store^(1 − w) (groupWeight);
+   * absent / 1 for the store.
+   */
+  groupWeight?: number;
+  /** With a blend: the store's own index for the horizon (the other side of the blend). */
+  storeSeasonal?: number;
 }
 
 const groupIdOf = (s: { level: SeasonLevel; collectionId: string | null; productType: string | null }) =>
@@ -630,14 +693,32 @@ export function createSeasonContext(input: {
      */
     levelsFor(season: VariantSeason, days: number): Map<DayKey, number> | null {
       if (!season.seasonalResult.applied) return null;
+      const levelsOf = (id: string | null) => {
+        const key = `${id ?? ""}|${days}`;
+        let m = levelMemo.get(key);
+        if (!m) {
+          const s = seriesOf(id);
+          levelMemo.set(key, (m = s ? dailyLevels(s, input.today, days) : new Map()));
+        }
+        return m;
+      };
       const id = groupIdOf(season);
-      const key = `${id ?? ""}|${days}`;
-      let m = levelMemo.get(key);
-      if (!m) {
-        const s = seriesOf(id);
-        levelMemo.set(key, (m = s ? dailyLevels(s, input.today, days) : new Map()));
+      const w = season.groupWeight ?? 1;
+      if (w >= 1 || id === null) {
+        const m = levelsOf(id);
+        return m.size ? m : null;
       }
-      return m.size ? m : null;
+      const key = `${id}|${days}|w${w}`;
+      let b = levelMemo.get(key);
+      if (!b) {
+        const g = levelsOf(id);
+        const st = levelsOf(null);
+        b = new Map();
+        for (const [day, l] of g) b.set(day, blendIndex(l, st.get(day) ?? 1, w));
+        for (const [day, l] of st) if (!b.has(day)) b.set(day, blendIndex(1, l, w));
+        levelMemo.set(key, b);
+      }
+      return b.size ? b : null;
     },
     /**
      * The backtest origins' season multipliers (realisedFactor of the same source as `season`;
@@ -645,22 +726,45 @@ export function createSeasonContext(input: {
      * then has no season either).
      */
     originsFor(season: VariantSeason, days: readonly DayKey[], P: number): { day: DayKey; multiplier: number }[] {
-      const s = season.seasonalResult.applied ? seriesOf(groupIdOf(season)) : null;
+      const factor = (id: string | null, day: DayKey) => {
+        const s = season.seasonalResult.applied ? seriesOf(id) : null;
+        if (!s) return 1;
+        const key = `${id ?? ""}|${day}|${P}`;
+        let f = originMemo.get(key);
+        if (f === undefined) originMemo.set(key, (f = realisedFactor(s, day, P) ?? 1));
+        return f;
+      };
+      const id = groupIdOf(season);
+      const w = season.groupWeight ?? 1;
       return days.map((day) => {
-        const key = `${groupIdOf(season) ?? ""}|${day}|${P}`;
-        let f = s ? originMemo.get(key) : 1;
-        if (f === undefined) originMemo.set(key, (f = realisedFactor(s!, day, P) ?? 1));
+        const f = w >= 1 || id === null ? factor(id, day) : blendIndex(factor(id, day), factor(null, day), w);
         return { day, multiplier: f * season.trend };
       });
     },
     /** The weekly seasonal shape from the same source as `season` (seasonCurve); null when its index wasn't applied. */
     curveFor(season: VariantSeason, weeks: number): (number | null)[] | null {
       if (!season.seasonalResult.applied) return null;
+      const curveOf = (id: string | null) => {
+        const key = `${id ?? ""}|${weeks}`;
+        if (curveMemo.has(key)) return curveMemo.get(key)!;
+        const s = seriesOf(id);
+        const c = s ? seasonCurve(s, input.today, weeks) : null;
+        curveMemo.set(key, c);
+        return c;
+      };
       const id = groupIdOf(season);
-      const key = `${id ?? ""}|${weeks}`;
+      const w = season.groupWeight ?? 1;
+      if (w >= 1 || id === null) return curveOf(id);
+      const key = `${id}|${weeks}|w${w}`;
       if (curveMemo.has(key)) return curveMemo.get(key)!;
-      const s = seriesOf(id);
-      const c = s ? seasonCurve(s, input.today, weeks) : null;
+      const g = curveOf(id);
+      const st = curveOf(null);
+      // The store's shape for a week the group has none (and 1 when the store has none either).
+      const c = g ? g.map((x, k) => {
+        const y = st?.[k] ?? null;
+        if (x === null) return y;
+        return Math.round(blendIndex(x, y ?? 1, w) * 1000) / 1000;
+      }) : st;
       curveMemo.set(key, c);
       return c;
     },
@@ -676,6 +780,27 @@ export function createSeasonContext(input: {
       }
       const sr = seasonal(null, horizonDays)!;
       const tr = trend(null)!;
+      // A smaller group blended with the store's (groupWeight): its index, the store's trend.
+      const b = chooseBlendSource(groupIds, groups);
+      if (b && b.groupId !== null && b.weight > 0) {
+        const gr = seasonal(b.groupId, horizonDays);
+        if (gr && gr.applied) {
+          const store = sr.applied ? sr.value : 1;
+          const w = Math.round(b.weight * 1000) / 1000;
+          const value = clamp(blendIndex(gr.value, store, w), SEASON.seasonalMin, SEASON.seasonalMax);
+          return {
+            seasonal: value,
+            trend: tr.value,
+            level: b.level,
+            collectionId: b.collectionId,
+            productType: b.productType,
+            seasonalResult: gr,
+            trendResult: tr,
+            groupWeight: w,
+            storeSeasonal: store,
+          };
+        }
+      }
       return { seasonal: sr.value, trend: tr.value, level: "store", collectionId: null, productType: null, seasonalResult: sr, trendResult: tr };
     },
   };
@@ -687,6 +812,8 @@ export function seasonFacts(s: VariantSeason) {
     level: s.level,
     collectionId: s.collectionId,
     productType: s.productType,
+    /** Share of the group's own shape (1 = its own index; below 1 blended with the store's). */
+    groupWeight: s.level === "store" ? null : (s.groupWeight ?? 1),
     seasonalApplied: s.seasonalResult.applied,
     seasonalReason: s.seasonalResult.reason,
     seasonalRaw: s.seasonalResult.raw,

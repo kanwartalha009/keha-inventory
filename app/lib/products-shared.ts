@@ -388,15 +388,17 @@ export type RateWindowView = { days: number; weight: number; inStockDays: number
 /** Where the seasonal pattern came from (inputs.season: engine seasonFacts). */
 export type SeasonSourceView =
   | { level: "store" }
-  | { level: "collection"; collectionId: string }
-  | { level: "productType"; productType: string };
+  | { level: "collection"; collectionId: string; groupWeight?: number | null }
+  | { level: "productType"; productType: string; groupWeight?: number | null };
 
-/** inputs.season → its source; null when the metric has no season facts. */
+/** inputs.season → its source; null when the metric has no season facts. `groupWeight` < 1: blended with the store's (accuracy audit 2026-10-18). */
 export function readSeasonSource(raw: unknown): SeasonSourceView | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as Record<string, unknown>;
-  if (s.level === "collection" && typeof s.collectionId === "string" && s.collectionId) return { level: "collection", collectionId: s.collectionId };
-  if (s.level === "productType" && typeof s.productType === "string" && s.productType) return { level: "productType", productType: s.productType };
+  const w = typeof s.groupWeight === "number" && Number.isFinite(s.groupWeight) && s.groupWeight > 0 && s.groupWeight < 1 ? s.groupWeight : null;
+  const blend = w !== null ? { groupWeight: w } : {};
+  if (s.level === "collection" && typeof s.collectionId === "string" && s.collectionId) return { level: "collection", collectionId: s.collectionId, ...blend };
+  if (s.level === "productType" && typeof s.productType === "string" && s.productType) return { level: "productType", productType: s.productType, ...blend };
   return s.level === "store" ? { level: "store" } : null;
 }
 

@@ -320,10 +320,17 @@ function monthName(month: string, locale: string): string {
 }
 
 /** "Season from": the collection, product type or whole store the seasonal pattern came from. */
-function seasonSourceLabel(source: SeasonSourceView, collection: string | null, t: (s: string) => string): string {
-  if (source.level === "collection") return collection ? fill(t("Collection “{name}”"), { name: collection }) : t("One of its collections");
-  if (source.level === "productType") return fill(t("Product type “{name}”"), { name: source.productType });
-  return t("Your whole store");
+function seasonSourceLabel(source: SeasonSourceView, collection: string | null, t: (s: string) => string, locale = "en"): string {
+  if (source.level === "store") return t("Your whole store");
+  const name =
+    source.level === "collection"
+      ? collection
+        ? fill(t("Collection “{name}”"), { name: collection })
+        : t("One of its collections")
+      : fill(t("Product type “{name}”"), { name: source.productType });
+  // A small group blended with the store's season (accuracy audit 2026-10-18).
+  if (source.groupWeight == null) return name;
+  return fill(t("{source}, blended with your whole store ({pct} % its own)"), { source: name, pct: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(source.groupWeight * 100) });
 }
 
 function ForecastInputs({
@@ -381,7 +388,7 @@ function ForecastInputs({
               label={t("Seasonal change")}
               value={isNeutralMultiplier(inputs.seasonal) ? t("No seasonal data yet") : `× ${num(inputs.seasonal, 2)}`}
             />
-            {inputs.seasonSource && <KvRow label={t("Season from")} value={seasonSourceLabel(inputs.seasonSource, seasonCollection, t)} />}
+            {inputs.seasonSource && <KvRow label={t("Season from")} value={seasonSourceLabel(inputs.seasonSource, seasonCollection, t, locale)} />}
             <KvRow
               label={t("Trend")}
               value={

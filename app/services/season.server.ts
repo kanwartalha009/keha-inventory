@@ -5,13 +5,15 @@
  * Units come from the pool's demand view (compute-shared demandWhere: all channels, minus
  * locations the merchant left out), the same view the sales rate uses; never both views.
  * Group series are loaded only for groups that qualify (season-shared buildSeasonGroups: sold
- * ≥ 2,000 units in the last 12 months and not a catch-all): one day-level query per qualifying
- * collection, and ONE grouped statement for every qualifying product type (season-sql-shared).
+ * ≥ 2,000 units in the last 12 months and not a catch-all) or that a variant without one blends
+ * with the store's (season-shared blendGroupIds, accuracy audit 2026-10-18): one day-level query
+ * per such collection, and ONE grouped statement for every such product type (season-sql-shared).
  */
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
 import {
   SEASON,
+  blendGroupIds,
   buildSeasonGroups,
   createSeasonContext,
   type Coverage,
@@ -74,7 +76,8 @@ export async function loadSeasonContext(
 
   const variantUnits12 = new Map(units12G.map((g) => [g.variantId, num(g._sum.sold)]));
   const { groups, members } = buildSeasonGroups(input.variants, variantUnits12);
-  const qualifying = [...groups.values()].filter((g) => g.qualifies);
+  const blended = new Set(blendGroupIds(input.variants, groups));
+  const qualifying = [...groups.values()].filter((g) => g.qualifies || blended.has(g.id));
   const groupSeries = new Map<string, UnitsSeries>();
   // One continuous span through yesterday (forecast quality 2026-10-17): the index and its shape read
   // last year's weeks, the trend the last 28 days, and the daily levels (σ on de-seasonalised sales,

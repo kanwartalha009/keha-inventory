@@ -16,4 +16,13 @@ export const ACCURACY_TR: Record<string, Tr> = {
     nl: "Sterke dagen die terugkomen (acties, herhaalbestellingen) tellen als {units} per dag over het jaar.",
     pl: "Mocne dni, które się powtarzają (promocje, powtarzane zamówienia), liczą się jako {units} dziennie w skali roku.",
   },
+  "{source}, blended with your whole store ({pct} % its own)": {
+    es: "{source}, combinado con toda tu tienda ({pct} % propio)",
+    fr: "{source}, combiné avec toute votre boutique ({pct} % propre)",
+    de: "{source}, gemischt mit deinem ganzen Shop ({pct} % eigen)",
+    it: "{source}, combinato con tutto il tuo negozio ({pct} % proprio)",
+    pt: "{source}, combinado com toda a sua loja ({pct} % próprio)",
+    nl: "{source}, gemengd met je hele winkel ({pct} % eigen)",
+    pl: "{source}, połączone z całym Twoim sklepem ({pct} % własne)",
+  },
 };

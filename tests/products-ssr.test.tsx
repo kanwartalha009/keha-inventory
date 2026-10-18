@@ -387,6 +387,9 @@ describe("Product type: the Products filter and the season source on the detail 
     expect(renderDetail(withSource({ level: "collection", collectionId: "gid://shopify/Collection/7" }))).toContain("One of its collections");
     const html = renderDetail(withSource({ level: "productType", productType: "Jackets" }));
     expect(html).toMatch(/Season from.*Product type “Jackets”/s);
+    // A small group blended with the store's season (accuracy audit 2026-10-18); 1 = its own index.
+    expect(renderDetail(withSource({ level: "productType", productType: "Swimwear", groupWeight: 0.9 }))).toContain("Product type “Swimwear”, blended with your whole store (90 % its own)");
+    expect(renderDetail(withSource({ level: "productType", productType: "Jackets", groupWeight: 1 }))).not.toContain("blended");
     // Rows stored before the source was recorded: no row.
     expect(renderDetail(detail(true))).not.toContain("Season from");
   });
