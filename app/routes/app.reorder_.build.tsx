@@ -24,7 +24,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
-import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import { useFetcher, useLoaderData, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -42,6 +42,8 @@ import { variantName } from "../lib/products-shared";
 import { formatPrice } from "../lib/purchase-order-shared";
 import { quantitiesKey } from "../lib/quantities-key-shared";
 import { formatDayRange } from "../lib/order-plan-shared";
+import { readCoverDays } from "../lib/engine/forward-plan-shared";
+import { CoverDaysPicker } from "../components/cover-days";
 import { groupTitle, readQty } from "../lib/reorder-shared";
 import { landedText, paymentPhrases, termsText } from "../lib/cash-shared";
 import { MIN_SAMPLES, consistentlyLate, measuredLead, reliabilityText } from "../lib/lead-time-shared";
@@ -77,8 +79,9 @@ export type BuilderPageData =
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<BuilderPageData> => {
   const { shop } = await authenticateApp(request);
   const { features } = await getEntitlements(shop);
-  const link = readBuilderLink(new URL(request.url).searchParams);
-  const load = link ? await loadSupplierOrder(shop, link.supplierKey, link.range) : null;
+  const params = new URL(request.url).searchParams;
+  const link = readBuilderLink(params);
+  const load = link ? await loadSupplierOrder(shop, link.supplierKey, link.range, new Date(), readCoverDays(params.get("days"))) : null;
   // Free: the lock teaches with this supplier's own numbers; no line, product or price is sent.
   if (!features.reorderPlan) return { enabled: false, teaser: load && load.view.lines.length ? builderTeaser(load.view) : null };
   return { enabled: true, view: load?.view ?? null, today: load?.today ?? new Date().toISOString().slice(0, 10), shipTo: load?.shipTo };
@@ -99,7 +102,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const key = typeof body.supplier === "string" && /^(supplier|vendor):/.test(body.supplier) && body.supplier.length <= 300 ? body.supplier : null;
   if (!key) throw new Response("Bad request", { status: 400 });
   const quantities = readBuilderQuantities(body.quantities);
-  if (body.intent === "create") return (await createSupplierDraft(shop, key, quantities, { shipTo: body.shipTo, note: body.note })) satisfies BuilderAction;
+  if (body.intent === "create")
+    return (await createSupplierDraft(shop, key, quantities, { shipTo: body.shipTo, note: body.note, coverDays: readCoverDays(body.coverDays) })) satisfies BuilderAction;
   if (body.intent === "add" && typeof body.draftId === "string" && body.draftId.length <= 100) {
     return (await addToSupplierDraft(shop, key, body.draftId, quantities, body.version)) satisfies BuilderAction;
   }
@@ -204,6 +208,15 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
 
   const qtyLines: QtyLine[] = lines.map((l) => ({ ...l, qty: off[l.variantId] ? 0 : readQty(qty[l.variantId]) }));
   const totals = builderTotals(view, qtyLines);
+  // "Order enough for N days": re-plan this supplier with the choice; the URL keeps it.
+  const [params, setParams] = useSearchParams();
+  const replanning = useNavigation().state === "loading";
+  const setCover = (days: number | null) => {
+    const next = new URLSearchParams(params);
+    if (days === null) next.delete("days");
+    else next.set("days", String(days));
+    setParams(next, { replace: true, preventScrollReset: true });
+  };
   const status = minimumStatus(view, qtyLines);
   const costText = money(totals.cost, totals.supplierCost, view, locale);
   const busy = fetcher.state !== "idle";
@@ -216,7 +229,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
         intent,
         supplier: view.key,
         quantities: quantities(),
-        ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt } : { shipTo: shipToId || null, note }),
+        ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt } : { shipTo: shipToId || null, note, coverDays: view.coverDays }),
       } as never,
       { method: "post", encType: "application/json" },
     );
@@ -330,6 +343,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
         sub={fill(t("Covers what is due until {date}. Your next order to {supplier} is due after that."), { date: formatDay(view.cycleTo, locale), supplier: title })}
       >
         <s-stack direction="block" gap="base">
+          <CoverDaysPicker value={view.coverDays} planDays={view.planCoverDays} onChange={setCover} busy={replanning} />
           <div className="keha-kv keha-kv--flush">
             <KvRow
               label={t("Lead time")}
@@ -347,7 +361,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
               label={t("Order cycle")}
               value={
                 <span className="keha-inline">
-                  <span>{cycleLabel}</span>
+                  <span>{view.coverDays !== null ? fill(t("{days} (chosen for this order)"), { days: fill(plural(view.coverDays, t("1 day"), t("{n} days")), { n: formatCount(view.coverDays, locale) }) }) : cycleLabel}</span>
                   {view.kind === "supplier" && view.supplierId && (
                     <s-link {...link(`/app/settings/suppliers?edit=${encodeURIComponent(view.supplierId)}`)}>{t("Change")}</s-link>
                   )}

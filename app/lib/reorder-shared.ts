@@ -122,6 +122,10 @@ export type ReorderGroup = {
   lines: ReorderLine[];
   /** Lines of this supplier due later, before its next order: they can join this one. */
   joinable: ReorderLine[];
+  /** Days of stock after arrival the plan orders for (the supplier's / store's order cycle); null unknown. */
+  planCoverDays: number | null;
+  /** "Order enough for N days" chosen for this order (?cover=key~N); null = the plan's. */
+  coverDays: number | null;
 };
 
 export const supplierGroupKey = (id: string) => `supplier:${id}`;
@@ -154,6 +158,8 @@ export type OrderNowInput = {
   planned?: ReadonlyMap<string, number>;
   /** An orderLink range: that supplier's orders in the range instead of the next 7 days. */
   link?: { supplierKey: string | null; from: DayKey; to: DayKey } | null;
+  /** "Order enough for N days" per supplier key (the plan was computed with it). */
+  coverDays?: ReadonlyMap<string, number>;
 };
 
 type Acc = { events: PlanEvent[] };
@@ -338,6 +344,8 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       selected: lines.some((l) => l.selected),
       lines,
       joinable,
+      planCoverDays: planCoverDays(plan.suppliers[key]),
+      coverDays: input.coverDays?.get(key) ?? null,
     });
   }
   return out.sort(
@@ -516,4 +524,35 @@ export function parseVariantsParam(raw: string | null): string[] {
 export function groupTitle(g: Pick<ReorderGroup, "kind" | "name">, t: T): string {
   if (g.kind === "supplier") return g.name;
   return g.name || t("No vendor");
+}
+
+/** The days of stock after arrival an order covers by plan: the supplier's own cycle, else the computed one. */
+export function planCoverDays(s: { orderCycleDays?: number | null; cycleDays?: number | null } | undefined): number | null {
+  const v = s?.orderCycleDays ?? s?.cycleDays ?? null;
+  return typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.round(v) : null;
+}
+
+/**
+ * `?cover=supplier:abc~180&cover=vendor:acme~90` → supplier key → days (Due now, one choice per
+ * supplier). Invalid entries are ignored; the last one for a key wins.
+ */
+export function parseCoverParams(values: readonly string[], read: (v: unknown) => number | null): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const raw of values) {
+    const i = raw.lastIndexOf("~");
+    if (i <= 0) continue;
+    const days = read(raw.slice(i + 1));
+    if (days !== null) out.set(raw.slice(0, i), days);
+  }
+  return out;
+}
+
+/** The search params with one supplier's choice set (null = back to the plan's). */
+export function withCoverParam(params: URLSearchParams, key: string, days: number | null): URLSearchParams {
+  const next = new URLSearchParams(params);
+  const keep = next.getAll("cover").filter((v) => v.slice(0, v.lastIndexOf("~")) !== key);
+  next.delete("cover");
+  for (const v of keep) next.append("cover", v);
+  if (days !== null) next.append("cover", `${key}~${days}`);
+  return next;
 }

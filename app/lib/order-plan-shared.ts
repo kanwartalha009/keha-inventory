@@ -485,6 +485,7 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
         pct: nf(why.safetyBasis.fill * 100, locale, 0),
       }),
     );
+  if (why.chosenDays) out.push(fill(t("You chose to order enough for {days} days after it arrives."), { days: nf(why.chosenDays, locale, 0) }));
   if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while out of stock is owed, so it is ordered back."));
   // Data audit #2: out of stock most of the last 90 days — the pace comes from older in-stock days.
   if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));

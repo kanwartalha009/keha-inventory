@@ -337,9 +337,10 @@ export async function loadReorder(
   planned: ReadonlyMap<string, number> = new Map(),
   now: Date = new Date(),
   link: { supplierKey: string | null; from: string; to: string } | null = null,
+  coverDays: ReadonlyMap<string, number> = new Map(),
 ): Promise<ReorderData> {
   const basics = await shopBasics(shop);
-  const [{ data: plan, suppliers }, open] = await Promise.all([computeOrderPlan(shop, now, { scope, lastYear: true }), openOrders(shop)]);
+  const [{ data: plan, suppliers }, open] = await Promise.all([computeOrderPlan(shop, now, { scope, lastYear: true, coverDays }), openOrders(shop)]);
   const asked = [...new Set([...selected, ...planned.keys()])];
   const missing = asked.filter((id) => !plan.variants[id]);
   const extra = missing.length
@@ -364,6 +365,7 @@ export async function loadReorder(
     selected: new Set(selected.filter((s) => known.has(s))),
     planned: new Map([...planned].filter(([id]) => known.has(id))),
     link,
+    coverDays,
   });
   const week = thisWeek(plan);
   const nextKey = week.next?.supplierKey;
@@ -451,9 +453,10 @@ export async function createOrderFromGroup(
   shop: string,
   groupKey: string,
   quantities: Record<string, number>,
-  view: { scope: string; note?: string | null } = { scope: METRIC_SCOPE, note: null },
+  view: { scope: string; note?: string | null; coverDays?: number | null } = { scope: METRIC_SCOPE, note: null },
 ): Promise<CreateOrderResult> {
-  const { groups } = await loadReorder(shop, Object.keys(quantities), view.scope);
+  const cover = view.coverDays ?? null;
+  const { groups } = await loadReorder(shop, Object.keys(quantities), view.scope, new Map(), new Date(), null, cover === null ? new Map() : new Map([[groupKey, cover]]));
   const group = groups.find((g) => g.key === groupKey);
   if (!group) return { ok: false, error: "gone" };
   const picked = group.lines.filter((l) => (quantities[l.variantId] ?? 0) > 0);
@@ -468,6 +471,7 @@ export async function createOrderFromGroup(
     lines: lines as unknown as Prisma.InputJsonValue,
     currency: basics.currency,
     note: view.note ?? null,
+    coverDays: cover,
     // The location the plan was for (location view), else the store's main warehouse.
     shipToLocationId: defaultShipTo(await shipToChoices(shop), view.scope === METRIC_SCOPE ? null : view.scope),
   });
@@ -555,6 +559,8 @@ export type OrderDetail = {
   updatedAt: string | null;
   /** Where the goods go (a Location.id); null = the default ship-to. */
   shipToLocationId?: string | null;
+  /** "Order enough for N days" chosen when it was built; null = the plan's cycle. */
+  coverDays?: number | null;
   /** The merchant's note to the supplier. */
   note?: string | null;
 };
@@ -628,6 +634,7 @@ export async function getOrder(shop: string, id: string): Promise<OrderDetail | 
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt ? o.updatedAt.toISOString() : null,
     shipToLocationId: o.shipToLocationId ?? null,
+    coverDays: o.coverDays ?? null,
     note: o.note ?? null,
   };
 }

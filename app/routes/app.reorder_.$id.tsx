@@ -579,6 +579,12 @@ function OrderView({ data }: { data: OrderPageView }) {
           {order.receivedAt && <KvRow label={t("Received")} value={formatDay(order.receivedAt.slice(0, 10), locale)} />}
           {order.cancelledAt && <KvRow label={t("Canceled")} value={formatDay(order.cancelledAt.slice(0, 10), locale)} />}
           {keha && !draft && <KvRow label={t("Ship to")} value={data.shipTo?.choices.find((c) => c.id === data.shipTo?.current)?.name ?? "—"} />}
+          {keha && order.coverDays ? (
+            <KvRow
+              label={t("Ordered for")}
+              value={fill(t("{days} of stock after it arrives"), { days: fill(plural(order.coverDays, t("1 day"), t("{n} days")), { n: formatCount(order.coverDays, locale) }) })}
+            />
+          ) : null}
           {keha && !draft && order.note && <KvRow label={t("Note to the supplier")} value={order.note} />}
         </div>
         {draft && (

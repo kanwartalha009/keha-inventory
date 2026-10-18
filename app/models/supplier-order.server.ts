@@ -133,15 +133,19 @@ export async function loadSupplierOrder(
   key: string,
   range: { from: string; to: string } | null = null,
   now: Date = new Date(),
+  coverDays: number | null = null,
 ): Promise<SupplierOrderLoad> {
-  const [{ data: plan, suppliers }, basics] = await Promise.all([computeOrderPlan(shop, now, { lastYear: true }), shopBasics(shop)]);
+  const [{ data: plan, suppliers }, basics] = await Promise.all([
+    computeOrderPlan(shop, now, { lastYear: true, coverDays: coverDays === null ? undefined : new Map([[key, coverDays]]) }),
+    shopBasics(shop),
+  ]);
   const info = plan.suppliers[key] ?? infoFromSettings(key, suppliers, basics, key.startsWith("vendor:") ? await vendorName(shop, key, suppliers) : null);
   if (!info) return null;
   // A supplier deleted since the plan was read: nothing to order from.
   if (info.kind === "supplier" && !supplierOfKey(key, suppliers)) return null;
   const [draft, locations] = await Promise.all([freshDraft(shop, info, now), shipToChoices(shop)]);
   return {
-    view: buildSupplierOrder({ plan, supplierKey: key, info, storeCycleDays: basics.cycleDays, range, draft }),
+    view: buildSupplierOrder({ plan, supplierKey: key, info, storeCycleDays: basics.cycleDays, range, draft, coverDays }),
     today: plan.today,
     shipTo: { choices: locations.filter((l) => l.active).map((l) => ({ id: l.id, name: l.name })), default: defaultShipTo(locations) },
   };
@@ -237,7 +241,7 @@ export async function createSupplierDraft(
   key: string,
   quantities: Record<string, number>,
   /** Ship-to (an active Location.id; else the default) and the note to the supplier (merchant audit 2026-10-18). */
-  details: { shipTo?: unknown; note?: unknown } = {},
+  details: { shipTo?: unknown; note?: unknown; coverDays?: number | null } = {},
 ): Promise<SupplierOrderResult> {
   const [suppliers, basics] = await Promise.all([planSuppliers(shop), shopBasics(shop)]);
   const s = supplierOfKey(key, suppliers);
@@ -258,6 +262,7 @@ export async function createSupplierDraft(
     lines: lines as unknown as Prisma.InputJsonValue,
     currency: basics.currency,
     note: note.value,
+    coverDays: details.coverDays ?? null,
     shipToLocationId: readShipTo(details.shipTo, locations) ?? defaultShipTo(locations),
   });
   return { ok: true, ...created };

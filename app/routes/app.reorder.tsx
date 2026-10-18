@@ -35,7 +35,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import { useFetcher, useLoaderData, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -60,13 +60,17 @@ import {
   groupTitle,
   minimumWarnings,
   orderTotals,
+  parseCoverParams,
   parseVariantsWithQty,
+  withCoverParam,
   productRuns,
   readQty,
   type ReorderGroup,
   type ReorderLine,
 } from "../lib/reorder-shared";
 import { formatPrice } from "../lib/purchase-order-shared";
+import { readCoverDays } from "../lib/engine/forward-plan-shared";
+import { CoverDaysPicker } from "../components/cover-days";
 import { builderLink } from "../lib/supplier-order-shared";
 import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
@@ -118,7 +122,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   const active = await activeLocationCount(shop);
   const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
   const [reorder, transfers, ready] = await Promise.all([
-    loadReorder(shop, selected, view.scope, planned, new Date(), link),
+    loadReorder(shop, selected, view.scope, planned, new Date(), link, parseCoverParams(url.searchParams.getAll("cover"), readCoverDays)),
     features.transfers && transfersShown ? loadTransfers(shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
     readiness(shop),
   ]);
@@ -184,7 +188,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ? resolveScope(requested, true, await listPlanningLocations(shop))
     : { scope: METRIC_SCOPE, location: null };
   // A location view's order ships to that location (PurchaseOrder.shipToLocationId).
-  return (await createOrderFromGroup(shop, body.groupKey, quantities, { scope: view.scope })) satisfies ReorderAction;
+  return (await createOrderFromGroup(shop, body.groupKey, quantities, { scope: view.scope, coverDays: readCoverDays(body.coverDays) })) satisfies ReorderAction;
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -407,6 +411,10 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
     setQty((s) => ({ ...s, [l.variantId]: String(l.suggested) }));
   };
   const joinable = group.joinable.filter((l) => !joined.includes(l.variantId));
+  // "Order enough for N days": re-plan this supplier only; the URL keeps the choice.
+  const [params, setParams] = useSearchParams();
+  const replanning = useNavigation().state === "loading";
+  const setCover = (days: number | null) => setParams(withCoverParam(params, group.key, days), { replace: true, preventScrollReset: true });
 
   return (
     <FormCard
@@ -429,6 +437,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
       }
     >
       <s-stack direction="block" gap="base">
+        <CoverDaysPicker value={group.coverDays} planDays={group.planCoverDays} onChange={setCover} busy={replanning} />
         {group.styleToppedUp.length > 0 && group.minOrder && (
           <s-text color="subdued">
             {fill(t("Styles topped up to {supplier}'s minimum of {min} units per style, split across sizes by sales."), { supplier: title, min: formatCount(group.minOrder, locale) })}
@@ -550,7 +559,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
           <span className="keha-inline">
             {/* The supplier order builder (online plan): here when there is no "Can join this order" list to carry it. */}
             {!location && joinable.length === 0 && (
-              <s-button variant="secondary" {...link(builderLink(group.key))}>
+              <s-button variant="secondary" {...link(builderLink(group.key, null, group.coverDays))}>
                 {t("Build purchase order")}
               </s-button>
             )}
@@ -579,7 +588,13 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
         onConfirm={() => {
           setConfirm(false);
           const quantities = Object.fromEntries(lines.map((l) => [l.variantId, q(l.variantId)]));
-          const body = { intent: "create", groupKey: group.key, quantities, ...(location ? { location: locationNumericId(location.id) } : {}) };
+          const body = {
+            intent: "create",
+            groupKey: group.key,
+            quantities,
+            ...(group.coverDays !== null ? { coverDays: group.coverDays } : {}),
+            ...(location ? { location: locationNumericId(location.id) } : {}),
+          };
           fetcher.submit(body as never, { method: "post", encType: "application/json" });
         }}
       />
@@ -620,7 +635,7 @@ function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine
             <s-icon type={open ? "chevron-up" : "chevron-down"} />
           </button>
           {builder && (
-            <s-button variant="secondary" {...link(builderLink(group.key))}>
+            <s-button variant="secondary" {...link(builderLink(group.key, null, group.coverDays))}>
               {t("Build purchase order")}
             </s-button>
           )}

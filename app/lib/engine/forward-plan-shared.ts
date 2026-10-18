@@ -140,6 +140,38 @@ export interface ForwardVariantInput {
   latePo?: { days: number; extra: number } | null;
   /** B4: what the safety stock covers (inputs.error). */
   safetyBasis?: SafetyBasisWhy | null;
+  /** "Order enough for N days" chosen for this one order (withCoverDays); null = the plan's cycle. */
+  coverChosen?: number | null;
+}
+
+/** "Order enough for" choices (days of stock after the order arrives). */
+export const COVER_DAY_CHOICES = [30, 60, 90, 120, 150, 180] as const;
+export const COVER_DAYS_MIN = 7;
+export const COVER_DAYS_MAX = 365;
+
+/** A whole number of days in [COVER_DAYS_MIN, COVER_DAYS_MAX], else null. */
+export function readCoverDays(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= COVER_DAYS_MIN && n <= COVER_DAYS_MAX ? n : null;
+}
+
+/**
+ * One order planned to cover `days` of stock after it arrives instead of the plan's cycle
+ * (Kanwar 2026-10-18: "order for 150 or 180 days on this purchase order"). The forecast horizon
+ * becomes lead time + days, and safety stock — sized nightly for lead + cycle — scales with the
+ * square root of the horizon (the forecast error over a longer window grows like √days).
+ */
+export function withCoverDays<I extends ForwardVariantInput>(input: I, days: number | null): I {
+  if (days === null) return input;
+  const L = Math.max(0, Math.round(finite(input.leadTimeDays) ? input.leadTimeDays : 0));
+  const C = Math.max(0, Math.round(finite(input.cycleDays) ? input.cycleDays : 0));
+  const scale = Math.sqrt((L + days) / Math.max(1, L + C));
+  return {
+    ...input,
+    cycleDays: days,
+    safety: finite(input.safety) ? Math.max(0, input.safety) * scale : input.safety,
+    coverChosen: days,
+  };
 }
 
 /** Safety stock in the Why: the forecast's own error over `days` days and the fill target. */
@@ -180,6 +212,8 @@ export interface OrderWhy {
   day: number;
   /** Days the order covers: lead time + cycle. */
   days: number;
+  /** "Order enough for N days" chosen for this order (days after it arrives); null = the plan's cycle. */
+  chosenDays?: number | null;
   /** Forecast sales over those days. */
   demand: number;
   /** Sales per day while in stock (before season and growth). */
@@ -550,6 +584,7 @@ export class VariantProjection {
       why: {
         day: t,
         days,
+        chosenDays: this.input.coverChosen ?? null,
         demand,
         rate: finite(this.input.rate) ? this.input.rate : 0,
         season: days > 0 ? sSum / days : 1,

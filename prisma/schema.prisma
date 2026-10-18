@@ -566,6 +566,8 @@ model PurchaseOrder {
   note              String?
   /// Where the goods go: a Location.id; null = the default ship-to (lib/po-document-shared defaultShipTo).
   shipToLocationId  String?
+  /// "Order enough for N days" chosen when the order was built (days of stock after it arrives); null = the plan's cycle.
+  coverDays         Int?
   sentAt            DateTime?
   receivedAt        DateTime?
   cancelledAt       DateTime?

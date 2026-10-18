@@ -121,10 +121,10 @@ describe("server: ?location", () => {
     const body = { intent: "create", groupKey: "vendor:acme", quantities: { "gid://shopify/ProductVariant/1": 12 }, location: "2" };
     await post(body);
     // Merchant audit 2026-10-18: the location is the order's ship-to (the model sets it from the scope), not its note.
-    expect(m.createOrderFromGroup.mock.calls[0]![3]).toEqual({ scope: STORE.id });
+    expect(m.createOrderFromGroup.mock.calls[0]![3]).toEqual({ scope: STORE.id, coverDays: null });
     m.locations = false;
     await post(body);
-    expect(m.createOrderFromGroup.mock.calls[1]![3]).toEqual({ scope: "online" });
+    expect(m.createOrderFromGroup.mock.calls[1]![3]).toEqual({ scope: "online", coverDays: null });
   });
 
   it("Order now's links are resolved on the server: a supplier + date range, a Season plan scenario", async () => {

@@ -212,12 +212,14 @@ describe("store-changing actions are off on sample data, with a note", () => {
       cancelledAt: null,
       createdAt: "2026-09-18T10:00:00Z",
       updatedAt: "2026-10-16T10:00:00.000Z",
+      coverDays: 180,
     } as OrderDetail;
     const view: OrderPageView = { enabled: true, order, link: null, hidePrices: false, features: { poExport: true, supplierConfirm: true }, today: "2026-10-18", stale: false, reopenTo: null };
     for (const opts of [{}, { sample: ON }, { sample: ON, locale: "de" as const }]) {
       const locale = opts.locale ?? "en";
       const html = render(OrderPage, view, { ...opts, path: "/app/reorder/:id", url: "/app/reorder/po2" });
       expect(html).toContain(`>${translate(locale, "Close order")}</s-button>`);
+      expect(html).toContain(translate(locale, "Ordered for"));
       expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Close order")}`));
       expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Receive items")}`));
       expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Cancel order")}`));

@@ -31,6 +31,7 @@ import { facts } from "../services/facts-store.server";
 import { addDays, type DayKey } from "../lib/engine/dates-shared";
 import {
   forwardInputFromMetric,
+  withCoverDays,
   planDays,
   planEnd,
   planStore,
@@ -281,6 +282,8 @@ export type OrderPlanOptions = {
   scope?: string;
   /** Also read last year's sales in each order's weeks (Order now, Next 13 weeks). */
   lastYear?: boolean;
+  /** "Order enough for N days" for one order, per supplier key (Due now / Build); others keep their cycle. */
+  coverDays?: ReadonlyMap<string, number>;
 };
 
 export type OrderPlanDetail = {
@@ -403,9 +406,12 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       supplierKey: key,
       unitCost: costs.store,
       weight: fRate ?? 0,
-      input: withSupplierCycle(
-        forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted: since.notCounted, removed: since.removed, days }),
-        supplier,
+      input: withCoverDays(
+        withSupplierCycle(
+          forwardInputFromMetric(m, { today, pack, moq: style ? null : (supplier?.minOrder ?? null), notCounted: since.notCounted, removed: since.removed, days }),
+          supplier,
+        ),
+        opts.coverDays?.get(key) ?? null,
       ),
     });
     if (!suppliers[key]) {

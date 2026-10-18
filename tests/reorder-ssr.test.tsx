@@ -121,6 +121,19 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("Order enough for: the picker on each supplier, its choice shown and carried to the builder", () => {
+    const data = reorderData({ minOrderTotal: null });
+    const plain = render("/app/reorder", "reorder", Reorder, data);
+    expect(plain).toContain("Order enough for");
+    expect(plain).toContain("Days of stock after it arrives. Only this order changes.");
+    expect(plain).toMatch(/<s-option value="180">180 days<\/s-option>/);
+    const g = data.groups[0]!;
+    const chosen = { ...data, groups: [{ ...g, coverDays: 180 }, ...data.groups.slice(1)] };
+    const html = render(`/app/reorder?cover=${encodeURIComponent(g.key)}~180`, "reorder", Reorder, chosen);
+    expect(html).toMatch(/<s-select[^>]*value="180"/);
+    expect(html).toContain(`days=180`);
+  });
+
   it("Why this quantity: the plan's own terms, and last year's same weeks", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData({ minOrderTotal: null }));
     expect(html).toContain("Why this quantity");

@@ -185,6 +185,31 @@ describe("loadOrderPlan", () => {
   });
 });
 
+describe("Order enough for N days (2026-10-18)", () => {
+  it("re-plans one supplier only, and the purchase order keeps the days", async () => {
+    fake.tables.supplier = [{ id: "s1", shop: S, name: "Lisbon Linen", leadTimeDays: 14, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: ["acme"], currency: null, email: null }];
+    const key = "supplier:s1";
+    const base = await loadReorder(S, [], "online", new Map(), NOW);
+    const g0 = base.groups.find((g) => g.key === key)!;
+    expect(g0.coverDays).toBeNull();
+    const long = await loadReorder(S, [], "online", new Map(), NOW, null, new Map([[key, 180]]));
+    const g1 = long.groups.find((g) => g.key === key)!;
+    expect(g1.coverDays).toBe(180);
+    const q0 = g0.lines.find((l) => l.variantId === V(1))!.suggested;
+    const q1 = g1.lines.find((l) => l.variantId === V(1))!.suggested;
+    expect(q1).toBeGreaterThan(q0);
+    // Other suppliers keep their quantities.
+    for (const g of long.groups.filter((x) => x.key !== key)) {
+      const before = base.groups.find((x) => x.key === g.key);
+      if (before) expect(g.lines.map((l) => l.suggested)).toEqual(before.lines.map((l) => l.suggested));
+    }
+    const r = await createOrderFromGroup(S, key, { [V(1)]: q1 }, { scope: "online", coverDays: 180 });
+    expect(r.ok).toBe(true);
+    const po = (fake.tables.purchaseOrder ?? []).find((p) => p.shop === S && p.status === "draft")!;
+    expect(po.coverDays).toBe(180);
+  });
+});
+
 describe("ordering audit 2026-10-17", () => {
   it("drafts older than 14 days stop counting (and are reported); fresh ones still net off", async () => {
     const draft = (id: string, days: number) => ({ id, shop: S, number: id, source: "keha", status: "draft", lines: [{ variantId: V(1), qty: 500 }], confirmedShipDate: null, expectedDate: null, createdAt: new Date(NOW.getTime() - days * 86_400_000) });

@@ -86,6 +86,10 @@ export type SupplierOrderView = {
   /** The order cycle the window uses, and where it comes from. */
   cycleDays: number;
   cycleSource: "supplier" | "store";
+  /** "Order enough for N days" chosen for this order (?days=N; the plan was computed with it); null = the plan's. */
+  coverDays: number | null;
+  /** The plan's days (cycleDays without a choice). */
+  planCoverDays: number;
   /** First day of the window (today, or the week opened from Next 13 weeks). */
   from: DayKey;
   /** Opened from Next 13 weeks: that supplier-week's order-by range ("Due" then names it); null = due now. */
@@ -144,13 +148,17 @@ export type BuildSupplierOrderInput = {
   /** Next 13 weeks: the supplier-week's order-by range. */
   range?: { from: DayKey; to: DayKey } | null;
   draft?: BuilderDraft | null;
+  /** "Order enough for N days" for this order: the window runs N days and the plan used it. */
+  coverDays?: number | null;
 };
 
 /** The builder's lines and the supplier's terms (see the module header). */
 export function buildSupplierOrder(input: BuildSupplierOrderInput): SupplierOrderView {
   const { plan, info } = input;
   const store = plan.currency.toUpperCase();
-  const cycle = builderCycle(info, input.storeCycleDays);
+  const planCycle = builderCycle(info, input.storeCycleDays);
+  const cover = input.coverDays ?? null;
+  const cycle = cover === null ? planCycle : { days: Math.max(ORDER_NOW_DAYS, cover), source: planCycle.source };
   const win = builderWindow(plan.today, cycle.days, input.range ?? null);
   const mine = plan.events.filter((e) => e.supplierKey === input.supplierKey && e.orderBy >= win.from && e.orderBy <= win.cycleTo);
   const byVariant = new Map<string, PlanEvent[]>();
@@ -197,6 +205,8 @@ export function buildSupplierOrder(input: BuildSupplierOrderInput): SupplierOrde
     leadTimeSource: info.leadTimeSource ?? (info.kind === "supplier" ? "supplier" : "default"),
     cycleDays: cycle.days,
     cycleSource: cycle.source,
+    coverDays: cover,
+    planCoverDays: planCycle.days,
     from: win.from,
     range: input.range ?? null,
     dueFrom: win.from,
@@ -385,12 +395,13 @@ export function builderTeaser(view: SupplierOrderView): BuilderTeaser {
 // ── Links ───────────────────────────────────────────────────────────────────
 
 /** The builder for one supplier (`range`: a Next 13 weeks supplier-week's order-by dates). */
-export function builderLink(supplierKey: string, range?: { from: DayKey; to: DayKey } | null): string {
+export function builderLink(supplierKey: string, range?: { from: DayKey; to: DayKey } | null, coverDays?: number | null): string {
   const params = new URLSearchParams({ supplier: supplierKey });
   if (range) {
     params.set("from", range.from);
     params.set("to", range.to);
   }
+  if (coverDays) params.set("days", String(coverDays));
   return `/app/reorder/build?${params.toString().replace(/%3A/g, ":")}`;
 }
 
