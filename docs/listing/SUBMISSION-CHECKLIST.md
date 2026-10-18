@@ -26,6 +26,9 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
    (`app/services/app-pricing.server.ts:101`). Done when `/health` shows `pricing.lastOkAt`.
 3. **Turn on email** on Railway: `INVENTORY_EMAIL_API_KEY`, `INVENTORY_EMAIL_FROM` (live `/health`:
    `"emailSending":false`). Supplier emails, the Monday email and data-request answers depend on it.
+3b. **Worker service** on Railway: a second service from the same repo with `WORKER_MODE=worker`, and the web
+   service on `WORKER_MODE=web` (`docs/OPERATIONS.md` "Services"). With one service (`all`), a large store's
+   nightly compute shares the core with page loads; compute logs a warning above 5,000 variants.
 4. **Legal name** on Railway: `INVENTORY_LEGAL_NAME` = the registered company. The live privacy and terms pages
    name the operator only as "Keha".
 5. **Partner Dashboard → App pricing** (Shopify App Pricing): `free`, `growth` $49 / $490, `pro` $99 / $990,

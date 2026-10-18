@@ -36,6 +36,7 @@ import { supplierLeadSigma } from "../lib/lead-time-shared";
 import { planningLocations } from "../lib/locations-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
+import { YIELD_EVERY, yielder } from "../lib/concurrency-shared";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
 import { lastSaleBefore, legacyDays, locationDays, type LocationDayRow } from "../models/fact-days.server";
 
@@ -260,8 +261,11 @@ async function computeLocation(
   if (unknown.length && !fromPool) for (const [id, day] of await lastSaleBefore(shop, unknown, x.from, view)) lastSale.set(id, day);
 
   const results: { r: VariantResult; supplierId: string | null }[] = [];
+  // Pages share this event loop when WORKER_MODE=all: let them in every YIELD_EVERY variants.
+  const breathe = yielder(YIELD_EVERY);
   for (const { v, supplier } of x.plans) {
     if (!carried.has(v.id)) continue;
+    await breathe();
     const s = now.get(v.id);
     const season = x.seasonOf.get(v.id);
     const computed = computeVariant({

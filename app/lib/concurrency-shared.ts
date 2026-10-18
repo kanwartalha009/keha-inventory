@@ -33,6 +33,21 @@ export function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+/** Variants between two yields in compute's per-variant loops. */
+export const YIELD_EVERY = 100;
+
+/**
+ * A counter that yields to the event loop on every `every`-th call (perf 2026-10-18): compute's
+ * per-variant loop runs ~1–2 ms of engine work per variant, so a 2,000-variant chunk held the loop
+ * 3–5 s on a large store; yielding every 100 variants caps one slice at ~0.1–0.2 s. Resolves at
+ * once (no macrotask) on the other calls.
+ */
+export function yielder(every: number): () => Promise<void> | undefined {
+  const n = Math.max(1, Math.floor(every));
+  let i = 0;
+  return () => (++i % n === 0 ? yieldToEventLoop() : undefined);
+}
+
 /** `ids` in slices of at most `size`. */
 export function slices<T>(ids: readonly T[], size: number): T[][] {
   const out: T[][] = [];

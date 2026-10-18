@@ -45,6 +45,19 @@ export function workerMode(v: string | undefined): WorkerMode {
   return m === "web" || m === "worker" ? m : "all";
 }
 
+/**
+ * Above this many planned variants a store's nightly compute holds a CPU core for tens of seconds
+ * (docs/SCALE.md). In production with WORKER_MODE=all that core also serves pages: compute yields
+ * every 100 variants, but page loads still slow down. Production needs a separate worker service
+ * (docs/OPERATIONS.md "Services"); compute logs a warning when it is missing.
+ */
+export const SHARED_LOOP_WARN_VARIANTS = 5000;
+
+/** Should compute warn that pages and a large store's compute share one process? */
+export function sharedLoopWarning(mode: WorkerMode, nodeEnv: string | undefined, variants: number): boolean {
+  return mode === "all" && nodeEnv === "production" && variants > SHARED_LOOP_WARN_VARIANTS;
+}
+
 /** INVENTORY_WORKERS: jobs run at once per instance (default 2, 1–16). */
 export const DEFAULT_WORKERS = 2;
 export function workerCount(v: string | undefined): number {

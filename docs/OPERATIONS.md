@@ -25,6 +25,28 @@ behind every recommendation are measured in [`SCALE.md`](./SCALE.md) (`npm run l
 - **Uninstall purge** (48 h after uninstall, and `shop/redact`) deletes the shop's fact rows partition
   by partition, 50,000 rows per statement, then every table with a `shop` column.
 
+## Services (required in production)
+
+Run **two Railway services from the same image**: the web service with `WORKER_MODE=web` (pages,
+webhooks, `/health`) and a worker service with `WORKER_MODE=worker` (timers and the job queue:
+backfill, nightly sync, compute, alerts, accuracy, plan checks, maintenance). Same variables,
+same start command.
+
+Why it is not optional: one nightly compute of a large store is tens of seconds of CPU on one core
+(SCALE.md "One nightly compute pass"). Compute now yields to the event loop every 100 variants
+(perf 2026-10-18; before, a 2,000-variant chunk held the loop 3–5 s), so a page request waits at
+most ~0.2 s for a slice — but the slices still take the core, and on a store of 30,000 variants a
+night's compute keeps it busy for tens of seconds. `WORKER_MODE=all` (the default, one service) stays
+fine for development and for the first few small stores; in production, compute logs a warning when
+it runs a store of more than 5,000 variants in a process that also serves pages:
+`[compute] <shop>: … variants computed in a process that also serves pages (WORKER_MODE=all)`.
+
+Scaling the worker: `INVENTORY_WORKERS` (default 2) is the number of job loops in ONE Node process —
+they share one event loop and one core, so they overlap database waits, not CPU. More CPU for
+compute means more worker **replicas** (Railway → the worker service → Replicas) or more worker
+services: the queue hands each job to one claimant (`FOR UPDATE SKIP LOCKED` + a lease per shop), so
+any number of replicas is safe. A replica needs at most 10 database connections (`connection_limit`).
+
 ## Instance size
 
 | Stores | Database on disk (SCALE.md) | Postgres service | Volume |

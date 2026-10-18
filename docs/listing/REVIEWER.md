@@ -232,6 +232,9 @@ The app requests no `read_orders`, `read_customers` or `read_all_orders`, subscr
       7-day trial on paid plans.
 - [ ] Protected customer data form: Level 2 requested for `read_reports`, answers from
       `PCD-ANSWERS.md`, "log access" = Yes.
+- [ ] Railway: a separate worker service (`WORKER_MODE=worker`) and the web service on
+      `WORKER_MODE=web` (`docs/OPERATIONS.md` "Services"), so the reviewer's page loads never wait
+      for another store's nightly compute.
 - [ ] `npm run deploy` (Flow extension) and release the version; open the app once to accept
       scopes.
 - [ ] Demo store ready: ≥ 13 months of history (Season plan seasonality), a warehouse and a POS

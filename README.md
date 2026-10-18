@@ -150,10 +150,12 @@ Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
   per instance run them, claimed with `FOR UPDATE SKIP LOCKED` together with a lease on the shop, so a
   job runs once and a shop's jobs one at a time across any number of instances. Installs queue their
   backfill. `/health` → `jobs` shows due / running / failing jobs and the oldest wait.
-- **To scale: run a second Railway service with `WORKER_MODE=worker`** (same repo and start command,
+- **Production: run a second Railway service with `WORKER_MODE=worker`** (same repo and start command,
   same variables) and set the web service to `WORKER_MODE=web`, so syncs and compute never share an
-  event loop with merchants' page loads. Add worker services (or raise `INVENTORY_WORKERS`) as stores
-  grow. Today's single service needs no change (`WORKER_MODE` unset = `all`).
+  event loop with merchants' page loads (required before large stores install: compute logs a warning
+  for a store above 5,000 variants in a `WORKER_MODE=all` production process — `docs/OPERATIONS.md`
+  "Services"). `INVENTORY_WORKERS` loops share one process and one core: add CPU with worker replicas.
+  Development needs no change (`WORKER_MODE` unset = `all`).
 - **Connections:** each process uses at most 10 (`connection_limit`, overridable in `DATABASE_URL`);
   compute keeps at most 3 of its reads in flight. With PgBouncer (transaction mode) add
   `pgbouncer=true` to `DATABASE_URL` and run `prisma migrate deploy` against the direct URL — every

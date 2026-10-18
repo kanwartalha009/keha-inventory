@@ -103,7 +103,7 @@ import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
 import { finishLocationMetrics, locationMetricsChunk, prepareLocationMetrics } from "./compute-locations.server";
-import { allLimit, yieldToEventLoop } from "../lib/concurrency-shared";
+import { YIELD_EVERY, allLimit, yieldToEventLoop, yielder } from "../lib/concurrency-shared";
 import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
 import { lastSaleBefore as storedLastSaleBefore } from "../lib/sync/fact-days-shared";
@@ -112,8 +112,21 @@ import { buildFactDays, fillVariantDays } from "./sync/fact-days.server";
 import { lastProductPaces, overridesFor } from "../models/forecast-overrides.server";
 import { resolveReference, variantShares, type PlanLikeReference } from "../lib/forecast-override-shared";
 import { bundleSalesForComponents, bundlesOf, componentBundles } from "../lib/bundles-shared";
+import { SHARED_LOOP_WARN_VARIANTS, sharedLoopWarning, workerMode } from "../lib/jobs-shared";
 
 const HISTORY_DAYS = 90;
+
+/** Shops already warned in this process (once each). */
+const warnedShared = new Set<string>();
+/** Production, pages and jobs in one process (WORKER_MODE=all), a large store: say so once (docs/OPERATIONS.md). */
+function warnSharedLoop(shop: string, variants: number): void {
+  if (warnedShared.has(shop) || !sharedLoopWarning(workerMode(process.env.WORKER_MODE), process.env.NODE_ENV, variants)) return;
+  warnedShared.add(shop);
+  console.warn(
+    `[compute] ${shop}: ${variants} variants computed in a process that also serves pages (WORKER_MODE=all). ` +
+      `Above ${SHARED_LOOP_WARN_VARIANTS} variants run a separate worker service (WORKER_MODE=worker) and set the web service to WORKER_MODE=web — docs/OPERATIONS.md.`,
+  );
+}
 /**
  * Variants per compute chunk (DB scale #4): per-day facts are read and held for one chunk at a
  * time (≈ 2,000 × 90 days × a few rows) instead of the whole catalogue (2.7 M objects on a large
@@ -409,6 +422,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   ]);
   const pool = poolLocationIds(locations);
   const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
+  warnSharedLoop(shop, considered.length);
   // Pool demand: all channels (minus the ones left out of the forecast), minus locations the
   // merchant left out (compute-shared demandScope / demandWhere: one SalesDaily view).
   const demand = demandScope(locations, shopSettings.excludedChannels);
@@ -676,7 +690,11 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
       const units = new Map(ids.map((id) => [id, (series.get(id) ?? []).reduce((a, r) => a + Math.max(0, r.sold), 0)]));
       for (const [id, share] of variantShares(units, ids)) shareOf.set(id, share);
     }
+    // A chunk is 2,000 variants of ~1–2 ms engine work each: yield every YIELD_EVERY variants so
+    // pages served by this process (WORKER_MODE=all) never wait seconds for the loop.
+    const breathe = yielder(YIELD_EVERY);
     for (const { v, supplier, horizon } of chunk) {
+      await breathe();
       const stockNowRow = onHand.get(v.id) ?? { onHand: 0, available: 0, incoming: 0 };
       const season = seasonCtx.forVariant(seasonGroupsOf(v), horizon);
       seasonOf.set(v.id, season);
