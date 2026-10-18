@@ -41,7 +41,7 @@ Limit that the random mode does not remove: the 38 variants are today's best sel
 | # | Defect found | Fix | Fixture before → after |
 |---|---|---|---|
 | 1 | Spike cap could cap only max(1, ⌊1 % × days⌋) days: with < ~200 days of history two wholesale days passed uncapped | High days grouped into bursts; bursts ≤ 7 days are spikes and capped; recurring when ≥ 3 such days in ≥ 3 months, then their units above the cap and above their own weeks' level are averaged over the last year and added back; longer runs (a season, a viral product) are not capped | 2 × 300 units on a 2-a-day product, 150 days: pace 11.84 → 2.39, order 606 → 42. Five 300-unit orders a year: order 602 / 431 (two vs one in the last 90 days) → 93 / 90 |
-| 2 | Long lead times: the fill-rate rule gave k ≈ 0 (lead 75 + cycle 60: safety 0 on 1,350 units) and A items fell short of 95 % | A items: k ≥ 1.5 × z, ramped in from a 42- to a 90-day lead time (error-shared `longLeadFloor`) | k 0 → 1.70, safety 0 → 120 units; service below |
+| 2 | Long lead times: the fill-rate rule gave k ≈ 0 (lead 75 + cycle 60: safety 0 on 1,350 units) and A items fell short of 95 % | A items: k ≥ 1.3 × z, ramped in from a 42- to a 90-day lead time (error-shared `longLeadFloor`) | k 0 → 1.47 (measured at 1.5: k 1.70, safety 0 → 120 units); service below |
 | 3 | A group needed 2,000 units / 12 months for its own seasonal index, else the store's: a small store's swimwear got the store's flat shape | Smaller groups (≥ 50 units) blend: group^w × store^(1 − w), w = u(2000 + K) ÷ (2000(u + K)), K = 100 (1 from 2,000 units: unchanged there) | Small store (swimwear and coats ~620 units a year each): swimwear in January ordered now → "Next season" |
 | 4 | < 13 months of sales: no seasonal index, so no level-shift detection | Without an index the shift test runs on raw sales and keeps only drops; Dashboard and product page say "Seasons: learning — {n} of 13 months" (a status, not a banner) | 10 → 1 a day: pace 3.18 → 1.00, order 64 → 12 |
 | 5 | The backtest lived outside the repository | `npm run accuracy` on the frozen anonymised data (above) | — |
@@ -472,3 +472,10 @@ widen the calibration gap: the 42-day forecast error is larger than σ·√(L+R)
    needed.
 3. **Bias correction for A items** — measured on the store's own backtest (the app already runs
    one: `app/lib/engine/backtest-shared.ts`), shown to the merchant before it is applied.
+
+### Owner decision: long-lead floor 1.3, not 1.5 (2026-10-18)
+
+The round measured the floor at 1.5 × z (A fill about 94.3 % at lead 90, +57 % A stock). On the simulator that
+nearly doubled one long-lead supplier's order of the week (1,090 → 1,980 units). The shipped default is
+1.3 × z: about 92.9 % A fill at lead 90 for +39 % / +23 % A stock, about 2 points short of the 95 % target.
+The service-table rows above were measured at 1.5; 1.3 was measured only for the fill and stock figures quoted here.

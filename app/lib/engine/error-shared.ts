@@ -34,7 +34,8 @@
  *     normal loss function) equals (1 − β) × the demand of one cycle — the textbook fill-rate rule
  *     for a periodic review. k ≥ 0. safety = k × σ_P.
  *  6. Long lead times (accuracy audit 2026-10-18, `longLeadFloor`): for A items k is at least
- *     1.5 × the role's z, ramped in from a 42-day to a 90-day lead time. At a lead time of 75 days
+ *     1.3 × the role's z (owner decision 2026-10-18: 1.5 reached 94.3 % but nearly doubled a long-lead
+ *     supplier's order of the week on the simulator; 1.3 gives about 92.9 % for 39 % / 23 % more A stock), ramped in from a 42-day to a 90-day lead time. At a lead time of 75 days
  *     and a 60-day cycle the fill-rate rule gave k ≈ 0–0.5 (the cycle's own stock "covers" the
  *     target on paper), and on the real store's service simulation with late deliveries and supplier
  *     minimums A items reached 90.5 % (lead 90) / 92.7 % (lead 135) against 95 %: their real error at
@@ -61,7 +62,7 @@ export const FORECAST_ERROR = Object.freeze({
 });
 
 /** k ≥ LONG_LEAD.multiple × z for A items, ramped in from `fromDays` to `fullDays` of lead time. */
-export const LONG_LEAD = Object.freeze({ fromDays: 42, fullDays: 90, multiple: 1.5 });
+export const LONG_LEAD = Object.freeze({ fromDays: 42, fullDays: 90, multiple: 1.3 });
 
 /** The long-lead floor on the safety factor (see the module header, 6); 0 when none applies. */
 export function longLeadFloor(role: string, leadDays: number, z: number): number {

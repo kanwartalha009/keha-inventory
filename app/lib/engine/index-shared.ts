@@ -530,7 +530,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     const total = Math.sqrt(sigmaP * sigmaP + (leadSigma !== null ? daily * daily * leadSigma * leadSigma : 0));
     const fillTarget = normalCdf(z);
     const kFill = fillSafetyFactor(fillTarget, daily * Math.max(cycle, MIN_REVIEW_DAYS), total);
-    // Long lead times (error-shared longLeadFloor): A items keep at least 1.5 × z.
+    // Long lead times (error-shared longLeadFloor): A items keep at least 1.3 × z.
     const floor = longLeadFloor(input.role, lead.days, z);
     const k = Math.max(kFill, floor);
     safety = k * total;
