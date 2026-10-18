@@ -22,7 +22,14 @@ import {
   variantCash,
   wentDeadPayload,
   type FlowMetric,
+  FLOW_WEEKLY_PLAN,
+  FLOW_FIRST_PLAN,
+  FLOW_NOTIFY_KIND,
+  FLOW_TEXT_MAX,
+  weeklyPlanPayload,
+  firstPlanPayload,
 } from "../app/lib/flow-shared";
+import { mondayDueThisWeek } from "../app/lib/monday-shared";
 
 const P1 = "gid://shopify/Product/101";
 const m = (over: Partial<FlowMetric>): FlowMetric => ({
@@ -134,5 +141,57 @@ describe("a rejected trigger (review fix 2026-10-17): not a fire, retried after 
   });
   it("leaving the state after a rejection ends the episode", () => {
     expect(episodeStep(FLOW_REJECTED, false)).toBe("end");
+  });
+});
+
+describe("notification triggers (owner decision 2026-10-18: no email provider)", () => {
+  it("Weekly order plan ready: every declared key, text values, a dash (never 0) when unknown", () => {
+    const p = weeklyPlanPayload({ subject: "2 orders due this week", summary: "Line 1\nLine 2", ordersDue: 2, cashDue: "€1,240", link: "https://admin.shopify.com/store/a/apps/keha-inventory/app/reorder", numberLocale: "en" });
+    expect(payloadMatches(FLOW_WEEKLY_PLAN, p)).toBe(true);
+    expect(p).toEqual({
+      Subject: "2 orders due this week",
+      "Summary text": "Line 1\nLine 2",
+      "Orders due this week": "2",
+      "Cash due this week": "€1,240",
+      "Order plan link": "https://admin.shopify.com/store/a/apps/keha-inventory/app/reorder",
+    });
+    const unknown = weeklyPlanPayload({ subject: "s", summary: "x", ordersDue: null, cashDue: null, link: "https://a.test", numberLocale: "de" });
+    expect(unknown["Orders due this week"]).toBe("—");
+    expect(unknown["Cash due this week"]).toBe("—");
+    expect(weeklyPlanPayload({ subject: "s", summary: "x", ordersDue: 1234, cashDue: null, link: "l", numberLocale: "de" })["Orders due this week"]).toBe("1.234");
+  });
+
+  it("First order plan ready: subject, summary, link", () => {
+    const p = firstPlanPayload({ subject: "Your order plan is ready", summary: "…", link: "https://a.test/app" });
+    expect(payloadMatches(FLOW_FIRST_PLAN, p)).toBe(true);
+    expect(payloadMatches(FLOW_WEEKLY_PLAN, p)).toBe(false);
+  });
+
+  it("a runaway summary is clipped, never refused", () => {
+    const p = weeklyPlanPayload({ subject: "s".repeat(400), summary: "x".repeat(FLOW_TEXT_MAX + 50), ordersDue: 0, cashDue: "€0", link: "l", numberLocale: "en" });
+    expect((p["Summary text"] as string).length).toBe(FLOW_TEXT_MAX);
+    expect((p.Subject as string).length).toBe(250);
+    expect(p["Orders due this week"]).toBe("0"); // a real zero (nothing due) stays 0
+  });
+
+  it("each notification trigger has its own once-per-period log kind", () => {
+    expect(FLOW_NOTIFY_KIND[FLOW_WEEKLY_PLAN]).toBe("monday_flow");
+    expect(FLOW_NOTIFY_KIND[FLOW_FIRST_PLAN]).toBe("plan_ready_flow");
+  });
+});
+
+describe("mondayDueThisWeek", () => {
+  const line = (cash: number | null) => ({ name: "Acme", units: 10, cash, orderBy: "2026-10-20", overdue: false, link: "l" });
+  it("Growth: suppliers due this week and the known cash; nothing due is a real 0", () => {
+    expect(mondayDueThisWeek({ kind: "plan", today: "2026-10-19", lines: [line(450), line(null)], next: null }, "EUR", "en", "en")).toEqual({ ordersDue: 2, cashDue: "€450" });
+    expect(mondayDueThisWeek({ kind: "plan", today: "2026-10-19", lines: [line(null)], next: null }, "EUR", "en", "en")).toEqual({ ordersDue: 1, cashDue: null });
+    expect(mondayDueThisWeek({ kind: "plan", today: "2026-10-19", lines: [], next: null }, "EUR", "en", "en")).toEqual({ ordersDue: 0, cashDue: "€0" });
+  });
+  it("Free: preview products due in 7 days (overdue too), no cash; not ready or unread: unknown", () => {
+    const row = (orderBy: string, overdue = false) => ({ title: "Shirt", variant: "M", qty: 3, orderBy, overdue });
+    const preview = { kind: "preview" as const, today: "2026-10-19", rows: [row("2026-10-19"), row("2026-10-25"), row("2026-10-26"), row("2026-10-01", true)], products: 4, link: "l", plansLink: "p" };
+    expect(mondayDueThisWeek(preview, "EUR", "en", "en")).toEqual({ ordersDue: 3, cashDue: null });
+    expect(mondayDueThisWeek(null, "EUR", "en", "en")).toEqual({ ordersDue: null, cashDue: null });
+    expect(mondayDueThisWeek({ kind: "notReady", today: "2026-10-19", readiness: {} as never }, "EUR", "en", "en")).toEqual({ ordersDue: null, cashDue: null });
   });
 });

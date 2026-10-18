@@ -45,6 +45,7 @@ import * as dbModule from "../app/db.server";
 import { maybeSendPlanReadyEmail } from "../app/services/plan-ready.server";
 import { PLAN_READY_KIND, composePlanReadyEmail, planReadyInWindow } from "../app/lib/plan-ready-email-shared";
 import { salesSpan } from "../app/lib/sync-progress-shared";
+import { translate } from "../app/lib/i18n";
 
 const fake = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -199,5 +200,95 @@ describe("when it is sent", () => {
     expect(await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 60_000))).toBe("skipped");
     expect(await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 2 * 3600_000))).toBe("sent");
     expect(m.sendEmail).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Shopify Flow 'First order plan ready' (owner decision 2026-10-18: no email provider)", () => {
+  type Call = { query: string; variables?: { handle?: string; payload?: Record<string, string> } };
+  const admin = (answer: unknown = { data: { flowTriggerReceive: { userErrors: [] } } }) => {
+    const calls: Call[] = [];
+    return {
+      calls,
+      deps: { getAdmin: async () => ({ graphql: async (query: string, o?: { variables?: Record<string, unknown> }) => (calls.push({ query, variables: o?.variables as Call["variables"] }), { json: async () => answer }) }) },
+    };
+  };
+  const flowRows = () => (fake.tables.ownerEmailLog ?? []).filter((r) => r.kind === "plan_ready_flow");
+
+  it("without an email provider: fires once with subject, summary and the order plan link; no email", async () => {
+    seed({ settings: { mondayEmail: { enabled: false, recipients: [] } } });
+    m.transport.on = false;
+    const a = admin();
+    expect(await maybeSendPlanReadyEmail(S, NOW, a.deps)).toBe("skipped:no_transport");
+    expect(m.sendEmail).not.toHaveBeenCalled();
+    expect(a.calls).toHaveLength(1);
+    expect(a.calls[0]!.query).toContain("flowTriggerReceive");
+    expect(a.calls[0]!.variables?.handle).toBe("first-order-plan-ready");
+    const p = a.calls[0]!.variables!.payload!;
+    expect(Object.keys(p).sort()).toEqual(["Order plan link", "Subject", "Summary text"]);
+    // In the store's language (es), without the email footer or unsubscribe link.
+    expect(p.Subject).toBe(translate("es", "Your order plan is ready"));
+    expect(p["Summary text"]).toContain("Acme Shoes");
+    expect(p["Summary text"]).not.toMatch(/unsubscribe|Darse de baja/i);
+    expect(p["Order plan link"]).toBe("https://admin.shopify.com/store/acme/apps/keha-inventory/app");
+    expect(flowRows()).toHaveLength(1);
+    // Once per store.
+    await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 3 * 3600_000), a.deps);
+    expect(a.calls).toHaveLength(1);
+  });
+
+  it("waits like the email: not before the plan is ready and built; never for an old read", async () => {
+    m.transport.on = false;
+    const a = admin();
+    seed();
+    m.readiness.mockResolvedValue({ ready: false });
+    await maybeSendPlanReadyEmail(S, NOW, a.deps);
+    seed({ computedAt: "2026-10-17T09:00:00.000Z" });
+    m.readiness.mockResolvedValue({ ready: true });
+    await maybeSendPlanReadyEmail(S, NOW, a.deps);
+    seed({ finishedAt: "2026-10-01T00:00:00Z" });
+    await maybeSendPlanReadyEmail(S, NOW, a.deps);
+    expect(a.calls).toHaveLength(0);
+    expect(flowRows()).toHaveLength(0);
+  });
+
+  it("with a provider the email goes out and Flow fires too (two log rows, one each)", async () => {
+    seed();
+    const a = admin();
+    expect(await maybeSendPlanReadyEmail(S, NOW, a.deps)).toBe("sent");
+    expect(a.calls).toHaveLength(1);
+    expect(fake.tables.ownerEmailLog.map((r) => r.kind).sort()).toEqual([PLAN_READY_KIND, "plan_ready_flow"]);
+  });
+
+  it("Shopify refuses (extension not released): logged as failed, not retried; a network error gets one retry an hour later", async () => {
+    m.transport.on = false;
+    seed();
+    const refused = admin({ data: { flowTriggerReceive: { userErrors: [{ field: ["handle"], message: "Invalid handle" }] } } });
+    await maybeSendPlanReadyEmail(S, NOW, refused.deps);
+    expect(flowRows()[0]).toMatchObject({ status: "FAILED" });
+    await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 2 * 3600_000), refused.deps);
+    expect(refused.calls).toHaveLength(1);
+
+    seed();
+    const down = { getAdmin: async () => ({ graphql: async () => { throw new Error("ECONNRESET"); } }) };
+    await maybeSendPlanReadyEmail(S, NOW, down);
+    expect(flowRows()[0]).toMatchObject({ status: "FAILED" });
+    const ok = admin();
+    await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 60_000), ok.deps); // too soon
+    expect(ok.calls).toHaveLength(0);
+    await maybeSendPlanReadyEmail(S, new Date(NOW.getTime() + 2 * 3600_000), ok.deps);
+    expect(ok.calls).toHaveLength(1);
+    expect(flowRows()[0]).toMatchObject({ status: "SENT", error: null });
+  });
+});
+
+describe("notify-flow: sample data", () => {
+  it("never fires or claims for sample data", async () => {
+    const { fireNotifyFlowOnce, notifyFlowPending } = await import("../app/services/notify-flow.server");
+    fake.reset();
+    const getAdmin = vi.fn();
+    expect(await notifyFlowPending(`${S}#sample`, "weekly-order-plan-ready", "2026-W43", NOW)).toBe(false);
+    expect(await fireNotifyFlowOnce(`${S}#sample`, "weekly-order-plan-ready", "2026-W43", {}, NOW, { getAdmin })).toBe("skipped");
+    expect(getAdmin).not.toHaveBeenCalled();
+    expect(fake.tables.ownerEmailLog ?? []).toHaveLength(0);
   });
 });

@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FLOW_FIELDS, FLOW_NEEDS_REORDER, FLOW_WENT_DEAD } from "../app/lib/flow-shared";
+import { FLOW_FIELDS, FLOW_FIRST_PLAN, FLOW_NEEDS_REORDER, FLOW_WEEKLY_PLAN, FLOW_WENT_DEAD } from "../app/lib/flow-shared";
 
 const ROOT = join(__dirname, "..");
 const EXT = join(ROOT, "extensions");
@@ -53,11 +53,20 @@ const ALL = tomlFiles().flatMap(parse);
 const FLOW = ALL.filter((e) => e.type === "flow_trigger");
 
 describe("Flow trigger extensions", () => {
-  it("both triggers live in extensions/keha-inventory-flow/", () => {
+  it("every trigger lives in extensions/keha-inventory-flow/ (two product triggers, two notification triggers)", () => {
     expect(FLOW.map((e) => [e.handle, e.name, e.file]).sort()).toEqual([
+      ["first-order-plan-ready", "First order plan ready", "extensions/keha-inventory-flow/first-order-plan-ready.extension.toml"],
       ["product-needs-reorder", "Product needs reorder", "extensions/keha-inventory-flow/product-needs-reorder.extension.toml"],
       ["product-went-dead", "Product went dead", "extensions/keha-inventory-flow/product-went-dead.extension.toml"],
+      ["weekly-order-plan-ready", "Weekly order plan ready", "extensions/keha-inventory-flow/weekly-order-plan-ready.extension.toml"],
     ]);
+  });
+
+  it("no Flow template extension ships without its exported template.flow (shopify app deploy needs the module)", () => {
+    for (const e of ALL.filter((x) => x.type === "flow_template")) {
+      const dir = join(ROOT, e.file, "..");
+      expect(readdirSync(dir), e.file).toContain("template.flow");
+    }
   });
 
   it("handles are unique across every extension, lowercase with hyphens, ≤ 30 characters", () => {
@@ -95,10 +104,19 @@ describe("Flow trigger extensions", () => {
     };
     expect(keys(FLOW_NEEDS_REORDER)).toEqual([...FLOW_FIELDS[FLOW_NEEDS_REORDER]].sort());
     expect(keys(FLOW_WENT_DEAD)).toEqual([...FLOW_FIELDS[FLOW_WENT_DEAD]].sort());
+    expect(keys(FLOW_WEEKLY_PLAN)).toEqual([...FLOW_FIELDS[FLOW_WEEKLY_PLAN]].sort());
+    expect(keys(FLOW_FIRST_PLAN)).toEqual([...FLOW_FIELDS[FLOW_FIRST_PLAN]].sort());
+  });
+
+  it("uids are unique across every extension", () => {
+    const uids = tomlFiles().map((f) => /^uid = "([^"]+)"/m.exec(readFileSync(f, "utf8"))?.[1]);
+    expect(uids.every(Boolean)).toBe(true);
+    expect(new Set(uids).size).toBe(uids.length);
   });
 
   it("uses field types Flow knows", () => {
     for (const e of FLOW)
-      for (const f of e.fields) expect(["product_reference", "single_line_text_field", "number_decimal"]).toContain(f.type);
+      // Flow's trigger field types (shopify.dev Flow trigger reference: no multi-line type for triggers).
+      for (const f of e.fields) expect(["product_reference", "single_line_text_field", "number_decimal", "url"]).toContain(f.type);
   });
 });

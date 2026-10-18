@@ -119,9 +119,19 @@ vi.mock("../app/services/entitlements.server", () => ({ planFor: (shop: string) 
 vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: (...a: unknown[]) => loadOrderPlan(...a) }));
 vi.mock("../app/models/dashboard.server", () => ({ readiness: (...a: unknown[]) => readiness(...a) }));
 vi.mock("../app/services/slack.server", () => ({ deliverSlackOnce: (...a: unknown[]) => deliverSlackOnce(...a) }));
+const flow = vi.hoisted(() => ({
+  transport: { on: true },
+  pending: { on: false },
+  fire: vi.fn(async (..._a: unknown[]) => "fired" as "fired" | "failed" | "skipped"),
+}));
 vi.mock("../app/services/email.server", () => ({
-  emailTransportConfigured: () => true,
+  emailTransportConfigured: () => flow.transport.on,
   sendEmail: (input: Record<string, unknown>) => sendEmail(input),
+}));
+// Shopify Flow "Weekly order plan ready" (owner decision 2026-10-18); its once-per-week claim is tested in notify-flow.test.
+vi.mock("../app/services/notify-flow.server", () => ({
+  notifyFlowPending: async () => flow.pending.on,
+  fireNotifyFlowOnce: (...a: unknown[]) => flow.fire(...a),
 }));
 
 beforeAll(() => {
@@ -316,6 +326,75 @@ beforeEach(() => {
   sendEmail.mockClear();
   planFor.mockReset();
   planFor.mockResolvedValue("growth");
+  flow.transport.on = true;
+  flow.pending.on = false;
+  flow.fire.mockClear();
+});
+
+describe("runMondayEmails without an email provider: Shopify Flow 'Weekly order plan ready'", () => {
+  it("no email goes out; the summary goes to Flow once per store week, also when the email switch is off", async () => {
+    flow.transport.on = false;
+    flow.pending.on = true;
+    tables.shop = [shopRow({ locale: "en", settings: { mondayEmail: { enabled: false, recipients: [] } } })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00"), money("2026-10-11", "1000.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(flow.fire).toHaveBeenCalledTimes(1);
+    const [shop, handle, period, payload] = flow.fire.mock.calls[0] as [string, string, string, Record<string, string>];
+    expect([shop, handle, period]).toEqual([S, "weekly-order-plan-ready", "2026-W43"]);
+    expect(Object.keys(payload).sort()).toEqual(["Cash due this week", "Order plan link", "Orders due this week", "Subject", "Summary text"]);
+    expect(payload.Subject).toMatch(/at stake this week/);
+    expect(payload["Summary text"]).toContain("Your Monday summary for Acme Shoes");
+    expect(payload["Summary text"]).toContain("Cash stuck: —");
+    // The Flow text has no email footer or unsubscribe link (the merchant's workflow controls it).
+    expect(payload["Summary text"]).not.toContain("unsubscribe");
+    expect(payload["Summary text"]).not.toContain("You get this email");
+    expect(payload["Order plan link"]).toBe("https://admin.shopify.com/store/acme/apps/keha-inventory/app/reorder");
+    // Nothing planned in the 13 weeks: the order plan didn't say → "—", never a made-up 0.
+    expect(payload["Orders due this week"]).toBe("—");
+    expect(payload["Cash due this week"]).toBe("—");
+  });
+
+  it("already fired this week: nothing to do (and no email)", async () => {
+    flow.transport.on = false;
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:unsubscribed");
+    expect(flow.fire).not.toHaveBeenCalled();
+  });
+
+  it("not before Monday 08:00 store time, never without numbers, never for an uninstalled store", async () => {
+    flow.transport.on = false;
+    flow.pending.on = true;
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, new Date("2026-10-19T05:00:00Z"))).toBe("skipped:unsubscribed");
+    tables.moneyAtStake = [];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:no_data");
+    tables.shop = [shopRow({ uninstalledAt: new Date("2026-10-01T00:00:00Z") })];
+    expect(await runMondayEmails(S, MON)).toBe("skipped:not_installed");
+    expect(flow.fire).not.toHaveBeenCalled();
+  });
+
+  it("Free gets it too, with its own link (the Dashboard)", async () => {
+    flow.transport.on = false;
+    flow.pending.on = true;
+    planFor.mockResolvedValue("free");
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    await runMondayEmails(S, MON);
+    const payload = flow.fire.mock.calls[0]![3] as Record<string, string>;
+    expect(payload["Order plan link"]).toBe("https://admin.shopify.com/store/acme/apps/keha-inventory/app");
+  });
+
+  it("with a provider the email still goes out, and Flow fires alongside it", async () => {
+    flow.pending.on = true;
+    tables.shop = [shopRow()];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    expect(await runMondayEmails(S, MON)).toBe("sent");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(flow.fire).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("runMondayEmails", () => {
@@ -847,6 +926,20 @@ describe("runMondayEmails: Order this week from the order plan", () => {
   });
 
   afterEach(() => loadOrderPlan.mockReset());
+
+  it("Flow 'Weekly order plan ready': orders due this week and their cash, from the same order plan", async () => {
+    flow.transport.on = false;
+    flow.pending.on = true;
+    loadOrderPlan.mockResolvedValue(planData([event("s:1", "2026-10-19", 30, 450, true), event("s:1", "2026-12-01", 30, 450)]));
+    tables.shop = [shopRow({ locale: "en" })];
+    tables.moneyAtStake = [money("2026-10-18", "1500.00")];
+    await runMondayEmails(S, MON);
+    const payload = flow.fire.mock.calls[0]![3] as Record<string, string>;
+    expect(payload.Subject).toBe("Acme Textiles order is overdue · 30 units");
+    expect(payload["Orders due this week"]).toBe("1");
+    expect(payload["Cash due this week"]).toBe("€450");
+    expect(payload["Summary text"]).toContain("- Overdue: Acme Textiles · 30 units · €450 · order today");
+  });
 
   it("Growth: one line per supplier with Review order into Order now for that supplier", async () => {
     loadOrderPlan.mockResolvedValue(planData([event("s:1", "2026-10-19", 30, 450, true), event("s:1", "2026-12-01", 30, 450)]));

@@ -71,6 +71,22 @@ export function composePlanReadyEmail(input: PlanReadyEmailInput): PlanReadyEmai
   return { subject, text, html };
 }
 
+/**
+ * The same notice for the Shopify Flow trigger "First order plan ready" (owner decision
+ * 2026-10-18: no email provider): subject and plain text without the email footer or unsubscribe
+ * link — the merchant's own Flow workflow decides who gets it.
+ */
+export function planReadyFlowText(input: Omit<PlanReadyEmailInput, "links"> & { appLink: string }): { subject: string; summary: string } {
+  const tr = (key: string) => translate(input.locale, key);
+  const count = (n: number) => new Intl.NumberFormat(input.locale).format(n);
+  const heading = fill(tr("Your order plan for {store} is ready"), { store: input.storeName });
+  const body = `${tr("We've finished reading your sales, stock and store visits.")} ${salesSpanText(input.span, tr, count)}`;
+  const next = tr("Open it to see what to order this week, from which supplier and by when.");
+  const gaps = input.gaps ? tr("A few months couldn't be read; your plan uses the others.") : null;
+  const summary = [heading, "", body, next, ...(gaps ? ["", gaps] : []), "", `${tr("Open your order plan")}: ${input.appLink}`].join("\n");
+  return { subject: tr("Your order plan is ready"), summary };
+}
+
 /** Is the finished read recent enough for the email (and finished at all)? */
 export function planReadyInWindow(finishedAt: string | null | undefined, now: Date): boolean {
   if (!finishedAt) return false;

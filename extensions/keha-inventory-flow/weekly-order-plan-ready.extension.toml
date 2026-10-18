@@ -1,0 +1,42 @@
+# Shopify Flow TRIGGER — "Weekly order plan ready" (owner decision 2026-10-18: no paid email
+# provider; every plan). Fired by the Monday job (app/services/monday.server.ts →
+# notify-flow.server.ts → flow.server.ts, flowTriggerReceive) every Monday from 08:00 store time,
+# once per store week (OwnerEmailLog kind "monday_flow"), with the same summary as the Monday email.
+# The merchant gets it by email with Flow's "Send internal email" action (docs/FLOW-TEMPLATES.md).
+#
+# Field keys: letters and spaces only; descriptions ≤ 140 characters; the keys equal FLOW_FIELDS in
+# app/lib/flow-shared.ts (tests/flow-extensions.test.ts). Unknown numbers are sent as "—", never 0.
+
+[[extensions]]
+name = "Weekly order plan ready"
+type = "flow_trigger"
+handle = "weekly-order-plan-ready"
+uid = "8bbd8c16-0a7f-8990-759a-cb1a5f2dae02c2a7fc3c"
+description = "Fires every Monday from 08:00 store time with your weekly stock summary: what to order this week and the money at stake."
+
+[settings]
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Subject"
+  description = "A one-line summary, e.g. for an email subject."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Summary text"
+  description = "The weekly summary as plain text over several lines, with links into the app."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Orders due this week"
+  description = "How many orders are due in the next 7 days, or a dash when it isn't known yet."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Cash due this week"
+  description = "The cost of those orders in your store currency, formatted, or a dash when it isn't known."
+
+  [[settings.fields]]
+  type = "url"
+  key = "Order plan link"
+  description = "Opens the order plan in Keha Inventory Planner."

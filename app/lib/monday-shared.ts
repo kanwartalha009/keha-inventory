@@ -24,7 +24,7 @@ import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
 import { isVisible, reasonTemplate, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
 import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
-import type { DayKey } from "./engine/dates-shared";
+import { addDays, type DayKey } from "./engine/dates-shared";
 import { notReadyText, type PlanNotReady } from "./dashboard-shared";
 
 // ---------------------------------------------------------------- send time
@@ -466,12 +466,13 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   };
 }
 
-export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent {
-  const m = mondaySummary(input);
-  const { subject, heading, atStake, rows, refreshNote, actions, accuracy, openLabel, footer, unsubscribe, topHeading, openAction } = m;
-  const locale = m.locale;
+/**
+ * The summary as plain text, up to "Open Keha: <link>" (no email footer / unsubscribe): the Monday
+ * email's text part, and the "Summary text" of the Shopify Flow trigger "Weekly order plan ready".
+ */
+export function mondayPlainText(m: MondaySummary): string {
+  const { heading, atStake, rows, refreshNote, actions, accuracy, openLabel, topHeading, openAction } = m;
   const ob = m.orders;
-  // ---- plain text ----
   const lines: string[] = [heading, ""];
   if (ob) {
     lines.push(ob.heading);
@@ -497,8 +498,37 @@ export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent 
     if (m.lockedFixes) lines.push(`${actions.length + 1}. ${m.lockedFixes.text}`, `   ${m.lockedFixes.label}: ${m.lockedFixes.link}`);
   }
   if (accuracy) lines.push("", accuracy);
-  lines.push("", `${openLabel}: ${input.links.app}`, "", "—", footer, `${unsubscribe}: ${input.links.unsubscribe}`);
-  const text = lines.join("\n");
+  lines.push("", `${openLabel}: ${m.links.app}`);
+  return lines.join("\n");
+}
+
+/**
+ * The other fields of "Weekly order plan ready" (lib/flow-shared weeklyPlanPayload): orders due in
+ * the 7 days from today and their cash. Growth / Pro: suppliers with an order due this week and the
+ * known cost of those orders; Free: products of the top-10 preview due this week, no cash (Free
+ * shows no costs). Unknown — not ready, or the plan couldn't be read — is null ("—"), never 0.
+ */
+export function mondayDueThisWeek(orders: MondayOrders | null, currency: string, numberLocale: string, locale: Locale): { ordersDue: number | null; cashDue: string | null } {
+  if (!orders || orders.kind === "notReady") return { ordersDue: null, cashDue: null };
+  if (orders.kind === "preview") {
+    const end = addDays(orders.today, 6);
+    return { ordersDue: orders.rows.filter((r) => r.overdue || r.orderBy <= end).length, cashDue: null };
+  }
+  const known = orders.lines.filter((l) => l.cash != null);
+  const cash = known.reduce((a, l) => a + (l.cash ?? 0), 0);
+  return {
+    ordersDue: orders.lines.length,
+    cashDue: orders.lines.length === 0 ? formatMoneyWhole(0, currency, numberLocale, locale) : known.length ? formatMoneyWhole(cash, currency, numberLocale, locale) : null,
+  };
+}
+
+export function composeMondayEmail(input: MondayEmailInput): MondayEmailContent {
+  const m = mondaySummary(input);
+  const { subject, heading, atStake, rows, refreshNote, actions, accuracy, openLabel, footer, unsubscribe, topHeading, openAction } = m;
+  const locale = m.locale;
+  const ob = m.orders;
+  // ---- plain text ----
+  const text = [mondayPlainText(m), "", "—", footer, `${unsubscribe}: ${input.links.unsubscribe}`].join("\n");
 
   // ---- HTML (inline styles only; email clients drop <style>) ----
   const font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";

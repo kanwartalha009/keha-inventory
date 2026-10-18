@@ -1,0 +1,32 @@
+# Shopify Flow TRIGGER — "First order plan ready" (owner decision 2026-10-18: no paid email
+# provider; every plan). Fired once per store (OwnerEmailLog kind "plan_ready_flow") after a compute
+# job, when the first read of the store finished in the last 7 days and the plan is ready and built
+# (app/services/plan-ready.server.ts → notify-flow.server.ts → flow.server.ts, flowTriggerReceive).
+# The merchant gets it by email with Flow's "Send internal email" action (docs/FLOW-TEMPLATES.md).
+#
+# Field keys: letters and spaces only; descriptions ≤ 140 characters; the keys equal FLOW_FIELDS in
+# app/lib/flow-shared.ts (tests/flow-extensions.test.ts).
+
+[[extensions]]
+name = "First order plan ready"
+type = "flow_trigger"
+handle = "first-order-plan-ready"
+uid = "c9197a5b-e311-229e-7e99-2c883dabb66920c43782"
+description = "Fires once, when Keha has read your store's history and your first order plan is ready to open."
+
+[settings]
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Subject"
+  description = "A one-line summary, e.g. for an email subject."
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "Summary text"
+  description = "What was read and what to do next, as plain text with a link into the app."
+
+  [[settings.fields]]
+  type = "url"
+  key = "Order plan link"
+  description = "Opens the order plan in Keha Inventory Planner."

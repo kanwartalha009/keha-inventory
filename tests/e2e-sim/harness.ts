@@ -544,8 +544,10 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
   expect(plan.notReordered).toBe(new Set(noReorder.map((v) => v.product.id)).size);
   counts.noReorderVariants = noReorder.length;
 
-  // Nothing reached Shopify's write APIs (sample data and these reads never mutate the store).
-  expect(state.graphql.filter((q) => /mutation/i.test(q))).toEqual([]);
+  // Nothing reached Shopify's write APIs (sample data and these reads never mutate the store). The one
+  // mutation allowed is the Monday job's Shopify Flow event ("Weekly order plan ready",
+  // flowTriggerReceive): it starts the merchant's own workflows and changes nothing in the store.
+  expect(state.graphql.filter((q) => /mutation/i.test(q) && !/flowTriggerReceive\(/.test(q))).toEqual([]);
   return counts;
 }
 

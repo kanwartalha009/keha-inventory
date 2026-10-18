@@ -18,6 +18,10 @@
  * summary goes to Slack when it is connected and "Send the Monday summary to
  * Slack" is on (Growth) — once per store week (OwnerEmailLog kind
  * "monday_slack"), independent of the email being on.
+ *
+ * No email provider (owner decision 2026-10-18, the default): the email isn't sent; the same
+ * summary goes to Shopify Flow as "Weekly order plan ready" (every plan, once per store week,
+ * OwnerEmailLog kind "monday_flow"), and the merchant's Flow workflow emails it to them.
  */
 import prisma from "../db.server";
 import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
@@ -28,6 +32,8 @@ import {
   composeMondayEmail,
   isMondaySendTime,
   lastMonthAccuracy,
+  mondayDueThisWeek,
+  mondayPlainText,
   mondaySummary,
   selectMondayActions,
   type MondayAction,
@@ -50,6 +56,9 @@ import type { Locale } from "../lib/i18n";
 import { planFor } from "./entitlements.server";
 import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
 import { deliverSlackOnce } from "./slack.server";
+import { emailTransportConfigured } from "./email.server";
+import { fireNotifyFlowOnce, notifyFlowPending } from "./notify-flow.server";
+import { FLOW_WEEKLY_PLAN, weeklyPlanPayload } from "../lib/flow-shared";
 
 export const MONDAY_KIND = "monday";
 /** OwnerEmailLog kind for the Monday summary in Slack (once per store week). */
@@ -234,19 +243,23 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
   const shop = row.domain;
   if (row.uninstalledAt) return "skipped:not_installed";
   const settings = readSettings(row.settings);
-  const emailOn = settings.mondayEmail.enabled;
+  // The email only with a provider configured (owner decision 2026-10-18: none by default); without
+  // one, the summary reaches the merchant's inbox through Shopify Flow (below).
+  const emailOn = settings.mondayEmail.enabled && emailTransportConfigured();
   const slackOn = Boolean(settings.alerts.slackWebhook) && settings.alerts.slackMonday;
-  if (!emailOn && !slackOn) return "skipped:unsubscribed";
 
   const { due, localDate } = isMondaySendTime(now, row.timezone);
-  if (!due) return "skipped:not_due";
+  if (!due) return emailOn || slackOn ? "skipped:not_due" : "skipped:unsubscribed";
   const periodKey = weekKey(new Date(`${localDate}T00:00:00Z`));
 
   // Cheap pre-check so hourly ticks don't re-read Shopify after the send;
-  // the unique insert (sendOwnerEmailOnce / deliverSlackOnce) is the real guarantee.
+  // the unique insert (sendOwnerEmailOnce / deliverSlackOnce / fireNotifyFlowOnce) is the real guarantee.
   const emailPending = emailOn && (await pending(shop, MONDAY_KIND, periodKey, now));
   const slackPending = slackOn && (await pending(shop, MONDAY_SLACK_KIND, periodKey, now));
-  if (!emailPending && !slackPending) return emailOn ? "skipped:already_sent" : "skipped:unsubscribed";
+  // Shopify Flow "Weekly order plan ready": every plan, not tied to the email switch — the merchant
+  // opts in by turning on a workflow (like the other Flow triggers).
+  const flowPending = await notifyFlowPending(shop, FLOW_WEEKLY_PLAN, periodKey, now);
+  if (!emailPending && !slackPending && !flowPending) return emailOn ? "skipped:already_sent" : "skipped:unsubscribed";
 
   const money = await moneyRows(shop);
   if (!money) return "skipped:no_data";
@@ -289,6 +302,20 @@ async function runForShop(row: ShopRow, now: Date): Promise<MondayResult> {
     } catch (e) {
       console.error(`[monday] ${shop}: Slack summary failed`, e);
     }
+  }
+
+  if (flowPending) {
+    const summary = mondaySummary(input);
+    const due = mondayDueThisWeek(input.orders ?? null, row.currency, row.locale, locale);
+    const payload = weeklyPlanPayload({
+      subject: summary.subject,
+      summary: mondayPlainText(summary),
+      ...due,
+      link: adminAppUrl(shop, hasFeature(plan, "reorderPlan") ? "/app/reorder" : "/app"),
+      numberLocale: row.locale,
+    });
+    const r = await fireNotifyFlowOnce(shop, FLOW_WEEKLY_PLAN, periodKey, payload, now);
+    if (r !== "skipped") console.log(`[monday] ${shop}: Flow weekly summary ${r}`);
   }
 
   if (!emailOn) return "skipped:unsubscribed";

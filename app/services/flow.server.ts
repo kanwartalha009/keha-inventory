@@ -1,7 +1,8 @@
 /**
  * Shopify Flow trigger sender (spec §11, task 2.6): `flowTriggerReceive` with
  * the trigger's handle and a payload whose keys match its extension toml
- * (lib/flow-shared FLOW_FIELDS). Called from the hourly alerts job on Growth.
+ * (lib/flow-shared FLOW_FIELDS). Called from the hourly alerts job on Growth, and for the
+ * notification triggers (weekly / first order plan ready) from services/notify-flow.
  *
  * Results: "ok"; "rejected" = Shopify answered with userErrors (e.g. the
  * extension isn't deployed / released yet) — logged as its own AlertLog
@@ -10,7 +11,7 @@
  * retries every hour; "error" = network / throttle / auth — not recorded,
  * tried again next tick.
  */
-import { FLOW_FIELDS, payloadMatches, type FlowHandle } from "../lib/flow-shared";
+import { FLOW_FIELDS, payloadMatches, type AnyFlowHandle } from "../lib/flow-shared";
 
 const FLOW_TRIGGER = `#graphql
   mutation KehaInvFlowTrigger($handle: String, $payload: JSON) {
@@ -28,7 +29,7 @@ export type AdminGraphql = {
 
 export type FlowFireResult = { status: "ok" } | { status: "rejected" | "error"; error: string };
 
-export async function fireFlowTrigger(admin: AdminGraphql, handle: FlowHandle, payload: Record<string, unknown>): Promise<FlowFireResult> {
+export async function fireFlowTrigger(admin: AdminGraphql, handle: AnyFlowHandle, payload: Record<string, unknown>): Promise<FlowFireResult> {
   if (!payloadMatches(handle, payload)) {
     return { status: "rejected", error: `payload keys must be exactly: ${FLOW_FIELDS[handle].join(", ")}` };
   }

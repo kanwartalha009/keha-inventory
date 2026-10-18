@@ -9,6 +9,15 @@
  *    order quantity > 0. Per product, the variant that runs out first.
  *  - "Product went dead": every planned variant of the product is Dead.
  *
+ * Notification triggers (owner decision 2026-10-18: no paid email provider — the merchant gets
+ * Keha's summaries by email through Flow's "Send internal email" action; every plan, like the
+ * Monday email they replace; docs/FLOW-TEMPLATES.md):
+ *  - "Weekly order plan ready": the Monday summary, once per store week (services/monday).
+ *  - "First order plan ready": once, when the first read finished and the plan is built
+ *    (services/plan-ready — where the one-time "plan is ready" email goes out with a provider).
+ * Instant alerts reuse "Product needs reorder" (a best seller running out before stock can
+ * arrive, or a busy product selling out, is a product Keha suggests reordering) — no third trigger.
+ *
  * Episode rule (chosen over "every 30 days"): a trigger fires once when a product
  * enters the state and fires again only after the product has LEFT that state
  * and come back. Each fire is an AlertLog row (kind flow_reorder / flow_dead,
@@ -21,16 +30,63 @@
 export const FLOW_NEEDS_REORDER = "product-needs-reorder";
 export const FLOW_WENT_DEAD = "product-went-dead";
 export type FlowHandle = typeof FLOW_NEEDS_REORDER | typeof FLOW_WENT_DEAD;
+export const FLOW_WEEKLY_PLAN = "weekly-order-plan-ready";
+export const FLOW_FIRST_PLAN = "first-order-plan-ready";
+/** The notification triggers (one store-level event each, no product). */
+export type NotifyHandle = typeof FLOW_WEEKLY_PLAN | typeof FLOW_FIRST_PLAN;
+export type AnyFlowHandle = FlowHandle | NotifyHandle;
 
 /**
  * Payload keys per trigger, exactly as declared in each extension toml.
  * Custom keys are letters and spaces only (Shopify rejects anything else at
  * deploy). `product_id` is the key Shopify uses for a product_reference field.
  */
-export const FLOW_FIELDS: Record<FlowHandle, readonly string[]> = {
+export const FLOW_FIELDS: Record<AnyFlowHandle, readonly string[]> = {
   [FLOW_NEEDS_REORDER]: ["product_id", "Variant id", "Days left", "Order by", "Suggested quantity"],
   [FLOW_WENT_DEAD]: ["product_id", "Cash stuck"],
+  [FLOW_WEEKLY_PLAN]: ["Subject", "Summary text", "Orders due this week", "Cash due this week", "Order plan link"],
+  [FLOW_FIRST_PLAN]: ["Subject", "Summary text", "Order plan link"],
 };
+
+/** OwnerEmailLog kinds: each notification trigger fires once per period (like the email it stands in for). */
+export const FLOW_NOTIFY_KIND: Record<NotifyHandle, string> = {
+  [FLOW_WEEKLY_PLAN]: "monday_flow",
+  [FLOW_FIRST_PLAN]: "plan_ready_flow",
+};
+
+/**
+ * Flow text fields are strings; keep each well inside what an email subject / body can carry.
+ * (Flow documents no limit for trigger strings; this keeps a runaway summary from being refused.)
+ */
+export const FLOW_TEXT_MAX = 10_000;
+const DASH = "—";
+const clip = (s: string, max = FLOW_TEXT_MAX) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+export type WeeklyPlanFields = {
+  subject: string;
+  summary: string;
+  /** Orders (suppliers, or products on Free) due this week; null = not known (sent as "—", never 0). */
+  ordersDue: number | null;
+  /** Cash for those orders, already formatted in the store currency; null = not known ("—"). */
+  cashDue: string | null;
+  /** Admin link to the order plan. */
+  link: string;
+  numberLocale: string;
+};
+
+export function weeklyPlanPayload(f: WeeklyPlanFields): Record<string, unknown> {
+  return {
+    Subject: clip(f.subject, 250),
+    "Summary text": clip(f.summary),
+    "Orders due this week": f.ordersDue == null ? DASH : new Intl.NumberFormat(f.numberLocale).format(f.ordersDue),
+    "Cash due this week": f.cashDue ?? DASH,
+    "Order plan link": f.link,
+  };
+}
+
+export function firstPlanPayload(f: { subject: string; summary: string; link: string }): Record<string, unknown> {
+  return { Subject: clip(f.subject, 250), "Summary text": clip(f.summary), "Order plan link": f.link };
+}
 
 /** AlertLog.kind per trigger. */
 export const FLOW_LOG_KIND: Record<FlowHandle, "flow_reorder" | "flow_dead"> = {
@@ -144,7 +200,7 @@ export function wentDeadPayload(productId: string, cashStuck: number): Record<st
 }
 
 /** Every declared key present (Shopify requires all of them), and nothing else. */
-export function payloadMatches(handle: FlowHandle, payload: Record<string, unknown>): boolean {
+export function payloadMatches(handle: AnyFlowHandle, payload: Record<string, unknown>): boolean {
   const keys = Object.keys(payload).sort();
   const want = [...FLOW_FIELDS[handle]].sort();
   return JSON.stringify(keys) === JSON.stringify(want) && keys.every((k) => payload[k] !== null && payload[k] !== undefined);
