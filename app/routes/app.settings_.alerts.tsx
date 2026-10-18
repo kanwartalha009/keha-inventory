@@ -5,6 +5,12 @@
  * shown back — the page only knows "Connected", with Disconnect and "Send a test
  * message". A link Slack stopped accepting stays saved and its error shows here.
  * Five visible fields (spec §5.5: at most 8).
+ *
+ * No email provider (owner decision 2026-10-18, the default): the Monday email and the email part of
+ * instant alerts can't be sent by Keha, so their switches and the recipients field are not shown
+ * (the saved values stay as they are). Instead the page says how to get them by email with Shopify
+ * Flow — the "Weekly order plan ready" trigger (every plan) and "Product needs reorder" (Growth) —
+ * with a button to the Flow app. Slack works as before.
  */
 import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
@@ -32,12 +38,18 @@ import { setSlackWebhook } from "../models/alerts.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { deliverSlack } from "../services/slack.server";
 import { ownerContact } from "../services/owner-email.server";
+import { emailTransportConfigured } from "../services/email.server";
+import { SHOPIFY_FLOW_ADMIN } from "../lib/flow-shared";
 
 export type AlertsLoaderData = {
   form: AlertsForm;
   slack: { connected: boolean; error: { code: string; at: string } | null };
   /** The plan includes Slack (Growth). */
   canSlack: boolean;
+  /** An email provider is configured (INVENTORY_EMAIL_API_KEY / _FROM); else email goes through Shopify Flow. Absent = configured. */
+  emailProvider?: boolean;
+  /** The plan includes the product Flow triggers ("Product needs reorder", Growth). */
+  canFlow?: boolean;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<AlertsLoaderData> => {
@@ -47,6 +59,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<AlertsLoa
     form: alertsToForm(settings),
     slack: { connected: Boolean(settings.alerts.slackWebhook), error: settings.alerts.slackError },
     canSlack: ent.features.slack,
+    emailProvider: emailTransportConfigured(),
+    canFlow: ent.features.flowTriggers,
   };
 };
 
@@ -111,7 +125,7 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 export default function AlertsSettings() {
   const { t } = useLocale();
-  const { form: initial, slack, canSlack } = useLoaderData<typeof loader>();
+  const { form: initial, slack, canSlack, emailProvider = true, canFlow = false } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<AlertsActionData>();
   const [form, setForm] = useState<AlertsForm>(initial);
   const [saved, setSaved] = useState<AlertsForm>(initial);
@@ -177,30 +191,63 @@ export default function AlertsSettings() {
         <s-banner tone="warning">{t("Slack didn't answer. Try again in a minute.")}</s-banner>
       )}
 
-      <FormCard title={t("Monday email")} sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}>
-        <s-stack direction="block" gap="base">
-          <s-checkbox
-            label={t("Send the Monday email")}
-            checked={flag(form.mondayEnabled)}
-            onChange={(e) => set("mondayEnabled", isChecked(e))}
-          />
-          <s-text-field
-            label={t("Send to")}
-            details={t("Leave empty to send it to the store owner. Separate several addresses with commas.")}
-            value={form.recipients}
-            error={err("recipients")}
-            onInput={(e) => set("recipients", val(e))}
-          />
-        </s-stack>
-      </FormCard>
+      {emailProvider ? (
+        <FormCard title={t("Monday email")} sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}>
+          <s-stack direction="block" gap="base">
+            <s-checkbox
+              label={t("Send the Monday email")}
+              checked={flag(form.mondayEnabled)}
+              onChange={(e) => set("mondayEnabled", isChecked(e))}
+            />
+            <s-text-field
+              label={t("Send to")}
+              details={t("Leave empty to send it to the store owner. Separate several addresses with commas.")}
+              value={form.recipients}
+              error={err("recipients")}
+              onInput={(e) => set("recipients", val(e))}
+            />
+          </s-stack>
+        </FormCard>
+      ) : (
+        <FormCard
+          title={t("Monday summary")}
+          sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}
+          action={
+            <s-button href={SHOPIFY_FLOW_ADMIN} target="_top">
+              {t("Open Shopify Flow")}
+            </s-button>
+          }
+        >
+          <s-stack direction="block" gap="small-200">
+            <s-text fontWeight="medium">{t("Get it by email with Shopify Flow")}</s-text>
+            <s-paragraph color="subdued">
+              {t("Every Monday Keha sends this summary to Shopify Flow as “Weekly order plan ready”. In Flow, turn on a workflow with the “Send internal email” action and type who should get it.")}
+            </s-paragraph>
+            <s-paragraph color="subdued">{t("Your first order plan is announced the same way, as “First order plan ready”.")}</s-paragraph>
+          </s-stack>
+        </FormCard>
+      )}
 
       <FormCard title={t("Instant alerts")} sub={t("When a best seller will run out before new stock can arrive, or a busy product sells out.")}>
-        <s-checkbox
-          label={t("Send instant alerts")}
-          details={t("By email to the addresses above, and to Slack when it's connected. At most once per product per week.")}
-          checked={flag(form.instant)}
-          onChange={(e) => set("instant", isChecked(e))}
-        />
+        <s-stack direction="block" gap="base">
+          <s-checkbox
+            label={t("Send instant alerts")}
+            details={
+              emailProvider
+                ? t("By email to the addresses above, and to Slack when it's connected. At most once per product per week.")
+                : t("To Slack when it's connected. At most once per product per week.")
+            }
+            checked={flag(form.instant)}
+            onChange={(e) => set("instant", isChecked(e))}
+          />
+          {!emailProvider && (
+            <s-text color="subdued">
+              {canFlow
+                ? t("By email: in Shopify Flow, add the “Send internal email” action to the “Product needs reorder” trigger.")
+                : `${t("By email with Shopify Flow, on the “Product needs reorder” trigger")} · ${planTag("flowTriggers", t)}`}
+            </s-text>
+          )}
+        </s-stack>
       </FormCard>
 
       {/* Below Growth the Upgrade banner says what Slack does; no second copy of it as the description. */}

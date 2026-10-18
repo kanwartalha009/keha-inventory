@@ -73,6 +73,11 @@ export type HomeRaw = {
    * sent yet (dashboard.server). The Monday email setting is applied in buildHome. Undefined = no.
    */
   planReadyEmail?: boolean;
+  /**
+   * An email provider is configured (owner decision 2026-10-18: none by default). False = the
+   * Monday summary reaches the merchant by email through Shopify Flow; undefined = configured.
+   */
+  emailProvider?: boolean;
   /** The store's earliest sales day ("YYYY-MM-DD"; null = no sales; undefined = not read). */
   firstSaleDay?: string | null;
 };
@@ -121,6 +126,8 @@ export type HomeData = {
     costsDone: boolean;
     mondayEnabled: boolean;
     mondayRecipients: string[];
+    /** No email provider: the Monday step points to Shopify Flow (nothing to switch on in Keha, so it counts as done). */
+    mondayViaFlow?: boolean;
     /** Growth and Pro keep suppliers; Free plans by vendor. */
     suppliersEnabled: boolean;
     supplierCount: number;
@@ -247,6 +254,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
   const leadTimeDone = !!settings.leadTimeConfirmedAt;
   const costsDone = pct !== null && pct >= COSTS_DONE_PCT;
   const mondayEnabled = settings.mondayEmail.enabled;
+  const mondayViaFlow = raw.emailProvider === false;
   const suppliersEnabled = hasFeature(plan, "suppliers");
   const supplierCount = raw.supplierCount ?? 0;
   const suppliersDone = suppliersEnabled ? supplierCount > 0 : true;
@@ -293,12 +301,13 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
       costsDone,
       mondayEnabled,
       mondayRecipients: settings.mondayEmail.recipients,
+      mondayViaFlow,
       suppliersEnabled,
       supplierCount,
       vendorCount: raw.vendorCount ?? (catalogDone ? 0 : null),
       suppliersDone,
       importEnabled: hasFeature(plan, "csvImport"),
-      allDone: leadTimeDone && suppliersDone && costsDone && mondayEnabled,
+      allDone: leadTimeDone && suppliersDone && costsDone && (mondayEnabled || mondayViaFlow),
     },
   };
 }

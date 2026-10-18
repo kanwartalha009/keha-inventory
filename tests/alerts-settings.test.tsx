@@ -60,7 +60,7 @@ import {
 } from "../app/lib/settings-shared";
 import { normalizeSlackWebhook } from "../app/lib/slack-shared";
 import { decryptSecret } from "../app/lib/crypto.server";
-import AlertsSettings, { action, type AlertsLoaderData } from "../app/routes/app.settings_.alerts";
+import AlertsSettings, { action, loader, type AlertsLoaderData } from "../app/routes/app.settings_.alerts";
 import { expectSettingsAnatomy } from "./helpers/settings-anatomy";
 
 const HOOK = "https://hooks.slack.com/services/" + "T0ABCDEF1/B0ABCDEF2/abcdefghijklmnopqrstuvwx";
@@ -296,5 +296,49 @@ describe("Alerts tab", () => {
     expect(html).toContain("See plans");
     expect(html).toMatch(/<s-text-field[^>]*label="Slack webhook link"[^>]*disabled/);
     expect(html).toContain("Growth plan");
+  });
+});
+
+describe("Alerts tab without an email provider (owner decision 2026-10-18)", () => {
+  const base: AlertsLoaderData = { form: alertsToForm(DEFAULT_SETTINGS), slack: { connected: false, error: null }, canSlack: true, emailProvider: false, canFlow: true };
+
+  it("no Monday email switch or recipients that can't work; the Monday summary by email with Shopify Flow instead", () => {
+    const html = render(base);
+    expect(html).not.toContain("Send the Monday email");
+    expect(html).not.toContain('label="Send to"');
+    expect(html).not.toContain("By email to the addresses above");
+    expect(html).toContain("Monday summary");
+    expect(html).toContain("Get it by email with Shopify Flow");
+    expect(html).toContain("“Weekly order plan ready”");
+    expect(html).toContain("“Send internal email”");
+    expect(html).toContain("“First order plan ready”");
+    expect(html).toMatch(/<s-button[^>]*href="shopify:\/\/admin\/apps\/flow"[^>]*target="_top"[^>]*>Open Shopify Flow/);
+    expectSettingsAnatomy(html, { cards: ["Monday summary", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
+  });
+
+  it("instant alerts: Slack as before; by email through 'Product needs reorder' on Growth, a plan tag below it", () => {
+    const html = render(base);
+    expect(html).toContain("Send instant alerts");
+    expect(html).toContain('details="To Slack when it&#x27;s connected. At most once per product per week."');
+    expect(html).toContain("add the “Send internal email” action to the “Product needs reorder” trigger");
+    expect(html).toContain("Slack webhook link");
+    const free = render({ ...base, canFlow: false, canSlack: false });
+    expect(free).toContain("By email with Shopify Flow, on the “Product needs reorder” trigger · Growth plan");
+  });
+
+  it("the loader says whether a provider is configured", async () => {
+    const saved = { key: process.env.INVENTORY_EMAIL_API_KEY, from: process.env.INVENTORY_EMAIL_FROM };
+    store.settings = {};
+    const args = { request: new Request("https://app.test/app/settings/alerts"), params: {}, context: {} } as never;
+    delete process.env.INVENTORY_EMAIL_API_KEY;
+    delete process.env.INVENTORY_EMAIL_FROM;
+    expect((await loader(args)).emailProvider).toBe(false);
+    process.env.INVENTORY_EMAIL_API_KEY = "re_test";
+    process.env.INVENTORY_EMAIL_FROM = "Keha <mail@keha.test>";
+    expect((await loader(args)).emailProvider).toBe(true);
+    if (saved.key === undefined) delete process.env.INVENTORY_EMAIL_API_KEY;
+    else process.env.INVENTORY_EMAIL_API_KEY = saved.key;
+    if (saved.from === undefined) delete process.env.INVENTORY_EMAIL_FROM;
+    else process.env.INVENTORY_EMAIL_FROM = saved.from;
   });
 });

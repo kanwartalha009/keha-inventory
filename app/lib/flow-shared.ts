@@ -27,6 +27,9 @@
  * once per real event, not every month while nothing changed.
  */
 
+/** The Shopify Flow app in the merchant's admin (App Bridge resolves shopify://admin/… links). */
+export const SHOPIFY_FLOW_ADMIN = "shopify://admin/apps/flow";
+
 export const FLOW_NEEDS_REORDER = "product-needs-reorder";
 export const FLOW_WENT_DEAD = "product-went-dead";
 export type FlowHandle = typeof FLOW_NEEDS_REORDER | typeof FLOW_WENT_DEAD;

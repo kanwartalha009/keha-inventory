@@ -63,6 +63,7 @@ export async function readHomeRaw(shop: string): Promise<HomeRaw> {
     supplierCount,
     vendorCount: vendors.filter((v) => !!v.vendor?.trim()).length,
     planReadyEmail: planReadyLog !== undefined && planReadyLog?.status !== "SENT",
+    emailProvider: emailTransportConfigured(),
     firstSaleDay: firstSale,
   };
 }

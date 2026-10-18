@@ -576,20 +576,34 @@ function SetupGuide({ data }: { data: HomeData }) {
           }
         />
         <s-divider />
-        <SetupStep
-          done={s.mondayEnabled}
-          title={t("Monday email")}
-          sub={
-            s.mondayEnabled
-              ? fill(t("Every Monday at 08:00 to {to}"), { to })
-              : t("Off. Turn it on to get your numbers and actions every Monday.")
-          }
-          action={
-            <s-button variant="secondary" {...link("/app/settings/alerts")}>
-              {t("Change")}
-            </s-button>
-          }
-        />
+        {s.mondayViaFlow ? (
+          // No email provider: the summary reaches the inbox through Shopify Flow (Settings → Alerts explains it).
+          <SetupStep
+            done
+            title={t("Monday summary")}
+            sub={t("Get it by email with Shopify Flow: “Weekly order plan ready”.")}
+            action={
+              <s-button variant="secondary" {...link("/app/settings/alerts")}>
+                {t("How it works")}
+              </s-button>
+            }
+          />
+        ) : (
+          <SetupStep
+            done={s.mondayEnabled}
+            title={t("Monday email")}
+            sub={
+              s.mondayEnabled
+                ? fill(t("Every Monday at 08:00 to {to}"), { to })
+                : t("Off. Turn it on to get your numbers and actions every Monday.")
+            }
+            action={
+              <s-button variant="secondary" {...link("/app/settings/alerts")}>
+                {t("Change")}
+              </s-button>
+            }
+          />
+        )}
       </s-stack>
     </s-section>
   );

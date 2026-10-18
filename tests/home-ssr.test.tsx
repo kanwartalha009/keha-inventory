@@ -177,6 +177,23 @@ describe("Home", () => {
     expect(html).toContain("Data is late — no action needed, we&#x27;re retrying.");
   });
 
+  it("setup guide without an email provider: the Monday step points to Shopify Flow, never promises an email", () => {
+    const raw = homeRaw();
+    raw.emailProvider = false;
+    raw.shop!.settings = { mondayEmail: { enabled: false, recipients: [] } };
+    const html = home(raw);
+    expect(html).toContain("Monday summary");
+    expect(html).toContain("Get it by email with Shopify Flow: “Weekly order plan ready”.");
+    expect(html).toContain("How it works");
+    expect(html).not.toContain("Every Monday at 08:00 to");
+    expect(html).not.toContain("Off. Turn it on to get your numbers");
+    // Nothing to switch on in Keha: the step doesn't hold the guide open.
+    raw.shop!.settings = { leadTimeConfirmedAt: "2026-10-01T00:00:00Z", mondayEmail: { enabled: false, recipients: [] } };
+    raw.variantsWithCost = 190;
+    raw.supplierCount = 1;
+    expect(home(raw)).not.toContain("Setup guide");
+  });
+
   it("setup guide: steps ticked from real state, hidden when all four are done", () => {
     const html = home(homeRaw());
     expect(html).toContain("How long do your suppliers take?");
