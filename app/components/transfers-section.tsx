@@ -34,7 +34,7 @@ export const LOCKED_TRANSFERS: TransfersView = { enabled: false, groups: [], rec
 export function TransfersSection({ view }: { view: TransfersView }) {
   const { t } = useLocale();
   const link = useLinkProps();
-  const heading = t("Transfers: warehouse → stores");
+  const heading = t("Transfers to stores");
   if (!view.enabled) {
     const copy = featureCopy("transfers", t);
     return (
@@ -143,7 +143,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
             <s-table-header listSlot="labeled" format="numeric">
               <HeaderLabel id={`keha-tleft-${group.key}`} label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} />
             </s-table-header>
-            <s-table-header listSlot="labeled" format="numeric">{fill(t("Spare at {location}"), { location: group.originName })}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{fill(t("Excess at {location}"), { location: group.originName })}</s-table-header>
             <s-table-header>{t("Quantity")}</s-table-header>
           </s-table-header-row>
           <s-table-body>

@@ -230,10 +230,10 @@ describe("Reorder page (Order plan · Order now)", () => {
 
   it("transfers only when the store has somewhere to move stock", () => {
     const hidden = render("/app/reorder", "reorder", Reorder, { ...reorderData(), showTransfers: false });
-    expect(hidden).not.toContain("Transfers: warehouse → stores");
+    expect(hidden).not.toContain("Transfers to stores");
     expect(hidden).not.toContain("Set up warehouses and stores");
     const locked = render("/app/reorder", "reorder", Reorder, { ...reorderData(), showTransfers: true });
-    expect(locked).toContain("Transfers: warehouse → stores");
+    expect(locked).toContain("Transfers to stores");
     expect(locked).toContain("Pro plan");
     expect(showTransfers({ transfersEnabled: true, planningLocations: 1, activeLocations: 5 })).toBe(false);
     expect(showTransfers({ transfersEnabled: true, planningLocations: 2, activeLocations: 0 })).toBe(true);

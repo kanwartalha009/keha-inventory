@@ -425,7 +425,7 @@ export type ForecastInputsView = {
   leadSigma?: number | null;
   /** Where the seasonal pattern came from; null for rows stored without it. */
   seasonSource?: SeasonSourceView | null;
-  /** Under 13 months of sales: the whole months there are ("Seasons: learning — {n} of 13 months"); null otherwise. */
+  /** Under 13 months of sales: the whole months there are ("Seasonality: {n} of 13 months of history"); null otherwise. */
   seasonsLearning?: number | null;
   /** R4: unusual (spike) days capped in the pace; null for rows stored without it. */
   spikes?: SpikesView | null;

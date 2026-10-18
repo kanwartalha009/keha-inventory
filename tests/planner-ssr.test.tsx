@@ -113,8 +113,8 @@ describe("Season plan: the trend is named only when the scenario used it", () =>
     const on = { ...d, selected: { ...d.selected!, result: { ...result, season: { ...result.season, trendApplied: true, trend: 1.12 } } } };
     const html = render("/app/reorder/season", on);
     expect(html).toContain("Trend (last 28 days vs the same weeks last year): × 1.12");
-    expect(html).toContain("Based on: sales per day while in stock × seasonal index × trend × plan × 5 days");
-    expect(html).toContain("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming");
+    expect(html).toContain("Based on: sales per day while in stock × seasonality × trend × growth factor × 5 days");
+    expect(html).toContain("Based on: sales per day while in stock, seasonality, trend, growth factor, stock on hand, incoming");
   });
 });
 
@@ -133,8 +133,8 @@ describe("Planner page", () => {
     // Every number has a popover ending with "Based on: …".
     expect((html.match(/How we got this/g) ?? []).length).toBeGreaterThanOrEqual(6);
     // Growth assumption off (the default): the trend isn't used, so it isn't named (2026-10-17).
-    expect(html).toContain("Based on: sales per day while in stock × seasonal index × plan × 5 days");
-    expect(html).toContain("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming");
+    expect(html).toContain("Based on: sales per day while in stock × seasonality × growth factor × 5 days");
+    expect(html).toContain("Based on: sales per day while in stock, seasonality, growth factor, stock on hand, incoming");
     expect(html).not.toContain("Trend (last 28 days vs the same weeks last year)");
     expect(html).not.toMatch(/× trend ×|, trend, plan/);
     // Merchant audit 2026-10-18: one cash model (cost only, payment terms, freight & duty) — never the retail price.
@@ -159,7 +159,7 @@ describe("Planner page", () => {
     expect(html).toContain("Whole store");
     expect(html).toContain("Not enough sales history for these dates yet.");
     // At the limit: teaching state, no create button.
-    expect(html).toContain("Your plan keeps 1 scenario");
+    expect(html).toContain("Growth includes 1 scenario");
     expect(html).toContain("See plans");
     expect(html).not.toContain("New scenario");
   });
@@ -169,7 +169,7 @@ describe("Planner page", () => {
     const html = render("/app/reorder/season?scenario=b", data({ plan: "pro", canAdd: true, limit: null, scenarios: list, selected: { ...list[1]!, result: null } }));
     for (const n of ["Black Friday 2026", "Christmas 2026", "Spring sale"]) expect(html).toContain(n);
     expect(html).toContain("New scenario");
-    expect(html).not.toContain("Your plan keeps 1 scenario");
+    expect(html).not.toContain("Growth includes 1 scenario");
     expect(html).toContain("This scenario has no results yet. Recalculate to see them.");
     expect(html).toContain("Showing");
   });
@@ -247,11 +247,11 @@ describe("Planner page", () => {
         },
       }),
     );
-    expect(html).toContain("How accurate we were");
-    expect(html).toContain("Graded month: September 2026");
+    expect(html).toContain("Forecast accuracy");
+    expect(html).toContain("Month checked: September 2026");
     expect(html).toContain("12.5%");
     expect(html).toContain("18%");
-    expect(html).toContain("Graded: 2");
+    expect(html).toContain("Products checked: 2");
     expect(html).toContain("Linen shirt");
     expect(html).toContain("25%");
   });

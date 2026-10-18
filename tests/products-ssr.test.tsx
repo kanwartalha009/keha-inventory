@@ -391,8 +391,8 @@ describe("Product type: the Products filter and the season source on the detail 
     expect(renderDetail(withSource({ level: "productType", productType: "Swimwear", groupWeight: 0.9 }))).toContain("Product type “Swimwear”, blended with your whole store (90 % its own)");
     expect(renderDetail(withSource({ level: "productType", productType: "Jackets", groupWeight: 1 }))).not.toContain("blended");
     // Under 13 months of sales: the seasonal row says the seasons are being learned (accuracy audit 2026-10-18).
-    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: 9 }))).toMatch(/Seasonal change.*Seasons: learning — 9 of 13 months/s);
-    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: null }))).not.toContain("Seasons: learning");
+    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: 9 }))).toMatch(/Seasonal change.*Seasonality: 9 of 13 months of history/s);
+    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: null }))).not.toContain("Seasonality: ");
     // Rows stored before the source was recorded: no row.
     expect(renderDetail(detail(true))).not.toContain("Season from");
   });
@@ -428,33 +428,33 @@ describe("How the forecast was built: the supplier's delivery spread in safety s
   });
 });
 
-describe("Forecast choices (R4): Don't cap and Plan like", () => {
+describe("Forecast settings (R4): count unusual days in full and Forecast like", () => {
   const spikes = { cap: 9, count: 2, off: false, days: [{ day: "2026-10-01", sold: 30, cap: 9 }, { day: "2026-09-14", sold: 300, cap: 9 }] };
   it("unusual days capped: the largest day, the cap and Don't cap; none → no button", () => {
     const d = detail(true);
     const html = renderDetail({ ...d, inputs: { ...d.inputs!, spikes }, choice: { noCap: false, like: null, offer: null } });
-    expect(html).toContain("<s-heading>Forecast choices</s-heading>");
-    expect(html).toContain("2 unusual days capped (largest Sep 14: 300 units, counted as 9)");
-    expect(html).toContain("Don&#x27;t cap this product");
+    expect(html).toContain("<s-heading>Forecast settings</s-heading>");
+    expect(html).toContain("2 unusual days limited (largest Sep 14: 300 units, counted as 9)");
+    expect(html).toContain("Count unusual days in full");
     expect(html).not.toContain("High days that come back");
     // Recurring high days (accuracy audit 2026-10-18): the yearly average added back is said.
     const rec = renderDetail({ ...d, inputs: { ...d.inputs!, spikes: { ...spikes, recurringPerDay: 3.92 } }, choice: { noCap: false, like: null, offer: null } });
     expect(rec).toContain("High days that come back (promotions, repeat orders) count as 3.9 a day over the year.");
     const none = renderDetail({ ...d, choice: { noCap: false, like: null, offer: null } });
     expect(none).toContain("No unusual days in the last 90 days.");
-    expect(none).not.toContain("Don&#x27;t cap this product");
+    expect(none).not.toContain("Count unusual days in full");
     const off = renderDetail({ ...d, choice: { noCap: true, like: null, offer: null } });
-    expect(off).toContain("Unusual days are not capped for this product");
-    expect(off).toContain("Cap unusual days again");
+    expect(off).toContain("Unusual days count in full for this product");
+    expect(off).toContain("Limit unusual days again");
     // Old fixtures without a choice: no card (nothing breaks).
-    expect(renderDetail(d)).not.toContain("Forecast choices");
+    expect(renderDetail(d)).not.toContain("Forecast settings");
   });
 
   it("a new product: the offer, the type's median suggestion and the search; a chosen reference with Stop", () => {
     const d = detail(true);
     const young = { ...d, inputs: { ...d.inputs!, inStockDays: 6 } };
     const html = renderDetail({ ...young, choice: { noCap: false, like: null, offer: { productType: "Jackets", suggestion: { rate: 2.5, products: 7 } } } });
-    expect(html).toContain("Only 6 days in stock so far: too few to measure its own pace. Plan it like a similar product until it has 28 days in stock.");
+    expect(html).toContain("Only 6 days in stock so far: too few to measure its own pace. Forecast it like a similar product until it has 28 days in stock.");
     expect(html).toContain("Suggested: the median Jackets product sells 2.5 a day.");
     expect(html).toContain("Use this suggestion");
     expect(html).toContain('label="Similar product"');
@@ -466,11 +466,11 @@ describe("Forecast choices (R4): Don't cap and Plan like", () => {
       choice: { noCap: false, like: { kind: "product", ref: "gid://shopify/Product/2", name: "Parka Classic", pct: 80, rate: 3 }, offer: { productType: "Jackets", suggestion: null } },
     });
     expect(like).toContain("Based on Parka Classic at 80 % until this product has 28 days in stock (now 6).");
-    expect(like).toContain("Stop planning like Parka Classic");
+    expect(like).toContain("Stop forecasting like Parka Classic");
     expect(like).not.toContain('label="Similar product"');
     const gone = renderDetail({ ...d, choice: { noCap: false, like: { kind: "productType", ref: "Jackets", name: "Jackets", pct: 100, rate: null }, offer: null } });
     expect(gone).toContain("Based on the median Jackets product at 100 %");
-    expect(gone).toContain("Jackets has no sales pace yet, so this product is planned on its own sales.");
+    expect(gone).toContain("Jackets has no sales pace yet, so this product is forecast on its own sales.");
   });
 
   it("actions: noCap, planLike (validated, the reference must exist), planLikeOff; each queues a compute", async () => {

@@ -136,15 +136,7 @@ export const STORES_TR: Record<string, Tr> = {
   },
 
   // ---- Transfers: warehouse → stores ----
-  "Transfers: warehouse → stores": {
-    es: "Transferencias: almacén → tiendas",
-    fr: "Transferts : entrepôt → magasins",
-    de: "Umlagerungen: Lager → Filialen",
-    it: "Trasferimenti: magazzino → negozi",
-    pt: "Transferências: armazém → lojas",
-    nl: "Overboekingen: magazijn → winkels",
-    pl: "Przesunięcia: magazyn → sklepy",
-  },
+  "Transfers to stores": { es: "Transferencias a tiendas", fr: "Transferts vers les magasins", de: "Umlagerungen in Filialen", it: "Trasferimenti ai negozi", pt: "Transferências para lojas", nl: "Overboekingen naar winkels", pl: "Przesunięcia do sklepów" },
   "Mark at least one warehouse and one store in Settings → Locations to get a transfer plan.": {
     es: "Marca al menos un almacén y una tienda física en Ajustes → Ubicaciones para tener un plan de transferencias.",
     fr: "Indiquez au moins un entrepôt et un magasin dans Paramètres → Emplacements pour obtenir un plan de transferts.",
@@ -181,15 +173,7 @@ export const STORES_TR: Record<string, Tr> = {
     nl: "Voorraad in {location}",
     pl: "Zapas w {location}",
   },
-  "Spare at {location}": {
-    es: "Sobrante en {location}",
-    fr: "Surplus à {location}",
-    de: "Übrig in {location}",
-    it: "In eccesso a {location}",
-    pt: "Excedente em {location}",
-    nl: "Over in {location}",
-    pl: "Nadwyżka w {location}",
-  },
+  "Excess at {location}": { es: "Exceso en {location}", fr: "Excédent à {location}", de: "Überschuss in {location}", it: "Eccedenza a {location}", pt: "Excedente em {location}", nl: "Overschot in {location}", pl: "Nadwyżka w {location}" },
   "The store needs {n}.": {
     es: "La tienda necesita {n}.",
     fr: "Le magasin a besoin de {n}.",

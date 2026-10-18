@@ -8,24 +8,8 @@ import type { Tr } from "./i18n";
 
 export const QUALITY_TR: Record<string, Tr> = {
   // ---- "Why this quantity" lines ----
-  "1 unusual day capped ({date}: {units} units, counted as {cap})": {
-    es: "1 día inusual limitado ({date}: {units} unidades, contado como {cap})",
-    fr: "1 jour inhabituel plafonné ({date} : {units} unités, compté comme {cap})",
-    de: "1 ungewöhnlicher Tag begrenzt ({date}: {units} Stück, gezählt als {cap})",
-    it: "1 giorno anomalo limitato ({date}: {units} unità, contato come {cap})",
-    pt: "1 dia invulgar limitado ({date}: {units} unidades, contado como {cap})",
-    nl: "1 ongewone dag afgetopt ({date}: {units} stuks, geteld als {cap})",
-    pl: "1 nietypowy dzień ograniczony ({date}: {units} szt., liczony jako {cap})",
-  },
-  "{n} unusual days capped (largest {date}: {units} units, counted as {cap})": {
-    es: "{n} días inusuales limitados (el mayor {date}: {units} unidades, contado como {cap})",
-    fr: "{n} jours inhabituels plafonnés (le plus fort {date} : {units} unités, compté comme {cap})",
-    de: "{n} ungewöhnliche Tage begrenzt (größter {date}: {units} Stück, gezählt als {cap})",
-    it: "{n} giorni anomali limitati (il maggiore {date}: {units} unità, contato come {cap})",
-    pt: "{n} dias invulgares limitados (o maior {date}: {units} unidades, contado como {cap})",
-    nl: "{n} ongewone dagen afgetopt (grootste {date}: {units} stuks, geteld als {cap})",
-    pl: "{n} nietypowe dni ograniczone (największy {date}: {units} szt., liczony jako {cap})",
-  },
+  "1 unusual day limited ({date}: {units} units, counted as {cap})": { es: "1 día inusual limitado ({date}: {units} unidades, contado como {cap})", fr: "1 jour inhabituel plafonné ({date} : {units} unités, compté comme {cap})", de: "1 ungewöhnlicher Tag begrenzt ({date}: {units} Stück, gezählt als {cap})", it: "1 giorno anomalo limitato ({date}: {units} unità, contato come {cap})", pt: "1 dia invulgar limitado ({date}: {units} unidades, contado como {cap})", nl: "1 ongewone dag afgetopt ({date}: {units} stuks, geteld als {cap})", pl: "1 nietypowy dzień ograniczony ({date}: {units} szt., liczony jako {cap})" },
+  "{n} unusual days limited (largest {date}: {units} units, counted as {cap})": { es: "{n} días inusuales limitados (el mayor {date}: {units} unidades, contado como {cap})", fr: "{n} jours inhabituels plafonnés (le plus fort {date} : {units} unités, compté comme {cap})", de: "{n} ungewöhnliche Tage begrenzt (größter {date}: {units} Stück, gezählt als {cap})", it: "{n} giorni anomali limitati (il maggiore {date}: {units} unità, contato come {cap})", pt: "{n} dias invulgares limitados (o maior {date}: {units} unidades, contado como {cap})", nl: "{n} ongewone dagen afgetopt (grootste {date}: {units} stuks, geteld als {cap})", pl: "{n} nietypowe dni ograniczone (największy {date}: {units} szt., liczony jako {cap})" },
   "Based on {name} at {pct} % until this product has 28 days in stock (now {days}).": {
     es: "Basado en {name} al {pct} % hasta que este producto tenga 28 días en stock (ahora {days}).",
     fr: "Basé sur {name} à {pct} % jusqu'à ce que ce produit ait 28 jours en stock (actuellement {days}).",
@@ -49,7 +33,7 @@ export const QUALITY_TR: Record<string, Tr> = {
   "One row per variant this warehouse carries. Shopify doesn't report which warehouse shipped an online order, so its sales per day are its share of online sales by the stock it holds. Purchase orders are planned once for every included warehouse.": { es: "Una fila por variante que tiene este almacén. Shopify no indica qué almacén envió un pedido online, así que sus ventas por día son su parte de las ventas online según el stock que tiene. Las órdenes de compra se planifican una vez para todos los almacenes incluidos.", fr: "Une ligne par variante présente dans cet entrepôt. Shopify n'indique pas quel entrepôt a expédié une commande en ligne : ses ventes par jour sont donc sa part des ventes en ligne selon le stock qu'il détient. Les bons de commande sont planifiés une seule fois pour tous les entrepôts inclus.", de: "Eine Zeile pro Variante, die dieses Lager führt. Shopify meldet nicht, welches Lager eine Online-Bestellung versendet hat, daher sind seine Verkäufe pro Tag sein Anteil an den Online-Verkäufen nach dem Bestand, den es hält. Bestellungen werden einmal für alle einbezogenen Lager geplant.", it: "Una riga per variante presente in questo magazzino. Shopify non indica quale magazzino ha spedito un ordine online, quindi le sue vendite al giorno sono la sua quota delle vendite online in base allo stock che detiene. Gli ordini d'acquisto sono pianificati una sola volta per tutti i magazzini inclusi.", pt: "Uma linha por variante que este armazém tem. A Shopify não indica que armazém enviou uma encomenda online, por isso as vendas por dia são a sua parte das vendas online de acordo com o stock que tem. As notas de encomenda são planeadas uma vez para todos os armazéns incluídos.", nl: "Eén rij per variant die dit magazijn voert. Shopify meldt niet welk magazijn een online bestelling heeft verzonden, dus de verkopen per dag zijn het aandeel van dit magazijn in de online verkopen naar de voorraad die het heeft. Inkooporders worden één keer gepland voor alle meegenomen magazijnen.", pl: "Jeden wiersz na wariant, który ma ten magazyn. Shopify nie podaje, który magazyn wysłał zamówienie online, więc jego sprzedaż dziennie to jego udział w sprzedaży online według posiadanego stanu. Zamówienia zakupu planowane są raz dla wszystkich uwzględnianych magazynów." },
 
   // ---- Product page: Forecast choices ----
-  "Forecast choices": { es: "Opciones de previsión", fr: "Choix de prévision", de: "Prognose-Optionen", it: "Scelte di previsione", pt: "Opções de previsão", nl: "Prognosekeuzes", pl: "Opcje prognozy" },
+  "Forecast settings": { es: "Ajustes de la previsión", fr: "Paramètres de prévision", de: "Prognose-Einstellungen", it: "Impostazioni della previsione", pt: "Definições da previsão", nl: "Prognose-instellingen", pl: "Ustawienia prognozy" },
   "Our database only: nothing changes in your store. The forecast is updated within a few minutes.": {
     es: "Solo en nuestra base de datos: no cambia nada en tu tienda. La previsión se actualiza en unos minutos.",
     fr: "Uniquement dans notre base de données : rien ne change dans votre boutique. La prévision est mise à jour en quelques minutes.",
@@ -69,15 +53,7 @@ export const QUALITY_TR: Record<string, Tr> = {
     nl: "Een dag ver boven de gewone verkoop van dit product, bijvoorbeeld één grote groothandelsbestelling, telt als een drukke normale dag, zodat één bestelling niet elke toekomstige bestelling verhoogt.",
     pl: "Dzień znacznie powyżej zwykłej sprzedaży tego produktu, na przykład jedno duże zamówienie hurtowe, liczy się jak zwykły ruchliwy dzień, żeby jedno zamówienie nie podnosiło każdego przyszłego zamówienia.",
   },
-  "Unusual days are not capped for this product: every day counts at what it sold.": {
-    es: "Los días inusuales no se limitan en este producto: cada día cuenta lo que vendió.",
-    fr: "Les jours inhabituels ne sont pas plafonnés pour ce produit : chaque jour compte pour ce qu'il a vendu.",
-    de: "Ungewöhnliche Tage werden bei diesem Produkt nicht begrenzt: Jeder Tag zählt mit dem, was er verkauft hat.",
-    it: "I giorni anomali non sono limitati per questo prodotto: ogni giorno conta per quanto ha venduto.",
-    pt: "Os dias invulgares não são limitados neste produto: cada dia conta pelo que vendeu.",
-    nl: "Ongewone dagen worden voor dit product niet afgetopt: elke dag telt met wat hij verkocht.",
-    pl: "Nietypowe dni nie są ograniczane dla tego produktu: każdy dzień liczy się tak, jak sprzedał.",
-  },
+  "Unusual days count in full for this product: every day counts at what it sold.": { es: "Los días inusuales cuentan completos en este producto: cada día cuenta lo que vendió.", fr: "Les jours inhabituels comptent en entier pour ce produit : chaque jour compte pour ce qu'il a vendu.", de: "Ungewöhnliche Tage zählen bei diesem Produkt voll: Jeder Tag zählt mit dem, was er verkauft hat.", it: "I giorni anomali contano per intero per questo prodotto: ogni giorno conta per quanto ha venduto.", pt: "Os dias invulgares contam por inteiro neste produto: cada dia conta pelo que vendeu.", nl: "Ongewone dagen tellen voor dit product volledig mee: elke dag telt met wat hij verkocht.", pl: "Nietypowe dni liczą się w całości dla tego produktu: każdy dzień liczy się tak, jak sprzedał." },
   "No unusual days in the last 90 days.": {
     es: "Ningún día inusual en los últimos 90 días.",
     fr: "Aucun jour inhabituel au cours des 90 derniers jours.",
@@ -87,18 +63,10 @@ export const QUALITY_TR: Record<string, Tr> = {
     nl: "Geen ongewone dagen in de afgelopen 90 dagen.",
     pl: "Brak nietypowych dni w ostatnich 90 dniach.",
   },
-  "Don't cap this product": { es: "No limitar este producto", fr: "Ne pas plafonner ce produit", de: "Dieses Produkt nicht begrenzen", it: "Non limitare questo prodotto", pt: "Não limitar este produto", nl: "Dit product niet aftoppen", pl: "Nie ograniczaj tego produktu" },
-  "Cap unusual days again": { es: "Volver a limitar los días inusuales", fr: "Plafonner à nouveau les jours inhabituels", de: "Ungewöhnliche Tage wieder begrenzen", it: "Limita di nuovo i giorni anomali", pt: "Voltar a limitar os dias invulgares", nl: "Ongewone dagen weer aftoppen", pl: "Znowu ograniczaj nietypowe dni" },
+  "Count unusual days in full": { es: "Contar los días inusuales completos", fr: "Compter les jours inhabituels en entier", de: "Ungewöhnliche Tage voll zählen", it: "Conta i giorni anomali per intero", pt: "Contar os dias invulgares por inteiro", nl: "Ongewone dagen volledig meetellen", pl: "Licz nietypowe dni w całości" },
+  "Limit unusual days again": { es: "Volver a limitar los días inusuales", fr: "Plafonner à nouveau les jours inhabituels", de: "Ungewöhnliche Tage wieder begrenzen", it: "Limita di nuovo i giorni anomali", pt: "Voltar a limitar os dias invulgares", nl: "Ongewone dagen weer aftoppen", pl: "Znowu ograniczaj nietypowe dni" },
   "New product": { es: "Producto nuevo", fr: "Nouveau produit", de: "Neues Produkt", it: "Nuovo prodotto", pt: "Produto novo", nl: "Nieuw product", pl: "Nowy produkt" },
-  "Only {n} days in stock so far: too few to measure its own pace. Plan it like a similar product until it has {days} days in stock.": {
-    es: "Solo {n} días en stock hasta ahora: muy pocos para medir su propio ritmo. Planifícalo como un producto parecido hasta que tenga {days} días en stock.",
-    fr: "Seulement {n} jours en stock jusqu'ici : trop peu pour mesurer son propre rythme. Planifiez-le comme un produit similaire jusqu'à ce qu'il ait {days} jours en stock.",
-    de: "Bisher erst {n} Tage auf Lager: zu wenige, um sein eigenes Tempo zu messen. Plane es wie ein ähnliches Produkt, bis es {days} Tage auf Lager war.",
-    it: "Solo {n} giorni in magazzino finora: troppo pochi per misurare il suo ritmo. Pianificalo come un prodotto simile finché non avrà {days} giorni in magazzino.",
-    pt: "Apenas {n} dias em stock até agora: poucos demais para medir o seu próprio ritmo. Planeie-o como um produto semelhante até ter {days} dias em stock.",
-    nl: "Pas {n} dagen op voorraad: te weinig om een eigen tempo te meten. Plan het als een vergelijkbaar product tot het {days} dagen op voorraad is geweest.",
-    pl: "Dopiero {n} dni na stanie: za mało, by zmierzyć własne tempo. Planuj go jak podobny produkt, dopóki nie będzie {days} dni na stanie.",
-  },
+  "Only {n} days in stock so far: too few to measure its own pace. Forecast it like a similar product until it has {days} days in stock.": { es: "Solo {n} días en stock hasta ahora: muy pocos para medir su propio ritmo. Prevé sus ventas como las de un producto parecido hasta que tenga {days} días en stock.", fr: "Seulement {n} jours en stock jusqu'ici : trop peu pour mesurer son propre rythme. Prévoyez-le comme un produit similaire jusqu'à ce qu'il ait {days} jours en stock.", de: "Bisher erst {n} Tage auf Lager: zu wenige, um sein eigenes Tempo zu messen. Prognostiziere es wie ein ähnliches Produkt, bis es {days} Tage auf Lager war.", it: "Solo {n} giorni in magazzino finora: troppo pochi per misurare il suo ritmo. Prevedilo come un prodotto simile finché non avrà {days} giorni in magazzino.", pt: "Apenas {n} dias em stock até agora: poucos demais para medir o seu próprio ritmo. Preveja-o como um produto semelhante até ter {days} dias em stock.", nl: "Pas {n} dagen op voorraad: te weinig om een eigen tempo te meten. Voorspel het als een vergelijkbaar product tot het {days} dagen op voorraad is geweest.", pl: "Dopiero {n} dni na stanie: za mało, by zmierzyć własne tempo. Prognozuj go jak podobny produkt, dopóki nie będzie {days} dni na stanie." },
   "Suggested: the median {type} product sells {rate} a day.": {
     es: "Sugerencia: el producto mediano de {type} vende {rate} al día.",
     fr: "Suggestion : le produit médian {type} vend {rate} par jour.",
@@ -120,8 +88,8 @@ export const QUALITY_TR: Record<string, Tr> = {
     nl: "Geen product met een eigen verkooptempo komt overeen.",
     pl: "Żaden produkt z własnym tempem sprzedaży nie pasuje.",
   },
-  "Plan like this": { es: "Planificar así", fr: "Planifier comme celui-ci", de: "So planen", it: "Pianifica così", pt: "Planear assim", nl: "Zo plannen", pl: "Planuj tak" },
-  "Plan like {name}?": { es: "¿Planificar como {name}?", fr: "Planifier comme {name} ?", de: "Wie {name} planen?", it: "Pianificare come {name}?", pt: "Planear como {name}?", nl: "Plannen als {name}?", pl: "Planować jak {name}?" },
+  "Forecast like this product": { es: "Prever como este producto", fr: "Prévoir comme ce produit", de: "Wie dieses Produkt prognostizieren", it: "Prevedi come questo prodotto", pt: "Prever como este produto", nl: "Voorspellen als dit product", pl: "Prognozuj jak ten produkt" },
+  "Forecast like {name}?": { es: "¿Prever como {name}?", fr: "Prévoir comme {name} ?", de: "Wie {name} prognostizieren?", it: "Prevedere come {name}?", pt: "Prever como {name}?", nl: "Voorspellen als {name}?", pl: "Prognozować jak {name}?" },
   "Until this product has {days} days in stock, its forecast uses this pace, moving onto its own sales day by day. Our database only: nothing changes in your store.": {
     es: "Hasta que este producto tenga {days} días en stock, su previsión usa este ritmo y pasa día a día a sus propias ventas. Solo en nuestra base de datos: no cambia nada en tu tienda.",
     fr: "Jusqu'à ce que ce produit ait {days} jours en stock, sa prévision utilise ce rythme et passe jour après jour à ses propres ventes. Uniquement dans notre base de données : rien ne change dans votre boutique.",
@@ -131,7 +99,7 @@ export const QUALITY_TR: Record<string, Tr> = {
     nl: "Tot dit product {days} dagen op voorraad is geweest, gebruikt de prognose dit tempo en schuift ze dag na dag op naar de eigen verkopen. Alleen in onze database: er verandert niets in je winkel.",
     pl: "Dopóki ten produkt nie będzie {days} dni na stanie, jego prognoza używa tego tempa i dzień po dniu przechodzi na jego własną sprzedaż. Tylko w naszej bazie danych: w Twoim sklepie nic się nie zmienia.",
   },
-  "Percent of its pace": { es: "Porcentaje de su ritmo", fr: "Pourcentage de son rythme", de: "Prozent seines Tempos", it: "Percentuale del suo ritmo", pt: "Percentagem do seu ritmo", nl: "Percentage van het tempo", pl: "Procent jego tempa" },
+  "Share of its sales (%)": { es: "Parte de sus ventas (%)", fr: "Part de ses ventes (%)", de: "Anteil seiner Verkäufe (%)", it: "Quota delle sue vendite (%)", pt: "Parte das suas vendas (%)", nl: "Aandeel van de verkoop (%)", pl: "Udział w jego sprzedaży (%)" },
   "For example 50 if you expect half its sales.": {
     es: "Por ejemplo, 50 si esperas la mitad de sus ventas.",
     fr: "Par exemple 50 si vous attendez la moitié de ses ventes.",
@@ -141,16 +109,8 @@ export const QUALITY_TR: Record<string, Tr> = {
     nl: "Bijvoorbeeld 50 als je de helft van de verkoop verwacht.",
     pl: "Na przykład 50, jeśli spodziewasz się połowy jego sprzedaży.",
   },
-  "{name} has no sales pace yet, so this product is planned on its own sales.": {
-    es: "{name} aún no tiene ritmo de ventas, así que este producto se planifica con sus propias ventas.",
-    fr: "{name} n'a pas encore de rythme de ventes : ce produit est donc planifié sur ses propres ventes.",
-    de: "{name} hat noch kein Verkaufstempo, daher wird dieses Produkt nach seinen eigenen Verkäufen geplant.",
-    it: "{name} non ha ancora un ritmo di vendita, quindi questo prodotto è pianificato sulle sue vendite.",
-    pt: "{name} ainda não tem ritmo de vendas, por isso este produto é planeado com as suas próprias vendas.",
-    nl: "{name} heeft nog geen verkooptempo, dus dit product wordt gepland op zijn eigen verkopen.",
-    pl: "{name} nie ma jeszcze tempa sprzedaży, więc ten produkt jest planowany na podstawie własnej sprzedaży.",
-  },
-  "Stop planning like {name}": { es: "Dejar de planificar como {name}", fr: "Ne plus planifier comme {name}", de: "Nicht mehr wie {name} planen", it: "Smetti di pianificare come {name}", pt: "Deixar de planear como {name}", nl: "Stoppen met plannen als {name}", pl: "Przestań planować jak {name}" },
+  "{name} has no sales pace yet, so this product is forecast on its own sales.": { es: "{name} aún no tiene ritmo de ventas, así que la previsión de este producto usa sus propias ventas.", fr: "{name} n'a pas encore de rythme de ventes : la prévision de ce produit repose donc sur ses propres ventes.", de: "{name} hat noch kein Verkaufstempo, daher wird dieses Produkt nach seinen eigenen Verkäufen prognostiziert.", it: "{name} non ha ancora un ritmo di vendita, quindi la previsione di questo prodotto usa le sue vendite.", pt: "{name} ainda não tem ritmo de vendas, por isso a previsão deste produto usa as suas próprias vendas.", nl: "{name} heeft nog geen verkooptempo, dus dit product wordt voorspeld op zijn eigen verkopen.", pl: "{name} nie ma jeszcze tempa sprzedaży, więc prognoza tego produktu opiera się na jego własnej sprzedaży." },
+  "Stop forecasting like {name}": { es: "Dejar de prever como {name}", fr: "Ne plus prévoir comme {name}", de: "Nicht mehr wie {name} prognostizieren", it: "Smetti di prevedere come {name}", pt: "Deixar de prever como {name}", nl: "Stoppen met voorspellen als {name}", pl: "Przestań prognozować jak {name}" },
   "This product can't be used. Reload the page and try again.": {
     es: "Este producto no se puede usar. Recarga la página e inténtalo de nuevo.",
     fr: "Ce produit ne peut pas être utilisé. Rechargez la page et réessayez.",

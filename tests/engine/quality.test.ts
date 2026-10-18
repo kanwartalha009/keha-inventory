@@ -272,8 +272,8 @@ describe("Why this quantity (R4 lines)", () => {
   const why = { day: 0, days: 28, demand: 56, rate: 2, season: 1, growth: 1, safety: 10, onHand: 5, onOrder: 3, need: 58, rounded: 58, pack: null, moq: null, topUp: 0 };
   const t = (x: string) => x;
   it("1 unusual day capped (14 Mar: 300 units); n days with the largest; Based on {product}", () => {
-    expect(whyLines({ ...why, spikes: { count: 1, day: "2026-03-14", sold: 300, cap: 22.4 } }, t, "en")).toContain("1 unusual day capped (Mar 14: 300 units, counted as 22)");
-    expect(whyLines({ ...why, spikes: { count: 3, day: "2026-03-14", sold: 300, cap: 22 } }, t, "en")).toContain("3 unusual days capped (largest Mar 14: 300 units, counted as 22)");
+    expect(whyLines({ ...why, spikes: { count: 1, day: "2026-03-14", sold: 300, cap: 22.4 } }, t, "en")).toContain("1 unusual day limited (Mar 14: 300 units, counted as 22)");
+    expect(whyLines({ ...why, spikes: { count: 3, day: "2026-03-14", sold: 300, cap: 22 } }, t, "en")).toContain("3 unusual days limited (largest Mar 14: 300 units, counted as 22)");
     expect(whyLines({ ...why, planLike: { kind: "product", name: "Parka", pct: 80, days: 6 } }, t, "en")).toContain("Based on Parka at 80 % until this product has 28 days in stock (now 6).");
     expect(whyLines({ ...why, planLike: { kind: "productType", name: "Jackets", pct: 100, days: 0 } }, t, "en")).toContain(
       "Based on the median Jackets product at 100 % until this product has 28 days in stock (now 0).",

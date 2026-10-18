@@ -25,15 +25,7 @@ export const ACCURACY_TR: Record<string, Tr> = {
     nl: "{source}, gemengd met je hele winkel ({pct} % eigen)",
     pl: "{source}, połączone z całym Twoim sklepem ({pct} % własne)",
   },
-  "Seasons: learning — {n} of 13 months": {
-    es: "Temporadas: aprendiendo — {n} de 13 meses",
-    fr: "Saisons : apprentissage — {n} mois sur 13",
-    de: "Saisons: wird gelernt – {n} von 13 Monaten",
-    it: "Stagioni: in apprendimento — {n} mesi su 13",
-    pt: "Estações: a aprender — {n} de 13 meses",
-    nl: "Seizoenen: aan het leren — {n} van 13 maanden",
-    pl: "Sezony: uczymy się — {n} z 13 miesięcy",
-  },
+  "Seasonality: {n} of 13 months of history": { es: "Estacionalidad: {n} de 13 meses de historial", fr: "Saisonnalité : {n} mois d'historique sur 13", de: "Saisonalität: {n} von 13 Monaten Verlauf", it: "Stagionalità: {n} mesi di storico su 13", pt: "Sazonalidade: {n} de 13 meses de histórico", nl: "Seizoenspatroon: {n} van 13 maanden historie", pl: "Sezonowość: {n} z 13 miesięcy historii" },
   "An open order is 1 day late: counted as arriving now, with {units} more safety while it is late.": {
     es: "Un pedido abierto lleva 1 día de retraso: se cuenta como si llegara ya, con {units} más de seguridad mientras siga retrasado.",
     fr: "Une commande en cours a 1 jour de retard : comptée comme arrivant maintenant, avec {units} de sécurité en plus tant qu'elle est en retard.",

@@ -350,12 +350,12 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     const young = read("2026-01-01");
     expect(young.seasonsLearning).toBe(9);
     const html = render({ ...young, orderPlan: { kind: "full", plan: orderPlanFixture() } });
-    expect(html).toContain("Seasons: learning — 9 of 13 months");
-    expect(html).not.toMatch(/<s-banner[^>]*>[^<]*Seasons/);
+    expect(html).toContain("Seasonality: 9 of 13 months of history");
+    expect(html).not.toMatch(/<s-banner[^>]*>[^<]*Seasonality:/);
     expect(html).not.toContain("Based on the last"); // the whole history is read
     // 13 months or more: nothing.
     expect(read("2025-09-01").seasonsLearning).toBeNull();
-    expect(render({ ...read("2025-09-01"), orderPlan: { kind: "full", plan: orderPlanFixture() } })).not.toContain("Seasons: learning");
+    expect(render({ ...read("2025-09-01"), orderPlan: { kind: "full", plan: orderPlanFixture() } })).not.toContain("Seasonality: ");
     // Still reading: the partial badge says it; no seasons line yet.
     expect(ready().seasonsLearning).toBeNull();
   });

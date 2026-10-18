@@ -10,7 +10,7 @@
  *  - Output: demand per collection, an order list with order-by dates grouped by supplier,
  *    cash needed per week (bar chart + table), last year's same period, and a warning with
  *    fewer than 13 months of history. Every number has a "How we got this" popover.
- *  - Collection goals (`collectionGoals`) and "How accurate we were" (`accuracy`).
+ *  - Collection goals (`collectionGoals`) and "Forecast accuracy" (`accuracy`).
  * Nothing here changes the store: the planner only reads.
  */
 import { useEffect, useState, type ReactNode } from "react";
@@ -309,7 +309,7 @@ function Scenarios({ data }: { data: PlannerData }) {
           </s-table>
         )}
         {atLimit ? (
-          <s-banner tone="info" heading={t("Your plan keeps 1 scenario")}>
+          <s-banner tone="info" heading={t("Growth includes 1 scenario")}>
             <s-paragraph>{t("Edit or replace the scenario you have, or move to Pro to plan as many seasons as you like.")}</s-paragraph>
             <s-button slot="secondary-actions" variant="primary" {...link("/app/plans")}>
               {t("See plans")}
@@ -515,16 +515,16 @@ function Summary({ result }: { result: ScenarioResult }) {
   const seasonal = season.applied ? `× ${num2(season.value, locale)}` : t("No seasonal data yet");
   const planLine =
     r.plan.type === "revenue"
-      ? fill(t("Plan: revenue target {target} ÷ expected revenue at today's pace {base} = × {x}"), {
+      ? fill(t("Growth factor: revenue target {target} ÷ expected revenue at today's pace {base} = × {x}"), {
           target: money(r.plan.value),
           base: money(r.plan.baselineRevenue),
           x: num2(r.plan.multiplier, locale),
         })
-      : fill(t("Plan multiplier: × {x}"), { x: num2(r.plan.multiplier, locale) });
+      : fill(t("Growth factor: × {x}"), { x: num2(r.plan.multiplier, locale) });
   const demandLines = [
     fill(t("Variants planned: {n}"), { n: formatCount(r.totals.variants, locale) }),
     ...(r.totals.noData ? [fill(t("Not enough sales yet to advise: {n} variants"), { n: formatCount(r.totals.noData, locale) })] : []),
-    fill(t("Seasonal index (store): {value}"), { value: seasonal }),
+    fill(t("Seasonality (store): {value}"), { value: seasonal }),
     ...(season.applied
       ? [
           fill(t("{from} to {to}: {a} units a day, vs {b} a day from {c} to {d}"), {
@@ -543,8 +543,8 @@ function Summary({ result }: { result: ScenarioResult }) {
     ...(season.trendApplied ? [fill(t("Trend (last 28 days vs the same weeks last year): × {x}"), { x: num2(season.trend, locale) })] : []),
     planLine,
     season.trendApplied
-      ? fill(t("Based on: sales per day while in stock × seasonal index × trend × plan × {n} days, {range}"), { n: formatCount(r.period.days, locale), range })
-      : fill(t("Based on: sales per day while in stock × seasonal index × plan × {n} days, {range}"), { n: formatCount(r.period.days, locale), range }),
+      ? fill(t("Based on: sales per day while in stock × seasonality × trend × growth factor × {n} days, {range}"), { n: formatCount(r.period.days, locale), range })
+      : fill(t("Based on: sales per day while in stock × seasonality × growth factor × {n} days, {range}"), { n: formatCount(r.period.days, locale), range }),
   ];
   const revenueLines = [
     fill(t("Expected units: {n}"), { n: formatCount(Math.round(r.totals.units ?? 0), locale) }),
@@ -709,12 +709,12 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
               id="keha-plan-order"
               title={t("What to order, and by when")}
               lines={[
-                t("Units to order = expected sales in the period + safety stock − stock expected when the period starts, rounded up to case packs and minimum orders."),
-                t("Stock expected at the start = stock now + incoming − expected sales until the period starts (never below 0)."),
+                t("Suggested qty = expected sales in the period + safety stock − stock expected when the period starts, rounded up to case packs and minimum orders."),
+                t("Stock expected at the start = on hand + incoming − expected sales until the period starts (never below 0)."),
                 t("Order by = period start − lead time − safety days. Past dates show “Overdue”."),
                 result.season.trendApplied
-                  ? t("Based on: sales per day while in stock, seasonal index, trend, plan, stock now, incoming, supplier lead times, case packs and minimums")
-                  : t("Based on: sales per day while in stock, seasonal index, plan, stock now, incoming, supplier lead times, case packs and minimums"),
+                  ? t("Based on: sales per day while in stock, seasonality, trend, growth factor, stock on hand, incoming, supplier lead times, case packs and minimums")
+                  : t("Based on: sales per day while in stock, seasonality, growth factor, stock on hand, incoming, supplier lead times, case packs and minimums"),
               ]}
             />
             {result.groups.map((g) => (
@@ -921,7 +921,7 @@ function CollectionGoals({ goals, options, currency }: { goals: GoalsData | null
                           ? fill(t("{n} points below"), { n: num2(r.gapPts, locale) })
                           : r.gapPts < 0
                             ? fill(t("{n} points above"), { n: num2(-r.gapPts, locale) })
-                            : t("On goal")}
+                            : t("On track")}
                     </s-table-cell>
                     <s-table-cell>
                       {r.holdingBack.length === 0 ? (
@@ -1012,11 +1012,11 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
   } else {
     body = (
       <>
-        <s-text color="subdued">{fill(t("Graded month: {month}"), { month: monthLabel(data.month, locale) })}</s-text>
+        <s-text color="subdued">{fill(t("Month checked: {month}"), { month: monthLabel(data.month, locale) })}</s-text>
         <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
           <SummaryBox
             id="keha-acc-store"
-            title={t("Whole store, error")}
+            title={t("Store total: forecast error")}
             value={pct(data.storeErrorPct, locale)}
             lines={[
               t("How far our forecast for the store's total units was from what you sold, as a % of what you sold."),
@@ -1027,9 +1027,9 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
             id="keha-acc-top"
             title={t("Top 20 products, average error")}
             value={pct(data.top20ErrorPct, locale)}
-            sub={fill(t("Graded: {n}"), { n: formatCount(data.graded, locale) })}
+            sub={fill(t("Products checked: {n}"), { n: formatCount(data.graded, locale) })}
             lines={[
-              t("The combined error over the 20 variants that sold the most the month before. Variants that sold nothing are graded too."),
+              t("The combined error over the 20 variants that sold the most the month before. Variants that sold nothing are checked too."),
               t("Based on: our forecast on the 1st of the month vs units sold that month, all sales channels"),
             ]}
           />
@@ -1063,7 +1063,7 @@ function Scorecard({ data }: { data: ScorecardData | null }) {
     );
   }
   return (
-    <FormCard title={t("How accurate we were")}>
+    <FormCard title={t("Forecast accuracy")}>
       <s-stack direction="block" gap="base">
         {body}
       </s-stack>

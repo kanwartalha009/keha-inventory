@@ -623,9 +623,9 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
     );
 
   let capText: string;
-  if (choice.noCap) capText = t("Unusual days are not capped for this product: every day counts at what it sold.");
+  if (choice.noCap) capText = t("Unusual days count in full for this product: every day counts at what it sold.");
   else if (spikes && spikes.count > 0 && largest)
-    capText = fill(spikes.count === 1 ? t("1 unusual day capped ({date}: {units} units, counted as {cap})") : t("{n} unusual days capped (largest {date}: {units} units, counted as {cap})"), {
+    capText = fill(spikes.count === 1 ? t("1 unusual day limited ({date}: {units} units, counted as {cap})") : t("{n} unusual days limited (largest {date}: {units} units, counted as {cap})"), {
       n: nf(spikes.count),
       date: shortDay(largest.day, locale),
       units: nf(largest.sold),
@@ -634,7 +634,7 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
   else capText = t("No unusual days in the last 90 days.");
 
   return (
-    <FormCard title={t("Forecast choices")} sub={t("Our database only: nothing changes in your store. The forecast is updated within a few minutes.")}>
+    <FormCard title={t("Forecast settings")} sub={t("Our database only: nothing changes in your store. The forecast is updated within a few minutes.")}>
       <s-stack direction="block" gap="large">
         <s-stack direction="block" gap="small-200">
           <s-heading>{t("Unusual days")}</s-heading>
@@ -648,7 +648,7 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
           {(choice.noCap || (spikes?.count ?? 0) > 0) && (
             <s-stack direction="inline" gap="small-200">
               <s-button disabled={flag(saving)} onClick={() => submit({ intent: "noCap", value: !choice.noCap })}>
-                {choice.noCap ? t("Cap unusual days again") : t("Don't cap this product")}
+                {choice.noCap ? t("Limit unusual days again") : t("Count unusual days in full")}
               </s-button>
             </s-stack>
           )}
@@ -661,18 +661,18 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
               <>
                 <s-text>{likeLine(choice.like.kind, choice.like.name, choice.like.pct)}</s-text>
                 {choice.like.rate === null && (
-                  <s-text color="subdued">{fill(t("{name} has no sales pace yet, so this product is planned on its own sales."), { name: choice.like.name })}</s-text>
+                  <s-text color="subdued">{fill(t("{name} has no sales pace yet, so this product is forecast on its own sales."), { name: choice.like.name })}</s-text>
                 )}
                 <s-stack direction="inline" gap="small-200">
                   <s-button disabled={flag(saving)} onClick={() => submit({ intent: "planLikeOff" })}>
-                    {fill(t("Stop planning like {name}"), { name: choice.like.name })}
+                    {fill(t("Stop forecasting like {name}"), { name: choice.like.name })}
                   </s-button>
                 </s-stack>
               </>
             ) : (
               <>
                 <s-text>
-                  {fill(t("Only {n} days in stock so far: too few to measure its own pace. Plan it like a similar product until it has {days} days in stock."), {
+                  {fill(t("Only {n} days in stock so far: too few to measure its own pace. Forecast it like a similar product until it has {days} days in stock."), {
                     n: nf(ownDays),
                     days: nf(PLAN_LIKE_DAYS),
                   })}
@@ -711,8 +711,8 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
                           <s-table-cell>{p.title}</s-table-cell>
                           <s-table-cell>{formatRate(p.rate, locale)}</s-table-cell>
                           <s-table-cell>
-                            <s-button variant="secondary" onClick={() => setPick({ kind: "product", ref: p.productId, name: p.title })} accessibilityLabel={`${t("Plan like this")}: ${p.title}`}>
-                              {t("Plan like this")}
+                            <s-button variant="secondary" onClick={() => setPick({ kind: "product", ref: p.productId, name: p.title })} accessibilityLabel={`${t("Forecast like this product")}: ${p.title}`}>
+                              {t("Forecast like this product")}
                             </s-button>
                           </s-table-cell>
                         </s-table-row>
@@ -731,11 +731,11 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
       <ConfirmModal
         open={!!pick}
         destructive={false}
-        title={fill(t("Plan like {name}?"), { name: pick?.name ?? "" })}
+        title={fill(t("Forecast like {name}?"), { name: pick?.name ?? "" })}
         message={fill(t("Until this product has {days} days in stock, its forecast uses this pace, moving onto its own sales day by day. Our database only: nothing changes in your store."), {
           days: nf(PLAN_LIKE_DAYS),
         })}
-        confirmLabel={t("Plan like this")}
+        confirmLabel={t("Forecast like this product")}
         onCancel={() => setPick(null)}
         onConfirm={() => {
           const p = pick;
@@ -745,7 +745,7 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
         }}
       >
         <s-number-field
-          label={t("Percent of its pace")}
+          label={t("Share of its sales (%)")}
           details={t("For example 50 if you expect half its sales.")}
           value={pct}
           min={PLAN_LIKE_PCT.min}

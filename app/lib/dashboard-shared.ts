@@ -98,7 +98,7 @@ export type HomeData = {
   dataLate: boolean;
   /**
    * Under 13 months of sales once the whole history is read: the whole months there are, for the
-   * quiet "Seasons: learning — {n} of 13 months" (accuracy audit 2026-10-18; the plan forecasts from
+   * quiet "Seasonality: {n} of 13 months of history" (accuracy audit 2026-10-18; the plan forecasts from
    * what there is, the seasons come with the 13th month). Null otherwise, and while still reading.
    */
   seasonsLearning: number | null;
@@ -230,9 +230,9 @@ export function seasonsLearning(state: HomeState, backfillDone: boolean, salesFr
   return n !== null && n < SEASON.minHistoryMonths ? n : null;
 }
 
-/** "Seasons: learning — {n} of 13 months" (literal t() call for the coverage test). */
+/** "Seasonality: {n} of 13 months of history" (literal t() call for the coverage test). */
 export function seasonsLearningText(n: number, t: T, count: (n: number) => string): string {
-  return fill(t("Seasons: learning — {n} of 13 months"), { n: count(n) });
+  return fill(t("Seasonality: {n} of 13 months of history"), { n: count(n) });
 }
 
 /** Everything Home renders, from the raw database facts. */

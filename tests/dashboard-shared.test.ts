@@ -226,6 +226,6 @@ describe("seasonsLearning (accuracy audit 2026-10-18)", () => {
     expect(seasonsLearning("ready", false, "2026-01-01", "2026-10-16")).toBeNull();
     expect(seasonsLearning("noSales", true, "2026-01-01", "2026-10-16")).toBeNull();
     expect(seasonsLearning("ready", true, null, "2026-10-16")).toBeNull();
-    expect(seasonsLearningText(9, (k) => k, String)).toBe("Seasons: learning — 9 of 13 months");
+    expect(seasonsLearningText(9, (k) => k, String)).toBe("Seasonality: 9 of 13 months of history");
   });
 });

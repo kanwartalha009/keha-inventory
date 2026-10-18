@@ -491,7 +491,7 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   // R4: one-off spikes capped in the pace; a new style planned like another product.
   if (why.spikes && why.spikes.count > 0) {
     const v = { n: nf(why.spikes.count, locale, 0), date: shortDay(why.spikes.day, locale), units: nf(why.spikes.sold, locale, 0), cap: nf(why.spikes.cap, locale, 0) };
-    out.push(fill(why.spikes.count === 1 ? t("1 unusual day capped ({date}: {units} units, counted as {cap})") : t("{n} unusual days capped (largest {date}: {units} units, counted as {cap})"), v));
+    out.push(fill(why.spikes.count === 1 ? t("1 unusual day limited ({date}: {units} units, counted as {cap})") : t("{n} unusual days limited (largest {date}: {units} units, counted as {cap})"), v));
   }
   if (why.recurringSpikes) out.push(fill(t("High days that come back (promotions, repeat orders) count as {units} a day over the year."), { units: nf(why.recurringSpikes, locale, 1) }));
   if (why.planLike) {

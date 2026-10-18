@@ -170,7 +170,7 @@ export type SeasonalReason = "ok" | "short_history" | "low_coverage" | "no_base_
 
 /**
  * Whole calendar months of sales history up to today (0 … minHistoryMonths): the largest n with
- * `from` ≤ today − n months; null without a history. "Seasons: learning — {n} of 13 months"
+ * `from` ≤ today − n months; null without a history. "Seasonality: {n} of 13 months of history"
  * (accuracy audit 2026-10-18).
  */
 export function historyMonths(from: DayKey | null | undefined, today: DayKey): number | null {
@@ -847,7 +847,7 @@ export function seasonFacts(s: VariantSeason) {
     trendCurrentPerDay: s.trendResult.current.unitsPerDay,
     trendLastYearPerDay: s.trendResult.lastYear.unitsPerDay,
     label: s.seasonalResult.applied ? null : NO_SEASONAL_DATA,
-    /** Under 13 months of sales: how many whole months there are ("Seasons: learning — {n} of 13 months"). */
+    /** Under 13 months of sales: how many whole months there are ("Seasonality: {n} of 13 months of history"). */
     seasonHistoryMonths: s.seasonalResult.reason === "short_history" ? s.seasonalResult.historyMonths : null,
   };
 }

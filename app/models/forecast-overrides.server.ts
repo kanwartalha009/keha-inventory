@@ -61,7 +61,7 @@ export type ForecastChoice = {
   offer: { productType: string | null; suggestion: { rate: number; products: number } | null } | null;
 };
 
-/** The product page's "Forecast choices" (R4). `inStockDays`: this variant's own, from its metric. */
+/** The product page's "Forecast settings" (R4). `inStockDays`: this variant's own, from its metric. */
 export async function forecastChoiceFor(
   shop: string,
   product: { productId: string; productType: string | null },

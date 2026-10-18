@@ -65,10 +65,10 @@ describe("Transfers section", () => {
         hasStore: true,
       }),
     );
-    expect(html).toContain("Transfers: warehouse → stores · Main → Barcelona");
+    expect(html).toContain("Transfers to stores · Main → Barcelona");
     expect(html).toContain("Linen shirt");
     expect(html).toContain("Stock at Barcelona");
-    expect(html).toContain("Spare at Main");
+    expect(html).toContain("Excess at Main");
     expect(html).toContain("The store needs 20.");
     expect(html).toMatch(/<s-number-field[^>]*value="20"/);
     expect(html).toContain("Units: 20");
@@ -96,7 +96,7 @@ describe("Transfers section", () => {
 
   it("Growth: shown locked with what it does and the plans link", () => {
     const html = render(page({ enabled: false, groups: [], recent: [], hasWarehouse: false, hasStore: false }, false));
-    expect(html).toContain("Transfers: warehouse → stores");
+    expect(html).toContain("Transfers to stores");
     expect(html).toContain("Pro plan");
     expect(html).toContain("Plan which stock to move from your warehouse to your stores, and create the transfer in Shopify.");
     expect(html).toContain('href="/app/plans?upgrade=transfers"');
