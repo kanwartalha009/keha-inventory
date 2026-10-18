@@ -152,3 +152,37 @@ describe("the document", () => {
     expect(poDetailRows(doc.details!, (k) => translate("pl", k), (d) => d)[0]!.label).toBe(translate("pl", "Buyer"));
   });
 });
+
+describe("measured lead time", () => {
+  const received = (n: number, sent: string, got: string) => ({
+    id: `r${n}`,
+    shop: S,
+    number: `PO-01${n}`,
+    status: "received",
+    source: "keha",
+    supplierId: "s1",
+    supplierName: "Ningbo Knits",
+    lines: [],
+    confirmToken: `t${n}`,
+    currency: "EUR",
+    sentAt: new Date(`${sent}T10:00:00Z`),
+    receivedAt: new Date(`${got}T10:00:00Z`),
+    expectedDate: null,
+    createdAt: new Date(`${sent}T09:00:00Z`),
+  });
+
+  it("refresh stores the median, p80 and median delay; 'Use measured lead time' sets the median (transit kept within it)", async () => {
+    const { refreshLeadStats, applyMeasuredLeadTime } = await import("../app/models/suppliers.server");
+    // 60-day lead time; deliveries took 66, 70, 64 and 75 days.
+    fake.tables.purchaseOrder = [received(1, "2026-01-01", "2026-03-08"), received(2, "2026-03-01", "2026-05-10"), received(3, "2026-05-01", "2026-07-04"), received(4, "2026-06-01", "2026-08-15")];
+    expect(await applyMeasuredLeadTime(S, "s1")).toEqual({ ok: false, error: "notMeasured" });
+    expect(await refreshLeadStats(S)).toBe(1);
+    const s = fake.tables.supplier[0]!;
+    expect(s).toMatchObject({ leadSamples: 4, leadMedianDays: 68, leadP80Days: 75 });
+    expect(s.leadMedianDelayDays).toBeCloseTo(8, 6); // promised 60 (the lead time): delays 6, 10, 4, 15
+    s.transitDays = 70;
+    expect(await applyMeasuredLeadTime(S, "s1")).toEqual({ ok: true, leadTimeDays: 68 });
+    expect(s).toMatchObject({ leadTimeDays: 68, transitDays: 68 });
+    expect(await applyMeasuredLeadTime(S, "nope")).toEqual({ ok: false, error: "notFound" });
+  });
+});

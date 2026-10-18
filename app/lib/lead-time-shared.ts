@@ -14,6 +14,11 @@
  * late), the standard deviation of the actual lead time (sample, n − 1) and the share on time
  * (arrived on or before the promised day). With MIN_SAMPLES deliveries or more, safety stock uses
  * the variability: z × √(P × σd² + d² × σL²) (engine/order-shared safetyStockWithLead).
+ *
+ * Merchant audit 2026-10-18: also the median and 80th percentile of the actual lead time and the
+ * median delay. With MIN_SAMPLES deliveries the supplier's page shows them against the set lead
+ * time with "Use measured lead time" (the median, rounded), and a supplier whose median delay is
+ * more than LATE_DAYS is flagged on its row and in the supplier order builder.
  */
 import { daysBetween, type DayKey } from "./engine/dates-shared";
 import { fill } from "./i18n";
@@ -26,6 +31,8 @@ export const MIN_SAMPLES = 3;
 export const MAX_LEAD_DAYS = 730;
 /** The most recent deliveries measured per supplier. */
 export const MAX_SAMPLES = 50;
+/** "Consistently late": the median delay is more than this many days (over MIN_SAMPLES deliveries). */
+export const LATE_DAYS = 3;
 
 export type Delivery = { promised: number; actual: number; receivedDay: DayKey };
 
@@ -39,7 +46,26 @@ export type LeadStats = {
   sigma: number;
   /** Share delivered on or before the promised day (0–1). */
   onTimeShare: number;
+  /** Median and 80th percentile of the actual lead time (days), and the median delay; null / absent when not stored yet. */
+  medianDays?: number | null;
+  p80Days?: number | null;
+  medianDelay?: number | null;
 };
+
+/** The median of a list (null when empty). */
+export function median(xs: readonly number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+
+/** The p-th percentile, nearest rank (p80 of 5 deliveries = the 4th shortest); null when empty. */
+export function percentile(xs: readonly number[], p: number): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length, Math.max(1, Math.ceil((p / 100) * s.length))) - 1]!;
+}
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -83,6 +109,9 @@ export function leadStats(deliveries: readonly Delivery[], max: number = MAX_SAM
     delayAvg: r2(mean((d) => d.actual - d.promised)),
     sigma: r2(Math.sqrt(variance)),
     onTimeShare: r2(list.filter((d) => d.actual <= d.promised).length / n),
+    medianDays: r2(median(list.map((d) => d.actual))!),
+    p80Days: r2(percentile(list.map((d) => d.actual), 80)!),
+    medianDelay: r2(median(list.map((d) => d.actual - d.promised))!),
   };
 }
 
@@ -94,6 +123,9 @@ export function readLeadStats(row: {
   leadDelayDays?: number | null;
   leadSigmaDays?: number | null;
   leadOnTimeShare?: number | null;
+  leadMedianDays?: number | null;
+  leadP80Days?: number | null;
+  leadMedianDelayDays?: number | null;
 } | null | undefined): LeadStats | null {
   if (!row || !finite(row.leadSamples) || row.leadSamples < 1) return null;
   if (![row.leadPromisedDays, row.leadActualDays, row.leadDelayDays, row.leadSigmaDays, row.leadOnTimeShare].every(finite)) return null;
@@ -104,7 +136,22 @@ export function readLeadStats(row: {
     delayAvg: row.leadDelayDays!,
     sigma: row.leadSigmaDays!,
     onTimeShare: row.leadOnTimeShare!,
+    medianDays: finite(row.leadMedianDays) ? row.leadMedianDays : null,
+    p80Days: finite(row.leadP80Days) ? row.leadP80Days : null,
+    medianDelay: finite(row.leadMedianDelayDays) ? row.leadMedianDelayDays : null,
   };
+}
+
+/** The measured lead time to show and offer (median, p80, deliveries); null below MIN_SAMPLES or before it is stored. */
+export function measuredLead(stats: LeadStats | null | undefined): { median: number; p80: number; samples: number; suggested: number } | null {
+  if (!stats || stats.samples < MIN_SAMPLES || !finite(stats.medianDays) || !finite(stats.p80Days)) return null;
+  return { median: stats.medianDays, p80: stats.p80Days, samples: stats.samples, suggested: Math.max(0, Math.min(365, Math.round(stats.medianDays))) };
+}
+
+/** Consistently late: over MIN_SAMPLES or more deliveries the median delay is more than LATE_DAYS; the delay in whole days, else null. */
+export function consistentlyLate(stats: LeadStats | null | undefined): number | null {
+  if (!stats || stats.samples < MIN_SAMPLES || !finite(stats.medianDelay) || !(stats.medianDelay > LATE_DAYS)) return null;
+  return Math.round(stats.medianDelay);
 }
 
 /** The lead-time σ (days) safety stock uses: only with enough deliveries measured; else null (today's formula). */
@@ -133,7 +180,9 @@ export function supplierOfOrder<S extends { id: string; name: string; vendorMatc
 /** Stored stats differ from new ones (only then the row is written). */
 export function statsChanged(a: LeadStats | null, b: LeadStats | null): boolean {
   if (!a || !b) return !!a !== !!b;
-  return (["samples", "promisedAvg", "actualAvg", "delayAvg", "sigma", "onTimeShare"] as const).some((k) => Math.abs(a[k] - b[k]) > 1e-9);
+  if ((["samples", "promisedAvg", "actualAvg", "delayAvg", "sigma", "onTimeShare"] as const).some((k) => Math.abs(a[k] - b[k]) > 1e-9)) return true;
+  // The median / p80 / median delay (stored since 2026-10-18): a row without them is rewritten once.
+  return (["medianDays", "p80Days", "medianDelay"] as const).some((k) => (a[k] ?? null) === null || (b[k] ?? null) === null ? (a[k] ?? null) !== (b[k] ?? null) : Math.abs(a[k]! - b[k]!) > 1e-9);
 }
 
 /** The σ safety stock uses for a supplier row (Supplier.leadSamples / leadSigmaDays); null = today's formula. */

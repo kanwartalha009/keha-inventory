@@ -11,7 +11,7 @@ import { decryptSecret, encryptSecret } from "../lib/crypto.server";
 import { readSettings } from "../lib/settings-shared";
 import { readMinOrderScope, type MinOrderScope } from "../lib/supplier-shared";
 import { supplierToForm, type SupplierForm, type SupplierInput } from "../lib/suppliers-shared";
-import { deliveryOf, leadStats, readLeadStats, statsChanged, supplierOfOrder, type Delivery, type LeadStats } from "../lib/lead-time-shared";
+import { deliveryOf, leadStats, measuredLead, readLeadStats, statsChanged, supplierOfOrder, type Delivery, type LeadStats } from "../lib/lead-time-shared";
 import { readLandedPct, readPaymentTerms, type PaymentTerms } from "../lib/cash-shared";
 import { localDate } from "../lib/sync/store-time-shared";
 import { readPoLanguage } from "../lib/po-document-shared";
@@ -73,6 +73,9 @@ const LIST_SELECT = {
   leadDelayDays: true,
   leadSigmaDays: true,
   leadOnTimeShare: true,
+  leadMedianDays: true,
+  leadP80Days: true,
+  leadMedianDelayDays: true,
   poLanguage: true,
   incoterms: true,
 } as const;
@@ -274,6 +277,9 @@ export async function refreshLeadStats(shop: string): Promise<number> {
         leadDelayDays: true,
         leadSigmaDays: true,
         leadOnTimeShare: true,
+        leadMedianDays: true,
+        leadP80Days: true,
+        leadMedianDelayDays: true,
       },
     }),
     prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
@@ -315,6 +321,9 @@ export async function refreshLeadStats(shop: string): Promise<number> {
         leadDelayDays: next?.delayAvg ?? null,
         leadSigmaDays: next?.sigma ?? null,
         leadOnTimeShare: next?.onTimeShare ?? null,
+        leadMedianDays: next?.medianDays ?? null,
+        leadP80Days: next?.p80Days ?? null,
+        leadMedianDelayDays: next?.medianDelay ?? null,
         leadStatsAt: new Date(),
       },
     });
@@ -322,4 +331,22 @@ export async function refreshLeadStats(shop: string): Promise<number> {
   }
   if (updated) forgetOrderPlan(shop);
   return updated;
+}
+
+export type UseMeasuredResult = { ok: true; leadTimeDays: number } | { ok: false; error: "notFound" | "notMeasured" };
+
+/**
+ * "Use measured lead time" (merchant audit 2026-10-18): the supplier's lead time becomes the median
+ * of its measured deliveries (rounded; at least MIN_SAMPLES). Transit days stay ≤ the lead time.
+ * Our database only; the order plan follows at once.
+ */
+export async function applyMeasuredLeadTime(shop: string, id: string): Promise<UseMeasuredResult> {
+  const s = await prisma.supplier.findFirst({ where: { id, shop }, select: LIST_SELECT });
+  if (!s) return { ok: false, error: "notFound" };
+  const m = measuredLead(readLeadStats(s));
+  if (!m) return { ok: false, error: "notMeasured" };
+  const transit = s.transitDays !== null && s.transitDays !== undefined && s.transitDays > m.suggested ? m.suggested : s.transitDays;
+  await prisma.supplier.updateMany({ where: { id, shop }, data: { leadTimeDays: m.suggested, transitDays: transit } });
+  forgetOrderPlan(shop);
+  return { ok: true, leadTimeDays: m.suggested };
 }

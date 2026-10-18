@@ -21,6 +21,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import {
+  applyMeasuredLeadTime,
   assignProducts,
   clearProducts,
   deleteSupplier,
@@ -41,7 +42,7 @@ import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatPercent } from "../lib/dashboard-shared";
 import { landedText, termsText } from "../lib/cash-shared";
-import { MIN_SAMPLES, reliabilityDetail, reliabilityText } from "../lib/lead-time-shared";
+import { MIN_SAMPLES, consistentlyLate, measuredLead, reliabilityDetail, reliabilityText } from "../lib/lead-time-shared";
 import {
   SUPPLIER_BOUNDS,
   type BalanceChoice,
@@ -83,8 +84,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Suppliers
 };
 
 export type SuppliersAction =
-  | { ok: true; intent: "save" | "delete" | "assign" | "clear"; count?: number; name?: string }
-  | { ok: false; errors?: SupplierErrors; error?: "notFound" };
+  | { ok: true; intent: "save" | "delete" | "assign" | "clear" | "useMeasured"; count?: number; name?: string; leadTimeDays?: number }
+  | { ok: false; errors?: SupplierErrors; error?: "notFound" | "notMeasured" };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await authenticateApp(request);
@@ -124,6 +125,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await clearProducts(shop, id);
       return { ok: true, intent: "clear" } satisfies SuppliersAction;
     }
+    // Merchant audit 2026-10-18: the lead time becomes the median of the measured deliveries (after a confirm).
+    case "useMeasured": {
+      const r = id ? await applyMeasuredLeadTime(shop, id) : ({ ok: false, error: "notFound" } as const);
+      return (r.ok ? { ok: true, intent: "useMeasured", leadTimeDays: r.leadTimeDays } : { ok: false, error: r.error }) satisfies SuppliersAction;
+    }
     default:
       throw new Response("Bad request", { status: 400 });
   }
@@ -138,7 +144,7 @@ export default function SuppliersSettings() {
   const navigate = useNavigate();
   const link = useLinkProps();
   const [params] = useSearchParams();
-  const [confirm, setConfirm] = useState<{ kind: "delete" | "clear"; row: SupplierListRow } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "delete" | "clear" | "useMeasured"; row: SupplierListRow } | null>(null);
   const result = fetcher.data;
 
   // After a save, go back to the list (the loader re-reads it).
@@ -174,6 +180,12 @@ export default function SuppliersSettings() {
       )}
       {result?.ok && result.intent === "clear" && (
         <s-banner tone="success">{t("Product assignments removed. Vendor matching applies again.")}</s-banner>
+      )}
+      {result?.ok && result.intent === "useMeasured" && (
+        <s-banner tone="success">{fill(t("Lead time set to {n} days, as measured. Your order plan uses it from now on."), { n: formatCount(result.leadTimeDays ?? 0, locale) })}</s-banner>
+      )}
+      {result && !result.ok && result.error === "notMeasured" && (
+        <s-banner tone="warning">{t("Not enough deliveries measured yet to set the lead time from them.")}</s-banner>
       )}
       {result && !result.ok && result.error === "notFound" && (
         <s-banner tone="critical">{t("This supplier doesn't exist any more. Reload the page.")}</s-banner>
@@ -219,6 +231,7 @@ export default function SuppliersSettings() {
                   onEdit={() => navigate(`/app/settings/suppliers?edit=${encodeURIComponent(s.id)}`)}
                   onAssign={(productIds) => post({ intent: "assign", id: s.id, productIds })}
                   onDelete={() => setConfirm({ kind: "delete", row: s })}
+                  onUseMeasured={() => setConfirm({ kind: "useMeasured", row: s })}
                   onClear={() => setConfirm({ kind: "clear", row: s })}
                 />
               ))}
@@ -229,17 +242,26 @@ export default function SuppliersSettings() {
 
       <ConfirmModal
         open={!!confirm}
+        destructive={confirm?.kind === "useMeasured" ? false : undefined}
         title={
           confirm?.kind === "delete"
             ? fill(t("Delete {name}?"), { name: confirm.row.name })
-            : fill(t("Remove product assignments from {name}?"), { name: confirm?.row.name ?? "" })
+            : confirm?.kind === "useMeasured"
+              ? fill(t("Use the measured lead time for {name}?"), { name: confirm.row.name })
+              : fill(t("Remove product assignments from {name}?"), { name: confirm?.row.name ?? "" })
         }
         message={
           confirm?.kind === "delete"
             ? t("Its products go back to matching by vendor. Orders you already made keep their details.")
-            : t("These products go back to matching by vendor.")
+            : confirm?.kind === "useMeasured"
+              ? fill(t("The lead time changes from {from} to {to} days — the median of its last {n} deliveries. Order-by dates and quantities follow. Nothing changes in your store or for the supplier."), {
+                  from: formatCount(confirm.row.leadTimeDays, locale),
+                  to: formatCount(measuredLead(confirm.row.leadStats)?.suggested ?? confirm.row.leadTimeDays, locale),
+                  n: formatCount(confirm.row.leadStats?.samples ?? 0, locale),
+                })
+              : t("These products go back to matching by vendor.")
         }
-        confirmLabel={confirm?.kind === "delete" ? t("Delete supplier") : t("Remove assignments")}
+        confirmLabel={confirm?.kind === "delete" ? t("Delete supplier") : confirm?.kind === "useMeasured" ? t("Use measured lead time") : t("Remove assignments")}
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm) post({ intent: confirm.kind, id: confirm.row.id });
@@ -258,6 +280,7 @@ function SupplierRow({
   onAssign,
   onDelete,
   onClear,
+  onUseMeasured,
 }: {
   s: SupplierListRow;
   storeCurrency: string;
@@ -266,6 +289,7 @@ function SupplierRow({
   onAssign: (productIds: string[]) => void;
   onDelete: () => void;
   onClear: () => void;
+  onUseMeasured?: () => void;
 }) {
   const { t, locale } = useLocale();
   const shopify = useAppBridge();
@@ -274,6 +298,9 @@ function SupplierRow({
   const reliability = reliabilityText(s.leadStats, t, (n) => formatCount(n, locale));
   const reliabilityMore = reliabilityDetail(s.leadStats, t, { count: (n) => formatCount(n, locale), percent: (x) => formatPercent(x, locale) });
   const late = !!s.leadStats && s.leadStats.samples >= MIN_SAMPLES && Math.round(s.leadStats.delayAvg) >= 1;
+  // Merchant audit 2026-10-18: the measured lead time against the set one, and a consistently late supplier.
+  const measured = measuredLead(s.leadStats);
+  const lateBy = consistentlyLate(s.leadStats);
   const minimums = [
     s.minOrder
       ? fill(s.minOrderScope === "product" ? t("{n} per product") : t("{n} per item"), { n: formatCount(s.minOrder, locale) })
@@ -310,6 +337,19 @@ function SupplierRow({
           <span className="keha-num">{fill(plural(s.leadTimeDays, t("1 day"), t("{n} days")), { n: formatCount(s.leadTimeDays, locale) })}</span>
           {reliability && <s-text tone={late ? "caution" : undefined} color={late ? undefined : "subdued"}>{reliability}</s-text>}
           {reliabilityMore && <s-text color="subdued">{reliabilityMore}</s-text>}
+          {measured && (
+            <s-text color="subdued">
+              {fill(t("Measured: {median} days typical, 80% within {p80} days"), { median: formatCount(Math.round(measured.median), locale), p80: formatCount(Math.round(measured.p80), locale) })}
+            </s-text>
+          )}
+          {lateBy !== null && <s-badge tone="warning">{fill(t("Consistently late: {n} days"), { n: formatCount(lateBy, locale) })}</s-badge>}
+          {measured && measured.suggested !== s.leadTimeDays && onUseMeasured && (
+            <s-stack direction="inline">
+              <s-button variant="tertiary" disabled={flag(!enabled)} onClick={onUseMeasured}>
+                {fill(t("Use measured lead time ({n} days)"), { n: formatCount(measured.suggested, locale) })}
+              </s-button>
+            </s-stack>
+          )}
           {s.transitDays ? (
             <s-text color="subdued">{fill(plural(s.transitDays, t("1 day in transit"), t("{n} days in transit")), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}

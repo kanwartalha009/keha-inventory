@@ -7,6 +7,10 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_SAMPLES,
+  consistentlyLate,
+  measuredLead,
+  median,
+  percentile,
   deliveryOf,
   leadSigmaForSafety,
   leadStats,
@@ -59,7 +63,8 @@ describe("stats", () => {
   it("average promised / actual, delay, sample σ of the actual lead time, share on time", () => {
     const s = leadStats(five)!;
     // actual 36, 34, 30, 40, 25 → mean 33; deviations 3, 1, −3, 7, −8 → Σ² 132 / 4 = 33 → σ 5.74.
-    expect(s).toEqual({ samples: 5, promisedAvg: 30, actualAvg: 33, delayAvg: 3, sigma: 5.74, onTimeShare: 0.4 });
+    // Merchant audit 2026-10-18: median 34 (25 30 34 36 40), p80 by nearest rank 36, median delay 4 (−5 0 4 6 10).
+    expect(s).toEqual({ samples: 5, promisedAvg: 30, actualAvg: 33, delayAvg: 3, sigma: 5.74, onTimeShare: 0.4, medianDays: 34, p80Days: 36, medianDelay: 4 });
     expect(leadStats([])).toBeNull();
     expect(leadStats([d(30, 31, "2026-01-01")])).toMatchObject({ samples: 1, sigma: 0 });
     // The most recent deliveries only.
@@ -68,8 +73,12 @@ describe("stats", () => {
 
   it("stored columns ↔ stats; a row is written only when they changed", () => {
     const s = leadStats(five)!;
-    const row = { leadSamples: 5, leadPromisedDays: 30, leadActualDays: 33, leadDelayDays: 3, leadSigmaDays: 5.74, leadOnTimeShare: 0.4 };
+    const row = { leadSamples: 5, leadPromisedDays: 30, leadActualDays: 33, leadDelayDays: 3, leadSigmaDays: 5.74, leadOnTimeShare: 0.4, leadMedianDays: 34, leadP80Days: 36, leadMedianDelayDays: 4 };
     expect(readLeadStats(row)).toEqual(s);
+    // A row stored before the median existed reads without it and is rewritten once.
+    const old = readLeadStats({ ...row, leadMedianDays: null, leadP80Days: null, leadMedianDelayDays: null })!;
+    expect(old.medianDays).toBeNull();
+    expect(statsChanged(old, s)).toBe(true);
     expect(readLeadStats({ ...row, leadSigmaDays: null })).toBeNull();
     expect(readLeadStats({ leadSamples: null })).toBeNull();
     expect(statsChanged(readLeadStats(row), s)).toBe(false);
@@ -124,5 +133,31 @@ describe("safety stock with lead-time variability", () => {
     expect(after.inputs.leadSigma).toBe(5);
     expect(after.orderQty!).toBeGreaterThan(before.orderQty ?? 0);
     expect(computeVariant({ ...base, leadTimeSigmaDays: null })!.safety).toBe(before.safety);
+  });
+});
+
+describe("measured lead time (merchant audit 2026-10-18)", () => {
+  const d = (promised: number, actual: number, day: string) => ({ promised, actual, receivedDay: day });
+  it("median and p80 from 3 deliveries; the suggestion is the median, rounded", () => {
+    expect(median([3, 1, 2])).toBe(2);
+    expect(median([4, 1, 3, 2])).toBe(2.5);
+    expect(median([])).toBeNull();
+    expect(percentile([10, 20, 30, 40, 50], 80)).toBe(40);
+    expect(percentile([10, 20, 30], 80)).toBe(30);
+    const two = leadStats([d(60, 66, "2026-01-01"), d(60, 70, "2026-03-01")]);
+    expect(measuredLead(two)).toBeNull();
+    const ningbo = leadStats([d(60, 66, "2026-01-01"), d(60, 70, "2026-03-01"), d(60, 64, "2026-05-01"), d(60, 75, "2026-07-01")]);
+    expect(measuredLead(ningbo)).toEqual({ median: 68, p80: 75, samples: 4, suggested: 68 });
+  });
+
+  it("consistently late: median delay over 3 days across at least 3 deliveries", () => {
+    const late = leadStats([d(60, 66, "2026-01-01"), d(60, 70, "2026-03-01"), d(60, 64, "2026-05-01")]);
+    expect(consistentlyLate(late)).toBe(6);
+    // One very late delivery doesn't make a supplier consistently late (the median, not the average).
+    const once = leadStats([d(30, 30, "2026-01-01"), d(30, 31, "2026-03-01"), d(30, 60, "2026-05-01")]);
+    expect(once!.delayAvg).toBeGreaterThan(3);
+    expect(consistentlyLate(once)).toBeNull();
+    expect(consistentlyLate(leadStats([d(30, 40, "2026-01-01"), d(30, 40, "2026-03-01")]))).toBeNull();
+    expect(consistentlyLate(leadStats([d(30, 33, "2026-01-01"), d(30, 33, "2026-03-01"), d(30, 33, "2026-05-01")]))).toBeNull();
   });
 });

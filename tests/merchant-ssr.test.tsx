@@ -113,3 +113,36 @@ describe("Settings → Suppliers: order language and Incoterms", () => {
     expect(h).toContain("Order language: Deutsch");
   });
 });
+
+describe("measured lead time on Settings → Suppliers and the builder", () => {
+  const stats = { samples: 4, promisedAvg: 60, actualAvg: 68.75, delayAvg: 8.75, sigma: 4.79, onTimeShare: 0, medianDays: 68, p80Days: 75, medianDelay: 8 };
+
+  it("the supplier row shows the measured lead time, flags a consistently late supplier and offers the median (with a confirm)", () => {
+    const data: SuppliersData = {
+      suppliers: [
+        { id: "s1", name: "Ningbo Knits", hasEmail: true, leadTimeDays: 60, minOrder: null, minOrderTotal: null, casePack: null, transitDays: 35, orderCycleDays: null, minOrderValue: null, minOrderScope: "variant", exchangeRate: null, currency: null, hidePrices: false, vendorMatch: [], products: 0, leadStats: stats },
+      ],
+      vendors: [],
+      currency: "EUR",
+      enabled: true,
+      editing: null,
+    };
+    const h = render("/app/settings/suppliers", "suppliers", SuppliersSettings, data);
+    expect(h).toContain("Measured: 68 days typical, 80% within 75 days");
+    expect(h).toContain("Consistently late: 8 days");
+    expect(h).toContain("Use measured lead time (68 days)");
+    // Fewer than 3 deliveries: nothing to offer.
+    const few = render("/app/settings/suppliers", "suppliers", SuppliersSettings, { ...data, suppliers: [{ ...data.suppliers[0]!, leadStats: { ...stats, samples: 2 } }] });
+    expect(few).not.toContain("Use measured lead time");
+    expect(few).not.toContain("Consistently late");
+  });
+
+  it("the builder warns about a consistently late supplier", () => {
+    const plan = orderNowFixture({ minOrderTotal: null });
+    const view = buildSupplierOrder({ plan, supplierKey: "supplier:s1", info: { ...plan.suppliers["supplier:s1"]!, orderCycleDays: 30, leadStats: stats }, storeCycleDays: 14 });
+    const h = render("/app/reorder/build?supplier=supplier:s1", "build", Builder, { enabled: true, view, today: plan.today } satisfies BuilderPageData);
+    expect(h).toContain("is usually 8 days late (median of 4 deliveries, 68 days order to arrival)");
+    expect(h).toContain("Review lead time");
+  });
+});
+

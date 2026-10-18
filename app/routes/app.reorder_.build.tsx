@@ -44,7 +44,7 @@ import { quantitiesKey } from "../lib/quantities-key-shared";
 import { formatDayRange } from "../lib/order-plan-shared";
 import { groupTitle, readQty } from "../lib/reorder-shared";
 import { landedText, paymentPhrases, termsText } from "../lib/cash-shared";
-import { MIN_SAMPLES, reliabilityText } from "../lib/lead-time-shared";
+import { MIN_SAMPLES, consistentlyLate, measuredLead, reliabilityText } from "../lib/lead-time-shared";
 import {
   addedLine,
   builderPayments,
@@ -243,6 +243,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
   // Supplier module: how the supplier really delivers (received orders), its payment terms, freight & duty.
   const reliability = reliabilityText(view.leadStats, t, (n) => formatCount(n, locale));
   const late = !!view.leadStats && view.leadStats.samples >= MIN_SAMPLES && Math.round(view.leadStats.delayAvg) >= 1;
+  const lateBy = consistentlyLate(view.leadStats);
   const pay = builderPayments(view, totals.cost, today);
   const payText = paymentPhrases(pay.payments, view.terms, t, { money: (n) => formatPrice(n, view.storeCurrency, locale), day: (d) => formatDay(d, locale) }).join(" · ");
   const cycleLabel = fill(view.cycleSource === "supplier" ? plural(view.cycleDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(view.cycleDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(view.cycleDays, locale) });
@@ -300,6 +301,23 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
               })}
             </s-text>
             <s-link {...link(`/app/reorder/${draft.id}`)}>{fill(t("Open {number}"), { number: draft.number })}</s-link>
+          </s-stack>
+        </s-banner>
+      )}
+      {lateBy !== null && (
+        // Merchant audit 2026-10-18: a supplier that is consistently late (median delay > 3 days over ≥ 3 orders).
+        <s-banner tone="warning">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text>
+              {fill(t("{supplier} is usually {n} days late (median of {count} deliveries, {measured} days order to arrival). This order is planned with {lead} days."), {
+                supplier: title,
+                n: formatCount(lateBy, locale),
+                count: formatCount(view.leadStats?.samples ?? 0, locale),
+                measured: formatCount(Math.round(measuredLead(view.leadStats)?.median ?? view.leadTimeDays), locale),
+                lead: formatCount(view.leadTimeDays, locale),
+              })}
+            </s-text>
+            {view.kind === "supplier" && view.supplierId && <s-link {...link("/app/settings/suppliers")}>{t("Review lead time")}</s-link>}
           </s-stack>
         </s-banner>
       )}

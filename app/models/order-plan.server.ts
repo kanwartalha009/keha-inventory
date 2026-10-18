@@ -151,6 +151,9 @@ const SUPPLIER_SELECT = {
   leadDelayDays: true,
   leadSigmaDays: true,
   leadOnTimeShare: true,
+  leadMedianDays: true,
+  leadP80Days: true,
+  leadMedianDelayDays: true,
 } as const;
 
 const VARIANT_SELECT = {

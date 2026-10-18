@@ -477,6 +477,10 @@ model Supplier {
   leadSigmaDays    Float?
   leadOnTimeShare  Float?
   leadStatsAt      DateTime?
+  /// Median and 80th percentile of the actual lead time, and the median delay (merchant audit 2026-10-18).
+  leadMedianDays      Float?
+  leadP80Days         Float?
+  leadMedianDelayDays Float?
   /// The language this supplier's purchase orders are written in (email, PDF, CSV, supplier page):
   /// en | es | fr | de | it | pt | nl | pl; null = English (merchant audit 2026-10-18).
   poLanguage    String?
