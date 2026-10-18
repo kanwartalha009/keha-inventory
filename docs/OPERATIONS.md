@@ -24,6 +24,26 @@ behind every recommendation are measured in [`SCALE.md`](./SCALE.md) (`npm run l
   updates and no WAL.
 - **Uninstall purge** (48 h after uninstall, and `shop/redact`) deletes the shop's fact rows partition
   by partition, 50,000 rows per statement, then every table with a `shop` column.
+- **The 14-month history is read once a week per variant** (perf 2026-10-18, `lib/backtest-cache-shared`):
+  `VariantBacktest` keeps, per variant, the history rows compute's read built (encoded, ~0.3–0.7 KB at
+  5–10 % sales days) and that night's forecast-error backtest; each variant is read again on one night in
+  seven (spread by variant), the rest reuse it. `BacktestRun` keeps the ABC roles' pooled error ratios for
+  the week. A cache row from another pool / demand view / settings / backfill coverage is ignored; a
+  failing cache read or write falls back to reading the facts (compute never fails on it). Purged with the
+  shop like every table with a `shop` column.
+- **Alerts read candidates only**: the hourly job asks Postgres for the products fully out over the pool,
+  the metrics a rule can use and the dead products (`lib/alerts-sql-shared`), then reads the catalog of
+  those products only.
+- **The order plan reads typed columns**: `VariantMetric.plan*` (the forward plan's inputs, written with
+  each row) and `MetricRun.curves` (each run's seasonal curves, once per shape); `inputs` stays the full
+  record for the product page. Rows written before the columns (`planVersion` NULL) are read the old way;
+  the first compute after the deploy rewrites every row once (the column format is in the content hash).
+- **Per-store jobs**: besides backfill / nightly / compute / alerts, the hourly accuracy snapshot and the
+  6-hourly plan check are one queued job per store (`accuracy`, `plans`), not serial loops in a timer.
+  The claim uses two partial indexes, `Job_claim_idx` (`runAt, id WHERE lockedUntil IS NULL`) and
+  `Job_locked_idx` (`lockedUntil WHERE lockedUntil IS NOT NULL`). schema.prisma can't express partial
+  indexes (like the fact tables' partitions): they exist only in the migration SQL — if a `prisma migrate dev`
+  ever proposes dropping them, don't.
 
 ## Services (required in production)
 
@@ -46,6 +66,9 @@ they share one event loop and one core, so they overlap database waits, not CPU.
 compute means more worker **replicas** (Railway → the worker service → Replicas) or more worker
 services: the queue hands each job to one claimant (`FOR UPDATE SKIP LOCKED` + a lease per shop), so
 any number of replicas is safe. A replica needs at most 10 database connections (`connection_limit`).
+Sizing (SCALE.md, sandbox numbers): a night of compute is ~1.1 h of one worker process at 1,000
+stores and ~5.7 h at 5,000 — one replica, then three, to finish inside a two-hour window. The app does
+not fork worker processes itself (no `node:cluster`): Railway replicas are the supported way.
 
 ## Instance size
 
@@ -125,6 +148,9 @@ dependency) — measure first: SCALE.md's page-load p95s are on a single primary
   `maintenance` job.
 - Bloat after the nightly runs: `SELECT relname, n_live_tup, n_dead_tup, last_autovacuum FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 10;`
 - Size: `SELECT pg_size_pretty(pg_database_size(current_database()));`
+- Backtest cache: `SELECT pg_size_pretty(pg_total_relation_size('"VariantBacktest"')), count(*), count(*) FILTER (WHERE "day" < CURRENT_DATE - 7) AS stale FROM "VariantBacktest";`
+  — about one row per planned variant; compute removes a store's rows older than 14 nights (variants no
+  longer planned), so `stale` rows belong to stores whose compute stopped (purged with the store).
 
 ## Later cleanup (not urgent)
 

@@ -146,7 +146,7 @@ Exactly the variables the code reads (`.env.example`; `tests/config.test.ts` and
 ## Scaling (DB audit 2026-10-17)
 
 - **Background work is a Postgres job queue** (`Job`, `JobLease`; `app/lib/jobs-shared.ts`): the hourly
-  ticks only queue per-shop jobs (backfill, nightly, compute, alerts) and `INVENTORY_WORKERS` workers
+  ticks only queue per-shop jobs (backfill, nightly, compute, alerts, accuracy, plan checks) and `INVENTORY_WORKERS` workers
   per instance run them, claimed with `FOR UPDATE SKIP LOCKED` together with a lease on the shop, so a
   job runs once and a shop's jobs one at a time across any number of instances. Installs queue their
   backfill. `/health` → `jobs` shows due / running / failing jobs and the oldest wait.

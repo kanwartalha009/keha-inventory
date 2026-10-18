@@ -11,7 +11,12 @@
  *     issues, chunk by chunk, plus the change-only VariantMetric writes) and the nightly sync's
  *     one-day writes (replaceStock / replaceSales);
  *   - page-load queries (Products, the order plan, the product page, the Dashboard): p50 / p95;
- *   - partition maintenance (a month created and one dropped per table) and the purge of an L store.
+ *   - partition maintenance (a month created and one dropped per table) and the purge of an L store;
+ *   - perf 2026-10-18 (audit 3 patch, ported): the 14-month history reads compute issues per chunk
+ *     (every variant) and in the role-prior pre-pass, their stock decoding in JS, the engine's own
+ *     CPU per variant, the alerts job's reads and the job-queue claim — each BEFORE and AFTER the
+ *     perf round (weekly backtest cache, SQL alerts, typed order-plan columns, the claim index),
+ *     and a night's total per store (database + JS + engine) with the measured metric-row churn.
  *
  * Mix: 70 % S (300 variants, 1 location), 25 % M (3,000 variants, 3 locations), 5 % L (30,000
  * variants, 10 locations); sales on 10 / 8 / 5 % of variant-days over 25 months; stock every day
@@ -33,6 +38,12 @@ import { evaluateStockMonths, type StockMonthRow } from "../app/lib/facts-eval-s
 import { addMonths, monthOf, variantNum } from "../app/lib/ids-shared";
 import { FACT_TABLES, createPartitionSql, detachPartitionSql, dropPartitionSql, partitionName } from "../app/lib/partitions-shared";
 import { addDays } from "../app/lib/sync/shopifyql-shared";
+import { computeVariant, errorOriginDays, type DailyRow } from "../app/lib/engine/index-shared";
+import { buildSeries, type PooledStockDay, type SalesDay } from "../app/lib/compute-shared";
+import { backtestOf, cacheFrom, cacheTo, cachedHistory, decodeHistory, encodeHistory, pooledUsed, withCachedBacktest, BACKTEST_CACHE } from "../app/lib/backtest-cache-shared";
+import { metricContentText, slimInputs, storedMetric } from "../app/lib/metric-store-shared";
+import { SQL_ALERT_METRICS, SQL_FULLY_OUT_PRODUCTS } from "../app/lib/alerts-sql-shared";
+import { SQL_CLAIM } from "../app/lib/jobs-shared";
 
 // ---------------------------------------------------------------------------
 // psql plumbing
@@ -341,8 +352,8 @@ function read(ctx: StoreCtx, table: FactTableName, op: ReadOp): string {
   return bind(b.sql, b.params);
 }
 
-/** The reads (and the metric writes) of one computeShop on this store, as SQL. */
-function computeStatements(ctx: StoreCtx): string[] {
+/** The reads (and the metric writes) of one computeShop on this store, as SQL; `changedShare` of the metric rows rewritten. */
+function computeStatements(ctx: StoreCtx, changedShare = 0.3): string[] {
   const shop = ctx.shop;
   const range = { gte: d(addDays(TODAY, -90)), lte: d(YESTERDAY) };
   const st: string[] = [];
@@ -382,16 +393,20 @@ function computeStatements(ctx: StoreCtx): string[] {
     const oRange = { gte: d(addDays(TODAY, -427)), lt: range.gte };
     st.push(read(ctx, "salesDaily", { op: "groupBy", by: ["variantId", "day"], where: { shop, locationKey: "all", variantId: { in: older }, day: oRange }, _sum: { sold: true } }));
     st.push(stockFetch(ctx, { shop, locationId: { in: ctx.locations }, variantId: { in: older }, day: oRange }));
-    // VariantMetric: the stored hashes of each 1,000, then ~30 % of the rows changed (delete + insert).
+    // VariantMetric: the stored hashes of each 1,000, then `changedShare` of the rows changed (delete + insert).
     for (let j = 0; j < ids.length; j += 1000) {
       const batch = ids.slice(j, j + 1000);
       st.push(v(`SELECT "variantId", "contentHash" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND "variantId" = ANY($2::text[])`, [shop, batch]));
-      const changed = batch.filter((_, n) => n % 10 < 3);
+      const changed = batch.filter((_, n) => (n % 100) / 100 < changedShare);
+      if (!changed.length) continue;
       st.push(
         `BEGIN; ${v(`DELETE FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND "variantId" = ANY($2::text[])`, [shop, changed])}; ` +
           v(
-            `INSERT INTO "VariantMetric" ("shop","variantId","scope","rate","sigma","daysLeft","neverRunsOut","status","role","orderQty","orderBy","computedAt","inputs","contentHash")
-             SELECT $1, x, 'online', 2.1, 0.8, 31, false, 'healthy', 'B', NULL, CURRENT_DATE + 30, now(), (SELECT "inputs" FROM "VariantMetric" WHERE "shop" = $1 LIMIT 1), md5(x) FROM unnest($2::text[]) x`,
+            `INSERT INTO "VariantMetric" ("shop","variantId","scope","rate","sigma","daysLeft","neverRunsOut","status","role","orderQty","orderBy","computedAt","inputs","contentHash",
+               "planVersion","planSafety","planSeasonal","planTrend","planPlan","planLeadDays","planCycleDays","planOnHand","planIncoming","planNeed","planZ","planOutSince","planSellsWhenOut","planCurveKey","planExtra")
+             SELECT $1, x, 'online', 2.1, 0.8, 31, false, 'healthy', 'B', NULL, CURRENT_DATE + 30, now(), t."inputs", md5(x),
+               t."planVersion", t."planSafety", t."planSeasonal", t."planTrend", t."planPlan", t."planLeadDays", t."planCycleDays", t."planOnHand", t."planIncoming", t."planNeed", t."planZ", t."planOutSince", t."planSellsWhenOut", t."planCurveKey", t."planExtra"
+             FROM unnest($2::text[]) x, (SELECT * FROM "VariantMetric" WHERE "shop" = $1 LIMIT 1) t`,
             [shop, changed],
           ) +
           "; COMMIT",
@@ -453,6 +468,300 @@ function stockJsMs(ctx: StoreCtx): { rows: number; ms: number } {
   return { rows: rows.length, ms: Math.round(performance.now() - started) };
 }
 
+// ---------------------------------------------------------------------------
+// Perf 2026-10-18 (audit 3 patch, ported, plus the after side)
+// ---------------------------------------------------------------------------
+
+/**
+ * The 14-month history reads compute issues (audit 3): BEFORE — every variant every night, per 500
+ * (loadOlderSeries: sales + the stock fetch over [today − 427, today − 90)), and the role-prior
+ * pre-pass (600 variants over [today − 427, today)); AFTER (weekly backtest cache) — the cache rows
+ * of each chunk, the history of the variants whose refresh night it is (one in seven, through the
+ * cache window's end) and their new cache rows; the role priors from the stored ratios once a week.
+ */
+function historyStatements(ctx: StoreCtx): { before: string[]; prior: string[]; after: string[]; afterWeekly: string[] } {
+  const shop = ctx.shop;
+  const v = (sql: string, params: unknown[]) => bind(sql, params);
+  const from = addDays(TODAY, -90);
+  const before: string[] = [];
+  const hRange = { gte: d(addDays(TODAY, -427)), lt: d(from) };
+  for (let i = 0; i < ctx.variants.length; i += 500) {
+    const ids = ctx.variants.slice(i, i + 500);
+    before.push(read(ctx, "salesDaily", { op: "groupBy", by: ["variantId", "day"], where: { shop, locationKey: "all", variantId: { in: ids }, day: hRange }, _sum: { sold: true } }));
+    before.push(stockFetch(ctx, { shop, locationId: { in: ctx.locations }, variantId: { in: ids }, day: hRange }));
+  }
+  const prior: string[] = [];
+  const pRange = { gte: d(addDays(TODAY, -427)), lt: d(TODAY) };
+  const picked = ctx.variants.slice(0, 600);
+  for (let i = 0; i < picked.length; i += 500) {
+    const ids = picked.slice(i, i + 500);
+    prior.push(read(ctx, "salesDaily", { op: "groupBy", by: ["variantId", "day"], where: { shop, locationKey: "all", variantId: { in: ids }, day: pRange }, _sum: { sold: true } }));
+    prior.push(stockFetch(ctx, { shop, locationId: { in: ctx.locations }, variantId: { in: ids }, day: pRange }));
+  }
+  const after: string[] = [v(`SELECT * FROM "BacktestRun" WHERE "shop" = $1`, [shop])];
+  const aRange = { gte: d(addDays(TODAY, -427)), lt: d(cacheTo(TODAY, 90)) };
+  for (let i = 0; i < ctx.variants.length; i += 2000) {
+    const chunk = ctx.variants.slice(i, i + 2000);
+    for (let j = 0; j < chunk.length; j += 1000) after.push(v(`SELECT * FROM "VariantBacktest" WHERE "shop" = $1 AND "variantId" = ANY($2::text[])`, [shop, chunk.slice(j, j + 1000)]));
+    const refresh = chunk.filter((_, n) => n % BACKTEST_CACHE.refreshDays === 0);
+    for (let j = 0; j < refresh.length; j += 500) {
+      const ids = refresh.slice(j, j + 500);
+      after.push(read(ctx, "salesDaily", { op: "groupBy", by: ["variantId", "day"], where: { shop, locationKey: "all", variantId: { in: ids }, day: aRange }, _sum: { sold: true } }));
+      after.push(stockFetch(ctx, { shop, locationId: { in: ctx.locations }, variantId: { in: ids }, day: aRange }));
+    }
+    for (let j = 0; j < refresh.length; j += 500) {
+      const ids = refresh.slice(j, j + 500);
+      after.push(
+        `BEGIN; ${v(`DELETE FROM "VariantBacktest" WHERE "shop" = $1 AND "variantId" = ANY($2::text[])`, [shop, ids])}; ` +
+          v(
+            `INSERT INTO "VariantBacktest" ("shop","variantId","day","horizon","scopeKey","backtested","ratio","windows","samples","bias","history")
+             SELECT $1, x, $3::date, 44, 'v1-loadtest', true, 1.1, 3.2, 13, 0.02, (SELECT "history" FROM "VariantBacktest" WHERE "shop" = $1 LIMIT 1) FROM unnest($2::text[]) x`,
+            [shop, ids, TODAY],
+          ) +
+          "; COMMIT",
+      );
+    }
+  }
+  const afterWeekly = [v(`SELECT "variantId","day","horizon","scopeKey","backtested","ratio" FROM "VariantBacktest" WHERE "shop" = $1`, [shop])];
+  return { before, prior, after, afterWeekly };
+}
+
+/** The in-memory decoding of the history stock rows (audit 3): 500 variants, ms. */
+function historyJs(ctx: StoreCtx): { rows: number; ms: number; bytes: number } {
+  const ids = ctx.variants.slice(0, 500);
+  const range = { gte: d(addDays(TODAY, -427)), lt: d(addDays(TODAY, -90)) };
+  const where = { shop: ctx.shop, locationId: { in: ctx.locations }, variantId: { in: ids }, day: range };
+  const raw = psql(DB, `COPY (${stockFetch(ctx, where)}) TO STDOUT WITH (FORMAT csv);`);
+  const csv = raw.trim().split("\n");
+  const locKey = new Map<number, string>();
+  for (const l of ctx.locations) locKey.set(ctx.keyNum(l)!, l);
+  const rows = csv.map((line) => {
+    const m = line.match(/^(\d+),(\d+),([0-9-]+),(-?\d+),"?\{(.*)\}"?$/)!;
+    return { v: m[1]!, loc: Number(m[2]), month: m[3]!.slice(0, 7), mask: Number(m[4]), units: m[5]!.split(",").map((x) => (x === "NULL" ? null : Number(x))) };
+  });
+  const started = performance.now();
+  const months: StockMonthRow[] = rows.map((r) => ({ variantId: `gid://shopify/ProductVariant/${r.v}`, locationId: locKey.get(r.loc)!, month: r.month, mask: r.mask, units: r.units }));
+  const a = evaluateStockMonths({ op: "groupBy", by: ["variantId", "day"], where, _sum: { endUnits: true }, _count: { _all: true } }, ctx.shop, months);
+  const b = evaluateStockMonths({ op: "groupBy", by: ["variantId", "day"], where: { ...where, outOfStock: true }, _count: { _all: true } }, ctx.shop, months);
+  if (a === undefined || b === undefined) throw new Error("history stock reads did not take the fast path");
+  return { rows: rows.length, ms: Math.round(performance.now() - started), bytes: raw.length };
+}
+
+/**
+ * One synthetic variant's daily facts for the engine and the churn (in this process): sells on
+ * `density` ‰ of days (1–3 units, the SQL generator's rate); the pooled stock goes down with the
+ * sales and is restocked a few days after it runs out (the SQL generator's month arrays cycle
+ * through sold-out runs every few days, which no real store does — every day would then be a change).
+ */
+function variantFacts(seed: number, density: number, locations: number): { read: (from: string, before: string) => DailyRow[] } {
+  const sales: SalesDay[] = [];
+  const stock: PooledStockDay[] = [];
+  let units = 10 + (seed % 40);
+  let outFor = 0;
+  // Through today: the churn compares tonight with tomorrow night (whose window ends today).
+  for (let o = -520; o < 1; o++) {
+    const day = addDays(TODAY, o);
+    const h = Number((BigInt(seed) * 2654435761n + BigInt(o + 1000) * 40503n) % 1000n);
+    let sold = h < density ? 1 + (h % 3) : 0;
+    if (units <= 0) {
+      sold = 0;
+      if (++outFor > 2 + (seed % 5)) {
+        units = 20 + (seed % 40);
+        outFor = 0;
+      }
+    } else units = Math.max(0, units - sold);
+    stock.push({ variantId: "v", day, endUnits: units * locations, reported: locations, outReported: units <= 0 ? locations : 0 });
+    if (sold) sales.push({ variantId: "v", day, sold, gross: 0 });
+  }
+  return { read: (from, before) => buildSeries(sales.filter((x) => x.day >= from && x.day < before), stock.filter((x) => x.day >= from && x.day < before)).get("v") ?? [] };
+}
+
+/**
+ * The engine per variant (CPU, in this process): the full run (14-month history + the backtest at
+ * 13 origins) against the cached night (history decoded from the cache row, the backtest reused),
+ * the cache decode alone, and the metric-row churn from one night to the next — BEFORE (stored as
+ * it was: every inputs.error field, floats as computed, a fresh backtest every night) and AFTER
+ * (storedMetric, the cached night). `seasonal`: the variant has an applied seasonal curve (today
+ * and the weekly shape are stored and move every night).
+ */
+function engineAndChurn(k: Klass, n: number): { fullMs: number; cachedMs: number; decodeMs: number; historyBytes: number; churn: Record<string, { before: number; after: number }>; encoded: string[] } {
+  const P = 44;
+  const prior = 1.1;
+  const variants = Array.from({ length: n }, (_, i) => variantFacts(i + 1, k.density, k.locations));
+  const inputOf = (f: ReturnType<typeof variantFacts>, today: string, i: number) => {
+    const history = f.read(addDays(today, -427), addDays(today, -90));
+    let lastSaleDay: string | null = null;
+    for (const r of history) if (r.sold > 0) lastSaleDay = r.day;
+    return { id: `v${i}`, series: f.read(addDays(today, -90), today), today, onHand: 20, incoming: 0, role: (["A", "B", "C"] as const)[i % 3]!, supplierLeadTimeDays: 30, cycleDays: 14, seasonal: 1, trend: 1, plan: 1, price: 25, cost: 9, dataSinceDay: addDays(TODAY, -520), lastSaleDay, history };
+  };
+  const tomorrow = addDays(TODAY, 1);
+  const nights = variants.map((f, i) => {
+    const full1 = computeVariant({ ...inputOf(f, TODAY, i), errorOrigins: errorOriginDays(TODAY, P).map((day) => ({ day, multiplier: 1 })), errorPrior: prior })!;
+    const history = encodeHistory(f.read(cacheFrom(TODAY), cacheTo(TODAY, 90)), cacheFrom(TODAY));
+    return { f, i, full1, cache: { day: TODAY, horizon: P, scopeKey: "k", ...backtestOf(full1.inputs.error), history } };
+  });
+  // Full runs on night 2 (timed).
+  const t0 = performance.now();
+  const full2 = nights.map(({ f, i }) => computeVariant({ ...inputOf(f, tomorrow, i), errorOrigins: errorOriginDays(tomorrow, P).map((day) => ({ day, multiplier: 1 })), errorPrior: prior })!);
+  const fullMs = (performance.now() - t0) / n;
+  // Cache decode alone (timed), then the cached night (decode + engine, timed).
+  const t1 = performance.now();
+  for (const { cache } of nights) cachedHistory(cache, tomorrow, addDays(tomorrow, -90));
+  const decodeMs = (performance.now() - t1) / n;
+  const t2 = performance.now();
+  const cached2 = nights.map(({ f, i, cache }) => {
+    const input = { ...inputOf(f, tomorrow, i), history: cachedHistory(cache, tomorrow, addDays(tomorrow, -90)) };
+    const reuse = cache.backtested;
+    const r = computeVariant({ ...input, errorOrigins: reuse ? null : errorOriginDays(tomorrow, P).map((day) => ({ day, multiplier: 1 })), errorPrior: reuse ? pooledUsed(cache, prior) : prior })!;
+    if (reuse) r.inputs.error = withCachedBacktest(r.inputs.error, cache, prior);
+    return r;
+  });
+  const cachedMs = (performance.now() - t2) / n;
+  const rowOf = (r: NonNullable<ReturnType<typeof computeVariant>>, seasonal: boolean, day: string) => ({
+    rate: r.rate, sigma: r.sigma, daysLeft: r.daysLeft, neverRunsOut: false, status: r.status, role: r.role, orderQty: r.orderQty, orderBy: null,
+    inputs: { ...r.inputs, today: day, seasonCurve: seasonal ? [1.02, 1.05, 1.1] : null },
+  });
+  const beforeText = (r: NonNullable<ReturnType<typeof computeVariant>>, seasonal: boolean, day: string) => {
+    const m = rowOf(r, seasonal, day);
+    const inputs = slimInputs(m.inputs) as Record<string, unknown>;
+    if (r.inputs.error) inputs.error = r.inputs.error;
+    return metricContentText({ ...m, inputs });
+  };
+  const afterText = (r: NonNullable<ReturnType<typeof computeVariant>>, seasonal: boolean, day: string) => metricContentText(storedMetric(rowOf(r, seasonal, day)) as Parameters<typeof metricContentText>[0]);
+  const churn: Record<string, { before: number; after: number }> = {};
+  for (const seasonal of [false, true]) {
+    let b = 0;
+    let a = 0;
+    nights.forEach(({ full1 }, j) => {
+      if (beforeText(full1, seasonal, TODAY) !== beforeText(full2[j]!, seasonal, tomorrow)) b++;
+      if (afterText(full1, seasonal, TODAY) !== afterText(cached2[j]!, seasonal, tomorrow)) a++;
+    });
+    churn[seasonal ? "seasonalCurve" : "noSeasonalCurve"] = { before: r1((100 * b) / n), after: r1((100 * a) / n) };
+  }
+  const encoded = nights.slice(0, 64).map((x) => x.cache.history);
+  const historyBytes = Math.round(nights.reduce((x, y) => x + y.cache.history.length, 0) / n);
+  return { fullMs: r1(fullMs * 1000) / 1000, cachedMs: r1(cachedMs * 1000) / 1000, decodeMs: r1(decodeMs * 1000) / 1000, historyBytes, churn, encoded };
+}
+
+/**
+ * A database kept from an earlier run (--reuse) gets the perf 2026-10-18 migrations, and every
+ * synthetic metric the order plan's typed columns (as compute writes them, lib/plan-columns-shared)
+ * plus one seasonal curve per shop in MetricRun.curves.
+ */
+function ensurePerfSchema(): number {
+  const started = Date.now();
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "prisma", "migrations");
+  for (const f of readdirSync(dir, { withFileTypes: true }).filter((x) => x.isDirectory() && x.name >= "20261018600000").map((x) => x.name).sort()) {
+    try {
+      execFileSync("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", `${CONN} dbname=${DB}`, "-f", join(dir, f, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+    } catch {
+      // already applied
+    }
+  }
+  psql(
+    DB,
+    `SET synchronous_commit = off;
+UPDATE "VariantMetric" SET "planVersion" = 1,
+  "planSafety" = (inputs->>'safety')::float8, "planSeasonal" = (inputs->>'seasonal')::float8, "planTrend" = (inputs->>'trend')::float8, "planPlan" = (inputs->>'plan')::float8,
+  "planLeadDays" = (inputs->>'leadTimeDays')::float8, "planCycleDays" = (inputs->>'cycleDays')::float8, "planOnHand" = (inputs->>'onHand')::float8, "planIncoming" = (inputs->>'incoming')::float8,
+  "planNeed" = (inputs->>'orderNeed')::float8, "planZ" = (inputs->>'z')::float8, "planOutSince" = (inputs->>'outSince')::date, "planSellsWhenOut" = (inputs->>'sellsWhenOut')::boolean,
+  "planCurveKey" = CASE WHEN jsonb_typeof(inputs->'seasonCurve') = 'array' THEN 'lt-curve' END,
+  "planExtra" = jsonb_strip_nulls(jsonb_build_object('arrivals', inputs->'arrivals', 'kehaOnOrder', inputs->'kehaOnOrder', 'kehaOrders', inputs->'kehaOrders', 'pace', inputs->'pace', 'spikes', inputs->'spikes', 'planLike', inputs->'planLike', 'levelShift', inputs->'levelShift', 'error', inputs->'error'))
+WHERE "planVersion" IS NULL;
+UPDATE "MetricRun" r SET "curves" = jsonb_build_object('lt-curve', jsonb_build_object('today', '${YESTERDAY}', 'curve', (SELECT "inputs"->'seasonCurve' FROM "VariantMetric" WHERE "shop" = r."shop" AND "scope" = r."scope" LIMIT 1)))
+WHERE "curves" IS NULL;
+VACUUM ANALYZE "VariantMetric", "MetricRun";`,
+  );
+  return Date.now() - started;
+}
+
+/** Synthetic VariantBacktest rows for every variant (the class's encoded histories, cycled) and a BacktestRun per shop. */
+function generateBacktests(plan: { num: number; k: Klass }[], encoded: Record<string, string[]>): number {
+  const started = Date.now();
+  for (const k of CLASSES) {
+    const texts = encoded[k.name] ?? [];
+    if (!texts.length) continue;
+    const arr = `ARRAY[${texts.map((t) => quote(t)).join(",")}]::text[]`;
+    const nums = plan.filter((p) => p.k === k).map((p) => p.num);
+    psql(
+      DB,
+      `SET synchronous_commit = off;
+INSERT INTO "VariantBacktest" ("shop","variantId","day","horizon","scopeKey","backtested","ratio","windows","samples","bias","history")
+SELECT 'loadtest-' || s || '.myshopify.com', 'gid://shopify/ProductVariant/' || (s::bigint * 1000000 + i), '${TODAY}'::date, 44, 'v1-loadtest', true, 1.1, 3.2, 13, 0.02, (${arr})[1 + i % ${texts.length}]
+FROM unnest(ARRAY[${nums.join(",")}]::int[]) s, generate_series(1, ${k.variants}) i;
+INSERT INTO "BacktestRun" ("shop","day","scopeKey","priorA","priorB","priorC") SELECT 'loadtest-' || s || '.myshopify.com', '${TODAY}'::date, 'v1-loadtest', 1.1, 1.05, 1.0 FROM unnest(ARRAY[${nums.join(",")}]::int[]) s;`,
+    );
+  }
+  psql(DB, `VACUUM ANALYZE "VariantBacktest", "BacktestRun";`);
+  return Date.now() - started;
+}
+
+/** The hourly alerts job's reads: BEFORE every online metric + every pool stock-now row + the whole catalog; AFTER the three aggregations (lib/alerts-sql-shared) + the catalog of the candidates. */
+function alertStatements(ctx: StoreCtx): { before: string[]; after: string[] } {
+  const v = (sql: string, params: unknown[]) => bind(sql, params);
+  const shop = ctx.shop;
+  const catalog = `SELECT "id","productId","productTitle","variantTitle","handle" FROM "Variant" WHERE "shop" = $1 AND "tracked" = true AND "isBundle" = false AND "status" = 'ACTIVE'`;
+  const before = [
+    v(catalog, [shop]),
+    v(`SELECT "variantId","status","role","daysLeft","orderQty","orderBy","computedAt" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online'`, [shop]),
+    v(`SELECT "variantId","available" FROM "StockNow" WHERE "shop" = $1 AND "locationId" = ANY($2::text[])`, [shop, ctx.locations]),
+  ];
+  const out = psql(DB, `${v(SQL_FULLY_OUT_PRODUCTS, [shop, ctx.locations])};`).trim().split("\n").filter(Boolean);
+  const metricProducts = psql(DB, `SELECT DISTINCT "productId" FROM (${v(SQL_ALERT_METRICS, [shop, "online"])}) x;`).trim().split("\n").filter(Boolean);
+  const after = [
+    v(`SELECT "variantId" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' LIMIT 1`, [shop]),
+    v(SQL_ALERT_METRICS, [shop, "online"]),
+    v(SQL_FULLY_OUT_PRODUCTS, [shop, ctx.locations]),
+    v(`${catalog} AND "productId" = ANY($2::text[])`, [shop, [...new Set([...out, ...metricProducts])]]),
+  ];
+  return { before, after };
+}
+
+/**
+ * What the app does with the rows of `statements` after the database: they come back as JSON
+ * (psql json_agg) and are parsed in this process — a stand-in for Prisma turning rows into objects
+ * (its query engine does not run in the sandbox), measured the same way before and after. Rows,
+ * bytes and the parse time (median of 3).
+ */
+function clientCost(statements: string[]): { rows: number; bytes: number; parseMs: number } {
+  let rows = 0;
+  let bytes = 0;
+  const times: number[] = [];
+  const texts = statements.map((st) => psql(DB, `SELECT coalesce(json_agg(t), '[]'::json) FROM (${st.replace(/;\s*$/, "")}) t;`).trim());
+  for (const t of texts) bytes += t.length;
+  for (let k = 0; k < 3; k++) {
+    const started = performance.now();
+    let n = 0;
+    for (const t of texts) n += (JSON.parse(t) as unknown[]).length;
+    times.push(performance.now() - started);
+    rows = n;
+  }
+  return { rows, bytes, parseMs: r1(pct(times, 50)) };
+}
+
+/** The job queue's claim (lib/jobs-shared SQL_CLAIM) with `jobs` rows queued, rolled back each time: ms per claim. */
+function claimMs(jobs: number, runs = 30): { p50: number; p95: number } {
+  psql(
+    DB,
+    `TRUNCATE "Job", "JobLease";
+INSERT INTO "Job" ("id","shop","kind","runAt","lockedUntil","lockedBy","attempts","version","createdAt","updatedAt")
+SELECT 'job' || i, 'loadtest-q' || (i / 3) || '.myshopify.com', (ARRAY['alerts','nightly','compute'])[1 + i % 3],
+  (now() AT TIME ZONE 'UTC') - (i || ' seconds')::interval,
+  CASE WHEN i % 500 = 0 THEN (now() AT TIME ZONE 'UTC') + interval '5 minutes' END, CASE WHEN i % 500 = 0 THEN 'w' END,
+  CASE WHEN i % 997 = 0 THEN 5 ELSE 0 END, 1, now(), now()
+FROM generate_series(1, ${jobs}) i;
+INSERT INTO "JobLease" ("key","shop","owner","lockedUntil") SELECT 'shop:loadtest-q' || (i / 3) || '.myshopify.com', 'loadtest-q' || (i / 3) || '.myshopify.com', 'w', (now() AT TIME ZONE 'UTC') + interval '5 minutes' FROM generate_series(${jobs - 3}, ${jobs}, 500) i ON CONFLICT DO NOTHING;
+VACUUM ANALYZE "Job", "JobLease";`,
+  );
+  const claim = bind(SQL_CLAIM, ["w-loadtest", 600000, 5]);
+  const list = Array.from({ length: runs }, () => `BEGIN; ${claim}; ROLLBACK`);
+  const t = timed(DB, list);
+  // Each run: BEGIN, the claim, ROLLBACK → the claim is every second of three.
+  const per = t.filter((_, i) => i % 3 === 1);
+  psql(DB, `TRUNCATE "Job", "JobLease";`);
+  return { p50: r1(pct(per, 50) * 100) / 100, p95: r1(pct(per, 95) * 100) / 100 };
+}
+
 /** The store's newest-month probe for the latest stock day (one month: the data is current). */
 function stockLatest(ctx: StoreCtx, month: string): string {
   const b = buildStockLatestInMonth({ shop: ctx.shop, locationId: { in: ctx.locations } }, month, { shopNum: ctx.num, keyNum: ctx.keyNum });
@@ -464,7 +773,7 @@ function pageStatements(ctx: StoreCtx, n: number): Record<string, string[]> {
   const shop = ctx.shop;
   const v = (sql: string, params: unknown[]) => bind(sql, params);
   const pick = (i: number) => ctx.variants[(i * 7919) % ctx.variants.length]!;
-  const out: Record<string, string[]> = { products: [], orderPlan: [], productPage: [], dashboard: [], alertsLastStockDay: [] };
+  const out: Record<string, string[]> = { products: [], orderPlan: [], orderPlanTypedColumns: [], productPage: [], dashboard: [], alertsLastStockDay: [] };
   for (let i = 0; i < n; i++) {
     const page = ctx.variants.slice((i * 50) % ctx.variants.length, ((i * 50) % ctx.variants.length) + 50);
     out.products.push(
@@ -478,6 +787,16 @@ function pageStatements(ctx: StoreCtx, n: number): Record<string, string[]> {
       `${v(`SELECT min("computedAt") FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online'`, [shop])}; ` +
         `${v(
           `SELECT "variantId","status","rate","sigma","orderQty","orderBy","daysLeft","neverRunsOut","inputs","computedAt" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND "status" <> ALL($2::text[]) AND ("orderQty" > 0 OR "orderBy" <= $3::date)`,
+          [shop, ["dead", "not_enough_data"], addDays(TODAY, 92)],
+        )}; ` +
+        v(`SELECT "variantId","status" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND ("status" = ANY($2::text[]) OR ("status" = 'out' AND "rate" IS NULL))`, [shop, ["dead", "not_enough_data"]]),
+    );
+    // Perf 2026-10-18 (#8): the same plan read from the typed columns and the run's curves.
+    out.orderPlanTypedColumns.push(
+      `${v(`SELECT min("computedAt") FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online'`, [shop])}; ` +
+        `${v(`SELECT "curves" FROM "MetricRun" WHERE "shop" = $1 AND "scope" = 'online'`, [shop])}; ` +
+        `${v(
+          `SELECT "variantId","status","rate","sigma","orderQty","orderBy","daysLeft","neverRunsOut","computedAt","planVersion","planSafety","planSeasonal","planTrend","planPlan","planLeadDays","planCycleDays","planOnHand","planIncoming","planNeed","planZ","planOutSince","planSellsWhenOut","planCurveKey","planExtra" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND "status" <> ALL($2::text[]) AND ("orderQty" > 0 OR "orderBy" <= $3::date)`,
           [shop, ["dead", "not_enough_data"], addDays(TODAY, 92)],
         )}; ` +
         v(`SELECT "variantId","status" FROM "VariantMetric" WHERE "shop" = $1 AND "scope" = 'online' AND ("status" = ANY($2::text[]) OR ("status" = 'out' AND "rate" IS NULL))`, [shop, ["dead", "not_enough_data"]]),
@@ -534,7 +853,7 @@ function purge(ctx: StoreCtx): { ms: number; rows: number } {
       }
     }
   }
-  for (const t of ["VariantMetric", "VariantLocationDays", "StockNow", "Variant", "Location", "ShopDaily", "MetricRun"]) {
+  for (const t of ["VariantMetric", "VariantLocationDays", "StockNow", "Variant", "Location", "ShopDaily", "MetricRun", "VariantBacktest", "BacktestRun"]) {
     const out = psql(DB, `DELETE FROM "${t}" WHERE "shop" = '${ctx.shop}';`, { quiet: false });
     rows += Number(out.match(/DELETE (\d+)/)?.[1] ?? 0);
   }
@@ -560,8 +879,28 @@ function main() {
   const layout = layoutComparison(mCtx.num);
   log("layout", JSON.stringify(layout));
 
+  // Perf 2026-10-18: the engine's CPU and the metric churn per class (in this process), and the
+  // weekly backtest cache rows they imply.
+  const engine: Record<string, ReturnType<typeof engineAndChurn>> = {};
+  for (const k of CLASSES) {
+    engine[k.name] = engineAndChurn(k, Number(arg("engine-variants", "300")));
+    log(`engine ${k.name}`, JSON.stringify({ ...engine[k.name], encoded: undefined }));
+  }
+  if (process.argv.includes("--engine-only")) {
+    console.log(JSON.stringify(Object.fromEntries(Object.entries(engine).map(([n, e]) => [n, { ...e, encoded: undefined }])), null, 1));
+    return;
+  }
+  const perfSchemaMs = ensurePerfSchema();
+  log(`perf schema + plan columns in ${perfSchemaMs} ms`);
+  const backtestsMs = Number(one(DB, `SELECT count(*) FROM "VariantBacktest"`)) > 0 ? 0 : generateBacktests(plan, Object.fromEntries(Object.entries(engine).map(([n, e]) => [n, e.encoded])));
+  log(`backtest cache rows generated in ${backtestsMs} ms`);
+  const cacheSize = { bytes: Number(one(DB, `SELECT pg_total_relation_size('"VariantBacktest"')`)), rows: Number(one(DB, `SELECT count(*) FROM "VariantBacktest"`)) };
+
   const setup = `SET work_mem = '16MB';`;
   const compute: Record<string, { statements: number; ms: number; p95ms: number; stockJsMsPerChunk: number; stockJsMsTotal: number; monthRowsPerChunk: number }> = {};
+  const nights: Record<string, Record<string, unknown>> = {};
+  const alerts: Record<string, Record<string, unknown>> = {};
+  const orderPlanClient: Record<string, Record<string, unknown>> = {};
   const sync: Record<string, Record<string, number>> = {};
   const pages: Record<string, Record<string, { p50: number; p95: number }>> = {};
   for (const name of ["S", "M", "L"] as const) {
@@ -581,6 +920,44 @@ function main() {
     const chunks = Math.ceil(ctx.variants.length / 2000);
     compute[name] = { statements: ms.length, ms: Math.round(sum(ms)), p95ms: r1(pct(ms, 95)), stockJsMsPerChunk: js.ms, stockJsMsTotal: js.ms * chunks, monthRowsPerChunk: js.rows };
     log(`compute ${name}`, JSON.stringify(compute[name]));
+
+    // Perf 2026-10-18: a whole night per store, BEFORE → AFTER (database + JS + engine).
+    if (process.argv.includes("--cold")) execFileSync("bash", ["-c", "sync; echo 1 > /proc/sys/vm/drop_caches"]);
+    const e = engine[name]!;
+    const churn = e.churn.noSeasonalCurve;
+    const mainBefore = sum(timed(DB, computeStatements(ctx, churn.before / 100), setup));
+    const mainAfter = sum(timed(DB, computeStatements(ctx, churn.after / 100), setup));
+    const mainSeasonal = sum(timed(DB, computeStatements(ctx, e.churn.seasonalCurve.after / 100), setup));
+    const hs = historyStatements(ctx);
+    const hBefore = sum(timed(DB, hs.before, setup));
+    const hPrior = sum(timed(DB, hs.prior, setup));
+    const hAfter = sum(timed(DB, hs.after, setup));
+    const hWeekly = sum(timed(DB, hs.afterWeekly, setup));
+    const hj = historyJs(ctx);
+    const batches = Math.ceil(ctx.variants.length / 500);
+    const n = ctx.variants.length;
+    const refreshShare = 1 / BACKTEST_CACHE.refreshDays;
+    const before = { db: mainBefore + hBefore + hPrior, js: js.ms * chunks + hj.ms * batches, engine: e.fullMs * n };
+    const after = { db: mainAfter + hAfter + hWeekly / BACKTEST_CACHE.priorDays, js: js.ms * chunks + hj.ms * batches * refreshShare, engine: (e.cachedMs * (1 - refreshShare) + e.fullMs * refreshShare) * n };
+    const total = (x: { db: number; js: number; engine: number }) => Math.round(x.db + x.js + x.engine);
+    nights[name] = {
+      churnPct: e.churn,
+      historyDb: { beforeMs: Math.round(hBefore), priorPrePassMs: Math.round(hPrior), afterMs: Math.round(hAfter), afterWeeklyPriorsMs: Math.round(hWeekly) },
+      historyJs: { msPer500: hj.ms, monthRowsPer500: hj.rows, csvBytesPer500: hj.bytes },
+      engineMsPerVariant: { full: e.fullMs, cached: e.cachedMs, cacheDecode: e.decodeMs },
+      before: { dbMs: Math.round(before.db), jsMs: Math.round(before.js), engineMs: Math.round(before.engine), totalMs: total(before) },
+      after: { dbMs: Math.round(after.db), jsMs: Math.round(after.js), engineMs: Math.round(after.engine), totalMs: total(after) },
+      afterIfEverySeasonal: { totalMs: total({ ...after, db: after.db - mainAfter + mainSeasonal }) },
+    };
+    log(`night ${name}`, JSON.stringify(nights[name]));
+    const al = alertStatements(ctx);
+    const aRuns = (list: string[]) => {
+      const perLoad: number[] = [];
+      for (let i = 0; i < 20; i++) perLoad.push(sum(timed(DB, list, setup)));
+      return { p50: r1(pct(perLoad, 50)), p95: r1(pct(perLoad, 95)) };
+    };
+    alerts[name] = { before: { ...aRuns(al.before), client: clientCost(al.before) }, after: { ...aRuns(al.after), client: clientCost(al.after) } };
+    log(`alerts ${name}`, JSON.stringify(alerts[name]));
     const w = syncWriteStatements(ctx);
     const wt = timed(DB, w.map((x) => x.sql), setup);
     // Each write is BEGIN; …; COMMIT: sum the statements of each.
@@ -602,6 +979,21 @@ function main() {
       pages[name]![label] = { p50: r1(pct(perLoad, 50)), p95: r1(pct(perLoad, 95)) };
     }
     log(`pages ${name}`, JSON.stringify(pages[name]));
+    // The order plan's rows as the app receives them, before (inputs) and after (typed columns + curves).
+    const splitLoad = (load: string) => load.split(/;\s(?=SELECT)/).filter((x) => !/^SELECT min\(/.test(x));
+    orderPlanClient[name] = { before: clientCost(splitLoad(ps.orderPlan![0]!)), after: clientCost(splitLoad(ps.orderPlanTypedColumns![0]!)) };
+    log(`order plan client ${name}`, JSON.stringify(orderPlanClient[name]));
+  }
+  // The job queue's claim with 2,000 and 20,000 queued jobs (1,000 / 5,000 stores' hourly ticks),
+  // without and with the claim index (perf 2026-10-18).
+  const claim: Record<string, unknown> = {};
+  const claimIndex = one(DB, `SELECT indexdef FROM pg_indexes WHERE indexname = 'Job_claim_idx'`);
+  for (const jobs of [2000, 20000]) {
+    if (claimIndex) psql(DB, `DROP INDEX "Job_claim_idx";`);
+    const without = claimMs(jobs);
+    if (claimIndex) psql(DB, `${claimIndex};`);
+    claim[String(jobs)] = { withoutIndex: without, withIndex: claimIndex ? claimMs(jobs) : null };
+    log(`claim ${jobs} jobs`, JSON.stringify(claim[String(jobs)]));
   }
   const maint = maintenanceStatements();
   const maintMs = Math.round(sum(timed(DB, maint)));
@@ -623,6 +1015,7 @@ function main() {
     projected: { stores1000GB: r1((totalBytes * (1000 / STORES)) / 1e9), stores5000GB: r1((totalBytes * (5000 / STORES)) / 1e9) },
     layout,
     computeMs: compute,
+    perf20261018: { nights, alerts, orderPlanClient, claim, backtestCache: cacheSize, engineVariants: Number(arg("engine-variants", "300")) },
     nightlySyncWriteMs: sync,
     pageLoadMs: pages,
     maintenanceMs: maintMs,
