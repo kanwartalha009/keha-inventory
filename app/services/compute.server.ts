@@ -131,7 +131,7 @@ import {
   withCachedBacktest,
   type BacktestCache,
 } from "../lib/backtest-cache-shared";
-import { readBacktestRun, readBacktests, storedBacktestRatios, writeBacktestRun, writeBacktests, type BacktestRow } from "../models/backtest-cache.server";
+import { readBacktestRun, readBacktests, storedBacktestRatios, sweepBacktests, writeBacktestRun, writeBacktests, type BacktestRow } from "../models/backtest-cache.server";
 import { SPIKE_CAP } from "../lib/engine/outliers-shared";
 import { dayIndex } from "../lib/engine/dates-shared";
 
@@ -999,6 +999,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // Variants no longer tracked / no longer in the catalog lose their metric (only rows whose
   // content changed were rewritten: the run remembers every variant it wrote or confirmed).
   await sweepVariantMetrics(shop, SCOPE_ONLINE, startedAt);
+  // Cache rows of variants no longer computed (archived, untracked, deleted): every computed
+  // variant's row is at most refreshDays old, so anything twice that old has no variant behind it.
+  if (cacheOn) await cacheStep(shop, "sweep", () => sweepBacktests(shop, addDays(today, -2 * BACKTEST_CACHE.refreshDays)));
   if (locationRun) await finishLocationMetrics(shop, locationRun, startedAt);
   const perLocation = { metrics: locationMetrics };
   // Every metric row of this run is written (online pool and locations): plans cached from the

@@ -123,6 +123,16 @@ describe("compute with the backtest cache", () => {
     }
   }, 120_000);
 
+  it("rows of variants no longer computed are swept once they are two refresh cycles old", async () => {
+    seedScaleFixture(db);
+    const old = (day: string, id: string) => ({ shop: FX_SHOP, variantId: id, day: new Date(`${day}T00:00:00Z`), horizon: 44, scopeKey: "x", backtested: false, ratio: null, windows: 0, samples: 0, bias: null, history: "" });
+    db.tables.variantBacktest = [old("2026-09-30", "gid://shopify/ProductVariant/archived"), old("2026-10-05", "gid://shopify/ProductVariant/recent")];
+    await computeShop(FX_SHOP, { now: () => FX_NOW });
+    const ids = new Set((db.tables.variantBacktest ?? []).map((r) => r.variantId));
+    expect(ids.has("gid://shopify/ProductVariant/archived")).toBe(false); // 16 days old
+    expect(ids.has("gid://shopify/ProductVariant/recent")).toBe(true); // 11 days: kept
+  }, 60_000);
+
   it("without the cache (backtestCache: false) it writes no cache rows and the same metrics", async () => {
     seedScaleFixture(db);
     await computeShop(FX_SHOP, { now: () => FX_NOW });

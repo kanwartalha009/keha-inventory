@@ -69,6 +69,11 @@ export async function writeBacktests(shop: string, rows: readonly BacktestRow[])
   }
 }
 
+/** Removes the cache rows written before `before` (variants no longer computed). Returns the count. */
+export async function sweepBacktests(shop: string, before: string): Promise<number> {
+  return (await prisma.variantBacktest.deleteMany({ where: { shop, day: { lt: dayDate(before) } } })).count;
+}
+
 export type BacktestRunRow = { day: string; scopeKey: string; priors: Map<AbcRole, number> };
 
 export async function readBacktestRun(shop: string): Promise<BacktestRunRow | null> {
