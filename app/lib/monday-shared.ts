@@ -395,7 +395,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     atRisk: tr("Sales at risk (next 28 days)"),
     lost90: tr("Lost sales (last 90 days)"),
     cashStuck: tr("Cash tied up"),
-    soldOutTraffic: tr("Out-of-stock page visits (last 30 days)"),
+    soldOutTraffic: tr("Sales missed on sold-out pages (last 30 days)"),
   };
 
   const rows = MONEY_CARDS.map((k) => {

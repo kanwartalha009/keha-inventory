@@ -413,7 +413,10 @@ export function dueText(deadline: DayKey | null | undefined, today: DayKey, t: T
   if (!deadline) {
     // A1: long overdue — the day it sold out, or will, instead of a date months back.
     if (note?.soldOutSince) return fill(t("Overdue · out of stock since {date}"), { date: shortDay(note.soldOutSince, locale) });
-    if (note?.runsOut) return fill(t("Overdue · runs out {date}"), { date: shortDay(note.runsOut, locale) });
+    // Below safety stock but lasting longer than a new order takes (live 2026-10-18: "Overdue" next to
+    // 113 days of stock read as a contradiction); running out before an order could arrive stays Overdue.
+    if (note?.runsOut)
+      return fill(note.belowSafety ? t("Below safety stock · runs out {date}") : t("Overdue · runs out {date}"), { date: shortDay(note.runsOut, locale) });
     return t("Overdue");
   }
   // A1: off season now — the next order is the season's.

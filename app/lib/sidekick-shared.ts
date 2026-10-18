@@ -347,7 +347,7 @@ const OVERDUE_NO_DATE = "overdue — already out of stock, the day it ran out is
  */
 const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey, note?: DueNote | null) => {
   if (!day && overdue && note?.soldOutSince) return `overdue — sold out since ${dayLabel(note.soldOutSince, today)}`;
-  if (!day && overdue && note?.runsOut) return `overdue — runs out ${dayLabel(note.runsOut, today)}`;
+  if (!day && overdue && note?.runsOut) return `${note.belowSafety ? "below safety stock" : "overdue"} — runs out ${dayLabel(note.runsOut, today)}`;
   if (day && !overdue && note?.nextSeason) return `next season: order by ${dayLabel(day, today)}`;
   return day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null;
 };
@@ -585,7 +585,7 @@ export const MONEY_TITLES: Record<MoneyCardKey, string> = {
   atRisk: "Sales at risk (next 28 days)",
   lost90: "Lost sales (last 90 days)",
   cashStuck: "Cash tied up (overstock and dead stock)",
-  soldOutTraffic: "Out-of-stock page visits (last 30 days)",
+  soldOutTraffic: "Sales missed on sold-out pages (last 30 days)",
 };
 
 export type MoneyIn = {

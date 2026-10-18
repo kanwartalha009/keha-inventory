@@ -104,7 +104,7 @@ describe("Home", () => {
     expect(html).toContain("Sales at risk (next 28 days)");
     expect(html).toContain("Lost sales (last 90 days)");
     expect(html).toContain("Cash tied up");
-    expect(html).toContain("Out-of-stock page visits (last 30 days)");
+    expect(html).toContain("Sales missed on sold-out pages (last 30 days)");
     expect(html).toContain("€1,235");
     expect(html).toContain("€800");
     expect(html).toContain("€0"); // a real zero stays a zero

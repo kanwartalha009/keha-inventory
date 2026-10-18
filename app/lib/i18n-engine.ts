@@ -61,6 +61,16 @@ export const ENGINE_TR: Record<string, Tr> = {
   },
   "Next season": { es: "Próxima temporada", fr: "Prochaine saison", de: "Nächste Saison", it: "Prossima stagione", pt: "Próxima estação", nl: "Volgend seizoen", pl: "Następny sezon" },
   "Overdue · out of stock since {date}": { es: "Atrasado · sin stock desde el {date}", fr: "En retard · en rupture depuis le {date}", de: "Überfällig · nicht vorrätig seit {date}", it: "In ritardo · esaurito dal {date}", pt: "Atrasado · sem stock desde {date}", nl: "Te laat · niet op voorraad sinds {date}", pl: "Po terminie · brak w magazynie od {date}" },
+  "Below safety stock · runs out {date}": {
+    es: "Bajo el stock de seguridad · se agota el {date}",
+    fr: "Sous le stock de sécurité · rupture le {date}",
+    de: "Unter Sicherheitsbestand · ausverkauft am {date}",
+    it: "Sotto la scorta di sicurezza · si esaurisce il {date}",
+    pt: "Abaixo do stock de segurança · esgota a {date}",
+    nl: "Onder veiligheidsvoorraad · uitverkocht op {date}",
+    pl: "Poniżej zapasu bezpieczeństwa · skończy się {date}",
+  },
+  "Below safety stock": { es: "Bajo el stock de seguridad", fr: "Sous le stock de sécurité", de: "Unter Sicherheitsbestand", it: "Sotto la scorta di sicurezza", pt: "Abaixo do stock de segurança", nl: "Onder veiligheidsvoorraad", pl: "Poniżej zapasu bezpieczeństwa" },
   "Overdue · runs out {date}": {
     es: "Atrasado · se agota el {date}",
     fr: "En retard · rupture le {date}",

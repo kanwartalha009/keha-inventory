@@ -10,7 +10,7 @@ import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
 import { dueState, type DueNote, type OrderWhy } from "../lib/engine/forward-plan-shared";
 import type { CashSummary, CashWeek as PaidWeek } from "../lib/cash-shared";
-import { aboveLastYear, dueText, formatWeekRange, lastYearLine, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
+import { aboveLastYear, dueText, formatWeekRange, lastYearLine, shortDay, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
 import { useLinkProps } from "./wc";
@@ -352,14 +352,17 @@ export function AboveLastYearBadge({ qty, lastYear }: { qty: number; lastYear: n
  */
 export function OrderByCell({ orderBy, overdue, note = null }: { orderBy: string | null | undefined; overdue: boolean; note?: DueNote | null }) {
   const { t, locale } = useLocale();
+  // Below safety stock but not out yet (a long-past order-by date, A1): not "Overdue" next to a
+  // far run-out date — that read as a contradiction (live 2026-10-18: 113 days of stock, "Overdue").
+  const belowSafety = overdue && !orderBy && !note?.soldOutSince && !!note?.runsOut && !!note?.belowSafety;
   return (
-    <span className="keha-inline">
-      {(orderBy || !overdue) && <span>{formatDay(orderBy, locale)}</span>}
-      {overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+    <span className="keha-due-cell">
+      {(orderBy || !overdue) && <span className="keha-nowrap">{formatDay(orderBy, locale)}</span>}
+      {overdue && (belowSafety ? <s-badge tone="warning">{t("Below safety stock")}</s-badge> : <s-badge tone="critical">{t("Overdue")}</s-badge>)}
       {/* A1: the season's first order after an off season; a long-overdue line's context. */}
       {!overdue && note?.nextSeason && <s-badge tone="info">{t("Next season")}</s-badge>}
-      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("out of stock since {date}"), { date: formatDay(note.soldOutSince, locale) })}</s-text>}
-      {overdue && !orderBy && note?.runsOut && <s-text color="subdued">{fill(t("runs out {date}"), { date: formatDay(note.runsOut, locale) })}</s-text>}
+      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("out of stock since {date}"), { date: shortDay(note.soldOutSince, locale) })}</s-text>}
+      {overdue && !orderBy && note?.runsOut && <s-text color="subdued">{fill(t("runs out {date}"), { date: shortDay(note.runsOut, locale) })}</s-text>}
     </span>
   );
 }
@@ -368,6 +371,8 @@ export function OrderByCell({ orderBy, overdue, note = null }: { orderBy: string
 export function DueLabel({ deadline, today, overdue = false, note = null }: { deadline: string | null | undefined; today: string; overdue?: boolean; note?: DueNote | null }) {
   const { t, locale } = useLocale();
   const text = dueText(deadline, today, t, locale, overdue, note);
+  // Below safety stock, not out yet: a warning, not "Overdue" (see OrderByCell).
+  if (overdue && !deadline && !note?.soldOutSince && note?.runsOut && note.belowSafety) return <s-badge tone="warning">{text}</s-badge>;
   if (dueState(deadline, today, overdue) === "overdue") return <s-badge tone="critical">{text}</s-badge>;
   return <span className="keha-nowrap">{text}</span>;
 }

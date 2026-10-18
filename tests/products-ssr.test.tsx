@@ -267,8 +267,11 @@ describe("Variant detail", () => {
     expect(html).toContain("Safety stock");
     expect(html).not.toContain("Service level factor");
     // Merchant audit 2026-10-18: z 1.65 reads as the in-stock target it stands for, not "1.65".
-    expect(html).toContain("95% in-stock target");
+    expect(html).toContain("In-stock target");
+    expect(html).toContain("95 %");
     expect(html).toContain("the chance it doesn&#x27;t run out before the next delivery");
+    // One row per label (live 2026-10-18: "Safety stock" appeared twice).
+    expect(html.match(/>Safety stock</g)?.length).toBe(1);
     expect(html).not.toMatch(/Safety stock<\/[^>]+>\s*<[^>]+>1\.65/);
     expect(html).toContain("Not applied (year-over-year growth off)");
     // The Trend row never says "No seasonal data yet" (only the seasonal row can).
@@ -511,7 +514,9 @@ describe("How the forecast was built: safety from the forecast's own error, a le
     expect(html).toContain("± 18 units");
     expect(html).toContain("last 13 weeks: 1.7× the expected error");
     expect(html).toContain("Sales stepped up on");
-    expect(renderDetail(base)).not.toContain("In-stock target");
+    // Without the error model the target comes from the safety level (z): still one row.
+    expect(renderDetail(base).match(/>In-stock target</g)?.length).toBe(1);
+    expect(html.match(/>In-stock target</g)?.length).toBe(1);
     expect(readForecastInputs({ error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 } }, 1)!.error).toEqual({ horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 });
     expect(readForecastInputs({}, 1)!.error).toBeNull();
   });

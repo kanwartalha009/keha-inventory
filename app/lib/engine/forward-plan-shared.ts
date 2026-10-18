@@ -81,6 +81,8 @@ const SAFETY_SCALE_MAX = 10;
 export interface OverdueContext {
   soldOutSince?: DayKey;
   runsOut?: DayKey;
+  /** Runs out no sooner than an order placed today would arrive: only below safety stock (live 2026-10-18). */
+  belowSafety?: boolean;
 }
 
 const EPS = 1e-9;
@@ -487,7 +489,7 @@ export class VariantProjection {
         if (back === null) {
           let d = 0;
           while (d < T && this.U[d + 1]! > EPS) d++;
-          this.context = { runsOut: addDays(today, d) };
+          this.context = d >= this.L ? { runsOut: addDays(today, d), belowSafety: true } : { runsOut: addDays(today, d) };
         }
       }
     } else {
@@ -1379,6 +1381,8 @@ export interface DueNote {
   nextSeason?: boolean;
   soldOutSince?: DayKey;
   runsOut?: DayKey;
+  /** Not out before a new order arrives: below safety stock only (see OverdueContext). */
+  belowSafety?: boolean;
 }
 
 /** The note of a set of orders (ordersDue's): an overdue one's context, else the first order's next season. */

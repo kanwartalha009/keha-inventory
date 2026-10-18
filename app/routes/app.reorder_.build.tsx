@@ -661,16 +661,22 @@ function BuilderRow({
       </s-table-cell>
       <s-table-cell>{l.section === "added" ? "—" : <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />}</s-table-cell>
       <s-table-cell>
-        <s-number-field
-          label={fill(t("Quantity for {product}"), { product: name })}
-          labelAccessibilityVisibility="exclusive"
-          value={value}
-          min={0}
-          step={1}
-          disabled={flag(!included)}
-          details={details || undefined}
-          onInput={(e) => onChange(val(e))}
-        />
+        <div className="keha-qty">
+          <s-number-field
+            label={fill(t("Quantity for {product}"), { product: name })}
+            labelAccessibilityVisibility="exclusive"
+            value={value}
+            min={0}
+            step={1}
+            disabled={flag(!included)}
+            onInput={(e) => onChange(val(e))}
+          />
+          {details && (
+            <s-text color="subdued">
+              <span className="keha-qty__note">{details}</span>
+            </s-text>
+          )}
+        </div>
       </s-table-cell>
       <s-table-cell>{money(l.unitCostStore, unitSupplier, view, locale)}</s-table-cell>
       <s-table-cell>{money(l.unitCostStore === null || n === 0 ? null : l.unitCostStore * n, unitSupplier === null || n === 0 ? null : unitSupplier * n, view, locale)}</s-table-cell>

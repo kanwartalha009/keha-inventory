@@ -370,7 +370,8 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
                     <s-table-cell>{formatCount(s.products, locale)}</s-table-cell>
                     <s-table-cell>{formatCount(s.units, locale)}</s-table-cell>
                     <s-table-cell>
-                      <s-stack direction="block" gap="none">
+                      {/* Right-aligned like its numeric header (live 2026-10-18: the amount sat left of "Cash"). */}
+                      <s-stack direction="block" gap="none" alignItems="end">
                         <span>{money(s.cash)}</span>
                         {s.missingCost > 0 && (
                           <s-text color="subdued">{fill(plural(s.missingCost, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(s.missingCost, locale) })}</s-text>

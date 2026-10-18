@@ -456,7 +456,7 @@ export function moneyCardTitle(key: MoneyCardKey, t: T): string {
     case "cashStuck":
       return t("Cash tied up");
     case "soldOutTraffic":
-      return t("Out-of-stock page visits (last 30 days)");
+      return t("Sales missed on sold-out pages (last 30 days)");
   }
 }
 

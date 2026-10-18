@@ -290,7 +290,10 @@ export function simPurchaseOrderRows(store: SimStore): SimPoRow[] {
     const rate = s.exchangeRate && s.currency !== store.meta.currency ? s.exchangeRate : null;
     const lines: PoLine[] = o.lines.map((l) => {
       const v = store.variants[l.variantIdx]!;
-      const unitCost = v.cost === null ? null : round2(rate ? v.cost / rate : v.cost);
+      // The supplier's quoted price is on the order even when Shopify has no cost for the variant
+      // (same 33% fallback as the open-order value in the simulator), so sample orders show a value.
+      const cost = v.cost ?? v.product.price * 0.33;
+      const unitCost = round2(rate ? cost / rate : cost);
       return {
         variantId: v.id,
         qty: l.qty,

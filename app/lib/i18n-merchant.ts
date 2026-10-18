@@ -361,15 +361,6 @@ export const MERCHANT_TR: Record<string, Tr> = {
     pl: "Skończy się 1 dzień przed dostawą nowego towaru ({date}).",
   },
   "Out of stock for about 1 more day, until new stock arrives on {date}.": { es: "Sin stock durante 1 día más, hasta que llegue el stock nuevo el {date}.", fr: "En rupture pendant encore 1 jour environ, jusqu'à l'arrivée du nouveau stock le {date}.", de: "Noch etwa 1 Tag nicht vorrätig, bis die neue Ware am {date} kommt.", it: "Esaurito per circa un altro giorno, finché arriva la nuova merce il {date}.", pt: "Sem stock durante cerca de mais 1 dia, até chegar o stock novo a {date}.", nl: "Nog ongeveer 1 dag niet op voorraad, tot de nieuwe voorraad op {date} binnenkomt.", pl: "Brak w magazynie jeszcze przez około 1 dzień, do dostawy nowego towaru ({date})." },
-  "{pct}% in-stock target": {
-    es: "Objetivo de disponibilidad: {pct}%",
-    fr: "Objectif de disponibilité : {pct} %",
-    de: "{pct} % Verfügbarkeitsziel",
-    it: "Obiettivo di disponibilità: {pct}%",
-    pt: "Meta de disponibilidade: {pct}%",
-    nl: "{pct}% beschikbaarheidsdoel",
-    pl: "Cel dostępności: {pct}%",
-  },
   "the chance it doesn't run out before the next delivery": {
     es: "la probabilidad de no agotarse antes de la próxima entrega",
     fr: "la probabilité de ne pas être en rupture avant la prochaine livraison",

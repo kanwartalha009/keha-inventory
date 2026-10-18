@@ -529,7 +529,7 @@ export function simulateStore(opts: SimOptions): SimStore {
   const variants: SimVariant[] = [];
   for (const p of products) {
     const a = archetypeOf[p.idx]!;
-    const missingCost = !a.kind && cat.chance(0.06);
+    const missingCost = !a.kind && cat.chance(0.02); // a few, so the cost-price warning shows without flooding the sample
     const ratio = a.costRatio[0] + cat.next() * (a.costRatio[1] - a.costRatio[0]);
     for (let s = 0; s < VARIANTS_PER_PRODUCT; s++) {
       const idx = variants.length;

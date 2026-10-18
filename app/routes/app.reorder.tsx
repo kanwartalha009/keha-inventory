@@ -759,19 +759,25 @@ function LineRow({
         <DaysLeft id={`keha-left-${group.key.replace(/\W/g, "")}-${l.variantId.replace(/\D/g, "")}`} daysLeft={l.daysLeft} neverRunsOut={l.neverRunsOut} />
       </s-table-cell>
       <s-table-cell>
-        <s-stack direction="block" gap="small-200">
+        {/* A fixed-width field with its case pack / minimum as a wrapping note under it: a long
+            note inside the field widened the column and pushed Line total off the card (live 2026-10-18). */}
+        <div className="keha-qty">
           <s-number-field
             label={fill(t("Quantity for {product}"), { product: name })}
             labelAccessibilityVisibility="exclusive"
             value={value}
             min={0}
             step={1}
-            details={details || undefined}
             error={error}
             onInput={(e) => onChange(val(e))}
           />
+          {details && (
+            <s-text color="subdued">
+              <span className="keha-qty__note">{details}</span>
+            </s-text>
+          )}
           <AboveLastYearBadge qty={l.suggested} lastYear={l.lastYear} />
-        </s-stack>
+        </div>
       </s-table-cell>
       <s-table-cell>{money(l.unitCostStore, unitSupplier, group, locale)}</s-table-cell>
       <s-table-cell>{money(l.unitCostStore === null || n === 0 ? null : l.unitCostStore * n, unitSupplier === null || n === 0 ? null : unitSupplier * n, group, locale)}</s-table-cell>

@@ -416,17 +416,18 @@ function ForecastInputs({
               }
             />
             <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(plural(inputs.cycleDays, t("1 day"), t("{n} days")), { n: num(inputs.cycleDays, 0) })} />
+            {/* One row each (live 2026-10-18: two rows were called "Safety stock" and the target was repeated). */}
             <KvRow
-              label={t("Safety stock")}
+              label={t("In-stock target")}
               value={
                 !forecast ? (
                   locked
-                ) : inStockTargetPct(inputs.z) === null ? (
+                ) : (inputs.error ? inputs.error.fill * 100 : inStockTargetPct(inputs.z)) === null ? (
                   "—"
                 ) : (
                   // Merchant audit 2026-10-18: the in-stock target, not the raw z (1.65).
                   <span className="keha-inline">
-                    <span>{fill(t("{pct}% in-stock target"), { pct: num(inStockTargetPct(inputs.z), 0) })}</span>
+                    <span>{`${num(inputs.error ? inputs.error.fill * 100 : inStockTargetPct(inputs.z)!, 0)} %`}</span>
                     <s-text color="subdued">{t("the chance it doesn't run out before the next delivery")}</s-text>
                   </span>
                 )
@@ -451,20 +452,17 @@ function ForecastInputs({
               }
             />
             {forecast && inputs.error && (
-              <>
-                <KvRow label={t("In-stock target")} value={`${num(inputs.error.fill * 100, 0)} %`} />
-                <KvRow
-                  label={fill(t("Forecast error over {n} days"), { n: num(inputs.error.horizonDays, 0) })}
-                  value={
-                    <span className="keha-inline">
-                      <span>{fill(t("± {n} units"), { n: num(inputs.error.sigma, 0) })}</span>
-                      {inputs.error.ratio !== null && (
-                        <s-text color="subdued">{fill(t("last 13 weeks: {x}× the expected error"), { x: num(inputs.error.ratio, 1) })}</s-text>
-                      )}
-                    </span>
-                  }
-                />
-              </>
+              <KvRow
+                label={fill(t("Forecast error over {n} days"), { n: num(inputs.error.horizonDays, 0) })}
+                value={
+                  <span className="keha-inline">
+                    <span>{fill(t("± {n} units"), { n: num(inputs.error.sigma, 0) })}</span>
+                    {inputs.error.ratio !== null && (
+                      <s-text color="subdued">{fill(t("last 13 weeks: {x}× the expected error"), { x: num(inputs.error.ratio, 1) })}</s-text>
+                    )}
+                  </span>
+                }
+              />
             )}
             {inputs.levelShift && (
               <KvRow
