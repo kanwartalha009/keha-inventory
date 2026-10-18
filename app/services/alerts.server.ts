@@ -80,7 +80,7 @@ import { planFor } from "./entitlements.server";
 import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
 import { listUnsubscribeHeaders } from "../lib/owner-email-shared";
 import { deliverSlack } from "./slack.server";
-import { SQL_ALERT_METRICS, SQL_DEAD_PRODUCTS, SQL_FULLY_OUT_PRODUCTS } from "../lib/alerts-sql-shared";
+import { SQL_ALERT_METRICS, SQL_FULLY_OUT_PRODUCTS } from "../lib/alerts-sql-shared";
 
 type RawQuery = (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>;
 const raw: RawQuery = (sql, params) => prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
@@ -142,7 +142,7 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
 const dateOrNull = (v: unknown): Date | null => (v === null || v === undefined ? null : v instanceof Date ? v : new Date(String(v)));
 
 export type AlertMetrics = {
-  /** The planned variants' online metrics a rule can use (SQL_ALERT_METRICS), with their product. */
+  /** The planned variants' online metrics a rule can use (SQL_ALERT_METRICS, a superset of what the rules keep), with their product. */
   rows: MetricRowLite[];
   /** Products whose every planned variant with a metric is Dead → those variants. */
   dead: Map<string, string[]>;
@@ -152,9 +152,8 @@ export type AlertMetrics = {
 
 /** The online-pool metrics the rules can use (perf #7: candidates only), and whether they are fresh enough. */
 export async function loadMetrics(shop: string, now: Date): Promise<AlertMetrics> {
-  const [rowsRaw, deadRaw, any] = await Promise.all([
+  const [rowsRaw, any] = await Promise.all([
     raw(SQL_ALERT_METRICS, [shop, SCOPE_ONLINE]),
-    raw(SQL_DEAD_PRODUCTS, [shop, SCOPE_ONLINE]),
     prisma.variantMetric.findFirst({ where: { shop, scope: SCOPE_ONLINE }, select: { variantId: true } }),
   ]);
   const rows: MetricRowLite[] = rowsRaw.map((r) => ({
@@ -167,7 +166,10 @@ export async function loadMetrics(shop: string, now: Date): Promise<AlertMetrics
     orderBy: dateOrNull(r.orderBy),
     computedAt: dateOrNull(r.computedAt) ?? new Date(0),
   }));
-  const dead = new Map(deadRaw.map((r) => [String(r.productId), ((r.variantIds as unknown[]) ?? []).map(String)]));
+  // The rows of products whose every planned variant with a metric is Dead come flagged (dead).
+  const dead = new Map<string, string[]>();
+  for (const r of rowsRaw) if (r.dead === true || r.dead === "t") (dead.get(String(r.productId)) ?? dead.set(String(r.productId), []).get(String(r.productId))!).push(String(r.variantId));
+  for (const ids of dead.values()) ids.sort();
   // The latest run, not the rows' computedAt (unchanged rows keep the run that last changed them).
   const newest = any ? ((await latestMetricRun(shop, SCOPE_ONLINE))?.getTime() ?? 0) : 0;
   return { rows, dead, fresh: newest > 0 && now.getTime() - newest <= MAX_METRIC_AGE_MS };
@@ -379,7 +381,7 @@ export async function runFlowTriggers(
     .map((m) => ({ ...m, productId: productOf.get(m.variantId)!, orderBy: dayKey(m.orderBy) }));
 
   const reorder = needsReorderProducts(rows);
-  // Every planned variant with a metric is Dead (deadProductIds, aggregated in SQL: SQL_DEAD_PRODUCTS).
+  // Every planned variant with a metric is Dead (deadProductIds, aggregated in SQL: SQL_ALERT_METRICS `dead`).
   const deadIds = new Set([...metrics.dead.keys()].filter((pid) => catalog.has(pid)));
   const dead = new Map<string, number>();
   if (deadIds.size) {

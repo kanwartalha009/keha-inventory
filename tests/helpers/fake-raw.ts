@@ -71,31 +71,22 @@ function plannedMetrics(db: FakeDb, shop: unknown, scope: unknown): { m: Row; pr
 
 function alertMetrics(db: FakeDb, shop: unknown, scope: unknown): Record<string, unknown>[] {
   const num = (x: unknown) => (x === null || x === undefined ? null : Number(x));
-  return plannedMetrics(db, shop, scope)
-    .filter(({ m }) => {
+  const rows = plannedMetrics(db, shop, scope);
+  const allDead = new Map<string, boolean>();
+  for (const { m, productId } of rows) allDead.set(productId, (allDead.get(productId) ?? true) && m.status === "dead");
+  return rows
+    .filter(({ m, productId }) => {
       const days = num(m.daysLeft);
       const qty = num(m.orderQty);
-      return (m.role === "A" && days !== null && days < 365) || ((m.status === "running_low" || m.status === "out") && qty !== null && qty > 0 && days !== null && m.orderBy != null);
+      return allDead.get(productId) || (m.role === "A" && days !== null && days < 365) || ((m.status === "running_low" || m.status === "out") && qty !== null && qty > 0 && days !== null && m.orderBy != null);
     })
-    .map(({ m, productId }) => ({ variantId: m.variantId, productId, status: m.status, role: m.role, daysLeft: m.daysLeft ?? null, orderQty: m.orderQty ?? null, orderBy: m.orderBy ?? null, computedAt: m.computedAt }));
-}
-
-function deadProducts(db: FakeDb, shop: unknown, scope: unknown): Record<string, unknown>[] {
-  const by = new Map<string, { dead: boolean; ids: string[] }>();
-  for (const { m, productId } of plannedMetrics(db, shop, scope)) {
-    const cur = by.get(productId) ?? { dead: true, ids: [] };
-    cur.dead &&= m.status === "dead";
-    cur.ids.push(m.variantId as string);
-    by.set(productId, cur);
-  }
-  return [...by].filter(([, x]) => x.dead).map(([productId, x]) => ({ productId, variantIds: x.ids.sort() }));
+    .map(({ m, productId }) => ({ variantId: m.variantId, productId, status: m.status, role: m.role, daysLeft: m.daysLeft ?? null, orderQty: m.orderQty ?? null, orderBy: m.orderBy ?? null, computedAt: m.computedAt, dead: allDead.get(productId) === true }));
 }
 
 function run(db: FakeDb, sql: string, params: unknown[]): Record<string, unknown>[] {
   if (sql.includes(`FROM "SalesFact" s`) && sql.includes(`v."productType" IN`)) return productTypeSeries(db, sql, params);
   if (sql.includes(`HAVING bool_and(n."available" IS NOT NULL`)) return fullyOutProducts(db, params[0], params[1]);
   if (sql.includes(`m."role" = 'A' AND m."daysLeft" < 365`)) return alertMetrics(db, params[0], params[1]);
-  if (sql.includes(`HAVING bool_and(m."status" = 'dead')`)) return deadProducts(db, params[0], params[1]);
   if (sql.includes(`unnest("collections")`)) return collections(db, params[0]);
   throw new Error(`fake-raw: statement not emulated: ${sql.slice(0, 120)}`);
 }

@@ -7,7 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PG_AVAILABLE, bind, dropDb, freshDb, psql } from "./helpers/pg";
-import { SQL_ALERT_METRICS, SQL_DEAD_PRODUCTS, SQL_FULLY_OUT_PRODUCTS, textArrayLiteral } from "../app/lib/alerts-sql-shared";
+import { SQL_ALERT_METRICS, SQL_FULLY_OUT_PRODUCTS, textArrayLiteral } from "../app/lib/alerts-sql-shared";
 import { fullyOut } from "../app/lib/alerts-shared";
 import { deadProductIds } from "../app/lib/flow-shared";
 import { fakeRaw } from "./helpers/fake-raw";
@@ -75,7 +75,9 @@ function reference(data: ReturnType<typeof store>) {
     .map((m) => m.variantId as string)
     .sort();
   const dead = [...deadProductIds(rows as { productId: string; status: string }[])].sort();
-  return { fullyOutIds, candidates, dead };
+  // The rows the query returns: the candidates and every row of a dead product.
+  const returned = [...new Set([...candidates, ...rows.filter((m) => dead.includes(m.productId as string)).map((m) => m.variantId as string)])].sort();
+  return { fullyOutIds, candidates, dead, returned };
 }
 
 describe.skipIf(!PG_AVAILABLE)("alerts SQL on Postgres", () => {
@@ -96,17 +98,18 @@ describe.skipIf(!PG_AVAILABLE)("alerts SQL on Postgres", () => {
     const out = psql(DB, bind(SQL_FULLY_OUT_PRODUCTS, [S, textArrayLiteral(POOL)])).map((r) => r.productId as string).sort();
     expect(out).toEqual(want.fullyOutIds);
     const metrics = psql(DB, bind(SQL_ALERT_METRICS, [S, "online"]));
-    expect(metrics.map((r) => r.variantId as string).sort()).toEqual(want.candidates);
+    expect(metrics.map((r) => r.variantId as string).sort()).toEqual(want.returned);
+    expect(want.returned.length).toBeGreaterThan(want.candidates.length);
     expect(metrics.every((r) => typeof r.productId === "string" && (r.productId as string).startsWith("gid://shopify/Product/"))).toBe(true);
-    const dead = psql(DB, bind(SQL_DEAD_PRODUCTS, [S, "online"]));
-    expect(dead.map((r) => r.productId as string).sort()).toEqual(want.dead);
+    expect([...new Set(metrics.filter((r) => r.dead === "t").map((r) => r.productId as string))].sort()).toEqual(want.dead);
   });
 
   it("the unit tests' emulation (fake-raw) answers the same", async () => {
     const db = { tables: { variant: data.variants, stockNow: data.stockNow, variantMetric: data.metrics } } as unknown as FakeDb;
     const q = fakeRaw(() => db).$queryRawUnsafe;
     expect(((await q(SQL_FULLY_OUT_PRODUCTS, S, POOL)) as Row[]).map((r) => r.productId).sort()).toEqual(want.fullyOutIds);
-    expect(((await q(SQL_ALERT_METRICS, S, "online")) as Row[]).map((r) => r.variantId).sort()).toEqual(want.candidates);
-    expect(((await q(SQL_DEAD_PRODUCTS, S, "online")) as Row[]).map((r) => r.productId).sort()).toEqual(want.dead);
+    const rows = (await q(SQL_ALERT_METRICS, S, "online")) as Row[];
+    expect(rows.map((r) => r.variantId).sort()).toEqual(want.returned);
+    expect([...new Set(rows.filter((r) => r.dead === true).map((r) => r.productId))].sort()).toEqual(want.dead);
   });
 });
