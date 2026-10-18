@@ -15,7 +15,7 @@ vi.mock("../app/db.server", async () => {
 
 import * as dbModule from "../app/db.server";
 import { forgetMetricRuns, latestMetricRun, sweepVariantMetrics, writeVariantMetrics, type MetricData } from "../app/services/metric-writes.server";
-import { STORED_INPUTS_OMIT, metricContentText, slimInputs, stableJson } from "../app/lib/metric-store-shared";
+import { ERROR_KEEP, STORED_INPUTS_OMIT, metricContentText, roundDeep, slimInputs, stableJson, storedMetric, storedNumber } from "../app/lib/metric-store-shared";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
 const S = "acme.myshopify.com";
@@ -95,6 +95,28 @@ describe("change-only VariantMetric writes", () => {
     expect(inputs.windows).toEqual([{ days: 28, weight: 0.5, inStockDays: 28, rate: 1.1, used: true }]);
     expect(m.contentHash).toMatch(/^[0-9a-f]{16}$/);
   });
+
+  it("perf 2026-10-18: float noise alone rewrites nothing (floats stored at 12 significant digits)", async () => {
+    const noisy = (at: Date, eps: number) =>
+      row(1, at, { rate: 0.17950549357115034 + eps, sigma: 0.5837366805501096 - eps, daysLeft: 47.926384962899256 + 10 * eps }, { safety: 3.0000000000000004 - eps, windows: [{ days: 28, weight: 0.5, inStockDays: 28, rate: 1.2000000000000002 + eps, used: true }] });
+    expect(await writeVariantMetrics(S, "online", [noisy(RUN1, 0)])).toBe(1);
+    await sweepVariantMetrics(S, "online", RUN1);
+    const m = db.tables.variantMetric[0]!;
+    expect(m.rate).toBe(0.179505493571);
+    expect((m.inputs as Record<string, unknown>).safety).toBe(3);
+    // Next night the same figures with a couple of ulps of noise (sums in another order).
+    expect(await writeVariantMetrics(S, "online", [noisy(RUN2, 2 * Number.EPSILON)])).toBe(0);
+    // A real change is still written.
+    expect(await writeVariantMetrics(S, "online", [row(1, RUN2, { rate: 0.1796 })])).toBe(1);
+  });
+
+  it("perf 2026-10-18: inputs.error keeps what the product page and Why show, not the backtest internals", async () => {
+    const error = { horizonDays: 44, model: 12.1, sigma: 12.6, ratio: 1.04, prior: 1.1, used: 1.07, samples: 13, windows: 3.2, bias: -0.08, fill: 0.95, k: 0.89 };
+    await writeVariantMetrics(S, "online", [row(1, RUN1, {}, { error })]);
+    const stored = (db.tables.variantMetric[0]!.inputs as Record<string, unknown>).error as Record<string, unknown>;
+    expect(Object.keys(stored).sort()).toEqual([...ERROR_KEEP].sort());
+    expect(stored).toEqual({ horizonDays: 44, sigma: 12.6, ratio: 1.04, used: 1.07, samples: 13, fill: 0.95, k: 0.89 });
+  });
 });
 
 describe("metric-store-shared", () => {
@@ -112,6 +134,17 @@ describe("metric-store-shared", () => {
     const base = { rate: 1, sigma: null, daysLeft: null, neverRunsOut: true, status: "healthy", role: "A", orderQty: null, orderBy: new Date("2026-11-01T00:00:00Z"), inputs: { x: 1, y: 2 } };
     expect(metricContentText(base)).toBe(metricContentText({ ...base, inputs: { y: 2, x: 1 } }));
     expect(metricContentText(base)).not.toBe(metricContentText({ ...base, orderQty: 1 }));
+  });
+
+  it("rounds floats only: integers, null, strings, dates and non-finite values are kept", () => {
+    expect(storedNumber(1 / 3)).toBe(0.333333333333);
+    expect(storedNumber(123456789.123456789)).toBe(123456789.123);
+    expect(storedNumber(42)).toBe(42);
+    expect(storedNumber(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY);
+    expect(roundDeep({ a: [1 / 3, null, "x"], b: { c: 2 / 3 }, d: true })).toEqual({ a: [0.333333333333, null, "x"], b: { c: 0.666666666667 }, d: true });
+    const m = { rate: 1 / 7, sigma: null, daysLeft: 1e-20 / 3, inputs: { z: 1.65 } };
+    expect(storedMetric(m)).toEqual({ rate: 0.142857142857, sigma: null, daysLeft: 3.33333333333e-21, inputs: { z: 1.65 } });
+    expect(m.rate).toBe(1 / 7); // the input is untouched
   });
 
   it("anything else is stored as is", () => {

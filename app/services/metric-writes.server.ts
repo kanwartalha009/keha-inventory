@@ -4,7 +4,8 @@
  * the stored content hashes are read, and only the rows whose content changed (or are new) are
  * replaced — one transaction of deleteMany + createMany for those. Unchanged rows are not touched
  * (no dead tuples, no index churn, no WAL); their computedAt stays at the run that last changed
- * them. The stored inputs are slimmed first (lib/metric-store-shared): only what readers use.
+ * them. The stored inputs are slimmed first (lib/metric-store-shared): only what readers use, and
+ * floats are kept at 12 significant digits (storedMetric) so float noise never counts as a change.
  *
  * A run is identified by (shop, scope, computedAt = the run's start). Every variant written or
  * confirmed by the run is remembered; sweepVariantMetrics(shop, scope, startedAt) — called where
@@ -15,7 +16,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import { metricContentText, slimInputs } from "../lib/metric-store-shared";
+import { metricContentText, storedMetric } from "../lib/metric-store-shared";
 import { slices } from "../lib/concurrency-shared";
 
 export const METRIC_WRITE_BATCH = 1000;
@@ -56,8 +57,10 @@ export async function writeVariantMetrics(shop: string, scope: string, rows: rea
   let changedTotal = 0;
   for (let i = 0; i < rows.length; i += METRIC_WRITE_BATCH) {
     const batch = rows.slice(i, i + METRIC_WRITE_BATCH).map((r) => {
-      const inputs = slimInputs(r.inputs) as Prisma.InputJsonValue;
-      return { ...r, inputs, contentHash: hashOf(metricContentText({ ...r, inputs })) };
+      // What is stored (slim inputs, floats at STORED_DIGITS) is what is hashed (perf 2026-10-18).
+      const s = storedMetric(r);
+      const inputs = s.inputs as Prisma.InputJsonValue;
+      return { ...s, inputs, contentHash: hashOf(metricContentText({ ...s, inputs })) };
     });
     const ids = batch.map((r) => r.variantId);
     const stored = await prisma.variantMetric.findMany({ where: { shop, scope, variantId: { in: ids } }, select: { variantId: true, contentHash: true } });

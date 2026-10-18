@@ -7,7 +7,15 @@
  * calendar (or are bulky) are not stored (STORED_INPUTS_OMIT); everything a screen, the order
  * plan, alerts, the planner, transfers or accuracy reads is kept as is. `today` is kept only with
  * a seasonal curve (the forward plan offsets the curve by the days since it; without a curve it
- * reads nothing from it). Numbers are never rounded: what is stored reads back the same.
+ * reads nothing from it).
+ *
+ * Perf 2026-10-18 (hash-skip audit: 83–100 % of rows changed day over day): floats are stored at
+ * STORED_DIGITS significant digits (`storedNumber`), so the last-bit noise of sums taken in another
+ * order or over a window that moved by a day no longer changes the hash. 12 digits is far below
+ * anything a reader shows or rounds (the order plan recomputes quantities from the stored rate,
+ * safety and curve: a relative change of 1e-12 never moves a whole unit in practice). inputs.error
+ * keeps what the product page and Why this quantity show (ERROR_KEEP): the backtest internals
+ * (model, prior, windows, bias) moved every night and no reader uses them.
  *
  * Readers checked 2026-10-18 (grep of every `inputs` access outside the engine): products-shared
  * readForecastInputs + the product page, engine/forward-plan-shared forwardInputFromMetric,
@@ -45,6 +53,32 @@ export const SEASON_KEEP = [
   "label",
 ] as const;
 
+/**
+ * inputs.error keys kept: what the product page (fill target, ± error over P days, ratio) and Why
+ * this quantity (forward-plan-shared safetyBasisWhy) read, plus the ratio used and k behind safety.
+ */
+export const ERROR_KEEP = ["horizonDays", "sigma", "fill", "ratio", "samples", "used", "k"] as const;
+
+/** Significant digits a stored float keeps (see the module header). */
+export const STORED_DIGITS = 12;
+
+/** A float at STORED_DIGITS significant digits; integers and non-finite values unchanged. */
+export function storedNumber(n: number): number {
+  return Number.isFinite(n) && !Number.isInteger(n) ? Number(n.toPrecision(STORED_DIGITS)) : n;
+}
+
+/** Every number inside `v` (objects, arrays) at storedNumber precision; a new value, `v` untouched. */
+export function roundDeep(v: unknown): unknown {
+  if (typeof v === "number") return storedNumber(v);
+  if (Array.isArray(v)) return v.map(roundDeep);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) out[k] = roundDeep(x);
+    return out;
+  }
+  return v;
+}
+
 /** inputs.windows[] keys kept (the product page's rate table, accuracy's naive rate). */
 export const WINDOW_KEEP = ["days", "weight", "inStockDays", "rate", "used"] as const;
 
@@ -70,6 +104,12 @@ export function slimInputs(inputs: unknown): unknown {
       out[k] = s;
       continue;
     }
+    if (k === "error" && isObj(v)) {
+      const e: Record<string, unknown> = {};
+      for (const key of ERROR_KEEP) if (key in v) e[key] = v[key];
+      out[k] = e;
+      continue;
+    }
     if (k === "windows" && Array.isArray(v)) {
       out[k] = v.map((w) => {
         if (!isObj(w)) return w;
@@ -82,6 +122,18 @@ export function slimInputs(inputs: unknown): unknown {
     out[k] = v;
   }
   return out;
+}
+
+/** The inputs exactly as stored: slim (slimInputs), floats at STORED_DIGITS. */
+export function storedInputs(inputs: unknown): unknown {
+  return roundDeep(slimInputs(inputs));
+}
+
+const roundCol = (n: number | null): number | null => (n === null ? null : storedNumber(n));
+
+/** A metric row's stored columns: rate, σ and days left at STORED_DIGITS, inputs as storedInputs. */
+export function storedMetric<M extends { rate: number | null; sigma: number | null; daysLeft: number | null; inputs: unknown }>(m: M): M {
+  return { ...m, rate: roundCol(m.rate), sigma: roundCol(m.sigma), daysLeft: roundCol(m.daysLeft), inputs: storedInputs(m.inputs) };
 }
 
 /** JSON with object keys sorted (the hash must not depend on key order). */

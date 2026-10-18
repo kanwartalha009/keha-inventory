@@ -22,7 +22,7 @@ vi.mock("../app/services/entitlements.server", () => ({ planFor: async () => "pr
 import * as dbModule from "../app/db.server";
 import { useFakeFacts } from "./helpers/fake-facts";
 import { computeShop } from "../app/services/compute.server";
-import { slimInputs } from "../app/lib/metric-store-shared";
+import { storedMetric } from "../app/lib/metric-store-shared";
 import { FX_NOW, FX_SHOP, computeOutput, seedScaleFixture, type FixtureOptions } from "./fixtures/scale-compute-fixture";
 
 const db = (dbModule as unknown as { __fake: FakeDb }).__fake;
@@ -33,14 +33,15 @@ const SCENARIOS: Record<string, FixtureOptions> = { pool: {}, storeLeftOut: { ex
 type Golden = Record<string, unknown>;
 /**
  * DB scale "before 1,000 stores": VariantMetric stores slim inputs (lib/metric-store-shared — the
- * fields no reader uses that move with the calendar are not stored). The recorded rows are the
- * full ones; every number and every field that IS stored must still equal them.
+ * fields no reader uses that move with the calendar are not stored) and, since perf 2026-10-18,
+ * floats at 12 significant digits (storedMetric). The recorded rows are the full ones; every
+ * number and every field that IS stored must still equal them, as stored.
  */
 const slimmed = (g: Golden): Golden =>
   Object.fromEntries(
     Object.entries(g).map(([name, v]) => {
       const run = v as { result: unknown; output: { metrics: Record<string, unknown>[] } & Record<string, unknown> };
-      return [name, { ...run, output: { ...run.output, metrics: run.output.metrics.map((m) => ({ ...m, inputs: slimInputs(m.inputs) })) } }];
+      return [name, { ...run, output: { ...run.output, metrics: run.output.metrics.map((m) => storedMetric(m as { rate: number | null; sigma: number | null; daysLeft: number | null; inputs: unknown })) } }];
     }),
   );
 const golden: Golden = process.env.KEHA_WRITE_GOLDEN === "1" ? {} : slimmed(JSON.parse(readFileSync(GOLDEN, "utf8")) as Golden);
