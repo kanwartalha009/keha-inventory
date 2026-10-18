@@ -48,6 +48,8 @@ import {
 import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
+import { BriefingCard } from "../components/briefing";
+import { buildBriefing, type Briefing } from "../lib/briefing-shared";
 import { SampleOfferCard } from "../components/sample";
 import { offerSample } from "../lib/sample-mode-shared";
 import type { ActionListView } from "../lib/action-list-shared";
@@ -87,6 +89,8 @@ export type HomeLoaderData = HomeData & {
   reviewAsk?: ReviewMoment | null;
   /** The store isn't ready yet: offer "Explore Keha with sample data" (components/sample). */
   sampleOffer?: boolean;
+  /** "This week in 30 seconds" (lib/briefing-shared); null until the plan is ready. */
+  briefing?: Briefing | null;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
@@ -108,7 +112,10 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
       ? { kind: "full", plan: forward }
       : { kind: "preview", rows: previewRows(forward), teaser: lockTeaser(forward), currency: forward.currency, cantPlan: forward.cantPlan }
     : null;
-  return { ...home, actions, orderPlan, renderedAt: now.toISOString(), reviewAsk, sampleOffer: !sample && offerSample(home.state) };
+  const briefing = forward
+    ? buildBriefing({ currency: forward.currency, week: thisWeek(forward), counts: actions?.counts ?? null, cashStuck: home.money?.values.cashStuck ?? null })
+    : null;
+  return { ...home, actions, orderPlan, briefing, renderedAt: now.toISOString(), reviewAsk, sampleOffer: !sample && offerSample(home.state) };
 };
 
 /** POST { intent: "reviewAsked", code }: remember Shopify's answer so we never ask twice. */
@@ -166,6 +173,7 @@ export default function Home() {
 
       {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
 
+      {ready && data.briefing && <BriefingCard briefing={data.briefing} />}
       <OrderThisWeek data={data} />
 
       {ready && <MoneyAtStake data={data} />}

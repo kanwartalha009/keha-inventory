@@ -40,6 +40,7 @@ import { BUILDER_TR } from "./i18n-builder";
 import { SETUP_TR } from "./i18n-setup";
 import { CASH_TR } from "./i18n-cash";
 import { SAMPLE_TR } from "./i18n-sample";
+import { BRIEFING_TR } from "./i18n-briefing";
 import { QUALITY_TR } from "./i18n-quality";
 import { ENGINE_TR } from "./i18n-engine";
 import { COPY_TR } from "./i18n-copy";
@@ -113,6 +114,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   merchant: MERCHANT_TR,
   accuracy: ACCURACY_TR,
   notify: NOTIFY_TR,
+  briefing: BRIEFING_TR,
 };
 
 for (const area of Object.values(AREAS)) {

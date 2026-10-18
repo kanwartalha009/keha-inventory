@@ -84,7 +84,8 @@ const { lockedPageFeature } = await import("../app/lib/plan-shared");
 const { POLARIS_URL } = await import("../app/lib/polaris-shared");
 const { LockedPage } = await import("../app/components/plan");
 const { buildHome } = await import("../app/lib/dashboard-shared");
-const { lockTeaser, previewRows } = await import("../app/lib/order-plan-shared");
+const { lockTeaser, previewRows, thisWeek } = await import("../app/lib/order-plan-shared");
+const { buildBriefing } = await import("../app/lib/briefing-shared");
 const { EMPTY_ORDER_PLAN } = await import("../app/lib/order-plan-shared");
 const { buildOrderNow } = await import("../app/lib/reorder-shared");
 const { buildTransferPlan } = await import("../app/lib/transfers-shared");
@@ -133,10 +134,12 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
   if (opts.syncing) return buildHome({ shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 }, plan, NOW);
   const home = buildHome(homeRaw(), plan, NOW);
   const fx = orderPlanFixture();
+  const actions = actionList(plan, plan === "free" ? { fillers: 12 } : { preorderInstalled: plan === "pro" });
   return {
     ...home,
     renderedAt: NOW.toISOString(),
-    actions: actionList(plan, plan === "free" ? { fillers: 12 } : { preorderInstalled: plan === "pro" }),
+    briefing: buildBriefing({ currency: fx.currency, week: thisWeek(fx), counts: actions.counts, cashStuck: home.money?.values.cashStuck ?? null }),
+    actions,
     // Free: the teaching lock with the store's own totals, as the loader sends it (limit 2 so the fixture has "more").
     orderPlan: plan === "free" ? { kind: "preview", rows: previewRows(fx), teaser: lockTeaser(fx, 2), currency: fx.currency } : { kind: "full", plan: fx },
   };

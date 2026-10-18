@@ -219,7 +219,7 @@ export const PO_TR: Record<string, Tr> = {
   "Custom…": { es: "Personalizado…", fr: "Personnalisé…", de: "Eigene Angabe…", it: "Personalizzato…", pt: "Personalizado…", nl: "Aangepast…", pl: "Własna wartość…" },
   "Days": { es: "Días", fr: "Jours", de: "Tage", it: "Giorni", pt: "Dias", nl: "Dagen", pl: "Dni" },
   "Between {min} and {max} days.": { es: "Entre {min} y {max} días.", fr: "Entre {min} et {max} jours.", de: "Zwischen {min} und {max} Tagen.", it: "Tra {min} e {max} giorni.", pt: "Entre {min} e {max} dias.", nl: "Tussen {min} en {max} dagen.", pl: "Od {min} do {max} dni." },
-  "You chose to order enough for {days} days after it arrives.": { es: "Elegiste pedir para {days} días tras la llegada.", fr: "Vous avez choisi de commander pour {days} jours après l'arrivée.", de: "Sie haben gewählt, für {days} Tage nach der Ankunft zu bestellen.", it: "Hai scelto di ordinare per {days} giorni dopo l'arrivo.", pt: "Escolheu encomendar para {days} dias após a chegada.", nl: "Je koos ervoor te bestellen voor {days} dagen na aankomst.", pl: "Wybrano zamówienie na {days} dni po dostawie." },
+  "You chose to order enough for {days} days after it arrives.": { es: "Elegiste pedir para {days} días tras la llegada.", fr: "Vous avez choisi de commander pour {days} jours après l'arrivée.", de: "Du hast gewählt, für {days} Tage nach der Ankunft zu bestellen.", it: "Hai scelto di ordinare per {days} giorni dopo l'arrivo.", pt: "Escolheu encomendar para {days} dias após a chegada.", nl: "Je koos ervoor te bestellen voor {days} dagen na aankomst.", pl: "Wybrano zamówienie na {days} dni po dostawie." },
   "{days} (chosen for this order)": { es: "{days} (elegido para este pedido)", fr: "{days} (choisi pour cette commande)", de: "{days} (für diese Bestellung gewählt)", it: "{days} (scelto per questo ordine)", pt: "{days} (escolhido para esta encomenda)", nl: "{days} (gekozen voor deze bestelling)", pl: "{days} (wybrane dla tego zamówienia)" },
   "Ordered for": { es: "Pedido para", fr: "Commandé pour", de: "Bestellt für", it: "Ordinato per", pt: "Encomendado para", nl: "Besteld voor", pl: "Zamówiono na" },
   "{days} of stock after it arrives": { es: "{days} de stock tras la llegada", fr: "{days} de stock après l'arrivée", de: "{days} Bestand nach der Ankunft", it: "{days} di scorta dopo l'arrivo", pt: "{days} de stock após a chegada", nl: "{days} voorraad na aankomst", pl: "{days} zapasu po dostawie" },
@@ -229,7 +229,7 @@ export const PO_TR: Record<string, Tr> = {
   "The order closes with what arrived. The 1 unit still to come no longer counts as on order. You can reopen it within {days} days.": {
     es: "El pedido se cierra con lo que llegó. La 1 unidad pendiente deja de contar como pedida. Puedes reabrirlo en un plazo de {days} días.",
     fr: "La commande est clôturée avec ce qui est arrivé. L'unité encore attendue ne compte plus comme commandée. Vous pouvez la rouvrir pendant {days} jours.",
-    de: "Die Bestellung wird mit dem Gelieferten abgeschlossen. Die 1 noch offene Einheit zählt nicht mehr als bestellt. Sie können sie innerhalb von {days} Tagen wieder öffnen.",
+    de: "Die Bestellung wird mit dem Gelieferten abgeschlossen. Die 1 noch offene Einheit zählt nicht mehr als bestellt. Du kannst sie innerhalb von {days} Tagen wieder öffnen.",
     it: "L'ordine si chiude con quanto arrivato. L'unità ancora in arrivo non conta più come ordinata. Puoi riaprirlo entro {days} giorni.",
     pt: "A encomenda fecha com o que chegou. A unidade ainda por chegar deixa de contar como encomendada. Pode reabri-la no prazo de {days} dias.",
     nl: "De bestelling wordt afgesloten met wat is aangekomen. De 1 eenheid die nog moest komen telt niet meer als besteld. Je kunt haar binnen {days} dagen heropenen.",
@@ -238,7 +238,7 @@ export const PO_TR: Record<string, Tr> = {
   "The order closes with what arrived. The {n} units still to come no longer count as on order. You can reopen it within {days} days.": {
     es: "El pedido se cierra con lo que llegó. Las {n} unidades pendientes dejan de contar como pedidas. Puedes reabrirlo en un plazo de {days} días.",
     fr: "La commande est clôturée avec ce qui est arrivé. Les {n} unités encore attendues ne comptent plus comme commandées. Vous pouvez la rouvrir pendant {days} jours.",
-    de: "Die Bestellung wird mit dem Gelieferten abgeschlossen. Die {n} noch offenen Einheiten zählen nicht mehr als bestellt. Sie können sie innerhalb von {days} Tagen wieder öffnen.",
+    de: "Die Bestellung wird mit dem Gelieferten abgeschlossen. Die {n} noch offenen Einheiten zählen nicht mehr als bestellt. Du kannst sie innerhalb von {days} Tagen wieder öffnen.",
     it: "L'ordine si chiude con quanto arrivato. Le {n} unità ancora in arrivo non contano più come ordinate. Puoi riaprirlo entro {days} giorni.",
     pt: "A encomenda fecha com o que chegou. As {n} unidades ainda por chegar deixam de contar como encomendadas. Pode reabri-la no prazo de {days} dias.",
     nl: "De bestelling wordt afgesloten met wat is aangekomen. De {n} eenheden die nog moesten komen tellen niet meer als besteld. Je kunt haar binnen {days} dagen heropenen.",
@@ -247,7 +247,7 @@ export const PO_TR: Record<string, Tr> = {
   "Nothing has arrived yet. The order closes and its units no longer count as on order. Keha doesn't tell the supplier, so let them know yourself. You can reopen it within {days} days.": {
     es: "Aún no ha llegado nada. El pedido se cierra y sus unidades dejan de contar como pedidas. Keha no avisa al proveedor, así que avísale tú. Puedes reabrirlo en un plazo de {days} días.",
     fr: "Rien n'est encore arrivé. La commande est clôturée et ses unités ne comptent plus comme commandées. Keha ne prévient pas le fournisseur : prévenez-le vous-même. Vous pouvez la rouvrir pendant {days} jours.",
-    de: "Es ist noch nichts angekommen. Die Bestellung wird abgeschlossen und ihre Einheiten zählen nicht mehr als bestellt. Keha informiert den Lieferanten nicht, sagen Sie ihm selbst Bescheid. Sie können sie innerhalb von {days} Tagen wieder öffnen.",
+    de: "Es ist noch nichts angekommen. Die Bestellung wird abgeschlossen und ihre Einheiten zählen nicht mehr als bestellt. Keha informiert den Lieferanten nicht, sag ihm selbst Bescheid. Du kannst sie innerhalb von {days} Tagen wieder öffnen.",
     it: "Non è ancora arrivato nulla. L'ordine si chiude e le sue unità non contano più come ordinate. Keha non avvisa il fornitore, quindi avvisalo tu. Puoi riaprirlo entro {days} giorni.",
     pt: "Ainda não chegou nada. A encomenda fecha e as suas unidades deixam de contar como encomendadas. A Keha não avisa o fornecedor, por isso avise-o você. Pode reabri-la no prazo de {days} dias.",
     nl: "Er is nog niets aangekomen. De bestelling wordt afgesloten en haar eenheden tellen niet meer als besteld. Keha laat het de leverancier niet weten, dus doe dat zelf. Je kunt haar binnen {days} dagen heropenen.",

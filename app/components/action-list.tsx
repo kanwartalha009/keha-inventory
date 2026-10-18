@@ -88,6 +88,10 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
   const urlTab = params.get("tab");
   useEffect(() => {
     setTab(parseTab(urlTab));
+    // A Dashboard tile (lib/briefing-shared actionTabHref) opens a tab: bring the list into view.
+    if (urlTab && typeof window !== "undefined" && window.location.hash === "#actions") {
+      document.getElementById("actions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }, [urlTab]);
 
   const rows = useMemo(() => rowsForTab(list.rows, tab), [list.rows, tab]);
@@ -102,7 +106,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
   const empty = list.rows.length === 0 && list.fixCount === 0 && list.hiddenCount === 0;
 
   return (
-    <s-section heading={t("This week's actions")}>
+    <s-section id="actions" heading={t("This week's actions")}>
       <s-stack direction="block" gap="base">
         {notice && notice.op !== "clear" && (
           <DismissibleBanner tone="info" onDismiss={() => setNotice(null)}>
