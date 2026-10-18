@@ -10,7 +10,7 @@
  *    "Why" dialog. A key with no entry is never shown (no raw code names on screen);
  *    tests/action-facts.test.ts fails when the engine writes a key that has no entry.
  */
-import { fill } from "./i18n";
+import { fill, plural } from "./i18n";
 import type { ReasonParams } from "./actions-shared";
 
 type T = (key: string) => string;
@@ -199,7 +199,7 @@ export function factValueText(key: string, value: FactValue, ctx: { t: T; locale
     case "number":
       return num(value, locale);
     case "days":
-      return fill(t("{n} days"), { n: num(value, locale) });
+      return fill(plural(value, t("1 day"), t("{n} days")), { n: num(value, locale) });
     case "money":
       return money(value, ctx.currency, locale);
     case "percent":

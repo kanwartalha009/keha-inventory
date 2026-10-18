@@ -28,7 +28,7 @@ import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { AboveLastYearBadge, CantPlan, CashBreakdown, CashStrip, DueLabel, StaleDrafts, TabLock, WhyPopover, useNotReadyText } from "../components/order-plan";
 import { DownloadButton } from "../components/download-button";
 import { useLinkProps } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashTotals, dueDay, dueNote, type PlanEvent, type PlanSupplierWeek, type PlanWeek } from "../lib/engine/forward-plan-shared";
@@ -119,7 +119,7 @@ function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanRe
               notReadyLine(notReady)
             : totals.lines === 0
             ? t("No orders needed in the next 13 weeks.")
-            : fill(t("{orders} orders in the next 13 weeks · {units} units · {cash}"), {
+            : fill(plural(weeks.reduce((a, w) => a + w.suppliers.length, 0), t("1 order in the next 13 weeks · {units} units · {cash}"), t("{orders} orders in the next 13 weeks · {units} units · {cash}")), {
                 // One order per supplier and week.
                 orders: formatCount(weeks.reduce((a, w) => a + w.suppliers.length, 0), locale),
                 units: formatCount(totals.units, locale),
@@ -130,7 +130,7 @@ function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanRe
         <s-stack direction="block" gap="base">
           {totals.missingCost > 0 && (
             <s-text color="subdued">
-              {fill(t("{n} lines without a cost price are not in the cash totals."), { n: formatCount(totals.missingCost, locale) })}
+              {fill(plural(totals.missingCost, t("1 line without a cost price is not in the cash totals."), t("{n} lines without a cost price are not in the cash totals.")), { n: formatCount(totals.missingCost, locale) })}
             </s-text>
           )}
           {(totals.lines > 0 || cashOut.committed > 0) && (
@@ -197,7 +197,7 @@ function WeekRow({ week, paid, plan, initiallyOpen }: { week: PlanWeek; paid: Pa
           {week.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
         </span>
         <span className="keha-orderplan-week__n">{fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) })}</span>
-        <span className="keha-orderplan-week__n">{fill(t("{n} units"), { n: formatCount(week.units, locale) })}</span>
+        <span className="keha-orderplan-week__n">{fill(plural(week.units, t("1 unit"), t("{n} units")), { n: formatCount(week.units, locale) })}</span>
         <span className="keha-orderplan-week__cash" title={t("Paid this week")}>{money(cashOut)}</span>
         <span className="keha-orderplan-week__by">{`${t("Order by")} ${formatDayRange(week.orderByFrom, week.orderByTo, locale)}`}</span>
         <s-icon type={open ? "chevron-up" : "chevron-down"} />
@@ -257,11 +257,11 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
             {info?.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             <span className="keha-num">
               <s-text color="subdued">
-                {[fill(t("{n} units"), { n: formatCount(s.units, locale) }), money(s.cash), supplierCash !== null ? formatAmount(supplierCash, info!.currency!, locale) : null].filter(Boolean).join(" · ")}
+                {[fill(plural(s.units, t("1 unit"), t("{n} units")), { n: formatCount(s.units, locale) }), money(s.cash), supplierCash !== null ? formatAmount(supplierCash, info!.currency!, locale) : null].filter(Boolean).join(" · ")}
               </s-text>
             </span>
             {s.missingCost > 0 && (
-              <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(s.missingCost, locale) })}</s-text>
+              <s-text color="subdued">{fill(plural(s.missingCost, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(s.missingCost, locale) })}</s-text>
             )}
             {(info?.terms || info?.landedPct) && <s-text color="subdued">{[termsText(info.terms, t), landedText(info.landedPct, t, locale)].filter(Boolean).join(" ")}</s-text>}
           </s-stack>

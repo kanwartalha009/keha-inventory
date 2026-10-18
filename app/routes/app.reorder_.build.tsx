@@ -35,7 +35,7 @@ import { DueLabel, WhyPopover } from "../components/order-plan";
 import { planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, isChecked, useLinkProps, val } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
 import { daysBetween } from "../lib/engine/dates-shared";
 import { variantName } from "../lib/products-shared";
@@ -239,13 +239,13 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
   };
   const remove = (id: string) => setAdded((a) => a.filter((x) => x.variantId !== id));
 
-  const leadLabel = fill(view.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(view.leadTimeDays, locale) });
+  const leadLabel = fill(view.leadTimeSource === "supplier" ? plural(view.leadTimeDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(view.leadTimeDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(view.leadTimeDays, locale) });
   // Supplier module: how the supplier really delivers (received orders), its payment terms, freight & duty.
   const reliability = reliabilityText(view.leadStats, t, (n) => formatCount(n, locale));
   const late = !!view.leadStats && view.leadStats.samples >= MIN_SAMPLES && Math.round(view.leadStats.delayAvg) >= 1;
   const pay = builderPayments(view, totals.cost, today);
   const payText = paymentPhrases(pay.payments, view.terms, t, { money: (n) => formatPrice(n, view.storeCurrency, locale), day: (d) => formatDay(d, locale) }).join(" · ");
-  const cycleLabel = fill(view.cycleSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(view.cycleDays, locale) });
+  const cycleLabel = fill(view.cycleSource === "supplier" ? plural(view.cycleDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(view.cycleDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(view.cycleDays, locale) });
   const windowDays = daysBetween(today, view.cycleTo) + 1;
   const sections: { id: BuilderSection; title: string; sub: string }[] = [
     {
@@ -347,7 +347,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
                 .filter(Boolean)
                 .join(" · ")}
             </s-text>
-            {totals.missingCost > 0 && <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(totals.missingCost, locale) })}</s-text>}
+            {totals.missingCost > 0 && <s-text color="subdued">{fill(plural(totals.missingCost, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(totals.missingCost, locale) })}</s-text>}
             {payText && (view.terms || pay.landed) && <s-text color="subdued">{fill(t("If you order today: {payments}."), { payments: payText })}</s-text>}
           </s-stack>
           <MinimumBox view={view} title={title} status={status} minimumsText={minimumsText as string[]} empty={totals.units === 0} onTopUp={topUp} />
@@ -460,7 +460,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
         title={fill(t("Create a draft order for {supplier}?"), { supplier: title })}
         message={[
           fill(t("{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as sent."), { n: formatCount(totals.units, locale), cost: costText }),
-          totals.missingCost > 0 ? fill(t("{n} lines without a cost price are not in this total."), { n: formatCount(totals.missingCost, locale) }) : null,
+          totals.missingCost > 0 ? fill(plural(totals.missingCost, t("1 line without a cost price is not in this total."), t("{n} lines without a cost price are not in this total.")), { n: formatCount(totals.missingCost, locale) }) : null,
         ]
           .filter(Boolean)
           .join(" ")}
@@ -544,7 +544,7 @@ function MinimumBox({
         )}
         {short && status.styles.length > 0 && (
           <s-text>
-            {fill(t("{n} styles are below the minimum of {min} units per style: add {units} units."), {
+            {fill(plural(status.styles.length, t("1 style is below the minimum of {min} units per style: add {units} units."), t("{n} styles are below the minimum of {min} units per style: add {units} units.")), {
               n: formatCount(status.styles.length, locale),
               min: formatCount(view.minOrder, locale),
               units: formatCount(missingStyleUnits, locale),

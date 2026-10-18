@@ -45,14 +45,14 @@ import { loadOrderPlan } from "../models/order-plan.server";
 import { readiness } from "../models/dashboard.server";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { AboveLastYearBadge, CantPlan, DueLabel, NoReorderConfirm, PlanNotReadyNote, PreviewLock, PreviewTable, StaleDrafts, WhyPopover, useNotReadyText } from "../components/order-plan";
-import { lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type PreviewRow } from "../lib/order-plan-shared";
+import { dueText, lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type PreviewRow } from "../lib/order-plan-shared";
 import { LocationSwitcher, switcherMode } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
 import { loadTransfers } from "../models/transfers.server";
 import { AppPage, DaysLeft, EmptyState, FormCard, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import { flag, useLinkProps, val } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount, formatDay, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { quantitiesKey } from "../lib/quantities-key-shared";
@@ -388,9 +388,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
   const totals = orderTotals(group, lines, q);
   const warn = minimumWarnings({ ...group, lines }, q);
   const title = groupTitle(group, t);
-  const leadLabel = fill(group.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), {
-    n: formatCount(group.leadTimeDays, locale),
-  });
+  const leadLabel = fill(group.leadTimeSource === "supplier" ? plural(group.leadTimeDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(group.leadTimeDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(group.leadTimeDays, locale) });
   const failed = fetcher.data && !fetcher.data.ok && "error" in fetcher.data ? fetcher.data.error : null;
   const costText = money(totals.cost, totals.supplierCost, group, locale);
   const runs = productRuns(lines);
@@ -403,7 +401,11 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
   return (
     <FormCard
       title={title}
-      sub={`${t("Lead time")}: ${leadLabel} · ${t("Order by")}: ${formatDay(group.orderBy, locale)}`}
+      sub={`${t("Lead time")}: ${leadLabel} · ${
+        // Merchant audit 2026-10-18: an overdue supplier said "Order by: —"; the shared label rule
+        // (dueText) says "Overdue since 12 Oct" or "Overdue · sold out since …" instead.
+        group.overdue ? dueText(group.orderBy, today, t, locale, true, group.lines.find((l) => l.overdue && l.dueNote)?.dueNote ?? null) : `${t("Order by")}: ${formatDay(group.orderBy, locale)}`
+      }`}
       action={
         group.kind === "vendor" || group.selected || group.overdue ? (
           <span className="keha-inline">
@@ -492,7 +494,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
                   <s-table-cell />
                   <s-table-cell />
                   <s-table-cell>
-                    <s-text fontWeight="medium">{fill(t("{n} units"), { n: formatCount(sub.units, locale) })}</s-text>
+                    <s-text fontWeight="medium">{fill(plural(sub.units, t("1 unit"), t("{n} units")), { n: formatCount(sub.units, locale) })}</s-text>
                   </s-table-cell>
                   <s-table-cell />
                   <s-table-cell>
@@ -517,7 +519,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
         )}
         {warn.belowStyle.length > 0 && (
           <s-banner tone="warning">
-            {fill(t("{n} styles are below {supplier}'s minimum of {min} units per style."), {
+            {fill(plural(warn.belowStyle.length, t("1 style is below {supplier}'s minimum of {min} units per style."), t("{n} styles are below {supplier}'s minimum of {min} units per style.")), {
               n: formatCount(warn.belowStyle.length, locale),
               supplier: title,
               min: formatCount(group.minOrder, locale),
@@ -532,7 +534,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
               {`${fill(t("Units: {n}"), { n: formatCount(totals.units, locale) })} · ${fill(t("Cost: {amount}"), { amount: costText })}`}
             </s-text>
             {totals.missingCost > 0 && (
-              <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(totals.missingCost, locale) })}</s-text>
+              <s-text color="subdued">{fill(plural(totals.missingCost, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(totals.missingCost, locale) })}</s-text>
             )}
           </s-stack>
           <span className="keha-inline">
@@ -557,7 +559,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             n: formatCount(totals.units, locale),
             cost: costText,
           }),
-          totals.missingCost > 0 ? fill(t("{n} lines without a cost price are not in this total."), { n: formatCount(totals.missingCost, locale) }) : null,
+          totals.missingCost > 0 ? fill(plural(totals.missingCost, t("1 line without a cost price is not in this total."), t("{n} lines without a cost price are not in this total.")), { n: formatCount(totals.missingCost, locale) }) : null,
           location ? fill(t("The order notes that it is for {location}."), { location: location.name }) : null,
         ]
           .filter(Boolean)

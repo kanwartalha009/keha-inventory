@@ -64,7 +64,29 @@ export const ACTION_REASONS: Record<string, string> = {
   clear_dead: "No sale for {days} days; {units} units are sitting in stock.",
   clear_too_much: "{days} days of stock left at the current pace, far more than you need.",
   clear_no_sales: "No recent sales, and the stock isn't moving.",
+  // Singular / today forms (merchant audit 2026-10-18: "Runs out in 1 days"); picked by reasonTemplate.
+  "reorder_low.today": "Runs out today; a new order takes {lead} days to arrive. Order by {date}.",
+  "reorder_low.one": "Runs out in 1 day; a new order takes {lead} days to arrive. Order by {date}.",
+  "reorder_now.today": "Runs out today; a new order takes {lead} days to arrive. Order now.",
+  "reorder_now.one": "Runs out in 1 day; a new order takes {lead} days to arrive. Order now.",
+  "bridge_gap.one": "Runs out 1 day before new stock arrives on {date}.",
+  "bridge_out.one": "Sold out for about 1 more day, until new stock arrives on {date}.",
 };
+
+/** Which param a reason's singular form depends on. */
+const COUNT_PARAM: Record<string, string> = { reorder_low: "days", reorder_now: "days", bridge_gap: "gap", bridge_out: "gap" };
+
+/**
+ * The English template for a reason: its "today" form for 0 days, its singular form for 1 (each
+ * a key of ACTION_REASONS), else the plain one; an unknown key is returned as is.
+ */
+export function reasonTemplate(key: string, params: ReasonParams | null | undefined): string {
+  const p = COUNT_PARAM[key];
+  const n = p && params ? Number(params[p]) : NaN;
+  if (n === 0 && ACTION_REASONS[`${key}.today`]) return ACTION_REASONS[`${key}.today`]!;
+  if (n === 1 && ACTION_REASONS[`${key}.one`]) return ACTION_REASONS[`${key}.one`]!;
+  return ACTION_REASONS[key] ?? key;
+}
 
 export type ReasonParams = Record<string, string | number>;
 

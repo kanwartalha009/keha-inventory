@@ -48,7 +48,7 @@ import { SampleOffNote, useSample } from "../components/sample";
 import ConfirmModal from "../components/ConfirmModal";
 import { DownloadButton } from "../components/download-button";
 import { Modal, flag, isChecked, val } from "../components/wc";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount, formatDay, todayIn } from "../lib/dashboard-shared";
 import { SUPPLIER_EMAIL_COOLDOWN_MS, SUPPLIER_EMAIL_DAILY_CAP, confirmUrl } from "../lib/po-email-shared";
 import { DRAFT_EXPIRY_DAYS, poCountsAsOrdered } from "../lib/supplier-shared";
@@ -467,7 +467,7 @@ function OrderView({ data }: { data: OrderPageView }) {
         </s-banner>
       )}
       {short > 0 && (
-        <s-banner tone="info">{fill(t("Closed with {n} units not delivered."), { n: formatCount(short, locale) })}</s-banner>
+        <s-banner tone="info">{fill(plural(short, t("Closed with 1 unit not delivered."), t("Closed with {n} units not delivered.")), { n: formatCount(short, locale) })}</s-banner>
       )}
       {keha && order.status === "cancelled" && reopenTo && (
         <s-banner tone="info">{fill(t("You can re-open this order until {until}."), { until: reopenUntil(order.cancelledAt) })}</s-banner>
@@ -484,8 +484,8 @@ function OrderView({ data }: { data: OrderPageView }) {
         <s-banner tone="warning">
           {fill(
             mins.items.perProduct
-              ? t("{count} products below the supplier's minimum of {min} units per product.")
-              : t("{count} lines below the supplier's minimum of {min} units per item."),
+              ? plural(mins.items.count, t("1 product below the supplier's minimum of {min} units per product."), t("{count} products below the supplier's minimum of {min} units per product."))
+              : plural(mins.items.count, t("1 line below the supplier's minimum of {min} units per item."), t("{count} lines below the supplier's minimum of {min} units per item.")),
             { count: formatCount(mins.items.count, locale), min: formatCount(mins.items.min, locale) },
           )}
         </s-banner>

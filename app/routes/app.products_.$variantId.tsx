@@ -33,7 +33,8 @@ import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { flag, val } from "../components/wc";
 import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
+import { inStockTargetPct } from "../lib/service-level-shared";
 import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
 import { shortDay } from "../lib/order-plan-shared";
 import {
@@ -398,13 +399,26 @@ function ForecastInputs({
                   ? locked
                   : inputs.leadTimeDays === null
                     ? "—"
-                    : fill(inputs.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), {
-                        n: num(inputs.leadTimeDays, 0),
-                      })
+                    : fill(inputs.leadTimeSource === "supplier" ? plural(inputs.leadTimeDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(inputs.leadTimeDays, t("1 day (store default)"), t("{n} days (store default)")), { n: num(inputs.leadTimeDays, 0) })
               }
             />
-            <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(t("{n} days"), { n: num(inputs.cycleDays, 0) })} />
-            <KvRow label={t("Safety level")} value={!forecast ? locked : num(inputs.z, 2)} />
+            <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(plural(inputs.cycleDays, t("1 day"), t("{n} days")), { n: num(inputs.cycleDays, 0) })} />
+            <KvRow
+              label={t("Safety level")}
+              value={
+                !forecast ? (
+                  locked
+                ) : inStockTargetPct(inputs.z) === null ? (
+                  "—"
+                ) : (
+                  // Merchant audit 2026-10-18: the in-stock target, not the raw z (1.65).
+                  <span className="keha-inline">
+                    <span>{fill(t("{pct}% in-stock target"), { pct: num(inStockTargetPct(inputs.z), 0) })}</span>
+                    <s-text color="subdued">{t("the chance it doesn't run out before the next delivery")}</s-text>
+                  </span>
+                )
+              }
+            />
             <KvRow
               label={t("Safety stock")}
               value={
@@ -415,11 +429,11 @@ function ForecastInputs({
                 ) : inputs.leadSigma ? (
                   // Supplier module: the measured spread of the supplier's deliveries is in it.
                   <span className="keha-inline">
-                    <span>{fill(t("{n} units"), { n: num(inputs.safety, 0) })}</span>
+                    <span>{fill(plural(Math.round(inputs.safety), t("1 unit"), t("{n} units")), { n: num(inputs.safety, 0) })}</span>
                     <s-text color="subdued">{fill(t("incl. late deliveries (± {n} days)"), { n: num(inputs.leadSigma, 1) })}</s-text>
                   </span>
                 ) : (
-                  fill(t("{n} units"), { n: num(inputs.safety, 0) })
+                  fill(plural(Math.round(inputs.safety), t("1 unit"), t("{n} units")), { n: num(inputs.safety, 0) })
                 )
               }
             />

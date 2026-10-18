@@ -38,7 +38,7 @@ import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
 import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from "../components/wc";
-import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatPercent } from "../lib/dashboard-shared";
 import { landedText, termsText } from "../lib/cash-shared";
 import { MIN_SAMPLES, reliabilityDetail, reliabilityText } from "../lib/lead-time-shared";
@@ -307,14 +307,14 @@ function SupplierRow({
       </s-table-cell>
       <s-table-cell>
         <s-stack direction="block" gap="none">
-          <span className="keha-num">{fill(t("{n} days"), { n: formatCount(s.leadTimeDays, locale) })}</span>
+          <span className="keha-num">{fill(plural(s.leadTimeDays, t("1 day"), t("{n} days")), { n: formatCount(s.leadTimeDays, locale) })}</span>
           {reliability && <s-text tone={late ? "caution" : undefined} color={late ? undefined : "subdued"}>{reliability}</s-text>}
           {reliabilityMore && <s-text color="subdued">{reliabilityMore}</s-text>}
           {s.transitDays ? (
-            <s-text color="subdued">{fill(t("{n} days in transit"), { n: formatCount(s.transitDays, locale) })}</s-text>
+            <s-text color="subdued">{fill(plural(s.transitDays, t("1 day in transit"), t("{n} days in transit")), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}
           {s.orderCycleDays ? (
-            <s-text color="subdued">{fill(t("Order every {n} days"), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
+            <s-text color="subdued">{fill(plural(s.orderCycleDays, t("Order every day"), t("Order every {n} days")), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
           ) : null}
         </s-stack>
       </s-table-cell>

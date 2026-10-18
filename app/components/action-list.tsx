@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SampleOffNote, useSample } from "./sample";
 import { useFetcher, useSearchParams } from "react-router";
 import { fill, useLocale } from "../lib/i18n";
-import { ACTION_REASONS, ACTION_TABS, rowsForTab, type ActionTab } from "../lib/actions-shared";
+import { ACTION_TABS, reasonTemplate, rowsForTab, type ActionTab } from "../lib/actions-shared";
 import {
   TAB_PAGE_SIZE,
   parseTab,
@@ -59,7 +59,7 @@ export function tabLabel(tab: ActionTab, t: T): string {
 /** The one-sentence reason: the engine's template (translated) filled with its params. */
 export function reasonText(row: Pick<ActionRowView, "reason">, t: T, locale: string): string {
   const key = row.reason.key;
-  return reasonSentence(t(ACTION_REASONS[key] ?? key), row.reason.params, locale);
+  return reasonSentence(t(reasonTemplate(key, row.reason.params)), row.reason.params, locale);
 }
 
 /** "Based on: Supplier lead time: 14 days · Order by: 12 Nov · …" in the admin language; null when nothing can be shown. */

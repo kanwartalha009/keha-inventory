@@ -21,7 +21,7 @@
  */
 import { fill, translate, type Locale } from "./i18n";
 import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
-import { ACTION_REASONS, isVisible, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
+import { isVisible, reasonTemplate, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
 import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
 import type { DayKey } from "./engine/dates-shared";
@@ -633,7 +633,7 @@ export function actionReasonText(locale: Locale, reason: unknown): string {
       if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v))) params[k] = v;
     }
   }
-  return reasonSentence(translate(locale, ACTION_REASONS[key] ?? key), params, locale);
+  return reasonSentence(translate(locale, reasonTemplate(key, params)), params, locale);
 }
 
 /**

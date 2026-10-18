@@ -590,7 +590,7 @@ function Summary({ result }: { result: ScenarioResult }) {
         id="keha-plan-ly"
         title={t("Last year, same period")}
         value={money(ly.revenue)}
-        sub={ly.units === null ? lyRange : `${fill(t("{n} units"), { n: formatCount(ly.units, locale) })} · ${lyRange}`}
+        sub={ly.units === null ? lyRange : `${fill(plural(ly.units, t("1 unit"), t("{n} units")), { n: formatCount(ly.units, locale) })} · ${lyRange}`}
         lines={lyLines}
       />
     </s-grid>
@@ -701,7 +701,7 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
           <>
             <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
               <s-text color="subdued">
-                {fill(t("{n} products to order, {units} units."), { n: formatCount(result.order.lines, locale), units: formatCount(result.order.units, locale) })}
+                {fill(plural(result.order.lines, t("1 product to order, {units} units."), t("{n} products to order, {units} units.")), { n: formatCount(result.order.lines, locale), units: formatCount(result.order.units, locale) })}
               </s-text>
               <s-button {...link(reorderLink(all, scenarioId ? { scenarioId } : undefined))}>{t("Add to order")}</s-button>
             </s-stack>
@@ -730,7 +730,7 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
 function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; currency: string; scenarioId?: string }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const lead = fill(group.leadTimeSource === "supplier" ? t("{n} days (supplier)") : t("{n} days (store default)"), { n: formatCount(group.leadTimeDays, locale) });
+  const lead = fill(group.leadTimeSource === "supplier" ? plural(group.leadTimeDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(group.leadTimeDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(group.leadTimeDays, locale) });
   return (
     <s-box padding="base" border="base" borderRadius="base">
       <s-stack direction="block" gap="small-200">

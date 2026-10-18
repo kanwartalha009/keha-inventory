@@ -81,7 +81,7 @@ describe("Supplier order builder (Growth)", () => {
     const units = view().lines.reduce((a, l) => a + l.suggested, 0);
     expect(html).toContain(`Units: ${units}`);
     expect(html).toMatch(/Cost: €[\d.,]+/);
-    expect(html).toContain("1 lines without a cost price");
+    expect(html).toContain("1 line without a cost price");
     // Every line starts selected; Add products is there; no draft → no "Add to".
     expect((html.match(/<s-checkbox[^>]*checked/g) ?? []).length).toBe(view().lines.length);
     expect(html).toContain("Add products");

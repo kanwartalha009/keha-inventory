@@ -4,7 +4,7 @@
  * found in the store, unknown columns, and Import / Cancel. Pure view over ImportPreview
  * (lib/setup-import-shared); nothing is saved until Import.
  */
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount } from "../lib/dashboard-shared";
 import { supplierErrorText } from "../lib/suppliers-shared";
 import { columnsFor, fileErrorText, issueText, type ImportEntity, type ImportPreview } from "../lib/setup-import-shared";
@@ -46,7 +46,7 @@ export function PreviewCard({
           <>
             <s-stack direction="inline" gap="small-200">
               <s-badge tone={p.changed ? "success" : "neutral"}>{fill(p.changed === 1 ? t("1 row will change") : t("{n} rows will change"), { n: n(p.changed) })}</s-badge>
-              {entity === "products" && p.variantsChanged > 0 && <s-badge>{fill(t("{n} variants"), { n: n(p.variantsChanged) })}</s-badge>}
+              {entity === "products" && p.variantsChanged > 0 && <s-badge>{fill(plural(p.variantsChanged, t("1 variant"), t("{n} variants")), { n: n(p.variantsChanged) })}</s-badge>}
               {entity === "suppliers" && p.created > 0 && <s-badge>{fill(t("{n} new"), { n: n(p.created) })}</s-badge>}
               <s-badge tone="neutral">{fill(t("{n} unchanged"), { n: n(p.unchanged) })}</s-badge>
               {p.problemRows > 0 && <s-badge tone="warning">{fill(t("{n} with problems, skipped"), { n: n(p.problemRows) })}</s-badge>}
@@ -71,7 +71,7 @@ export function PreviewCard({
                         <s-stack direction="block" gap="none">
                           <s-text fontWeight="medium">{c.label}</s-text>
                           {c.kind === "create" && <s-text color="subdued">{t("New supplier")}</s-text>}
-                          {c.variants ? <s-text color="subdued">{fill(t("{n} variants"), { n: n(c.variants) })}</s-text> : null}
+                          {c.variants ? <s-text color="subdued">{fill(plural(c.variants, t("1 variant"), t("{n} variants")), { n: n(c.variants) })}</s-text> : null}
                         </s-stack>
                       </s-table-cell>
                       <s-table-cell>

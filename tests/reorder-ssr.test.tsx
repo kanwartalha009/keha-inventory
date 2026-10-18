@@ -71,7 +71,9 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Beta");
     expect(html).toContain("14 days (supplier)");
     expect(html).toContain("14 days (store default)");
-    expect(html).toContain("Oct 2, 2026"); // the group's earliest order-by date (overdue)
+    // The overdue group's card says so by the shared label rule (merchant audit 2026-10-18: it said "Order by: —").
+    expect(html).toContain("Overdue since Oct 2");
+    expect(html).not.toContain("Order by: —");
     expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 150 units.");
     expect(html).toContain("The products from your action list are highlighted.");
     expect(html).toContain("From your action list");
@@ -79,7 +81,8 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toMatch(/Units: 15\d/);
     // A line without a cost is "—" and counted; the order's cost is still shown (store currency).
     expect(html).toMatch(/Cost: €[\d.,]+/);
-    expect(html).toContain("1 lines without a cost price");
+    expect(html).toContain("1 line without a cost price");
+    expect(html).not.toContain("1 lines");
     expect(html).toContain("Create order");
     // The open orders list moved to its own tab (no duplicate): a count and a link stay.
     expect(html).not.toContain("PO-0001");
@@ -139,7 +142,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData());
     expect(html).toMatch(/Create a draft order for Acme Textiles\?/);
     expect(html).toMatch(/\d+ units, €[\d.,]+\. Nothing is sent to the supplier until you email the order or mark it as sent\./);
-    expect(html).toContain("1 lines without a cost price are not in this total.");
+    expect(html).toContain("1 line without a cost price is not in this total.");
     expect(html).toContain("It stays in your stock numbers");
     expect(html).toContain("Don&#x27;t reorder this product");
     expect(html).toContain('icon="menu-horizontal"');

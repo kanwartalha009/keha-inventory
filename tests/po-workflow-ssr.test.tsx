@@ -111,7 +111,7 @@ describe("Order page · drafts", () => {
   it("warns below the supplier's unit, per-item and money minimums", () => {
     const h = html(order({ supplier: supplier({ minOrderTotal: 40, minOrder: 10, minOrderValue: 100 }) }));
     expect(h).toContain("18 units — below the supplier&#x27;s minimum order of 40 units.");
-    expect(h).toContain("1 lines below the supplier&#x27;s minimum of 10 units per item.");
+    expect(h).toContain("1 line below the supplier&#x27;s minimum of 10 units per item.");
     expect(h).toContain("€36.00 — below the supplier&#x27;s minimum order value of €100.00.");
   });
 

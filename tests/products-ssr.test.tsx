@@ -266,6 +266,10 @@ describe("Variant detail", () => {
     const html = renderDetail({ ...detail(true), trendMode: "off" });
     expect(html).toContain("Safety level");
     expect(html).not.toContain("Service level factor");
+    // Merchant audit 2026-10-18: z 1.65 reads as the in-stock target it stands for, not "1.65".
+    expect(html).toContain("95% in-stock target");
+    expect(html).toContain("the chance it doesn&#x27;t run out before the next delivery");
+    expect(html).not.toMatch(/Safety level<\/[^>]+>\s*<[^>]+>1\.65/);
     expect(html).toContain("Not applied (growth assumption off)");
     // The Trend row never says "No seasonal data yet" (only the seasonal row can).
     expect(count(html, "No seasonal data yet")).toBe(1);

@@ -15,7 +15,7 @@ import { authenticateApp } from "../services/data-scope.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { SettingsTabs } from "../components/settings-tabs";
 import { ChoiceListField, SelectField, val } from "../components/wc";
-import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale, plural } from "../lib/i18n";
 import {
   SETTINGS_BOUNDS,
   applySettingsForm,
@@ -178,7 +178,7 @@ export default function Settings() {
                     choices={channels.map((c) => ({
                       value: c.name,
                       label: c.name,
-                      helpText: fill(t("{n} units in the last 12 months"), { n: formatCount(c.units, locale) }),
+                      helpText: fill(plural(c.units, t("1 unit in the last 12 months"), t("{n} units in the last 12 months")), { n: formatCount(c.units, locale) }),
                     }))}
                     selected={channels.filter((c) => !excluded.includes(c.name)).map((c) => c.name)}
                     onChange={(kept) => set("excludedChannels", channels.map((c) => c.name).filter((n) => !kept.includes(n)))}

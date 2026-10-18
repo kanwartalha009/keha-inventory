@@ -56,7 +56,7 @@ import { ReadyNotice, SyncProgress } from "../components/sync-progress";
 import { partialText } from "../lib/sync-progress-shared";
 import { useLinkProps } from "../components/wc";
 import { planTag } from "../components/plan";
-import { fill, useLocale } from "../lib/i18n";
+import { fill, useLocale, plural } from "../lib/i18n";
 import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
 import { recheckNoticeText } from "../lib/sync/weekly-recheck-shared";
 import {
@@ -337,7 +337,7 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
                       <s-stack direction="block" gap="none">
                         <span>{money(s.cash)}</span>
                         {s.missingCost > 0 && (
-                          <s-text color="subdued">{fill(t("{n} lines without a cost price"), { n: formatCount(s.missingCost, locale) })}</s-text>
+                          <s-text color="subdued">{fill(plural(s.missingCost, t("1 line without a cost price"), t("{n} lines without a cost price")), { n: formatCount(s.missingCost, locale) })}</s-text>
                         )}
                       </s-stack>
                     </s-table-cell>
@@ -375,7 +375,7 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
             <CashBreakdown summary={cashOut} currency={plan.currency} />
             {strip.missingCost > 0 && (
               <s-text color="subdued">
-                {fill(t("{n} lines without a cost price are not in the cash totals."), { n: formatCount(strip.missingCost, locale) })}
+                {fill(plural(strip.missingCost, t("1 line without a cost price is not in the cash totals."), t("{n} lines without a cost price are not in the cash totals.")), { n: formatCount(strip.missingCost, locale) })}
               </s-text>
             )}
           </s-stack>

@@ -35,6 +35,7 @@ const SAME_WORD: Record<string, string[]> = {
   Status: ["de", "nl"],
   Product: ["nl"],
   Variant: ["nl"],
+  "1 variant": ["nl"],
   Collection: ["fr"],
   Actions: ["fr"],
   "{n} per product": ["nl"],
