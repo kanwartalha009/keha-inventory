@@ -55,7 +55,7 @@ export const FEATURE_PLAN = {
   accuracy: "growth",
   /** Monday summary and instant alerts in Slack. */
   slack: "growth",
-  /** Shopify Flow triggers ("Product needs reorder", "Product went dead"). */
+  /** Shopify Flow triggers ("Product needs reorder", "Product became dead stock"). */
   flowTriggers: "growth",
   /** CSV export of the Products table (spec §5.2). */
   csvExport: "growth",

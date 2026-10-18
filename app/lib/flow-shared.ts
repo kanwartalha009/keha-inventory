@@ -7,7 +7,7 @@
  * FLOW_FIELDS; tests/flow-extensions.test.ts checks both ways):
  *  - "Product needs reorder": a variant is running low or out with a suggested
  *    order quantity > 0. Per product, the variant that runs out first.
- *  - "Product went dead": every planned variant of the product is Dead.
+ *  - "Product became dead stock": every planned variant of the product is Dead.
  *
  * Notification triggers (owner decision 2026-10-18: no paid email provider — the merchant gets
  * Keha's summaries by email through Flow's "Send internal email" action; every plan, like the
@@ -45,8 +45,8 @@ export type AnyFlowHandle = FlowHandle | NotifyHandle;
  * deploy). `product_id` is the key Shopify uses for a product_reference field.
  */
 export const FLOW_FIELDS: Record<AnyFlowHandle, readonly string[]> = {
-  [FLOW_NEEDS_REORDER]: ["product_id", "Variant id", "Days left", "Order by", "Suggested quantity"],
-  [FLOW_WENT_DEAD]: ["product_id", "Cash stuck"],
+  [FLOW_NEEDS_REORDER]: ["product_id", "Variant ID", "Days of stock", "Order by", "Suggested quantity"],
+  [FLOW_WENT_DEAD]: ["product_id", "Cash tied up"],
   [FLOW_WEEKLY_PLAN]: ["Subject", "Summary text", "Orders due this week", "Cash due this week", "Order plan link"],
   [FLOW_FIRST_PLAN]: ["Subject", "Summary text", "Order plan link"],
 };
@@ -189,8 +189,8 @@ export function needsReorderPayload(productId: string, s: ReorderState): Record<
   if (id == null) return null;
   return {
     product_id: id,
-    "Variant id": s.variantId,
-    "Days left": Math.max(0, Math.round(s.daysLeft * 10) / 10),
+    "Variant ID": s.variantId,
+    "Days of stock": Math.max(0, Math.round(s.daysLeft * 10) / 10),
     "Order by": s.orderBy,
     "Suggested quantity": s.orderQty,
   };
@@ -199,7 +199,7 @@ export function needsReorderPayload(productId: string, s: ReorderState): Record<
 export function wentDeadPayload(productId: string, cashStuck: number): Record<string, unknown> | null {
   const id = legacyId(productId);
   if (id == null) return null;
-  return { product_id: id, "Cash stuck": Math.round(cashStuck * 100) / 100 };
+  return { product_id: id, "Cash tied up": Math.round(cashStuck * 100) / 100 };
 }
 
 /** Every declared key present (Shopify requires all of them), and nothing else. */

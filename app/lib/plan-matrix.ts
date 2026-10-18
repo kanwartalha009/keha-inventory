@@ -86,7 +86,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     title: "Alerts and support",
     rows: [
       { label: "Slack messages", feature: "slack" },
-      { label: "Shopify Flow triggers for products", hint: "“Product needs reorder” and “Product went dead”. The Monday summary reaches Shopify Flow on every plan.", feature: "flowTriggers" },
+      { label: "Shopify Flow triggers for products", hint: "“Product needs reorder” and “Product became dead stock”. The weekly summary reaches Shopify Flow on every plan.", feature: "flowTriggers" },
       { label: "The app in your language", hint: "English, Spanish, French, German, Italian, Portuguese, Dutch and Polish.", values: ALL },
       { label: "Email support from the people who build the app", values: ALL },
     ],

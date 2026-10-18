@@ -123,8 +123,8 @@ export default function Privacy() {
         the money at stake, the top actions, with links into the App) and
         “First order plan ready” (once, when your first plan is ready). On plans
         with Shopify Flow triggers: “Product needs reorder” (product and variant
-        IDs, days of stock left, order-by date, suggested quantity) and “Product
-        went dead” (product ID, cash stuck). Only workflows you turn on act on
+        IDs, days of stock, order-by date, suggested quantity) and “Product
+        became dead stock” (product ID, cash tied up). Only workflows you turn on act on
         them — for example Flow’s “Send internal email” action, which Shopify
         sends to the addresses you type in Flow.
       </p>

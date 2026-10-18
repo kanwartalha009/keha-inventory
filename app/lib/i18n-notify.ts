@@ -309,15 +309,7 @@ export const NOTIFY_TR: Record<string, Tr> = {
     nl: "Shopify Flow-triggers voor producten",
     pl: "Wyzwalacze Shopify Flow dla produktów",
   },
-  "“Product needs reorder” and “Product went dead”. The Monday summary reaches Shopify Flow on every plan.": {
-    es: "«Product needs reorder» y «Product went dead». El resumen del lunes llega a Shopify Flow en todos los planes.",
-    fr: "« Product needs reorder » et « Product went dead ». Le récapitulatif du lundi arrive dans Shopify Flow avec tous les forfaits.",
-    de: "„Product needs reorder“ und „Product went dead“. Die Montagsübersicht kommt in jedem Tarif bei Shopify Flow an.",
-    it: "«Product needs reorder» e «Product went dead». Il riepilogo del lunedì arriva in Shopify Flow con ogni piano.",
-    pt: "«Product needs reorder» e «Product went dead». O resumo de segunda-feira chega ao Shopify Flow em todos os planos.",
-    nl: "'Product needs reorder' en 'Product went dead'. Het maandagoverzicht komt bij elk abonnement in Shopify Flow.",
-    pl: "„Product needs reorder” i „Product went dead”. Poniedziałkowe podsumowanie trafia do Shopify Flow w każdym planie.",
-  },
+  "“Product needs reorder” and “Product became dead stock”. The weekly summary reaches Shopify Flow on every plan.": { es: "«Product needs reorder» y «Product became dead stock». El resumen semanal llega a Shopify Flow en todos los planes.", fr: "« Product needs reorder » et « Product became dead stock ». Le résumé hebdomadaire arrive dans Shopify Flow avec tous les forfaits.", de: "„Product needs reorder“ und „Product became dead stock“. Die Wochenübersicht kommt in jedem Tarif bei Shopify Flow an.", it: "«Product needs reorder» e «Product became dead stock». Il riepilogo settimanale arriva in Shopify Flow con ogni piano.", pt: "«Product needs reorder» e «Product became dead stock». O resumo semanal chega ao Shopify Flow em todos os planos.", nl: "'Product needs reorder' en 'Product became dead stock'. Het weekoverzicht komt bij elk abonnement in Shopify Flow.", pl: "„Product needs reorder” i „Product became dead stock”. Podsumowanie tygodnia trafia do Shopify Flow w każdym planie." },
   "Top 10 actions and a Monday email through Shopify Flow": {
     es: "Las 10 acciones principales y un email cada lunes con Shopify Flow",
     fr: "Les 10 actions prioritaires et un e-mail chaque lundi via Shopify Flow",

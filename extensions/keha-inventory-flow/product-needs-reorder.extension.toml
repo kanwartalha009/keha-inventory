@@ -1,6 +1,6 @@
 # Shopify Flow TRIGGER — "Product needs reorder" (spec §11; Growth plan, `flowTriggers`).
 # Fired by the hourly alerts job (app/services/alerts.server.ts → flow.server.ts,
-# flowTriggerReceive) when a variant is running low or out and Keha suggests an
+# flowTriggerReceive) when a variant is low or out of stock and Keha suggests an
 # order. Once per product per episode: again only after the product recovered
 # (app/lib/flow-shared.ts episodeStep).
 #
@@ -26,13 +26,13 @@ description = "Fires when a product will run out before new stock can arrive and
 
   [[settings.fields]]
   type = "single_line_text_field"
-  key = "Variant id"
+  key = "Variant ID"
   description = "The variant that runs out first (Admin API ID)."
 
   [[settings.fields]]
   type = "number_decimal"
-  key = "Days left"
-  description = "Days of stock left for that variant (0 when it is sold out)."
+  key = "Days of stock"
+  description = "Days of stock for that variant (0 when it is out of stock)."
 
   [[settings.fields]]
   type = "single_line_text_field"

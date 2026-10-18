@@ -1,15 +1,15 @@
-# Shopify Flow TRIGGER — "Product went dead" (spec §11; Growth plan, `flowTriggers`).
+# Shopify Flow TRIGGER — "Product became dead stock" (spec §11; Growth plan, `flowTriggers`).
 # Fired by the hourly alerts job (app/services/alerts.server.ts → flow.server.ts,
 # flowTriggerReceive) when every variant of a product has had no sale for the
-# store's "Dead after" period. Once per product per episode: again only after
-# it sold and went dead again (app/lib/flow-shared.ts episodeStep).
+# store's "Dead stock after" period. Once per product per episode: again only after
+# it sold and became dead stock again (app/lib/flow-shared.ts episodeStep).
 #
 # Field keys: letters and spaces only; product_reference takes `product_id`;
 # descriptions ≤ 140 characters. tests/flow-extensions.test.ts checks this file
 # against FLOW_FIELDS in app/lib/flow-shared.ts.
 
 [[extensions]]
-name = "Product went dead"
+name = "Product became dead stock"
 type = "flow_trigger"
 handle = "product-went-dead"
 uid = "d028e92e-dfbb-39b4-f21f-aa37c59f205e8c8bcebe"
@@ -23,5 +23,5 @@ description = "Fires when a product has had no sale for your dead-stock period w
 
   [[settings.fields]]
   type = "number_decimal"
-  key = "Cash stuck"
+  key = "Cash tied up"
   description = "Value of its stock on hand at cost, in your store currency (at retail price when the cost is missing)."

@@ -57,7 +57,7 @@ describe("Flow trigger extensions", () => {
     expect(FLOW.map((e) => [e.handle, e.name, e.file]).sort()).toEqual([
       ["first-order-plan-ready", "First order plan ready", "extensions/keha-inventory-flow/first-order-plan-ready.extension.toml"],
       ["product-needs-reorder", "Product needs reorder", "extensions/keha-inventory-flow/product-needs-reorder.extension.toml"],
-      ["product-went-dead", "Product went dead", "extensions/keha-inventory-flow/product-went-dead.extension.toml"],
+      ["product-went-dead", "Product became dead stock", "extensions/keha-inventory-flow/product-went-dead.extension.toml"],
       ["weekly-order-plan-ready", "Weekly order plan ready", "extensions/keha-inventory-flow/weekly-order-plan-ready.extension.toml"],
     ]);
   });

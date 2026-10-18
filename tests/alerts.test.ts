@@ -313,9 +313,9 @@ describe("Flow triggers", () => {
     expect(calls.map((c) => c.variables)).toEqual([
       {
         handle: "product-needs-reorder",
-        payload: { product_id: 1, "Variant id": V(1), "Days left": 5.2, "Order by": "2026-10-20", "Suggested quantity": 40 },
+        payload: { product_id: 1, "Variant ID": V(1), "Days of stock": 5.2, "Order by": "2026-10-20", "Suggested quantity": 40 },
       },
-      { handle: "product-went-dead", payload: { product_id: 3, "Cash stuck": 69 } },
+      { handle: "product-went-dead", payload: { product_id: 3, "Cash tied up": 69 } },
     ]);
     expect(calls[0].query).toContain("flowTriggerReceive(handle: $handle, payload: $payload)");
     expect(flowLog()).toEqual([
@@ -434,7 +434,7 @@ describe("Flow triggers", () => {
     const a = fakeAdmin();
     await runAlertsForShop(shopRow(settings), NOW, a.deps);
     expect(a.calls).toHaveLength(MAX_FLOW_PER_TICK);
-    expect(a.calls[0].variables.payload["Days left"]).toBe(1); // most urgent first
+    expect(a.calls[0].variables.payload["Days of stock"]).toBe(1); // most urgent first
     const b = fakeAdmin();
     await runAlertsForShop(shopRow(settings), new Date(NOW.getTime() + HOUR), b.deps);
     expect(b.calls).toHaveLength(5);
@@ -442,7 +442,7 @@ describe("Flow triggers", () => {
 });
 
 describe("fireFlowTrigger", () => {
-  const ok = { product_id: 1, "Cash stuck": 2 };
+  const ok = { product_id: 1, "Cash tied up": 2 };
   it("ok, rejected (userErrors), error (top-level errors or a throw)", async () => {
     expect(await fireFlowTrigger(fakeAdmin().admin, "product-went-dead", ok)).toEqual({ status: "ok" });
     expect(

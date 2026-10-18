@@ -21,7 +21,7 @@
  * most once per 7 days on each channel.
  *
  * Flow triggers (Growth, not tied to the instant-alerts switch: the merchant opts
- * in by building a workflow): "Product needs reorder" / "Product went dead",
+ * in by building a workflow): "Product needs reorder" / "Product became dead stock",
  * once per product per episode (lib/flow-shared episodeStep), at most
  * MAX_FLOW_PER_TICK per store per tick. A trigger Shopify rejects is logged
  * as "flow_rejected" and retried after 24 h, at most 7 times in 30 days.

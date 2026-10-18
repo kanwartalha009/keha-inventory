@@ -12,7 +12,7 @@
  *  - SQL_ALERT_METRICS, one pass: the planned variants' online metrics a rule can use — A role with
  *    fewer than 365 days left (best seller running out: no lead time is longer), running low / out
  *    with an order quantity, days left and an order-by date ("Product needs reorder") — and the rows
- *    of products whose every planned variant with a metric is Dead ("Product went dead", `dead`).
+ *    of products whose every planned variant with a metric is Dead ("Product became dead stock", `dead`).
  */
 
 const PLANNED = `v."tracked" = true AND v."isBundle" = false AND v."status" = 'ACTIVE'`;

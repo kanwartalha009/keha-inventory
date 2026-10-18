@@ -66,8 +66,8 @@ describe("needs reorder", () => {
     const p = needsReorderPayload(P1, { variantId: "gid://shopify/ProductVariant/7", daysLeft: 3.456, orderBy: "2026-10-20", orderQty: 48 });
     expect(p).toEqual({
       product_id: 101,
-      "Variant id": "gid://shopify/ProductVariant/7",
-      "Days left": 3.5,
+      "Variant ID": "gid://shopify/ProductVariant/7",
+      "Days of stock": 3.5,
       "Order by": "2026-10-20",
       "Suggested quantity": 48,
     });
@@ -96,11 +96,11 @@ describe("went dead", () => {
 
   it("payload: product_id and Cash stuck", () => {
     const p = wentDeadPayload(P1, 1234.567);
-    expect(p).toEqual({ product_id: 101, "Cash stuck": 1234.57 });
+    expect(p).toEqual({ product_id: 101, "Cash tied up": 1234.57 });
     expect(payloadMatches(FLOW_WENT_DEAD, p!)).toBe(true);
     expect(payloadMatches(FLOW_WENT_DEAD, { product_id: 1 })).toBe(false);
-    expect(payloadMatches(FLOW_WENT_DEAD, { product_id: 1, "Cash stuck": 2, extra: 3 })).toBe(false);
-    expect(payloadMatches(FLOW_WENT_DEAD, { product_id: 1, "Cash stuck": null })).toBe(false);
+    expect(payloadMatches(FLOW_WENT_DEAD, { product_id: 1, "Cash tied up": 2, extra: 3 })).toBe(false);
+    expect(payloadMatches(FLOW_WENT_DEAD, { product_id: 1, "Cash tied up": null })).toBe(false);
   });
 });
 
