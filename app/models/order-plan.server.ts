@@ -58,6 +58,7 @@ import { todayIn } from "../lib/dashboard-shared";
 import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { lineCosts, LAST_YEAR_OFFSET_DAYS, type OrderPlanData, type PlanSupplierInfo, type PlanVariantInfo } from "../lib/order-plan-shared";
 import { clearOrderPlanCache, forgetOrderPlan, planCache } from "./plan-cache.server";
+import { applyHolds, holdBatches, type PlanHold } from "../lib/deferral-shared";
 import { openOrderPayments, readLandedPct, readPaymentTerms, withPayments, type CommittedPayment, type PaymentTerms, type SupplierMoney } from "../lib/cash-shared";
 import { readLeadStats, type LeadStats } from "../lib/lead-time-shared";
 import { localDate } from "../lib/sync/store-time-shared";
@@ -397,6 +398,11 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     state.set(s.variantId, { deadline, skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false, overdue: !!p?.overdue });
   }
   const events = plan.events;
+  // Fit to budget → Apply (merchant audit 2026-10-18): orders the merchant moved to next month wait
+  // for their day — with their arrival and payments — on every screen that reads the plan. The
+  // budget is planned on the online pool, so the holds apply there.
+  const holds = scope === METRIC_SCOPE ? await readPlanHolds(shop, today) : [];
+  applyHolds(events, holds, today);
   // Supplier module: freight + duty and the days each line is paid (payment terms).
   withPayments(events, moneyOf(suppliers));
   for (const e of events) {
@@ -456,6 +462,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       staleDrafts,
       notReordered,
       trendMode: basics.trendMode,
+      holds: holdBatches(holds, today, (key) => suppliers[key]?.name ?? ""),
     },
     state,
     suppliers: supplierRows,
@@ -693,4 +700,20 @@ export async function cachedOrderPlan(shop: string, now: Date = new Date(), opts
 /** The forward plan (Dashboard, Order plan tabs, Products, Sidekick, the Monday email). */
 export async function loadOrderPlan(shop: string, now: Date = new Date(), opts: OrderPlanOptions = {}): Promise<OrderPlanData> {
   return (await computeOrderPlan(shop, now, opts)).data;
+}
+
+/** The shop's Fit to budget holds still in force (PlanDeferral, lib/deferral-shared). */
+async function readPlanHolds(shop: string, today: DayKey): Promise<PlanHold[]> {
+  const rows = await prisma.planDeferral.findMany({ where: { shop, until: { gt: new Date(`${today}T00:00:00Z`) } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  return rows.map((r) => ({
+    batch: r.batch,
+    month: r.month,
+    variantId: r.variantId,
+    supplierKey: r.supplierKey,
+    fromDay: day(r.fromDay),
+    until: day(r.until),
+    qty: r.qty,
+    amount: Number(String(r.amount)),
+  }));
 }

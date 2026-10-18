@@ -318,6 +318,8 @@ export type ReorderData = {
   cantPlan?: { noData: number; dead: number };
   /** A2: styles due in the next 7 days held back below the supplier's minimum per style. */
   belowMinimum?: { supplierKey: string; supplier: string; productTitle: string; units: number; styleMin: number }[];
+  /** Fit to budget → Apply: orders the merchant moved to next month (they wait; Undo on Next 13 weeks). */
+  held?: number;
 };
 
 /**
@@ -372,6 +374,7 @@ export async function loadReorder(
     missingSelected: asked.filter((s) => !known.has(s)).length,
     today: plan.today,
     staleDrafts: plan.staleDrafts ?? 0,
+    held: (plan.holds ?? []).reduce((a, h) => a + h.lines, 0),
     notReordered: plan.notReordered ?? 0,
     cantPlan: plan.cantPlan,
     belowMinimum: (plan.belowMinimum ?? [])

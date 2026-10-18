@@ -30,6 +30,7 @@ import { fill } from "./i18n";
 import type { TrendMode } from "./settings-shared";
 import { cashMonths, cashSummary, cashWeeks, fitToBudget, paymentsOf, type CashMonth, type CashSummary, type CashWeek, type CommittedPayment, type FitMonth, type PaymentTerms } from "./cash-shared";
 import type { LeadStats } from "./lead-time-shared";
+import type { HoldBatch } from "./deferral-shared";
 
 type T = (s: string) => string;
 
@@ -117,6 +118,8 @@ export type OrderPlanData = {
   budget?: number | null;
   /** A2: styles held back below their supplier's minimum per style (forward-plan BelowMinimum). */
   belowMinimum?: (BelowMinimum & { productTitle: string })[];
+  /** Fit to budget → Apply: orders moved to next month, per Apply (lib/deferral-shared); absent / [] = none. */
+  holds?: HoldBatch[];
 };
 
 export const EMPTY_ORDER_PLAN = (today: DayKey, currency = "USD", timezone = "UTC"): OrderPlanData => ({

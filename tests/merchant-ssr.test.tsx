@@ -10,13 +10,24 @@ import { createRoutesStub } from "react-router";
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() }, unauthenticated: { admin: vi.fn() } }));
 vi.mock("../app/db.server", () => ({ default: {} }));
 vi.mock("../app/services/entitlements.server", () => ({ getEntitlements: vi.fn(), upgradeResponse: vi.fn(() => new Response("upgrade", { status: 403 })) }));
+vi.mock("../app/models/deferrals.server", () => ({
+  applyFitToBudget: vi.fn(async () => ({ ok: true, batch: "B1", lines: 2, amount: 120 })),
+  undoFitToBudget: vi.fn(async () => ({ ok: true })),
+}));
 
 import OrderPage, { type OrderPageView } from "../app/routes/app.reorder_.$id";
 import Builder, { type BuilderPageData } from "../app/routes/app.reorder_.build";
 import SuppliersSettings, { type SuppliersData } from "../app/routes/app.settings_.suppliers";
 import type { OrderDetail } from "../app/models/reorder.server";
 import { buildSupplierOrder } from "../app/lib/supplier-order-shared";
-import { orderNowFixture } from "./order-plan-fixtures";
+import { orderNowFixture, orderPlanFixture } from "./order-plan-fixtures";
+import OrderCalendar, { action as calendarAction, type CalendarPageData } from "../app/routes/app.reorder_.calendar";
+import Reorder, { type ReorderPageData } from "../app/routes/app.reorder";
+import { authenticate } from "../app/shopify.server";
+import { getEntitlements, upgradeResponse } from "../app/services/entitlements.server";
+import { applyFitToBudget, undoFitToBudget } from "../app/models/deferrals.server";
+import { featureMap } from "../app/lib/plan-shared";
+import { buildOrderNow } from "../app/lib/reorder-shared";
 
 function render(path: string, id: string, Component: React.ComponentType, data: unknown) {
   const Stub = createRoutesStub([{ id, path: path.split("?")[0]!, Component, loader: () => data }]);
@@ -143,6 +154,50 @@ describe("measured lead time on Settings → Suppliers and the builder", () => {
     const h = render("/app/reorder/build?supplier=supplier:s1", "build", Builder, { enabled: true, view, today: plan.today } satisfies BuilderPageData);
     expect(h).toContain("is usually 8 days late (median of 4 deliveries, 68 days order to arrival)");
     expect(h).toContain("Review lead time");
+  });
+});
+
+describe("Fit to budget → Apply / Undo", () => {
+  it("Next 13 weeks: each Apply still in force is listed with Undo", () => {
+    const plan = { ...orderPlanFixture(), budget: 100, holds: [{ batch: "B1", month: "2026-10", lines: 2, amount: 120, until: "2026-11-02", suppliers: ["Lisbon Linen"] }] };
+    const h = render("/app/reorder/calendar", "cal", OrderCalendar, { enabled: true, plan } satisfies CalendarPageData);
+    expect(h).toContain("Fit to budget: 2 orders moved out of October 2026 (€120, Lisbon Linen), waiting until Nov 2.");
+    expect(h).toContain("Undo");
+  });
+
+  it("the action: Growth only, the month / batch go to the model (it re-reads the plan)", async () => {
+    vi.mocked(authenticate.admin).mockResolvedValue({ session: { shop: "acme.myshopify.com" } } as never);
+    const post = (body: unknown) =>
+      calendarAction({ request: new Request("https://x/app/reorder/calendar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), params: {}, context: {} } as never);
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "free", features: featureMap("free"), comped: false, checked: true } as never);
+    await post({ intent: "applyFit", month: "2026-10" });
+    expect(upgradeResponse).toHaveBeenCalledWith("orderCalendar", expect.any(String));
+    expect(applyFitToBudget).not.toHaveBeenCalled();
+    vi.mocked(getEntitlements).mockResolvedValue({ plan: "growth", features: featureMap("growth"), comped: false, checked: true } as never);
+    expect(await post({ intent: "applyFit", month: "2026-10" })).toEqual({ intent: "applyFit", ok: true, batch: "B1", lines: 2, amount: 120 });
+    expect(applyFitToBudget).toHaveBeenCalledWith("acme.myshopify.com", "2026-10");
+    expect(await post({ intent: "undoFit", batch: "B1" })).toEqual({ intent: "undoFit", ok: true });
+    expect(undoFitToBudget).toHaveBeenCalledWith("acme.myshopify.com", "B1");
+  });
+
+  it("Order now says when orders wait for next month (never silently gone)", () => {
+    const plan = orderNowFixture({ minOrderTotal: null });
+    const data: ReorderPageData = {
+      enabled: true,
+      locationsEnabled: false,
+      locations: [],
+      location: null,
+      transfers: { enabled: false, groups: [], recent: [], hasWarehouse: false, hasStore: false },
+      groups: buildOrderNow({ plan, stock: new Map(), onOrder: new Map() }),
+      currency: "EUR",
+      missingSelected: 0,
+      today: plan.today,
+      openOrders: [],
+      held: 1,
+    };
+    const h = render("/app/reorder", "reorder", Reorder, data);
+    expect(h).toContain("1 order waits until next month to fit your budget.");
+    expect(h).toContain("See or undo on Next 13 weeks");
   });
 });
 

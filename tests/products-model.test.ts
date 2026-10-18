@@ -77,6 +77,8 @@ vi.mock("../app/db.server", () => ({
     },
     // The forward plan (To order, order-by date) reads the suppliers too.
     supplier: { findMany: async () => [], aggregate: async () => ({ _max: { updatedAt: null } }), count: async () => 0 },
+    // Fit to budget holds (merchant audit 2026-10-18): none here.
+    planDeferral: { findMany: async () => [] },
   },
 }));
 

@@ -648,3 +648,23 @@ model ForecastOverride {
 
   @@id([shop, productId])
 }
+
+/// Fit to budget → Apply (merchant audit 2026-10-18, lib/deferral-shared): the merchant moved this
+/// variant's planned order to next month — the order plan places no order for it before `until`.
+/// One batch per Apply; Undo deletes the batch. Our database only.
+model PlanDeferral {
+  id          String   @id @default(cuid())
+  shop        String
+  batch       String
+  /// The month the suggestion was for ("2026-11").
+  month       String
+  variantId   String
+  supplierKey String
+  fromDay     DateTime @db.Date
+  until       DateTime @db.Date
+  qty         Int
+  amount      Decimal  @db.Decimal(18, 2)
+  createdAt   DateTime @default(now())
+
+  @@index([shop])
+}

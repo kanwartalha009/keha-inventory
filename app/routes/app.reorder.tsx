@@ -283,6 +283,15 @@ export default function Reorder() {
       )}
       {data.scenarioMissing && <s-banner tone="warning">{t("This Season plan scenario no longer exists.")}</s-banner>}
       <StaleDrafts n={data.staleDrafts} />
+      {!!data.held && (
+        // Merchant audit 2026-10-18: orders moved by Fit to budget wait here too — never silently.
+        <s-banner tone="info">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text>{fill(plural(data.held, t("1 order waits until next month to fit your budget."), t("{n} orders wait until next month to fit your budget.")), { n: formatCount(data.held, locale) })}</s-text>
+            <s-link {...link("/app/reorder/calendar")}>{t("See or undo on Next 13 weeks")}</s-link>
+          </s-stack>
+        </s-banner>
+      )}
       {/* A2: a small need of a slow style is never raised to the supplier's minimum per style. */}
       {!!data.belowMinimum?.length && (
         <s-banner tone="info" heading={t("Below the supplier's minimum — wait for the next season or add to a larger order")}>

@@ -14,14 +14,23 @@
  * that supplier-week (/app/reorder/build: the week's orders plus everything due within the
  * supplier's order cycle after it, in one purchase order). Unknown costs are "—" and counted, never 0. Free keeps the
  * tab bar and sees what the tab does, with its own plan in numbers.
+ *
+ * Fit to budget → Apply (merchant audit 2026-10-18): after a confirm, the month's suggested
+ * deferrals are stored as holds (models/deferrals.server) and the plan places those orders on their
+ * new day everywhere; a banner lists each Apply with Undo. Our database only: nothing is written to
+ * Shopify or sent to a supplier.
  */
 import { useState } from "react";
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
-import { getEntitlements } from "../services/entitlements.server";
+import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { loadOrderPlan } from "../models/order-plan.server";
+import { applyFitToBudget, undoFitToBudget, type ApplyFitResult } from "../models/deferrals.server";
+import ConfirmModal from "../components/ConfirmModal";
+import { flag } from "../components/wc";
+import type { HoldBatch } from "../lib/deferral-shared";
 import { readiness } from "../models/dashboard.server";
 import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
@@ -72,6 +81,24 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<CalendarP
   }
   const [plan, ready] = await Promise.all([loadOrderPlan(shop, new Date(), { lastYear: true }), readiness(shop)]);
   return { enabled: true, plan, readiness: ready };
+};
+
+export type CalendarAction = ({ intent: "applyFit" } & ApplyFitResult) | { intent: "undoFit"; ok: boolean };
+
+/** Fit to budget → Apply / Undo (Growth, as the tab). The browser names the month or the batch only. */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop } = await authenticateApp(request);
+  const { features } = await getEntitlements(shop);
+  if (!features.orderCalendar) return upgradeResponse("orderCalendar", "Next 13 weeks is on the Growth plan.");
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    throw new Response("Bad request", { status: 400 });
+  }
+  if (body.intent === "applyFit") return { intent: "applyFit", ...(await applyFitToBudget(shop, body.month)) } satisfies CalendarAction;
+  if (body.intent === "undoFit") return { intent: "undoFit", ...(await undoFitToBudget(shop, body.batch)) } satisfies CalendarAction;
+  throw new Response("Bad request", { status: 400 });
 };
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
@@ -155,6 +182,7 @@ function Calendar({ plan, readiness }: { plan: OrderPlanData; readiness?: PlanRe
           )}
         </s-stack>
       </FormCard>
+      {(plan.holds ?? []).length > 0 && <HeldBanner holds={plan.holds!} currency={plan.currency} />}
       {!!plan.budget && (totals.lines > 0 || cashOut.committed > 0) && <BudgetCard plan={plan} />}
       {busy.length > 0 && (
         <FormCard flush title={t("Week by week")} sub={t("Open a week to see its suppliers and lines.")}>
@@ -338,7 +366,8 @@ function monthName(month: string, locale: string): string {
  * Monthly budget (Settings → Defaults): each month's cash out (orders to place + still due on open
  * orders, on the days paid) against the budget; a month over it offers "Fit to budget" — the
  * lowest-priority orders (money at stake per day ÷ days until it runs out) that could wait until
- * next month without breaking a supplier's minimums. A suggestion only: nothing is changed.
+ * next month without breaking a supplier's minimums. "Apply" (after a confirm) moves them in the
+ * plan, with Undo; nothing is written to Shopify (merchant audit 2026-10-18).
  */
 function BudgetCard({ plan }: { plan: OrderPlanData }) {
   const { t, locale } = useLocale();
@@ -414,12 +443,15 @@ function BudgetCard({ plan }: { plan: OrderPlanData }) {
   );
 }
 
-/** The orders that could wait until next month (a suggestion: nothing changes until the merchant changes an order). */
+/** The orders that could wait until next month, and "Apply" (holds in our database, with Undo; never the store). */
 function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
   const { t, locale } = useLocale();
+  const fetcher = useFetcher<CalendarAction>();
+  const [confirm, setConfirm] = useState(false);
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
   const month = monthName(fit.month, locale);
   const moved = fit.deferrals.reduce((a, d) => a + d.amount, 0);
+  const failed = fetcher.data?.intent === "applyFit" && !fetcher.data.ok;
   return (
     <s-box padding="base">
       <s-stack direction="block" gap="small">
@@ -449,9 +481,57 @@ function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
             ? fill(t("{month} would then be {amount}, within your budget."), { month, amount: money(fit.after) })
             : fill(t("{month} would still be {amount}: what is due on open orders and orders that can't wait stay in it."), { month, amount: money(fit.after) })}
         </s-text>
-        <s-text color="subdued">{t("A suggestion only: nothing changes until you change your orders. Lowest priority first: the least money at stake per day for the most days of stock left.")}</s-text>
+        <s-text color="subdued">{t("Lowest priority first: the least money at stake per day for the most days of stock left. Apply moves these orders in your plan; nothing changes in Shopify or for your suppliers, and you can undo it.")}</s-text>
+        {failed && <s-text tone="critical">{t("This suggestion changed. Reload the page and try again.")}</s-text>}
+        {fit.deferrals.length > 0 && (
+          <s-stack direction="inline">
+            <s-button variant="primary" loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
+              {t("Apply")}
+            </s-button>
+          </s-stack>
+        )}
       </s-stack>
+      <ConfirmModal
+        open={confirm}
+        destructive={false}
+        title={fill(plural(fit.deferrals.length, t("Move 1 order out of {month}?"), t("Move {n} orders out of {month}?")), { n: formatCount(fit.deferrals.length, locale), month })}
+        message={fill(t("{amount} moves to next month. These orders wait in Order now, Next 13 weeks and the Dashboard until their new date. Nothing changes in Shopify or for your suppliers. You can undo it here."), { amount: money(moved) })}
+        confirmLabel={t("Apply")}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => {
+          setConfirm(false);
+          fetcher.submit({ intent: "applyFit", month: fit.month } as never, { method: "post", encType: "application/json" });
+        }}
+      />
     </s-box>
+  );
+}
+
+/** Each Apply of Fit to budget still in force, with Undo (the orders go back to their own dates). */
+function HeldBanner({ holds, currency }: { holds: HoldBatch[]; currency: string }) {
+  const { t, locale } = useLocale();
+  const fetcher = useFetcher<CalendarAction>();
+  return (
+    <>
+      {holds.map((h) => (
+        <s-banner key={h.batch} tone="info">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text>
+              {fill(plural(h.lines, t("Fit to budget: 1 order moved out of {month} ({amount}, {suppliers}), waiting until {date}."), t("Fit to budget: {n} orders moved out of {month} ({amount}, {suppliers}), waiting until {date}.")), {
+                n: formatCount(h.lines, locale),
+                month: monthName(h.month, locale),
+                amount: formatAmount(h.amount, currency, locale),
+                suppliers: h.suppliers.filter(Boolean).join(", ") || "—",
+                date: shortDay(h.until, locale),
+              })}
+            </s-text>
+            <s-button variant="tertiary" loading={flag(fetcher.state !== "idle")} onClick={() => fetcher.submit({ intent: "undoFit", batch: h.batch } as never, { method: "post", encType: "application/json" })}>
+              {t("Undo")}
+            </s-button>
+          </s-stack>
+        </s-banner>
+      ))}
+    </>
   );
 }
 
