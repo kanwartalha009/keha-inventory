@@ -46,12 +46,12 @@ const metric = { status: "running_low", rate: 2.345, daysLeft: 9.7, neverRunsOut
 describe("status", () => {
   it("labels every engine status with the spec wording", () => {
     expect(VARIANT_STATUSES.map((s) => statusLabel(s, id))).toEqual([
-      "Out",
-      "Not enough data",
-      "Dead",
-      "Running low",
-      "Too much",
-      "Healthy",
+      "Out of stock",
+      "Insufficient data",
+      "Dead stock",
+      "Low stock",
+      "Overstock",
+      "In stock",
     ]);
   });
   it("orders the filter Out → Not enough data and covers every status", () => {
@@ -182,10 +182,10 @@ describe("CSV", () => {
     ];
     const lines = productsCsv(rows, id, true).replace("﻿", "").trim().split("\r\n");
     expect(lines[0]).toBe("Product,Variant,SKU,Vendor,Status,Stock now,Incoming,Sales per day while in stock,Days of stock left,Order by,Suggested qty");
-    expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Running low,12,0,2.3,9,2026-10-20,30");
-    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Too much,,,2.3,—,2026-10-20,30");
+    expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Low stock,12,0,2.3,9,2026-10-20,30");
+    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Overstock,,,2.3,—,2026-10-20,30");
     const free = productsCsv([toProductRow(variant, metric, null, false)], id, false).trim().split("\r\n");
-    expect(free[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Running low,,,2.3,,,");
+    expect(free[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Low stock,,,2.3,,,");
   });
 });
 

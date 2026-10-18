@@ -51,7 +51,7 @@ export const FACTS_TR: Record<string, Tr> = {
 
   // ---- Clear ----
   "Variants with no recent sales": { es: "Variantes sin ventas recientes", fr: "Variantes sans ventes récentes", de: "Varianten ohne aktuelle Verkäufe", it: "Varianti senza vendite recenti", pt: "Variantes sem vendas recentes", nl: "Varianten zonder recente verkopen", pl: "Warianty bez ostatniej sprzedaży" },
-  "Variants with too much stock": { es: "Variantes con demasiado stock", fr: "Variantes en surstock", de: "Varianten mit zu viel Bestand", it: "Varianti con troppo stock", pt: "Variantes com stock a mais", nl: "Varianten met te veel voorraad", pl: "Warianty z nadmiarem zapasu" },
+  "Overstocked variants": { es: "Variantes con exceso de stock", fr: "Variantes en surstock", de: "Varianten mit Überbestand", it: "Varianti con eccesso di scorte", pt: "Variantes com excesso de stock", nl: "Varianten met overvoorraad", pl: "Warianty z nadmiarem zapasu" },
   "Units to clear": { es: "Unidades a liquidar", fr: "Unités à écouler", de: "Abzuverkaufende Einheiten", it: "Unità da smaltire", pt: "Unidades a escoar", nl: "Op te ruimen stuks", pl: "Sztuki do wyprzedania" },
   "Valued at": { es: "Valorado a", fr: "Valorisé au", de: "Bewertet zum", it: "Valutato al", pt: "Avaliado ao", nl: "Gewaardeerd tegen", pl: "Wyceniono według" },
   "Cost price": { es: "Precio de coste", fr: "Prix de revient", de: "Einkaufspreis", it: "Prezzo di costo", pt: "Preço de custo", nl: "Kostprijs", pl: "Ceny zakupu" },

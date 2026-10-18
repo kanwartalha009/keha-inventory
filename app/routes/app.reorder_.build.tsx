@@ -641,7 +641,7 @@ function BuilderRow({
           <s-stack direction="block" gap="none">
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
-            {l.noReorder && <s-badge tone="neutral">{t("Not reordered")}</s-badge>}
+            {l.noReorder && <s-badge tone="neutral">{t("Don't reorder")}</s-badge>}
           </s-stack>
         </div>
       </s-table-cell>

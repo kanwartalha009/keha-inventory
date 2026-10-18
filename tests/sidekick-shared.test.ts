@@ -209,7 +209,7 @@ describe("product stock", () => {
       name: "Hoodie — Blue / M",
       _meta: {
         product_gid: "gid://shopify/Product/70",
-        status: "Running low",
+        status: "Low stock",
         on_hand: 9,
         incoming: null,
         sales_per_day: 1.3,
@@ -234,7 +234,7 @@ describe("product stock", () => {
     const r = productStockResponse([stockRow({ daysLeft: null, orderBy: null, orderQty: null })], { query: "x", total: 1, forecast: false, today: TODAY });
     const meta = r.results![0]!._meta;
     for (const k of ["days_left", "order_by", "order_by_label", "suggested_order_qty"]) expect(meta).not.toHaveProperty(k);
-    expect(meta).toMatchObject({ status: "Running low", on_hand: 9 });
+    expect(meta).toMatchObject({ status: "Low stock", on_hand: 9 });
   });
 
   it("says when nothing matches", () => {
@@ -395,6 +395,6 @@ describe("order plan not ready (2026-10-17 click-through: never 'nothing to orde
       notReady: { ready: false, state: "noSales", readyOn: "2026-10-31" },
     });
     expect(out).toMatchObject({ ready: false, order_advice: noSales });
-    expect(out.results![0]!._meta).toMatchObject({ status: "Out", on_hand: 0, sales_per_day: null, days_left: 0, order_by: null, order_by_label: null, suggested_order_qty: null });
+    expect(out.results![0]!._meta).toMatchObject({ status: "Out of stock", on_hand: 0, sales_per_day: null, days_left: 0, order_by: null, order_by_label: null, suggested_order_qty: null });
   });
 });

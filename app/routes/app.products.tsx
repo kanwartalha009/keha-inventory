@@ -374,7 +374,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
           <OrderByCell orderBy={r.orderBy} overdue={!!r.overdue} note={r.dueNote ?? null} />
         )}
       </s-table-cell>
-      <s-table-cell>{locked ? "" : r.noReorder ? <s-badge tone="neutral">{t("Not reordered")}</s-badge> : formatCount(r.orderQty, locale)}</s-table-cell>
+      <s-table-cell>{locked ? "" : r.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(r.orderQty, locale)}</s-table-cell>
       <s-table-cell>
         <s-button variant="tertiary" icon="menu-horizontal" commandFor={menuId} accessibilityLabel={`${t("More actions")}: ${name}`} />
         <s-menu id={menuId} accessibilityLabel={t("More actions")}>

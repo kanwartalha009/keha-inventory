@@ -133,8 +133,8 @@ export default function Settings() {
           <Disclosure id="settings-more" title={t("More options")} open={more} onToggle={() => setMore((m) => !m)}>
             <s-stack direction="block" gap="base">
               {numberField("cycleDays", t("Order cycle"), t("How often you place orders. Suggested quantities cover the lead time plus one cycle."))}
-              {numberField("tooMuchDays", t("Too much stock after"), t("A product is marked Too much when its stock would last longer than this."))}
-              {numberField("deadDays", t("Dead after"), t("A product is marked Dead when it hasn't sold for this long."))}
+              {numberField("tooMuchDays", t("Overstock after"), t("A product is marked Overstock when its stock would last longer than this."))}
+              {numberField("deadDays", t("Dead stock after"), t("A product is marked Dead stock when it hasn't sold for this long."))}
               <SelectField<SafetyLevel>
                 label={t("Safety level")}
                 value={form.safetyLevel as SafetyLevel}

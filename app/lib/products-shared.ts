@@ -30,17 +30,17 @@ export const STATUS_ORDER: VariantStatus[] = ["out", "running_low", "healthy", "
 export function statusLabel(status: VariantStatus, t: T): string {
   switch (status) {
     case "out":
-      return t("Out");
+      return t("Out of stock");
     case "running_low":
-      return t("Running low");
+      return t("Low stock");
     case "healthy":
-      return t("Healthy");
+      return t("In stock");
     case "too_much":
-      return t("Too much");
+      return t("Overstock");
     case "dead":
-      return t("Dead");
+      return t("Dead stock");
     case "not_enough_data":
-      return t("Not enough data");
+      return t("Insufficient data");
   }
 }
 

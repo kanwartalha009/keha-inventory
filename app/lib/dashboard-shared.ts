@@ -492,7 +492,7 @@ export function basisLines(key: MoneyCardKey, basis: MoneyBasisJson | null, t: T
   switch (key) {
     case "atRisk": {
       const b = basis.atRisk;
-      add(t("Variants running low or out: {n}"), { n: f.count(b.candidates) });
+      add(t("Variants low or out of stock: {n}"), { n: f.count(b.candidates) });
       add(t("Variants counted: {n}"), { n: f.count(b.variantsCounted) });
       if (b.skippedNoRate) add(t("Skipped, no sales rate yet: {n}"), { n: f.count(b.skippedNoRate) });
       if (b.skippedNoPrice) add(t("Skipped, no price: {n}"), { n: f.count(b.skippedNoPrice) });
@@ -513,7 +513,7 @@ export function basisLines(key: MoneyCardKey, basis: MoneyBasisJson | null, t: T
     }
     case "cashStuck": {
       const b = basis.cashStuck;
-      add(t("Variants with too much stock: {n}"), { n: f.count(b.tooMuchCount) });
+      add(t("Overstocked variants: {n}"), { n: f.count(b.tooMuchCount) });
       add(t("Dead-stock variants: {n}"), { n: f.count(b.deadCount) });
       if (b.skippedNoValue) add(t("Skipped, no cost or price: {n}"), { n: f.count(b.skippedNoValue) });
       if (card.costBasis === "retail") {

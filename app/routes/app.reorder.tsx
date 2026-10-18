@@ -717,7 +717,7 @@ function LineRow({
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
             {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From your Season plan") : t("From your action list")}</s-badge>}
-            {l.noReorder && <s-badge tone="neutral">{t("Not reordered")}</s-badge>}
+            {l.noReorder && <s-badge tone="neutral">{t("Don't reorder")}</s-badge>}
           </s-stack>
         </div>
       </s-table-cell>

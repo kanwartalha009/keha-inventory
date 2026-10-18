@@ -356,7 +356,6 @@ export const ORDERING_TR: Record<string, Tr> = {
   },
   "Don't reorder": { es: "No volver a pedir", fr: "Ne pas recommander", de: "Nicht nachbestellen", it: "Non riordinare", pt: "Não voltar a encomendar", nl: "Niet nabestellen", pl: "Nie zamawiaj ponownie" },
   "Reorder again": { es: "Volver a pedir", fr: "Recommander à nouveau", de: "Wieder nachbestellen", it: "Riordina di nuovo", pt: "Voltar a encomendar", nl: "Weer nabestellen", pl: "Zamawiaj ponownie" },
-  "Not reordered": { es: "No se vuelve a pedir", fr: "Pas recommandé", de: "Nicht nachbestellt", it: "Non riordinato", pt: "Não volta a ser encomendado", nl: "Niet nabesteld", pl: "Bez ponownych zamówień" },
   "Don't reorder this variant": { es: "No volver a pedir esta variante", fr: "Ne pas recommander cette variante", de: "Diese Variante nicht nachbestellen", it: "Non riordinare questa variante", pt: "Não voltar a encomendar esta variante", nl: "Deze variant niet nabestellen", pl: "Nie zamawiaj ponownie tego wariantu" },
   "Don't reorder this product": { es: "No volver a pedir este producto", fr: "Ne pas recommander ce produit", de: "Dieses Produkt nicht nachbestellen", it: "Non riordinare questo prodotto", pt: "Não voltar a encomendar este produto", nl: "Dit product niet nabestellen", pl: "Nie zamawiaj ponownie tego produktu" },
 

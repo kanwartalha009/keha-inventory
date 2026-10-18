@@ -85,8 +85,8 @@ describe("Products page", () => {
     expect(html).toContain("M · SKU-1");
     expect(html).toContain("Shirt 3");
     expect(html).not.toContain("Default Title");
-    expect(html).toContain("Running low");
-    expect(html).toContain("Too much");
+    expect(html).toContain("Low stock");
+    expect(html).toContain("Overstock");
     expect(html).toContain(">12<");
     expect(html).toContain(">400<");
     expect(html).toContain("2.3");
@@ -139,7 +139,7 @@ describe("Products page", () => {
     expect(html).toContain('href="/app/plans?upgrade=csvExport"');
     expect(html).toContain("Export CSV · Growth plan");
     // The non-forecast columns still show.
-    expect(html).toContain("Running low");
+    expect(html).toContain("Low stock");
     expect(html).toContain(">12<");
   });
 
@@ -288,7 +288,7 @@ describe("Variant detail", () => {
     const off = renderDetail({ ...detail(true), noReorder: true, productNoReorder: true, row: { ...detail(true).row, noReorder: true, orderQty: null } });
     expect(off).toContain("This product is set to Don&#x27;t reorder");
     expect(off).toContain("Reorder again");
-    expect(off).toContain("Not reordered");
+    expect(off).toContain('<s-badge tone="neutral">Don&#x27;t reorder</s-badge>');
   });
 
   it("Free: forecast parts locked, sales rate still shown", () => {
@@ -301,7 +301,7 @@ describe("Variant detail", () => {
 });
 
 describe("Products: the plan's To order, Don't reorder, sort and supplier filter", () => {
-  it("rows: Not reordered, Overdue, a row menu; toolbar: supplier and sort", () => {
+  it("rows: Don't reorder badge, Overdue, a row menu; toolbar: supplier and sort", () => {
     const [a, b, c] = rows(true);
     const html = render(
       data(true, {
@@ -309,7 +309,7 @@ describe("Products: the plan's To order, Don't reorder, sort and supplier filter
         options: { vendors: [], collections: [], suppliers: [{ id: "s1", name: "Lisbon Linen" }] },
       }),
     );
-    expect(html).toContain("Not reordered");
+    expect(html).toContain('<s-badge tone="neutral">Don&#x27;t reorder</s-badge>');
     expect(html).toContain("Overdue");
     expect(html).toContain("Don&#x27;t reorder this variant");
     expect(html).toContain("Don&#x27;t reorder this product");

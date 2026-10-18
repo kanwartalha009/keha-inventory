@@ -934,7 +934,7 @@ function CollectionGoals({ goals, options, currency }: { goals: GoalsData | null
                                 p.title,
                                 p.atRisk ? fill(t("{amount} at risk"), { amount: formatAmount(p.atRisk, currency, locale) }) : null,
                                 p.out ? fill(t("{n} out of stock"), { n: formatCount(p.out, locale) }) : null,
-                                p.low ? fill(t("{n} running low"), { n: formatCount(p.low, locale) }) : null,
+                                p.low ? fill(t("{n} low on stock"), { n: formatCount(p.low, locale) }) : null,
                               ]
                                 .filter(Boolean)
                                 .join(" · ")}

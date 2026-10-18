@@ -228,7 +228,7 @@ export default function VariantDetailPage() {
             />
             <KvRow
               label={t("To order")}
-              value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Not reordered")}</s-badge> : formatCount(row.orderQty, locale)}
+              value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(row.orderQty, locale)}
             />
           </div>
         </div>

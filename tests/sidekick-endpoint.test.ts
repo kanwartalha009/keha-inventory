@@ -281,7 +281,7 @@ describe("tools on Growth", () => {
     const r = await body("get_product_stock", "query=blue%20HOODIE");
     expect(r.results!.map((x) => x.name)).toEqual(["Hoodie — Blue / M"]);
     expect(r.results![0]!._meta).toMatchObject({
-      status: "Running low",
+      status: "Low stock",
       on_hand: 11,
       incoming: 0,
       on_order_with_keha: 20,

@@ -8,12 +8,11 @@ import type { Tr } from "./i18n";
 
 export const PRODUCTS_TR: Record<string, Tr> = {
   // ---- Status ----
-  "Out": { es: "Agotado", fr: "En rupture", de: "Ausverkauft", it: "Esaurito", pt: "Esgotado", nl: "Uitverkocht", pl: "Brak" },
-  "Running low": { es: "Queda poco", fr: "Stock bas", de: "Wird knapp", it: "In esaurimento", pt: "A acabar", nl: "Bijna op", pl: "Kończy się" },
-  "Healthy": { es: "Correcto", fr: "Sain", de: "Gesund", it: "In salute", pt: "Saudável", nl: "Gezond", pl: "W normie" },
-  "Too much": { es: "Demasiado", fr: "Trop de stock", de: "Zu viel", it: "Troppo", pt: "Em excesso", nl: "Te veel", pl: "Za dużo" },
-  "Dead": { es: "Sin ventas", fr: "Dormant", de: "Ladenhüter", it: "Fermo", pt: "Parado", nl: "Onverkoopbaar", pl: "Zalega" },
-  "Not enough data": { es: "Datos insuficientes", fr: "Données insuffisantes", de: "Zu wenig Daten", it: "Dati insufficienti", pt: "Dados insuficientes", nl: "Te weinig gegevens", pl: "Za mało danych" },
+  "Out of stock": { es: "Sin stock", fr: "En rupture", de: "Nicht vorrätig", it: "Esaurito", pt: "Sem stock", nl: "Niet op voorraad", pl: "Brak w magazynie" },
+  "Low stock": { es: "Stock bajo", fr: "Stock bas", de: "Niedriger Bestand", it: "Scorte basse", pt: "Stock baixo", nl: "Lage voorraad", pl: "Niski stan" },
+  "Overstock": { es: "Exceso de stock", fr: "Surstock", de: "Überbestand", it: "Eccesso di scorte", pt: "Excesso de stock", nl: "Overvoorraad", pl: "Nadmiar zapasu" },
+  "Dead stock": { es: "Stock muerto", fr: "Stock dormant", de: "Ladenhüter", it: "Stock fermo", pt: "Stock parado", nl: "Dode voorraad", pl: "Martwy zapas" },
+  "Insufficient data": { es: "Datos insuficientes", fr: "Données insuffisantes", de: "Unzureichende Daten", it: "Dati insufficienti", pt: "Dados insuficientes", nl: "Onvoldoende gegevens", pl: "Niewystarczające dane" },
 
   // ---- Table and CSV columns ----
   "Product": { es: "Producto", fr: "Produit", de: "Produkt", it: "Prodotto", pt: "Produto", nl: "Product", pl: "Produkt" },

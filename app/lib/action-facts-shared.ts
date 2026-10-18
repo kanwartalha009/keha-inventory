@@ -101,7 +101,7 @@ export const FACT_DEFS: Record<string, FactDef> = {
   returned: { label: "Units returned", kind: "number" },
   thresholdPct: { label: "Return rate that counts as high", kind: "percent" },
   dead: { label: "Variants with no recent sales", kind: "number" },
-  tooMuch: { label: "Variants with too much stock", kind: "number" },
+  tooMuch: { label: "Overstocked variants", kind: "number" },
   units: { label: "Units to clear", kind: "number" },
   costBasis: { label: "Valued at", kind: "enum", values: { cost: "Cost price", retail: "Retail price" } },
   coverDays: { label: "Stock you need", kind: "days" },

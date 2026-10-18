@@ -469,12 +469,12 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
 
 /** The app's own status words (lib/products-shared statusLabel, English). */
 export const STATUS_WORDS: Record<string, string> = {
-  out: "Out",
-  running_low: "Running low",
-  healthy: "Healthy",
-  too_much: "Too much",
-  dead: "Dead",
-  not_enough_data: "Not enough data",
+  out: "Out of stock",
+  running_low: "Low stock",
+  healthy: "In stock",
+  too_much: "Overstock",
+  dead: "Dead stock",
+  not_enough_data: "Insufficient data",
 };
 
 export type ProductStockIn = {
@@ -609,7 +609,7 @@ export function moneyResponse(m: MoneyIn, today: string): SidekickResponse {
           units: m.dead.units,
           variants: m.dead.variants,
           valued_at: m.dead.retail ? "cost, or retail price where a variant has no cost" : "cost",
-          how_we_got_this: `Stock on hand now of every variant with status Dead (no sale for ${m.dead.deadDays} days or more), in the locations that sell online.`,
+          how_we_got_this: `Stock on hand now of every variant with status Dead stock (no sale for ${m.dead.deadDays} days or more), in the locations that sell online.`,
         }
       : undefined,
     url: appUrl("/app"),
