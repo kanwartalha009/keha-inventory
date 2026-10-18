@@ -81,7 +81,7 @@ describe("listing text", () => {
   it("never names another Keha app (rule 4.4), and lists only real integrations", () => {
     expect(listing).not.toMatch(/Keha Preorder/);
     // Listing audit 2026-10-18: only the apps Keha connects to (POS stores are a feature, Sidekick is part of the app).
-    expect(integrations).toEqual(["Slack", "Shopify Flow"]);
+    expect(integrations).toEqual(["Slack"]);
   });
 
   it("mentions Shopify Sidekick in the details (rule 2.2.8) and maps every Sidekick tool to the code", () => {
@@ -99,7 +99,7 @@ describe("listing text", () => {
   });
 
   it("search terms from the audit", () => {
-    expect(terms).toEqual(["inventory forecasting", "purchase orders", "inventory planning", "demand forecasting", "low stock alert"]);
+    expect(terms).toEqual(["inventory forecast", "purchase orders", "inventory planning", "demand forecasting", "low stock alert"]);
   });
 });
 

@@ -32,6 +32,15 @@ platform through an outbox. The outbox copy is emptied within an hour of deliver
 deleted 30 days later; a copy that could not be delivered stays until the customer's deletion request or
 the store's purge removes it.
 
+## Form status (2026-10-18)
+
+Saved in the Partner Dashboard (8 of 16): 1 minimum data **Yes**, 2 tell merchants **Yes**, 3 limit
+use **Yes**, consent **Not applicable**, opt-out of selling **Not applicable**, automated decisions
+**Not applicable**, retention **Yes**, log access **Yes**. Left for Kanwar (attestations about the
+company and hosting): agreements with merchants, encryption at rest and in transit, encrypted
+backups, test/production separation, data loss prevention, staff access, strong passwords, incident
+response policy.
+
 ## Level 1 requirements
 
 | # | Requirement | Draft answer |
@@ -39,7 +48,7 @@ the store's purge removes it.
 | 1 | Process only the minimum personal data needed | Yes. The app stores no shopper personal data. Sales, stock and visits are stored as totals per variant, location, channel, landing page and day. |
 | 2 | Tell merchants what personal data you process and why | Yes: the privacy policy at `https://inventory.keha.io/privacy` (lists data, purposes, scopes, sub-processors, retention). |
 | 3 | Limit use to the stated purposes | Yes. Data is used only to give the merchant stock advice, emails and alerts. No sale, no advertising, no use across stores. |
-| 4 | Respect and apply consent decisions | Not applicable to shoppers (no shopper data is processed or contacted). Merchants choose every email and Slack destination; the weekly summary email has an unsubscribe link. |
+| 4 | Respect and apply consent decisions | Not applicable to shoppers (no shopper data is processed or contacted). The app sends no email itself; merchants choose every Slack destination and build their own Shopify Flow email workflows, which they can turn off at any time. |
 | 5 | Respect opt-outs of data selling / sharing | Not applicable: no personal data is sold or shared for advertising. |
 | 6 | Opt-out of automated decisions with legal or similar effect | Not applicable: the app makes suggestions to merchants only; nothing changes in the store until the merchant confirms. |
 | 7 | Privacy and data protection agreements with merchants | The Terms of Service and Privacy Policy, accepted on install. **[Kanwar to confirm]** whether the company also offers a data processing agreement on request. |

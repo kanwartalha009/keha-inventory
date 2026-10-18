@@ -83,7 +83,7 @@ as "Store" in Settings → Locations. "The last day to order" is the order-by da
 ## Search terms
 
 ```text
-inventory forecasting
+inventory forecast
 purchase orders
 inventory planning
 demand forecasting
@@ -92,18 +92,17 @@ low stock alert
 
 ## Categories
 
-- Primary: **Orders and shipping → Inventory → Inventory optimization.** **[Kanwar to confirm]**
-  the exact labels shown in the form.
+- Primary: **Orders and shipping → Inventory → Inventory optimization** (saved in the form 2026-10-18).
 - No secondary category unless the form asks for one.
 
 ## Integrations
 
 ```text
 Slack
-Shopify Flow
 ```
 
-Only the other apps Keha connects to: Slack (incoming webhook, Settings → Alerts) and Shopify Flow
+The form rejects "Shopify Flow" (an integration name can't contain "Shopify"; checked in the
+form 2026-10-18), so Flow is described in the details and features instead. The apps Keha connects to: Slack (incoming webhook, Settings → Alerts) and Shopify Flow
 (four triggers, `extensions/keha-inventory-flow`: "Weekly order plan ready" and "First order plan
 ready" on every plan — how merchants get Keha's summaries by email, with Flow's "Send internal
 email" action — and "Product needs reorder" / "Product became dead stock" on Growth). Keha has no email
