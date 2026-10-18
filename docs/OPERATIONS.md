@@ -146,7 +146,7 @@ dependency) — measure first: SCALE.md's page-load p95s are on a single primary
 Owner decision 2026-10-18: the app runs with **no email provider**. Leave `INVENTORY_EMAIL_API_KEY`
 / `INVENTORY_EMAIL_FROM` unset; `/health` → `config.email` is `"flow"` (normal, not a failure).
 
-- **Monday summary** → Shopify Flow trigger "Weekly order plan ready" (every plan; the Monday job,
+- **Weekly summary** → Shopify Flow trigger "Weekly order plan ready" (every plan; the Monday job,
   once per store week, `OwnerEmailLog` kind `monday_flow`). **First plan ready** → "First order plan
   ready" (after a compute job, once per store, kind `plan_ready_flow`). Instant alerts → "Product
   needs reorder" (Growth, hourly alerts job) and Slack. Merchants get them by email with a Flow
@@ -158,7 +158,7 @@ Owner decision 2026-10-18: the app runs with **no email provider**. Leave `INVEN
   supplier page serves the PDF and CSV (`/supplier/confirm/:token/pdf|csv`, same rate limit).
 - **Data requests** (`customers/data_request`) are answered in the access log; the log line is
   `[gdpr] data_request for <shop>: no customer data held; recorded in the access log` (info).
-- Setting a provider later turns the app's own emails back on (Monday email, alert emails, "Email
+- Setting a provider later turns the app's own emails back on (weekly summary email, alert emails, "Email
   supplier", data-request email) with no code change; the privacy page then names it as a
   sub-processor automatically — add it to `docs/listing/PCD-ANSWERS.md` too.
 

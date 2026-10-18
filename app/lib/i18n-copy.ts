@@ -76,15 +76,7 @@ export const COPY_TR: Record<string, Tr> = {
   },
 
   // ---- Growth plan card: named like the screen (Order plan → Next 13 weeks) ----
-  "Next 13 weeks: every order with cash per week": {
-    es: "Próximas 13 semanas: cada pedido con el dinero de cada semana",
-    fr: "13 prochaines semaines : chaque commande avec la trésorerie par semaine",
-    de: "Nächste 13 Wochen: jede Bestellung mit Geldbedarf pro Woche",
-    it: "Prossime 13 settimane: ogni ordine con la liquidità per settimana",
-    pt: "Próximas 13 semanas: cada encomenda com o dinheiro por semana",
-    nl: "Komende 13 weken: elke bestelling met het geld per week",
-    pl: "Najbliższe 13 tygodni: każde zamówienie z gotówką na każdy tydzień",
-  },
+  "Order calendar: every order with cash per week": { es: "Calendario de pedidos: cada pedido con el dinero de cada semana", fr: "Calendrier des commandes : chaque commande avec la trésorerie par semaine", de: "Bestellkalender: jede Bestellung mit Geldbedarf pro Woche", it: "Calendario ordini: ogni ordine con la liquidità per settimana", pt: "Calendário de encomendas: cada encomenda com o dinheiro por semana", nl: "Bestelkalender: elke bestelling met het geld per week", pl: "Kalendarz zamówień: każde zamówienie z gotówką na każdy tydzień" },
 
   // ---- Weekly sales re-check (owner 2026-10-18): shown only when corrections moved units by > 2% ----
   "Shopify updated 1 day of past sales (refunds or order edits). Your numbers include it.": {

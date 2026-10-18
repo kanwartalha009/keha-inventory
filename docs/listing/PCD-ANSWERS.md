@@ -39,12 +39,12 @@ the store's purge removes it.
 | 1 | Process only the minimum personal data needed | Yes. The app stores no shopper personal data. Sales, stock and visits are stored as totals per variant, location, channel, landing page and day. |
 | 2 | Tell merchants what personal data you process and why | Yes: the privacy policy at `https://inventory.keha.io/privacy` (lists data, purposes, scopes, sub-processors, retention). |
 | 3 | Limit use to the stated purposes | Yes. Data is used only to give the merchant stock advice, emails and alerts. No sale, no advertising, no use across stores. |
-| 4 | Respect and apply consent decisions | Not applicable to shoppers (no shopper data is processed or contacted). Merchants choose every email and Slack destination; the Monday email has an unsubscribe link. |
+| 4 | Respect and apply consent decisions | Not applicable to shoppers (no shopper data is processed or contacted). Merchants choose every email and Slack destination; the weekly summary email has an unsubscribe link. |
 | 5 | Respect opt-outs of data selling / sharing | Not applicable: no personal data is sold or shared for advertising. |
 | 6 | Opt-out of automated decisions with legal or similar effect | Not applicable: the app makes suggestions to merchants only; nothing changes in the store until the merchant confirms. |
 | 7 | Privacy and data protection agreements with merchants | The Terms of Service and Privacy Policy, accepted on install. **[Kanwar to confirm]** whether the company also offers a data processing agreement on request. |
 | 8 | Apply retention periods | Yes. Daily totals: deleted after 25 months. Privacy-request access log: 90 days. Delivered platform copies: emptied within an hour of delivery, deleted after 30 days. All store data: deleted 48 hours after uninstall, immediately on `shop/redact`. |
-| 9 | Encrypt data at rest and in transit | In transit: HTTPS to Shopify, to Slack (and to an email provider, if one is ever configured) and for every app page. At rest: Slack webhook links and supplier email addresses are encrypted in the app with AES-256-GCM. Database disk encryption is the hosting provider's: **[Kanwar to confirm]** that Railway encrypts the Postgres volume at rest, and whether the app's database connection uses TLS on Railway's private network. |
+| 9 | Encrypt data at rest and in transit | In transit: HTTPS to Shopify, to Slack (and to an email provider, if one is ever configured) and for every app page. At rest: Slack webhook URLs and supplier email addresses are encrypted in the app with AES-256-GCM. Database disk encryption is the hosting provider's: **[Kanwar to confirm]** that Railway encrypts the Postgres volume at rest, and whether the app's database connection uses TLS on Railway's private network. |
 
 ## Level 2 requirements
 
@@ -81,13 +81,13 @@ the store's purge removes it.
 | Shopify | Everything (the platform) | Always |
 | Railway | App hosting and the Postgres database | Always. **[Kanwar to confirm]** the region the project runs in. |
 | (No email provider — owner decision 2026-10-18) | The app sends no email itself: summaries go through the merchant's own Shopify Flow, purchase orders through the merchant's own email app | If a provider is ever configured (`INVENTORY_EMAIL_API_KEY` / `_FROM`), the privacy page names it automatically (Resend by default of `INVENTORY_EMAIL_API_URL`) and it must be added here. |
-| Slack | The Monday summary and alerts (product names, amounts) | Only when the merchant connects a webhook |
-| Shopify Flow (part of Shopify) | The Monday summary, the first-plan notice and product events, sent to Flow in the merchant's own store | Only the merchant's own workflows act on them |
+| Slack | The weekly summary and alerts (product names, amounts) | Only when the merchant connects a webhook |
+| Shopify Flow (part of Shopify) | The weekly summary, the first-plan notice and product events, sent to Flow in the merchant's own store | Only the merchant's own workflows act on them |
 | Nova Apps platform (operated by us) | Install, plan and support records; copies of compliance webhooks | Always. **[Kanwar to confirm]** where Nova is hosted, and add that host as a sub-processor if it is a third party. |
 
 ## Personal data that is not customer data (for completeness)
 
-- Store staff: email addresses the merchant enters for the Monday email (stored as entered; the
+- Store staff: email addresses the merchant enters for the weekly summary email (stored as entered; the
   field is shown only when an email provider is configured); the store owner's email is read from
   Shopify when an email is sent and not stored. With no provider, the addresses live in the
   merchant's own Flow workflow, not in the app.

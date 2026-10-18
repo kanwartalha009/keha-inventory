@@ -31,15 +31,15 @@ describe("plan matrix", () => {
   });
 });
 
-describe("plan wording (2026-10-17 click-through)", () => {
-  it("the screen is called Season plan on the Plans page, never 'planner'", () => {
+describe("plan wording (2026-10-17 click-through; terminology glossary 2026-10-18)", () => {
+  it("the screen is called Season planner on the Plans page, never the old 'Season plan'", () => {
     const words = [
       ...Object.values(PLAN_POINTS).flat(),
       ...PLAN_MATRIX.flatMap((g) => g.rows.map((r) => r.label)),
     ];
-    for (const w of words) expect(w, w).not.toMatch(/planner/i);
-    expect(PLAN_POINTS.growth).toContain("Season plan (1 scenario) and forecast accuracy");
-    expect(PLAN_POINTS.pro).toContain("Unlimited Season plan scenarios");
+    for (const w of words) expect(w, w).not.toMatch(/Season plan(?!ner)/i);
+    expect(PLAN_POINTS.growth).toContain("Season planner (1 scenario) and forecast accuracy");
+    expect(PLAN_POINTS.pro).toContain("Unlimited Season planner scenarios");
   });
 });
 
@@ -57,6 +57,6 @@ describe("the sold-out best seller feature is sold as what it does (pricing audi
     expect(row.hint).toBe("Until its stock arrives: how to collect back-in-stock sign-ups on the product page.");
     const texts = [row.label, row.hint ?? "", ...Object.values(PLAN_POINTS).flat()];
     for (const t of texts) expect(t).not.toMatch(/preorder|bridge/i);
-    expect(PLAN_POINTS.growth).toContain("What to do while a best seller is sold out, and dead-stock discounts");
+    expect(PLAN_POINTS.growth).toContain("Stock-gap actions and dead-stock discounts");
   });
 });

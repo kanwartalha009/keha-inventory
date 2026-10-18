@@ -38,7 +38,7 @@ Set in the 2026-10-17 design-consistency pass. Every screen follows these; the h
    live admin: a side-by-side layout squeezed the filter group inside the table's filters slot).
    In an `s-table` pass `slot="filters"`.
 9. **Column headers never wrap.** Short label in the header, long form in a tooltip:
-   `<HeaderLabel id label hint badge>` ("Sales/day" → "Sales per day while in stock").
+   `<HeaderLabel id label hint badge>` ("Daily sales" → "Sales per day while in stock").
    A plan lock in a header is a compact badge with the plan name (lock icon + "Growth").
 10. **Numbers are right-aligned with lined-up digits:** `format="numeric"` on the
     `s-table-header` of every count / rate / days column (dates and text stay left).

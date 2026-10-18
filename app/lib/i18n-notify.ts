@@ -310,13 +310,5 @@ export const NOTIFY_TR: Record<string, Tr> = {
     pl: "Wyzwalacze Shopify Flow dla produktów",
   },
   "“Product needs reorder” and “Product became dead stock”. The weekly summary reaches Shopify Flow on every plan.": { es: "«Product needs reorder» y «Product became dead stock». El resumen semanal llega a Shopify Flow en todos los planes.", fr: "« Product needs reorder » et « Product became dead stock ». Le résumé hebdomadaire arrive dans Shopify Flow avec tous les forfaits.", de: "„Product needs reorder“ und „Product became dead stock“. Die Wochenübersicht kommt in jedem Tarif bei Shopify Flow an.", it: "«Product needs reorder» e «Product became dead stock». Il riepilogo settimanale arriva in Shopify Flow con ogni piano.", pt: "«Product needs reorder» e «Product became dead stock». O resumo semanal chega ao Shopify Flow em todos os planos.", nl: "'Product needs reorder' en 'Product became dead stock'. Het weekoverzicht komt bij elk abonnement in Shopify Flow.", pl: "„Product needs reorder” i „Product became dead stock”. Podsumowanie tygodnia trafia do Shopify Flow w każdym planie." },
-  "Top 10 actions and a Monday email through Shopify Flow": {
-    es: "Las 10 acciones principales y un email cada lunes con Shopify Flow",
-    fr: "Les 10 actions prioritaires et un e-mail chaque lundi via Shopify Flow",
-    de: "Die 10 wichtigsten Aufgaben und eine Montags-E-Mail über Shopify Flow",
-    it: "Le 10 azioni principali e un'email ogni lunedì tramite Shopify Flow",
-    pt: "As 10 ações principais e um email à segunda-feira com o Shopify Flow",
-    nl: "De 10 belangrijkste acties en een maandagmail via Shopify Flow",
-    pl: "10 najważniejszych działań i e-mail w każdy poniedziałek przez Shopify Flow",
-  },
+  "Top 10 actions and a weekly summary email through Shopify Flow": { es: "Las 10 acciones principales y un email de resumen semanal con Shopify Flow", fr: "Les 10 actions prioritaires et un e-mail de résumé hebdomadaire via Shopify Flow", de: "Die 10 wichtigsten Aufgaben und eine E-Mail mit der Wochenübersicht über Shopify Flow", it: "Le 10 azioni principali e un'email di riepilogo settimanale tramite Shopify Flow", pt: "As 10 ações principais e um email de resumo semanal com o Shopify Flow", nl: "De 10 belangrijkste acties en een e-mail met het weekoverzicht via Shopify Flow", pl: "10 najważniejszych działań i e-mail z podsumowaniem tygodnia przez Shopify Flow" },
 };

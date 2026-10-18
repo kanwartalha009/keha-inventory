@@ -16,9 +16,9 @@ type T = (s: string) => string;
 export function featureCopy(feature: Feature, t: T): { title: string; body: string } {
   switch (feature) {
     case "dailyRefresh":
-      return { title: t("Daily numbers"), body: t("Your money-at-stake numbers refresh every night instead of once a week.") };
+      return { title: t("Daily refresh"), body: t("Your money-at-stake numbers refresh every night instead of once a week.") };
     case "fullActionList":
-      return { title: t("Every action, every week"), body: t("See the whole ranked list of what to reorder, promote, fix and clear, not just the top 10.") };
+      return { title: t("Full action list"), body: t("See the whole ranked list of what to reorder, promote, fix and clear, not just the top 10.") };
     case "forecast":
       return { title: t("Days of stock"), body: t("See how many days each variant will last and how many to order.") };
     case "reorderPlan":
@@ -52,7 +52,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "csvImport":
       return { title: t("Import & export"), body: t("Set up suppliers, case packs and Don't reorder for thousands of products at once from a spreadsheet.") };
     case "locations":
-      return { title: t("Locations and stores"), body: t("Plan stock per warehouse and per POS store, each with its own sales.") };
+      return { title: t("Multi-location planning"), body: t("Plan stock per warehouse and per POS store, each with its own sales.") };
     case "transfers":
       return { title: t("Transfers"), body: t("Plan which stock to move from your warehouse to your stores, and create the transfer in Shopify.") };
   }

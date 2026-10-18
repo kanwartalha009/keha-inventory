@@ -33,7 +33,7 @@ Know what to order, from whom, by when and the cash it takes
 ## App introduction
 
 ```text
-Order best sellers before they sell out, and see the cash each order needs, week by week.
+Order best sellers before they run out, and see the cash each order needs, week by week.
 ```
 
 ## App details
@@ -48,8 +48,8 @@ Keha turns your Shopify sales and stock into an order plan: what to order from e
 Order plan by supplier: what to order, how many, and the last day to order
 Cash needed each week on your suppliers' payment terms, for the next 13 weeks
 Purchase orders as PDF, CSV or email; suppliers confirm ship dates by link
-Forecasts that ignore sold-out days, each showing how it was worked out
-Monday to-do list: reorder, promote, fix or clear, ranked by money at stake
+Forecasts that ignore out-of-stock days, each showing how it was worked out
+Weekly to-do list: reorder, promote, fix or clear, ranked by money at stake
 ```
 
 ## Feature list — optional extras (only if the form takes 8)
@@ -57,23 +57,23 @@ Monday to-do list: reorder, promote, fix or clear, ranked by money at stake
 ```text
 Clear dead stock with a Shopify discount, created only after you confirm
 Plan each warehouse and POS store, and draft stock transfers in Shopify
-Season plan: an order list with order-by dates and cash needed per week
+Season planner: an order list with order-by dates and cash needed per week
 ```
 
 Where each claim lives in the code (the plan each one needs is in the plan cards, never in the text):
 
 | Claim | Code |
 |---|---|
-| Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
-| Cash each week, next 13 weeks | Order plan → Next 13 weeks (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
+| Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Due this week", Order plan → Due now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
+| Cash each week, next 13 weeks | Order plan → Order calendar (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
 | Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx` ("Open in your email": a mailto in the supplier's language, `app/lib/po-mailto-shared.ts`; "Email supplier" only when an email provider is set), `supplier.confirm.$token*.tsx` (PDF and CSV download) (Growth) |
-| One purchase order per supplier per cycle (details text) | The supplier order builder, `app/routes/app.reorder_.build.tsx`, `app/lib/supplier-order-shared.ts`: everything due within the supplier's order cycle (Settings → Suppliers "Order every … days") in one draft, topped up to its minimums (Growth) |
+| One purchase order per supplier per cycle (details text) | The purchase order builder, `app/routes/app.reorder_.build.tsx`, `app/lib/supplier-order-shared.ts`: everything due within the supplier's order cycle (Settings → Suppliers "Order every … days") in one draft, topped up to its minimums (Growth) |
 | Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
-| Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
+| Weekly to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
 | Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Plan each warehouse and POS store, draft transfers | `app/routes/app.settings_.locations.tsx` (roles), location switcher, `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
-| Season plan: order list, order-by dates, cash per week | Order plan → Season plan, `app/routes/app.reorder_.season.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
-| It also answers in Shopify Sidekick (details text) | `extensions/keha-inventory-sidekick` (six read-only tools: order plan, products, actions, money at stake, open orders, forecast accuracy), `app/routes/api.sidekick.$tool.tsx`; nothing changes the store from Sidekick |
+| Season planner: order list, order-by dates, cash per week | Order plan → Season planner, `app/routes/app.reorder_.season.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |
+| It also answers in Shopify Sidekick (details text) | `extensions/keha-inventory-sidekick` (six read-only tools: order plan, products, actions, money at stake, purchase orders, forecast accuracy), `app/routes/api.sidekick.$tool.tsx`; nothing changes the store from Sidekick |
 
 Precision for the text: transfers are created as **drafts** in Shopify (nothing moves until the
 merchant marks the transfer ready to ship there); POS stores are the locations the merchant marks
@@ -106,7 +106,7 @@ Shopify Flow
 Only the other apps Keha connects to: Slack (incoming webhook, Settings → Alerts) and Shopify Flow
 (four triggers, `extensions/keha-inventory-flow`: "Weekly order plan ready" and "First order plan
 ready" on every plan — how merchants get Keha's summaries by email, with Flow's "Send internal
-email" action — and "Product needs reorder" / "Product went dead" on Growth). Keha has no email
+email" action — and "Product needs reorder" / "Product became dead stock" on Growth). Keha has no email
 provider of its own (owner decision 2026-10-18): nothing in the listing says "we email you"; email
 is "through Shopify Flow" or, for purchase orders, the merchant's own email app. Shopify POS and Sidekick are not listed (listing
 audit 2026-10-18): POS stores are Shopify locations the app plans for (a feature, in the details and
@@ -125,8 +125,8 @@ Inventory → Inventory optimization, and tick nothing the table below doesn't b
 | What the app does (tick the matching option) | Where in the code |
 |---|---|
 | Demand / sales forecasting per product, seasonality from 13 months of sales | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; product page "How the forecast was built" |
-| Sold-out days left out of the sales rate | `app/lib/engine/rate-shared.ts` |
-| Reorder suggestions: quantity and order-by date per product, by supplier | `app/lib/engine/forward-plan-shared.ts`, Order plan → Order now |
+| Out-of-stock days left out of the sales rate | `app/lib/engine/rate-shared.ts` |
+| Reorder suggestions: quantity and order-by date per product, by supplier | `app/lib/engine/forward-plan-shared.ts`, Order plan → Due now |
 | Purchase orders: create, PDF, CSV, email to the supplier (from the merchant's own email app) | `app/routes/app.reorder_.$id*.tsx`, `app/lib/po-mailto-shared.ts` |
 | Supplier management: lead time, case packs, minimums, payment terms, order cycle | `app/routes/app.settings_.suppliers.tsx` |
 | Supplier confirms the ship date from a link (no login) | `app/routes/supplier.confirm.$token.tsx` |
@@ -135,8 +135,8 @@ Inventory → Inventory optimization, and tick nothing the table below doesn't b
 | Dead-stock / overstock detection and clearance discounts (after a confirm) | `app/services/clearance.server.ts` |
 | Multi-location planning: each warehouse and POS store | `app/routes/app.settings_.locations.tsx`, location switcher |
 | Stock transfers between locations (draft in Shopify, after a confirm) | `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` |
-| Seasonal / event planning (Season plan scenarios) | `app/routes/app.reorder_.season.tsx` |
-| Forecast accuracy report | Order plan → Season plan → How accurate we were |
+| Seasonal / event planning (Season planner scenarios) | `app/routes/app.reorder_.season.tsx` |
+| Forecast accuracy report | Order plan → Season planner → Forecast accuracy |
 | Bundles: a bundle's sales count on its components | `app/services/compute.server.ts` (`isBundle`) |
 | CSV import (suppliers, products) and CSV export (products, orders, the 13-week plan) | `app/routes/app.settings_.import.tsx`, `app.products.csv.tsx`, `app.reorder_.calendar_.csv.tsx` |
 
@@ -180,24 +180,24 @@ keep).
 ### Free
 
 - Shipped — Order plan preview (top 10)
-- Shipped — Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits
+- Shipped — Sales at risk, lost sales, cash tied up and out-of-stock page visits
 - Shipped — Numbers refreshed weekly
-- Shipped — Top 10 actions and a Monday email through Shopify Flow
+- Shipped — Top 10 actions and a weekly summary email through Shopify Flow
 
 ### Growth
 
 - Shipped — Full order plan by supplier, with purchase orders
-- Shipped — Next 13 weeks: every order with cash per week
+- Shipped — Order calendar: every order with cash per week
 - Shipped — Numbers refreshed daily, and every action
-- Shipped — What to do while a best seller is sold out, and dead-stock discounts
-- Shipped — Season plan (1 scenario) and forecast accuracy
+- Shipped — Stock-gap actions and dead-stock discounts
+- Shipped — Season planner (1 scenario) and forecast accuracy
 - Shipped — Slack and Shopify Flow
 
 ### Pro
 
 - Shipped — Planning per location and per POS store
 - Shipped — Transfers from warehouse to stores, created in Shopify
-- Shipped — Unlimited Season plan scenarios
+- Shipped — Unlimited Season planner scenarios
 
 ## Links and contacts
 

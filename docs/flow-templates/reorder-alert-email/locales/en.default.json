@@ -1,5 +1,5 @@
 {
   "name": "Email me when Keha says a product needs a reorder",
-  "description": "When a product will run out before new stock can arrive, email your team the product, days of stock left, the order-by date and Keha's suggested quantity.",
+  "description": "When a product will run out before new stock can arrive, email your team the product, days of stock, the order-by date and Keha's suggested quantity.",
   "preInstallNote": "Type the email addresses that should get the alerts in the Send internal email step before you turn the workflow on."
 }

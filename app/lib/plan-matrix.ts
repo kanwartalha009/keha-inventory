@@ -34,7 +34,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
         hint: "Free shows your 10 most urgent products, read only.",
         values: { free: "Order plan preview (top 10)", growth: "All", pro: "All" },
       },
-      { label: "Days of stock left and suggested order quantity per variant", feature: "forecast" },
+      { label: "Days of stock and suggested order quantity per variant", feature: "forecast" },
       { label: "Order plan by supplier, with order-by dates", feature: "reorderPlan" },
       { label: "Order calendar", hint: "Every order for the next 13 weeks, by week and supplier, with the cash you need each week.", feature: "orderCalendar" },
       { label: "Suppliers with lead times, minimum orders and case packs", feature: "suppliers" },
@@ -48,7 +48,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     title: "Money at stake",
     rows: [
       {
-        label: "Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits",
+        label: "Sales at risk, lost sales, cash tied up and out-of-stock page visits",
         hint: "Four numbers in your store's currency, each showing how we got it.",
         values: ALL,
       },
@@ -56,7 +56,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     ],
   },
   {
-    title: "Weekly actions",
+    title: "Actions",
     rows: [
       { label: "Ranked list of what to reorder, promote, fix and clear", values: { free: "Top 10", growth: "All", pro: "All" } },
       // Owner decision 2026-10-18 (no email provider): the summary reaches the inbox through Shopify Flow.
@@ -70,13 +70,13 @@ export const PLAN_MATRIX: MatrixGroup[] = [
   {
     title: "Planning",
     rows: [
-      { label: "Season plan scenarios with cash needed per week", values: { free: false, growth: "1 scenario", pro: "Unlimited" } },
+      { label: "Season planner scenarios with cash needed per week", values: { free: false, growth: "1 scenario", pro: "Unlimited" } },
       { label: "Revenue goals per collection", feature: "collectionGoals" },
       { label: "Forecast accuracy, shown every month", feature: "accuracy" },
     ],
   },
   {
-    title: "Locations and stores",
+    title: "Multi-location planning",
     rows: [
       { label: "Planning per location and per POS store", hint: "Free and Growth count the stock of all your locations together. Pro plans each warehouse and store on its own.", feature: "locations" },
       { label: "Transfer plan from warehouse to stores, created in Shopify", feature: "transfers" },
@@ -102,22 +102,22 @@ export const PLAN_PITCH: Record<PlanCode, string> = {
 export const PLAN_POINTS: Record<PlanCode, string[]> = {
   free: [
     "Order plan preview (top 10)",
-    "Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits",
+    "Sales at risk, lost sales, cash tied up and out-of-stock page visits",
     "Numbers refreshed weekly",
-    "Top 10 actions and a Monday email through Shopify Flow",
+    "Top 10 actions and a weekly summary email through Shopify Flow",
   ],
   growth: [
     "Full order plan by supplier, with purchase orders",
-    "Next 13 weeks: every order with cash per week",
+    "Order calendar: every order with cash per week",
     "Numbers refreshed daily, and every action",
-    "What to do while a best seller is sold out, and dead-stock discounts",
-    "Season plan (1 scenario) and forecast accuracy",
+    "Stock-gap actions and dead-stock discounts",
+    "Season planner (1 scenario) and forecast accuracy",
     "Slack and Shopify Flow",
   ],
   pro: [
     "Planning per location and per POS store",
     "Transfers from warehouse to stores, created in Shopify",
-    "Unlimited Season plan scenarios",
+    "Unlimited Season planner scenarios",
   ],
 };
 export const INHERITS: Record<PlanCode, string | null> = { free: null, growth: "Everything in Free, plus:", pro: "Everything in Growth, plus:" };

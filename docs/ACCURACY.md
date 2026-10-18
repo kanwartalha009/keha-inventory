@@ -8,7 +8,7 @@ store name, no product names, no customer data, no money.
 
 Since 2026-10-18 the harness and its data are in the repository (`scripts/accuracy/`): the app's
 real engine on a frozen, anonymised copy of the R4 data, `scripts/accuracy/data/store.json.gz`
-(18 KB). It holds random variant ids, the ABC role, net units sold per day, the sold-out days and the
+(18 KB). It holds random variant ids, the ABC role, net units sold per day, the out-of-stock days and the
 store's total units per day — no product names, SKUs, titles, handles, prices, money or store name
 (`tests/accuracy-dataset.test.ts` keeps it that way). The calendar start (2024-09-01) is kept:
 weekdays and Black Friday must line up for the seasonal index. 38 variants (25 A, 8 B, 5 C), 776
@@ -113,7 +113,7 @@ Reading it honestly:
 
 ## Service level at long lead times (fill vs target)
 
-`--service`, balanced safety level, lost sales when out, 25 % of deliveries late by up to 30 % of
+`--service`, balanced safety stock, lost sales when out, 25 % of deliveries late by up to 30 % of
 the lead time (seeded; the engine gets their measured σ after 3 deliveries, as compute does), a
 supplier minimum of 30 days of each variant's demand, simulated from 2025-06-01, measured after a
 warm-up of L + R days. Fill per role (target), stock = the average units on the shelf; days =
@@ -186,12 +186,12 @@ Two causes, measured on the A items at 28 days (bias = Σ(F − A) ÷ ΣA):
 2. **The store's own growth.** It doubled year on year; every forecast built from past weeks lags
    it. The naive last-28-days forecast is itself −3.4 % (28 days) / −7.4 % (56 days) on A items.
    The rest of Keha's bias beyond naive (≈ 2 points) is the 28 / 56 / 90-day blend being older than
-   28 days. Not corrected: the growth assumption (trend) is off by owner decision (C4), and a
+   28 days. Not corrected: the year-over-year growth (trend) is off by owner decision (C4), and a
    store-level "acceleration" factor tested here (YoY of the last 28 days ÷ YoY of the blend) did
    not predict the next 28 days (it pointed up before both of the store's dips).
 
 Partial days (the day it ran out) were checked too: marking them in the transcribed data (a sold
-day followed by a sold-out day) moved nothing measurable (only 155 sold-out variant-days).
+day followed by an out-of-stock day) moved nothing measurable (only 155 out-of-stock variant-days).
 
 ### Forecast error, before → after (rolling origin, 13 / 12 cutoffs, last 2 held out)
 
@@ -249,10 +249,10 @@ safety = k × σ_P, P = lead time + order cycle:
 - ρ = how much larger the engine's real error has been than that model: a rolling backtest at
   compute time, 13 weekly origins whose P days are in the past, the engine's own pace as of each
   day × the season multiplier those days really had (with 14 months of history the index itself
-  can't be recomputed for a day months back), sold-out days left out on both sides. The ABC role's
+  can't be recomputed for a day months back), out-of-stock days left out on both sides. The ABC role's
   ratio is the median of up to 200 of its variants (a pre-pass, so chunking changes nothing); a
   variant's own backtest is pooled with it (role worth 8 windows; the variant's ≤ (84 + P) ÷ P).
-- k = the fill-rate safety factor for the role's target (the safety level's service level,
+- k = the fill-rate safety factor for the role's target (the safety stock's service level,
   Balanced 95 / 90 / 85 %): σ_P·G(k) = (1 − β) × one cycle's demand (G = standard normal loss),
   k ≥ 0. The product page shows the fill target and the error; Why this quantity says what the
   safety covers.
@@ -270,7 +270,7 @@ schedule — the remaining reason A stays under its target.
 
 Two ways the merchant can follow the plan: **daily** — place each order on its order-by date (R4's
 simulation, the plan's own semantics) — and **every cycle** — every R days order everything due
-within the cycle (the supplier order builder's "due + can join"), the review the safety formula
+within the cycle (the purchase order builder's "due + can join"), the review the safety formula
 assumes. Fill per role (target in brackets), stock-out days per variant-year, average stock (€ at
 selling price).
 
@@ -310,8 +310,8 @@ selling price).
 | | Before | After |
 |---|---|---|
 | Swimwear in October | ordered now ("Overdue since 13 Jul"), arriving 16 Dec | "Next season: order by 10 Jan 2027", arriving 11 Mar (19 products) |
-| Order this week | 6 suppliers, 1,617 units, €56 k; 6 of 6 suppliers "overdue", Guangzhou since 13 Jul, Ningbo since 14 Jun | 4 suppliers, 1,459 units, €75 k (winter coats for the season); dates within one lead time |
-| "Overdue since" dates | 49 overdue products, dates back to 14 Jun (4 months) | none more than one lead time back (checked in sim:check and the e2e invariants); beyond it "Overdue · sold out since / runs out {date}" |
+| Due this week | 6 suppliers, 1,617 units, €56 k; 6 of 6 suppliers "overdue", Guangzhou since 13 Jul, Ningbo since 14 Jun | 4 suppliers, 1,459 units, €75 k (winter coats for the season); dates within one lead time |
+| "Overdue since" dates | 49 overdue products, dates back to 14 Jun (4 months) | none more than one lead time back (checked in sim:check and the e2e invariants); beyond it "Overdue · out of stock since / runs out {date}" |
 | Today's order-by date | printed "(overdue)" | "Due today" (one label rule, every screen) |
 | Tiny need raised to a full style minimum | swimwear ordered in October (Guangzhou 336 units) | held back ("Below the supplier's minimum — wait for the next season or add to a larger order"; 2 styles in the January run, 0 in October) |
 
@@ -346,8 +346,8 @@ stayed outside the repository.
   26 of them launched inside the history.
 - 776 days, 2024-09-01 … 2026-10-16, plus the store's total units per day (the store-level
   seasonal index, as compute uses for variants without a season group).
-- Sold-out days: 155 variant-days since 2025-07-01 where the variant ended the day at ≤ 0 units
-  across the store and sold nothing (the engine's sold-out rule). Stock-outs were read from
+- Out-of-stock days: 155 variant-days since 2025-07-01 where the variant ended the day at ≤ 0 units
+  across the store and sold nothing (the engine's out-of-stock rule). Stock-outs were read from
   2025-07-01 on only (earlier inventory rows came back without a variant through the read-only
   tool), so earlier stock-outs count as days that sold 0: every method looks slightly worse
   there, not better.
@@ -369,9 +369,9 @@ stayed outside the repository.
 - **No overfitting.** Parameters were chosen on the first 11 cutoffs ("tune"); the last 2
   ("hold") were only looked at after the choice.
 - **Service simulation.** Day by day from 2025-10-06 (or 28 days after a launch) to the end, on
-  the real daily demand (a censored sold-out day imputed at the trailing 28-day in-stock mean),
+  the real daily demand (a censored out-of-stock day imputed at the trailing 28-day in-stock mean),
   lost sales when out (DENY). Keha: the real `computeVariant` + `planVariant`, ordering what the
-  forward plan says to order today; lead time L, order cycle R = 14 days, Keha's safety levels
+  forward plan says to order today; lead time L, order cycle R = 14 days, Keha's safety stocks
   lean / balanced / safe. Naive: order-up-to on the last 28 days' mean and σ, reorder point
   m·L + SS, order up to m·(L+R) + SS, SS = c · z(role) · σ · √(L+R), c = 1 … 3. Measured after a
   warm-up of L + R days. Fill = units served ÷ demand; stock value at the variant's average
@@ -429,7 +429,7 @@ under-forecasts the fast sellers by 8–12 %.
   (−32 … −33 %).
 - **R4 against before R4, at equal stock:** ≈ +0.6 points of fill (at €413 k: 90.5 % vs 89.9 %;
   at €438 k: 91.2 % vs 90.6 %, interpolated). The trade-off curve moved the right way.
-- **But each safety level now holds less.** With spikes capped, σ is smaller, so the same
+- **But each safety stock now holds less.** With spikes capped, σ is smaller, so the same
   "balanced" setting holds 16 % less stock and fills 1.5 points less (91.7 → 90.2 %).
 - **Calibration gap.** Keha's levels target ~90–97 % per item (z by ABC role); the fills reached
   are 88–91 %. Safety stock comes from σ of daily sales, not from the forecast's own error, so
@@ -456,9 +456,9 @@ widen the calibration gap: the 42-day forecast error is larger than σ·√(L+R)
   choices differently. The cap and the guard are robust by construction, but k = 4 is tuned here.
 - Net items sold (returns netted out) is the demand measure, as the app stores it.
 - Stock is valued at selling price (cost not read); ratios between policies are unaffected.
-- Sold-out days before July 2025 are not marked (see Data).
+- Out-of-stock days before July 2025 are not marked (see Data).
 - The partial-day rule (a day it ran out counts at the pace of full days) needs stock at day
-  end per location; the transcribed data marks whole sold-out days only, so its effect is
+  end per location; the transcribed data marks whole out-of-stock days only, so its effect is
   covered by the unit tests, not by these numbers.
 - Bundles: this store sells none, so counting bundle sales on components is not measured here.
 

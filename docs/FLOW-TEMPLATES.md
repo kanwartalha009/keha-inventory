@@ -5,10 +5,10 @@ Owner decision 2026-10-18: Keha uses **no paid email provider**. The app is comp
 
 | What | How it reaches the merchant with no provider |
 |---|---|
-| Monday summary | Flow trigger **Weekly order plan ready** (every plan, once per store week from Monday 08:00 store time) → the merchant's workflow with Flow's **Send internal email** action |
+| Weekly summary | Flow trigger **Weekly order plan ready** (every plan, once per store week from Monday 08:00 store time) → the merchant's workflow with Flow's **Send internal email** action |
 | "Your order plan is ready" (once) | Flow trigger **First order plan ready** (every plan, once per store) → Send internal email; plus the in-app notice on the Dashboard |
 | Instant stock alerts | Flow trigger **Product needs reorder** (Growth; already existed) → Send internal email; Slack (Growth) as before |
-| Purchase order to a supplier | **Open in your email** on the order page: a `mailto:` in the supplier's PO language, sent from the merchant's own address; then **Mark as sent** |
+| Purchase order to a supplier | **Open in your email** on the order page: a `mailto:` in the supplier's PO language, sent from the merchant's own address; then **Mark as ordered** |
 | Customer data request | Answered in the access log (the app holds no customer data); no email needed |
 
 The triggers are already in the app (`extensions/keha-inventory-flow/*.extension.toml`, fired by
@@ -58,7 +58,7 @@ pick them from Flow's variable picker rather than typing, so the names are exact
      ```
      If the line breaks of `summaryText` come out as one paragraph in the test email, use
      `{{ summaryText | newline_to_br }}` instead (check this in step 2 — not verified here).
-3. Optional (nice for review): **More actions → Add notes**: "Sends Keha's Monday summary to the
+3. Optional (nice for review): **More actions → Add notes**: "Sends Keha's weekly summary to the
    addresses you enter. Change the email address before you turn it on."
 4. Name it "Email me the weekly order plan", **Turn on**.
 
@@ -79,7 +79,7 @@ pick them from Flow's variable picker rather than typing, so the names are exact
 2. Action **Send internal email** — Subject: `Reorder {{ product.title }} by {{ orderBy }}`;
    Message:
    ```
-   {{ product.title }} runs out in about {{ daysLeft }} days.
+   {{ product.title }} runs out in about {{ daysOfStock }} days.
    Keha suggests ordering {{ suggestedQuantity }} units by {{ orderBy }}.
    ```
 3. Name it, turn it on.

@@ -26,7 +26,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
    (`app/services/app-pricing.server.ts:101`). Done when `/health` shows `pricing.lastOkAt`.
 3. **No email provider needed** (owner decision 2026-10-18): leave `INVENTORY_EMAIL_API_KEY` /
    `INVENTORY_EMAIL_FROM` unset; `/health` shows `"config":{"email":"flow"}` — the normal setup, not a
-   failure. Purchase orders go out from the merchant's own email app ("Open in your email"), the Monday
+   failure. Purchase orders go out from the merchant's own email app ("Open in your email"), the weekly
    summary and the first-plan notice reach the merchant by email through Shopify Flow triggers, and
    data requests are answered in the access log. **Instead: the Flow templates** — build the three
    workflows in the dev store, export each `.flow`, add the template extensions and deploy
@@ -83,7 +83,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | No capital lending | 1.1.16 | — | — | — |
 | Bill through Shopify App Pricing / Billing API | 1.2.1 | ✅ | Shopify App Pricing; no off-platform charge, no `appSubscriptionCreate` (`app/services/app-pricing.server.ts:1-24`, `app/services/billing.server.ts:6`) | — |
 | Implement correctly: accept, decline, re-approve on reinstall | 1.2.2 | 🧑 ⚠️ | Plan read from the Partner API on load, on return with `plan_handle` (`app/routes/app.tsx:41-47`) and every 6 h; no subscription = Free (`tests/plans.test.ts` "treats no subscription as Free"). **Live `/health`: `pricing.configured: false`** | Owner actions 2 and 5; live: install → pick Growth → decline once → reinstall → plan page again |
-| Plan changes without support or reinstall; in charge history | 1.2.3 | 🧑 ⚠️ | Plans → "Choose plan" opens Shopify's plan page (`app/routes/app.plans.tsx:60`, `window.open(url, "_top")` = top-frame navigation, not a popup) | Owner action 2; live: Growth → Pro → Free, check charge history |
+| Plan changes without support or reinstall; in charge history | 1.2.3 | 🧑 ⚠️ | Plans & billing → "Choose plan" opens Shopify's plan page (`app/routes/app.plans.tsx:60`, `window.open(url, "_top")` = top-frame navigation, not a popup) | Owner action 2; live: Growth → Pro → Free, check charge history |
 | No incentives for reviews | 1.3.1 | ✅ | The app never asks for a review (no review prompt in any `app/lib/i18n-*.ts` string) | — |
 
 ### 2. Functionality
@@ -128,7 +128,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | Same name in Dev Dashboard and submission form | 4.1.1 | ✅ / 🧑 | `shopify.app.toml` `name` = listing name, ≤ 30 chars (`tests/config.test.ts`, `tests/listing.test.ts:39`) | Type it exactly in the form |
 | Unique name leading with a brand identifier | 4.1.2 | ✅ | "Keha Inventory Planner" starts with the brand | — |
 | Complete pricing info (trial, charges) | 4.2.1 | 🧑 | `LISTING.md` → Pricing (`tests/listing.test.ts:76`) | Owner action 5 |
-| No pricing in images (incl. icon) | 4.2.2 | 🧑 | `SCREENSHOTS.md` rules (Plans page never shot) | Owner action 10 |
+| No pricing in images (incl. icon) | 4.2.2 | 🧑 | `SCREENSHOTS.md` rules (Plans & billing page never shot) | Owner action 10 |
 | Pricing only in Pricing details | 4.2.3 | ✅ | `tests/listing.test.ts:60` (no price in listing text) | — |
 | "Merchant must have online store" only for storefront apps | 4.3.1 | 🧑 | No theme extension | Leave it unticked |
 | Languages = merchant UI languages | 4.3.2 | 🧑 | 8 languages (`app/lib/i18n.tsx:36`, `tests/i18n-coverage.test.ts`) | Owner action 9 |
@@ -141,7 +141,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | App details explain functionality, no keyword stuffing | 4.4.2 | ✅ | ≤ 500 chars, prose (`tests/listing.test.ts:45`) | — |
 | No Shopify brand misuse in graphics | 4.4.3 | 🧑 | `SCREENSHOTS.md` (no Shopify logo) | Owner action 10 |
 | Images show the real UI, no browser chrome / logo-only | 4.4.4 | 🧑 | `SCREENSHOTS.md` shot list | Owner action 10 |
-| Each image unique | 4.4.5 | 🧑 | 6 distinct screens planned (`SCREENSHOTS.md` storyboard: Dashboard, Order now, Next 13 weeks, forecast, supplier page, Pro stores) | Owner action 10 |
+| Each image unique | 4.4.5 | 🧑 | 6 distinct screens planned (`SCREENSHOTS.md` storyboard: Dashboard, Due now, Order calendar, forecast, supplier page, Pro stores) | Owner action 10 |
 | Don't reference your other apps in the listing | 4.4 (intro) | ✅ | `LISTING.md` never names another Keha app (`tests/listing.test.ts` "never names another Keha app"); the Integrations field lists Slack and Shopify Flow only; "Preorder bridge" works without any other app (back-in-stock how-to) | — |
 | Sales channel classification | 4.5.1 – 4.5.2 | ✅ | Not a sales channel; no channel config in the tomls | — |
 | Demo screencast in English, step by step | 4.5.3 | 🧑 | Script: `SCREENCAST.md` | Owner action 11 |
@@ -171,7 +171,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 
 | Requirement | Where in the docs | Status | Evidence | Fix |
 |---|---|---|---|---|
-| UI works on install, no web errors, on an empty store | pass-app-review ("UI must work on install") | ✅ / ⚠️ | The Dashboard shows "Setting up your order plan" (stages, months read, time left, plain error copy, Import from a CSV) and the Setup guide (`app/components/sync-progress.tsx`, `tests/sync-progress-ssr.test.tsx`); with fewer than 14 days of sales, "Not enough sales yet to advise — Your first order plan needs 14 days of sales — expected on {date}." (`app/routes/app._index.tsx:142`, `tests/home-ssr.test.tsx:110,144`); nothing tracked: "No stock tracked yet" with **Open products in Shopify** (`app/routes/app._index.tsx:154`); Order now, Next 13 weeks, the Monday email and Sidekick say why there is nothing to order yet; empty states in Products, Order plan, Season plan, Transfers SSR tests | Live on a fresh dev store (owner action 12) |
+| UI works on install, no web errors, on an empty store | pass-app-review ("UI must work on install") | ✅ / ⚠️ | The Dashboard shows "Setting up your order plan" (stages, months read, time left, plain error copy, Import from a CSV) and the Setup guide (`app/components/sync-progress.tsx`, `tests/sync-progress-ssr.test.tsx`); with fewer than 14 days of sales, "Not enough sales yet to advise — Your first order plan needs 14 days of sales — expected on {date}." (`app/routes/app._index.tsx:142`, `tests/home-ssr.test.tsx:110,144`); nothing tracked: "No stock tracked yet" with **Open products in Shopify** (`app/routes/app._index.tsx:154`); Due now, Order calendar, the weekly summary email and Sidekick say why there is nothing to order yet; empty states in Products, Order plan, Season planner, Transfers SSR tests | Live on a fresh dev store (owner action 12) |
 | Onboarding that guides core setup | BFS 4.2.2 (reference) | ✅ | Setup guide ticked from real state, hidden once done (`app/routes/app._index.tsx:91,233`) | — |
 
 ## Built for Shopify (reference — after 50 installs and 5 reviews)
