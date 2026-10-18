@@ -116,7 +116,7 @@ for (const v of store.variants) {
   if (pool < 0) oversold++;
 }
 line("Stock now (on hand)", `${fmt(stockUnits)} units, ${store.meta.currency} ${fmt(stockValue)} at cost`);
-line("Sold out yesterday", `${outNow} variants (${oversold} oversold, backorders owed)`);
+line("Out of stock yesterday", `${outNow} variants (${oversold} oversold, backorders owed)`);
 const months = simMonths(store);
 const rows = { stock: 0, location: 0, channel: 0, sessions: 0 };
 for (const m of months) {
@@ -210,7 +210,7 @@ for (const s of week.suppliers) {
   line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue, dueNote(s.events))}`);
 }
 const total = cashTotals(plan.events);
-line("Next 13 weeks", `${fmt(total.lines)} orders, ${fmt(total.units)} units, ${plan.currency} ${fmt(total.cash ?? 0)} (${total.missingCost} lines without a cost)`);
+line("Order calendar", `${fmt(total.lines)} orders, ${fmt(total.units)} units, ${plan.currency} ${fmt(total.cash ?? 0)} (${total.missingCost} lines without a cost)`);
 line("Weekly cash", planWeeks(plan).map((w) => fmt(w.cash ?? 0)).join(" · "));
 line("Can't plan yet / dead / don't reorder", `${plan.cantPlan.noData} / ${plan.cantPlan.dead} / ${plan.notReordered ?? 0} products`);
 // Sanity (engine work 2026-10-17): no date months back for a product still selling, no tiny need
