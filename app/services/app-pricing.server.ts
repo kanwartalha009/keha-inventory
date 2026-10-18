@@ -285,6 +285,27 @@ export function forgetPlan(shop: string): void {
  * reach BillingState and the Nova ledger. Spaced out to stay polite to the
  * Partner API (~1,000 shops ≈ 5 minutes).
  */
+/** Partner API calls of the per-store plan jobs are spaced this much apart in one process (as syncAllPlans did). */
+export const PLAN_SYNC_GAP_MS = 300;
+let nextPartnerCall = 0;
+
+/**
+ * One store's plan check (the `plans` job, perf 2026-10-18: the serial 6-hourly loop over every
+ * store is now one queued job per store). Never throws: the outcome is the plan state.
+ */
+export async function syncPlanForShop(shop: string, getAdmin: (shop: string) => Promise<unknown>, gapMs = PLAN_SYNC_GAP_MS): Promise<string> {
+  if (!pricingConfigured()) return "off";
+  const wait = nextPartnerCall - Date.now();
+  nextPartnerCall = Math.max(Date.now(), nextPartnerCall) + gapMs;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  try {
+    return (await syncPlan((await getAdmin(shop)) as AdminGraphql, shop, { force: true })).state;
+  } catch (e) {
+    console.error("[app-pricing] sync failed", shop, e);
+    return "unknown";
+  }
+}
+
 export async function syncAllPlans(
   shops: string[],
   getAdmin: (shop: string) => Promise<AdminGraphql>,

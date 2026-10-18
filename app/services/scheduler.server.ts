@@ -20,11 +20,11 @@
  * Shop-wide timers — idempotent, and each takes a "tick:<name>" lease so one instance runs it:
  *   - outbox:           every 2 min, retry-safe by design (Nova dedupes, backoff in DB)
  *   - GDPR purge:       hourly, once per shop via UninstalledShop.purgedAt
- *   - app pricing:      every 6 h, each shop's plan from the Partner API
  *   - personal-data access log: hourly, rows older than 90 days removed
  *   - Monday email (spec §11): hourly; sends when it is Monday ≥ 08:00 in the store's time zone,
  *     once per store week via OwnerEmailLog
- *   - accuracy snapshot / grade (spec §7.8): hourly
+ *   - accuracy snapshot / grade (spec §7.8): hourly, one `accuracy` job per store (perf 2026-10-18)
+ *   - app pricing: every 6 h, one `plans` job per store (perf 2026-10-18; was a serial loop)
  *   - job queue upkeep: claims that kept dying are set aside (hourly, with purge)
  *   - fact partitions: hourly, queues the store-wide `maintenance` job (months ahead created,
  *     months past retention dropped — services/partitions.server)
@@ -41,14 +41,14 @@ import prisma from "../db.server";
 import { flushOutbox, scrubDeliveredOutbox } from "../lib/nova.server";
 import { purgeDueShops } from "./gdpr.server";
 import { purgeOldPersonalDataLogs } from "./pii-log.server";
-import { syncAllPlans } from "./app-pricing.server";
+import { pricingConfigured } from "./app-pricing.server";
 import { unauthenticated } from "../shopify.server";
 import type { DataJobDeps } from "./sync/backfill.server";
 import { computeAfterSync } from "./compute.server";
 import { isBackfillDone, readBackfillState } from "../lib/sync/backfill-shared";
 import { isNightlyDue, safeTimeZone } from "../lib/sync/store-time-shared";
 import { runMondayEmailsAllShops } from "./monday.server";
-import { runAccuracyAllShops } from "./accuracy.server";
+import { accuracyTick } from "./accuracy.server";
 import { alertsTick } from "./alerts.server";
 import { GLOBAL_JOB_SHOP, tickLeaseKey, workerCount, workerMode, type JobKind, type WorkerMode } from "../lib/jobs-shared";
 import { enqueueJob, jobStore } from "./jobs/queue.server";
@@ -235,21 +235,29 @@ async function mondayTick(): Promise<void> {
   }
 }
 
-/** Shopify App Pricing: re-check every shop's plan (no webhooks) — every 6th hourly tick. */
+/**
+ * Shopify App Pricing: re-check every shop's plan (no webhooks) — every 6th hourly tick, one `plans`
+ * job per installed shop (perf 2026-10-18: was a serial loop with a 300 ms gap — 1,000 stores held
+ * one timer for 5+ minutes). The jobs space their Partner API calls per process (syncPlanForShop).
+ */
 let hourlyCount = 0;
 async function planSyncTick(): Promise<void> {
   if (hourlyCount++ % 6 !== 0) return;
+  await queuePlanChecks();
+}
+
+/** One `plans` job per installed shop (one with a session); nothing when the Partner API isn't configured. Never throws. */
+export async function queuePlanChecks(): Promise<number> {
   try {
+    if (!pricingConfigured()) return 0;
     const shops = await prisma.session.findMany({ distinct: ["shop"], select: { shop: true } });
-    const r = await syncAllPlans(
-      shops.map((s) => s.shop),
-      async (shop) => (await unauthenticated.admin(shop)).admin,
-    );
-    if (r.checked > 0) {
-      console.log(`[scheduler/app-pricing] checked=${r.checked} active=${r.active} none=${r.none} unknown=${r.unknown}`);
-    }
+    let queued = 0;
+    for (const { shop } of shops) if (await enqueueJob(shop, "plans")) queued++;
+    if (queued) console.log(`[scheduler/app-pricing] queued ${queued} plan check(s)`);
+    return queued;
   } catch (e) {
     console.error("[scheduler/app-pricing]", e);
+    return 0;
   }
 }
 
@@ -267,7 +275,7 @@ export const HOURLY_JOBS: ReadonlyArray<{ name: string; run: () => Promise<unkno
   { name: "data sync", run: () => onceAcross("data", HOURLY_LEASE_MS, () => dataTick()) },
   { name: "monday email", run: () => onceAcross("monday", HOURLY_LEASE_MS, mondayTick) },
   // spec §7.8: snapshot on the 1st, grade last month (idempotent)
-  { name: "accuracy", run: () => onceAcross("accuracy", HOURLY_LEASE_MS, () => runAccuracyAllShops(new Date())) },
+  { name: "accuracy", run: () => onceAcross("accuracy", HOURLY_LEASE_MS, () => accuracyTick()) },
   // instant alerts + Flow triggers (spec §6.6 "alerts"): queues one job per shop
   { name: "alerts", run: () => onceAcross("alerts", HOURLY_LEASE_MS, () => alertsTick()) },
   // the fact tables' month partitions (DB scale): one store-wide job on the queue

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
   alertsTick: vi.fn(async () => {}),
-  runAccuracyAllShops: vi.fn(async () => ({})),
+  accuracyTick: vi.fn(async () => 0),
   runMondayEmailsAllShops: vi.fn(async () => ({ sent: 0, failed: 0, skipped: 0 })),
   purgeDueShops: vi.fn(async () => []),
   flushOutbox: vi.fn(async () => ({ processed: 0, sent: 0, failed: 0 })),
@@ -17,11 +17,11 @@ vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn() } })
 vi.mock("../app/lib/nova.server", () => ({ flushOutbox: m.flushOutbox, scrubDeliveredOutbox: vi.fn(async () => 0) }));
 vi.mock("../app/services/gdpr.server", () => ({ purgeDueShops: m.purgeDueShops }));
 vi.mock("../app/services/pii-log.server", () => ({ purgeOldPersonalDataLogs: vi.fn(async () => 0) }));
-vi.mock("../app/services/app-pricing.server", () => ({ syncAllPlans: vi.fn(async () => ({ checked: 0 })) }));
+vi.mock("../app/services/app-pricing.server", () => ({ pricingConfigured: () => false, syncPlanForShop: vi.fn() }));
 vi.mock("../app/services/compute.server", () => ({ computeAfterSync: vi.fn() }));
 vi.mock("../app/services/sync/nightly.server", () => ({ runNightly: vi.fn() }));
 vi.mock("../app/services/monday.server", () => ({ runMondayEmailsAllShops: m.runMondayEmailsAllShops }));
-vi.mock("../app/services/accuracy.server", () => ({ runAccuracyAllShops: m.runAccuracyAllShops }));
+vi.mock("../app/services/accuracy.server", () => ({ accuracyTick: m.accuracyTick, runAccuracy: vi.fn() }));
 vi.mock("../app/services/alerts.server", () => ({ alertsTick: m.alertsTick }));
 
 import { HOURLY_JOBS, startScheduler } from "../app/services/scheduler.server";
@@ -48,12 +48,12 @@ describe("scheduler boot", () => {
     expect(m.alertsTick).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(m.alertsTick).toHaveBeenCalledTimes(1);
-    expect(m.runAccuracyAllShops).toHaveBeenCalledTimes(1);
+    expect(m.accuracyTick).toHaveBeenCalledTimes(1);
     expect(m.runMondayEmailsAllShops).toHaveBeenCalledTimes(1);
     expect(m.purgeDueShops).toHaveBeenCalledTimes(1);
     expect(m.flushOutbox).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(m.alertsTick).toHaveBeenCalledTimes(2);
-    expect(m.runAccuracyAllShops).toHaveBeenCalledTimes(2);
+    expect(m.accuracyTick).toHaveBeenCalledTimes(2);
   });
 });

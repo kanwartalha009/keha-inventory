@@ -28,7 +28,7 @@ vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn() } })
 vi.mock("../app/lib/nova.server", () => ({ flushOutbox: vi.fn(), scrubDeliveredOutbox: vi.fn() }));
 vi.mock("../app/services/gdpr.server", () => ({ purgeDueShops: vi.fn() }));
 vi.mock("../app/services/pii-log.server", () => ({ purgeOldPersonalDataLogs: vi.fn() }));
-vi.mock("../app/services/app-pricing.server", () => ({ syncAllPlans: vi.fn() }));
+vi.mock("../app/services/app-pricing.server", () => ({ pricingConfigured: () => false, syncPlanForShop: vi.fn() }));
 vi.mock("../app/services/compute.server", () => ({ computeAfterSync: m.computeAfterSync }));
 vi.mock("../app/services/sync/nightly.server", () => ({ runNightly: m.runNightly }));
 vi.mock("../app/services/sync/backfill.server", async (orig) => {
@@ -194,7 +194,7 @@ describe("workers", () => {
       log.push(`${kind}:${shop}`);
       return "done";
     };
-    const h = { backfill: (j: { shop: string }) => slow(j.shop, "backfill"), nightly: (j: { shop: string }) => slow(j.shop, "nightly"), compute: (j: { shop: string }) => slow(j.shop, "compute"), alerts: (j: { shop: string }) => slow(j.shop, "alerts"), maintenance: (j: { shop: string }) => slow(j.shop, "maintenance"), recheck: (j: { shop: string }) => slow(j.shop, "recheck") };
+    const h = { backfill: (j: { shop: string }) => slow(j.shop, "backfill"), nightly: (j: { shop: string }) => slow(j.shop, "nightly"), compute: (j: { shop: string }) => slow(j.shop, "compute"), alerts: (j: { shop: string }) => slow(j.shop, "alerts"), maintenance: (j: { shop: string }) => slow(j.shop, "maintenance"), accuracy: (j: { shop: string }) => slow(j.shop, "accuracy"), plans: (j: { shop: string }) => slow(j.shop, "plans"), recheck: (j: { shop: string }) => slow(j.shop, "recheck") };
     for (const s of ["a", "b", "c"]) for (const k of ["backfill", "compute", "alerts"] as const) await store.enqueue(`${s}.myshopify.com`, k);
     const w = startWorkers(h, { count: 2, pollMs: 5 });
     await vi.waitFor(() => expect(log).toHaveLength(9), { timeout: 5000 });
@@ -206,7 +206,7 @@ describe("workers", () => {
   });
 
   it("a job that throws is kept for a retry with its error; the loop carries on", async () => {
-    const boom = { backfill: async () => { throw new Error("db down"); }, nightly: async () => "x", compute: async () => "x", alerts: async () => "x", maintenance: async () => "x", recheck: async () => "x" };
+    const boom = { backfill: async () => { throw new Error("db down"); }, nightly: async () => "x", compute: async () => "x", alerts: async () => "x", maintenance: async () => "x", accuracy: async () => "x", plans: async () => "x", recheck: async () => "x" };
     await store.enqueue("a.myshopify.com", "backfill");
     expect(await runOneJob(boom, "w")).toBe("failed");
     expect(store.jobs[0]).toMatchObject({ lastError: "Error: db down", lockedBy: null });

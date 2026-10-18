@@ -2,7 +2,9 @@
  * Background job queue (DB scale #2, audit 2026-10-17) — the pure part: job kinds, modes,
  * timings and the SQL every instance runs. Postgres only, no new dependency.
  *
- * Model. One `Job` row per (shop, kind) that is wanted — backfill, nightly, compute, alerts —
+ * Model. One `Job` row per (shop, kind) that is wanted — backfill, nightly, compute, alerts,
+ * accuracy (hourly snapshot / grade), plans (the 6-hourly plan check; perf 2026-10-18: both were
+ * serial loops over every shop in one timer) —
  * claimed by any worker with `FOR UPDATE SKIP LOCKED`, so two instances never take the same row.
  * A `JobLease` row per shop ("shop:<domain>") is the per-shop lock: a claim takes the job AND the
  * shop's lease in ONE statement, so two jobs of one shop never run at once on any instance (the
@@ -21,7 +23,7 @@
  */
 
 // "recheck": the weekly sales re-check (services/sync/weekly-recheck.server).
-export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts", "maintenance", "recheck"] as const;
+export const JOB_KINDS = ["backfill", "nightly", "compute", "alerts", "maintenance", "accuracy", "plans", "recheck"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 /**
@@ -103,20 +105,42 @@ ON CONFLICT ("shop", "kind") DO UPDATE SET
   END
 RETURNING "id"`;
 
+/** The shop of the job `j` holds no live lease. */
+const SHOP_FREE = `NOT EXISTS (SELECT 1 FROM "JobLease" l WHERE l."key" = 'shop:' || j."shop" AND l."lockedUntil" > ${NOW})`;
+
 /**
- * $1 owner, $2 lease ms, $3 max attempts. Takes the oldest due job whose shop is free, and the
- * shop's lease, in one statement. No row back = nothing to do (or the shop was taken meanwhile).
+ * $1 owner, $2 lease ms, $3 max attempts. Takes a due job whose shop is free, and the shop's lease,
+ * in one statement. No row back = nothing to do (or the shop was taken meanwhile).
+ *
+ * Perf 2026-10-18 (#12): two steps, each on its own partial index (migration
+ * 20261018600200_job_claim_index), so a claim never walks past running jobs: first a job whose
+ * worker died (its lock expired; "Job_locked_idx" on lockedUntil, only locked rows), else the
+ * oldest due unlocked job ("Job_claim_idx" on runAt, id WHERE lockedUntil IS NULL). Before, one
+ * scan in runAt order skipped every locked row in front: 0.6 ms with 2,000–20,000 queued jobs and
+ * few running, 28 ms with 50,000 of 100,000 running; now ~0.7 ms in both (sandbox Postgres 16).
  */
 export const SQL_CLAIM = `
-WITH picked AS (
+WITH stale AS (
   SELECT j."id", j."shop" FROM "Job" j
-  WHERE j."runAt" <= ${NOW}
-    AND (j."lockedUntil" IS NULL OR j."lockedUntil" < ${NOW})
+  WHERE j."lockedUntil" IS NOT NULL AND j."lockedUntil" < ${NOW}
+    AND j."runAt" <= ${NOW}
     AND j."attempts" < $3::int
-    AND NOT EXISTS (SELECT 1 FROM "JobLease" l WHERE l."key" = 'shop:' || j."shop" AND l."lockedUntil" > ${NOW})
+    AND ${SHOP_FREE}
   ORDER BY j."runAt", j."id"
   LIMIT 1
   FOR UPDATE SKIP LOCKED
+), fresh AS (
+  SELECT j."id", j."shop" FROM "Job" j
+  WHERE NOT EXISTS (SELECT 1 FROM stale)
+    AND j."lockedUntil" IS NULL
+    AND j."runAt" <= ${NOW}
+    AND j."attempts" < $3::int
+    AND ${SHOP_FREE}
+  ORDER BY j."runAt", j."id"
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED
+), picked AS (
+  SELECT "id", "shop" FROM stale UNION ALL SELECT "id", "shop" FROM fresh
 ), lease AS (
   INSERT INTO "JobLease" ("key", "shop", "owner", "lockedUntil")
   SELECT 'shop:' || p."shop", p."shop", $1::text, ${NOW} + ${ms("$2")} FROM picked p

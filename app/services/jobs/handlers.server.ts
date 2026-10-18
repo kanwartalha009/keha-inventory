@@ -8,7 +8,11 @@
  *    "your order plan is ready" email when the first read just finished (services/plan-ready);
  *  - alerts: instant alerts + Flow triggers for the shop;
  *  - maintenance (shop "*", queued hourly): the fact tables' month partitions — the months ahead
- *    created, the months past retention dropped (services/partitions.server).
+ *    created, the months past retention dropped (services/partitions.server);
+ *  - accuracy (queued hourly per store, perf 2026-10-18): the month's forecast snapshot and the
+ *    grade of last month (services/accuracy runAccuracy, idempotent);
+ *  - plans (queued every 6 hours per store): the plan check against the Partner API
+ *    (services/app-pricing syncPlanForShop, Partner calls spaced out per process).
  * The return value is a short outcome for /health ("kind:outcome"), never shop data.
  */
 import prisma from "../../db.server";
@@ -21,6 +25,8 @@ import { NIGHTLY_THROTTLED_RETRY_MS, THROTTLED_RETRY_MS } from "../../lib/jobs-s
 import { maybeSendPlanReadyEmail } from "../plan-ready.server";
 import { enqueueJob } from "./queue.server";
 import { maintainPartitions } from "../partitions.server";
+import { runAccuracy } from "../accuracy.server";
+import { syncPlanForShop } from "../app-pricing.server";
 import type { JobHandlers } from "./worker.server";
 import { recheckJob } from "../sync/weekly-recheck.server";
 
@@ -63,6 +69,11 @@ export function jobHandlers(base: HandlerDeps): JobHandlers {
       const r = await runAlertsForShop(row, new Date());
       return `${r.instant}/${r.flow}`;
     },
+    accuracy: async (job) => {
+      const r = await runAccuracy(job.shop, new Date());
+      return `${r.snapshot ?? r.status}/${r.grade ?? "-"}`;
+    },
+    plans: async (job) => syncPlanForShop(job.shop, base.getAdmin),
     maintenance: async () => {
       const r = await maintainPartitions(new Date().toISOString().slice(0, 10));
       if (r.created || r.dropped.length) console.log(`[jobs/maintenance] partitions: ${r.created} created, dropped ${r.dropped.join(", ") || "none"} (${r.ms} ms)`);

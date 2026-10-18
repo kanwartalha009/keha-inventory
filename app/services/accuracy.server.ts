@@ -21,6 +21,7 @@
  *  - accuracyDetail: the scorecard's engine vs naive figures, re-read from those rows.
  */
 import prisma from "../db.server";
+import { enqueueJob } from "./jobs/queue.server";
 import { facts } from "./facts-store.server";
 import { latestMetricRun } from "./metric-writes.server";
 import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
@@ -276,6 +277,22 @@ export async function accuracyDetail(shop: string, month: string): Promise<Month
 }
 
 let running = false;
+
+/**
+ * Hourly from the scheduler (perf 2026-10-18): one `accuracy` job per installed store (sample data
+ * left out), run by the job workers — not a serial loop over every store in one timer. Never throws.
+ */
+export async function accuracyTick(): Promise<number> {
+  try {
+    const shops = await prisma.shop.findMany({ where: { uninstalledAt: null, NOT: { domain: { contains: SAMPLE_SUFFIX } } }, select: { domain: true } });
+    let queued = 0;
+    for (const { domain } of shops) if (await enqueueJob(domain, "accuracy")) queued++;
+    return queued;
+  } catch (e) {
+    console.error("[scheduler/accuracy]", e);
+    return 0;
+  }
+}
 
 /** Hourly from the scheduler: every installed shop. Never throws; overlap-guarded. */
 export async function runAccuracyAllShops(now: Date = new Date()): Promise<Record<string, number>> {
