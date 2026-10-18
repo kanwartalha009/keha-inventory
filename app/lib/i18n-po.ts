@@ -188,7 +188,7 @@ export const PO_TR: Record<string, Tr> = {
   "Close the order: the rest won't come": {
     es: "Cerrar el pedido: el resto no llegará",
     fr: "Clôturer la commande : le reste n'arrivera pas",
-    de: "Bestellung abschließen: der Rest kommt nicht",
+    de: "Bestellung schließen: der Rest kommt nicht",
     it: "Chiudi l'ordine: il resto non arriverà",
     pt: "Fechar a encomenda: o resto não vai chegar",
     nl: "Bestelling afsluiten: de rest komt niet",
@@ -223,8 +223,8 @@ export const PO_TR: Record<string, Tr> = {
   "{days} (chosen for this order)": { es: "{days} (elegido para este pedido)", fr: "{days} (choisi pour cette commande)", de: "{days} (für diese Bestellung gewählt)", it: "{days} (scelto per questo ordine)", pt: "{days} (escolhido para esta encomenda)", nl: "{days} (gekozen voor deze bestelling)", pl: "{days} (wybrane dla tego zamówienia)" },
   "Ordered for": { es: "Pedido para", fr: "Commandé pour", de: "Bestellt für", it: "Ordinato per", pt: "Encomendado para", nl: "Besteld voor", pl: "Zamówiono na" },
   "{days} of stock after it arrives": { es: "{days} de stock tras la llegada", fr: "{days} de stock après l'arrivée", de: "{days} Bestand nach der Ankunft", it: "{days} di scorta dopo l'arrivo", pt: "{days} de stock após a chegada", nl: "{days} voorraad na aankomst", pl: "{days} zapasu po dostawie" },
-  "Close order": { es: "Cerrar pedido", fr: "Clôturer la commande", de: "Bestellung abschließen", it: "Chiudi ordine", pt: "Fechar encomenda", nl: "Bestelling afsluiten", pl: "Zamknij zamówienie" },
-  "Close {number}?": { es: "¿Cerrar {number}?", fr: "Clôturer {number} ?", de: "{number} abschließen?", it: "Chiudere {number}?", pt: "Fechar {number}?", nl: "{number} afsluiten?", pl: "Zamknąć {number}?" },
+  "Close order": { es: "Cerrar pedido", fr: "Clôturer la commande", de: "Bestellung schließen", it: "Chiudi ordine", pt: "Fechar encomenda", nl: "Bestelling afsluiten", pl: "Zamknij zamówienie" },
+  "Close {number}?": { es: "¿Cerrar {number}?", fr: "Clôturer {number} ?", de: "{number} schließen?", it: "Chiudere {number}?", pt: "Fechar {number}?", nl: "{number} afsluiten?", pl: "Zamknąć {number}?" },
   "Order closed.": { es: "Pedido cerrado.", fr: "Commande clôturée.", de: "Bestellung abgeschlossen.", it: "Ordine chiuso.", pt: "Encomenda fechada.", nl: "Bestelling afgesloten.", pl: "Zamówienie zamknięte." },
   "The order closes with what arrived. The 1 unit still to come no longer counts as on order. You can reopen it within {days} days.": {
     es: "El pedido se cierra con lo que llegó. La 1 unidad pendiente deja de contar como pedida. Puedes reabrirlo en un plazo de {days} días.",

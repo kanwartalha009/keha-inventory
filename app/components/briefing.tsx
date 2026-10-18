@@ -56,7 +56,8 @@ export function BriefingCard({ briefing }: { briefing: Briefing }) {
       order: {
         title: t("Order"),
         value: fill(plural(x.count, t("1 supplier"), t("{n} suppliers")), { n: n(x.count) }),
-        line: x.amount !== null ? fill(t("{cash} this week"), { cash: money(x.amount) }) : t("Nothing due this week"),
+        // Suppliers due but no cost price on any line: say it is due, never "Nothing due" (audit 2026-10-18).
+        line: x.amount !== null ? fill(t("{cash} this week"), { cash: money(x.amount) }) : x.count > 0 ? t("Due this week") : t("Nothing due this week"),
         button: t("See orders"),
       },
       soldOut: {

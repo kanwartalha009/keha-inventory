@@ -509,7 +509,7 @@ export function AppPage({
       {help && (
         <Modal open={helpOpen} onClose={() => setHelpOpen(false)} heading={t("How it works")} size="large">
           {/* Rendered only while open: the explanation names sections a page may not show yet. */}
-          {helpOpen && <HelpBody content={help} />}
+          {helpOpen && <HelpBody content={help} onNavigate={() => setHelpOpen(false)} />}
         </Modal>
       )}
     </s-page>

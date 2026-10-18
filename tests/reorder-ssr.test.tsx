@@ -104,6 +104,16 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Below minimum order");
   });
 
+  it("a chosen 'Order enough for' that leaves a supplier with nothing due says so, with the way back (audit 2026-10-18)", () => {
+    const keys = reorderData().groups.map((g) => g.key);
+    expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Back to the plan&#x27;s days");
+    // A shown supplier's choice: no note.
+    expect(render(`/app/reorder?cover=${encodeURIComponent(`${keys[0]}~150`)}`, "reorder", Reorder, reorderData())).not.toContain("nothing due this week");
+    const html = render(`/app/reorder?cover=${encodeURIComponent("supplier:gone~30")}`, "reorder", Reorder, reorderData());
+    expect(html).toContain("With the days you chose, 1 supplier has nothing due this week.");
+    expect(html).toContain("Back to the plan&#x27;s days");
+  });
+
   it("each line shows its real deadline, never 'today' unless it is (audit 2026-10-17)", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData());
     // A1: never a date more than one lead time back — "Overdue" with the day it runs out instead.

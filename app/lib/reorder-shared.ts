@@ -100,6 +100,8 @@ export type ReorderGroup = {
   /** Earliest order-by date of its lines. */
   orderBy: string | null;
   overdue: boolean;
+  /** Really late (forward-plan isLate): the red "Overdue" badge; below-safety-stock lines don't count. */
+  late: boolean;
   /** The order (supplier) currency. */
   currency: string;
   /** The store's currency (every amount is valued in it). */
@@ -302,7 +304,8 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
     const days = new Set(lines.flatMap((l) => (accs.get(l.variantId)?.events ?? []).map((e) => e.orderBy)));
     const batches = (plan.batches ?? []).filter((b) => b.supplierKey === key && [...days].some((d) => d >= b.from && d <= b.to));
     // Can join: this supplier's later orders, due before its next order (one cycle).
-    const cycle = Math.max(ORDER_NOW_DAYS, Math.floor(plan.suppliers[key]?.cycleDays ?? 0));
+    // With "Order enough for N days" chosen for this order, its next order is N days away (audit 2026-10-18).
+    const cycle = Math.max(ORDER_NOW_DAYS, Math.floor(input.coverDays?.get(key) ?? plan.suppliers[key]?.cycleDays ?? 0));
     const joinEnd = addDays(today, cycle - 1);
     const inGroup = new Set(lines.map((l) => l.variantId));
     const seen = new Set<string>();
@@ -329,6 +332,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       leadTimeSource: info.leadTimeSource,
       orderBy,
       overdue: due.overdue || lines.some((l) => l.overdue),
+      late: lines.some((l) => l.overdue && !l.dueNote?.belowSafety),
       currency: info.currency,
       storeCurrency: plan.currency.toUpperCase(),
       exchangeRate: info.exchangeRate,

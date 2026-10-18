@@ -210,6 +210,21 @@ describe("Order enough for N days (2026-10-18)", () => {
   });
 });
 
+describe("Order enough for more than 13 weeks (audit 2026-10-18)", () => {
+  it("the plan runs far enough to find products due after week 13", async () => {
+    fake.tables.variant.push(variant(10));
+    // 300 on hand at 2 a day: due around day 125, after the 13-week plan.
+    fake.tables.variantMetric.push(metric(10, 300, { orderQty: null, orderBy: new Date(`${addDays(TODAY, 125)}T00:00:00Z`) }));
+    const plain = await computeOrderPlan(S, NOW);
+    expect(plain.data.events.some((e) => e.variantId === V(10))).toBe(false);
+    const long = await computeOrderPlan(S, NOW, { coverDays: new Map([["vendor:acme", 180]]) });
+    const e = long.data.events.find((x) => x.variantId === V(10));
+    expect(e).toBeDefined();
+    expect(e!.orderBy > addDays(TODAY, 91)).toBe(true);
+    expect(e!.orderBy <= addDays(TODAY, 179)).toBe(true);
+  });
+});
+
 describe("ordering audit 2026-10-17", () => {
   it("drafts older than 14 days stop counting (and are reported); fresh ones still net off", async () => {
     const draft = (id: string, days: number) => ({ id, shop: S, number: id, source: "keha", status: "draft", lines: [{ variantId: V(1), qty: 500 }], confirmedShipDate: null, expectedDate: null, createdAt: new Date(NOW.getTime() - days * 86_400_000) });

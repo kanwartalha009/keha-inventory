@@ -298,7 +298,11 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const scope = opts.scope ?? METRIC_SCOPE;
   const basics = await shopBasics(shop);
   const today: DayKey = todayIn(basics.timezone, now);
-  const days = planDays(today);
+  // A per-order "Order enough for N days" longer than the 13 weeks (audit 2026-10-18: 120–180 days
+  // left out products due after week 13): the plan runs far enough to find every order due before
+  // that order's next one.
+  const longestCover = Math.max(0, ...(opts.coverDays ? [...opts.coverDays.values()] : []));
+  const days = Math.max(planDays(today), longestCover);
   // The run the stored metrics come from: Keha orders closed since then are read too (H2).
   const run = await prisma.variantMetric.aggregate({ where: { shop, scope }, _min: { computedAt: true } });
   const firstRun = run?._min?.computedAt;
@@ -321,7 +325,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
         status: { notIn: ["dead", "not_enough_data"] },
         OR: [
           { orderQty: { gt: 0 } },
-          { orderBy: { lte: dayDate(addDays(planEnd(today), 1)) } },
+          { orderBy: { lte: dayDate(addDays(today, days)) } },
           ...(withKeha.length ? [{ variantId: { in: withKeha } }] : []),
         ],
       },

@@ -329,6 +329,7 @@ export default function Reorder() {
           <PlanNotReadyNote readiness={notReady} />
         </s-banner>
       )}
+      <HiddenCoverNote groups={data.groups} />
       {data.groups.length === 0 ? (
         <s-section>
           {notReady ? (
@@ -380,6 +381,31 @@ function money(store: number | null, supplier: number | null, group: Pick<Reorde
   return `${a} · ${formatPrice(supplier, group.currency, locale)}`;
 }
 
+/**
+ * A shorter "Order enough for" can push every line of a supplier past this week: its card (and its
+ * picker) then disappears. Say so, with the way back to the plan's days (audit 2026-10-18).
+ */
+function HiddenCoverNote({ groups }: { groups: readonly ReorderGroup[] }) {
+  const { t, locale } = useLocale();
+  const [params, setParams] = useSearchParams();
+  const shown = new Set(groups.map((g) => g.key));
+  const hidden = [...parseCoverParams(params.getAll("cover"), readCoverDays).keys()].filter((k) => !shown.has(k));
+  if (!hidden.length) return null;
+  const reset = () => setParams(hidden.reduce((p, k) => withCoverParam(p, k, null), params), { replace: true, preventScrollReset: true });
+  return (
+    <s-banner tone="info">
+      <s-stack direction="block" gap="small-200">
+        <s-text>
+          {fill(plural(hidden.length, t("With the days you chose, 1 supplier has nothing due this week."), t("With the days you chose, {n} suppliers have nothing due this week.")), {
+            n: formatCount(hidden.length, locale),
+          })}
+        </s-text>
+        <s-button onClick={reset}>{t("Back to the plan's days")}</s-button>
+      </s-stack>
+    </s-banner>
+  );
+}
+
 function GroupCard({ group, location, today }: { group: ReorderGroup; location: PlanningLocation | null; today: string }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
@@ -396,7 +422,17 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
   const [qty, setQty] = useState<Record<string, string>>(initial);
   const [confirm, setConfirm] = useState(false);
   const [stop, setStop] = useState<ReorderLine | null>(null);
-  useEffect(() => setQty(initial), [initial]);
+  // New suggestions (another "Order enough for"): lines the merchant added from "Can join this order"
+  // take their new suggestion too, never 0 (audit 2026-10-18).
+  useEffect(() => {
+    const next: Record<string, string> = { ...initial };
+    for (const id of joined) {
+      const l = group.joinable.find((x) => x.variantId === id);
+      if (l && !(id in next)) next[id] = String(l.suggested);
+    }
+    setQty(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
   useEffect(() => {
     const d = fetcher.data;
     if (d && d.ok && "id" in d) navigate(`/app/reorder/${d.id}`);
@@ -429,9 +465,9 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
         group.overdue ? dueText(group.orderBy, today, t, locale, true, group.lines.find((l) => l.overdue && l.dueNote)?.dueNote ?? null) : `${t("Order by")}: ${formatDay(group.orderBy, locale)}`
       }`}
       action={
-        group.kind === "vendor" || group.selected || group.overdue ? (
+        group.kind === "vendor" || group.selected || group.late ? (
           <span className="keha-inline">
-            {group.overdue && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+            {group.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.selected && (
               <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the Season planner") : t("From your action list")}</s-badge>

@@ -34,6 +34,7 @@ import {
   type SupplierListRow,
 } from "../models/suppliers.server";
 import { secretsWritable } from "../lib/crypto.server";
+import { enqueueJob } from "../services/jobs/queue.server";
 import { AppPage, Disclosure, EmptyState, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
@@ -99,6 +100,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     throw new Response("Bad request", { status: 400 });
   }
   const id = typeof body.id === "string" && body.id ? body.id : null;
+  const r = await supplierAction(shop, id, body);
+  // Lead times, case packs and product assignments feed the stored forecast inputs: recompute
+  // now, so "uses it from now on" holds within minutes, not after the nightly run (audit 2026-10-18).
+  if (r.ok) await enqueueJob(shop, "compute");
+  return r;
+};
+
+async function supplierAction(shop: string, id: string | null, body: Record<string, unknown>): Promise<SuppliersAction> {
   switch (body.intent) {
     case "save": {
       const form = readSupplierForm(body.form);
@@ -134,7 +143,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     default:
       throw new Response("Bad request", { status: 400 });
   }
-};
+}
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 

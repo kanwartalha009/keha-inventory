@@ -59,7 +59,7 @@ export function buildBriefing(input: BriefingInput): Briefing | null {
   const clear = c.clear ?? 0;
   const fix = (c.fix ?? 0) + (input.fixHidden ?? 0);
   const suppliers = input.week.suppliers.length;
-  const late = input.week.suppliers.filter((s) => s.overdue).length;
+  const late = input.week.suppliers.filter((s) => s.late).length;
   const cash = input.week.totals.cash;
   const cashStuck = clear > 0 && input.cashStuck !== null && input.cashStuck > 0 ? input.cashStuck : null;
 

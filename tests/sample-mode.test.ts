@@ -225,7 +225,7 @@ describe("loading, reading and removing sample data", () => {
         context: {},
       } as never),
     );
-    expect(closed).toEqual({ ok: true, intent: "receive" });
+    expect(closed).toEqual({ ok: true, intent: "receive", closed: true });
     expect(rows("purchaseOrder", KEY).find((p) => p.id === po.id)!.status).toBe("received");
     expect(rows("purchaseOrder", REAL).some((p) => p.id === po.id)).toBe(false);
     // Alerts, Slack and the Monday email are the store's own: shown, never changed from sample data.

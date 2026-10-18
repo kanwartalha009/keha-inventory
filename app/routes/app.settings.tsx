@@ -12,6 +12,7 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "re
 import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
+import { enqueueJob } from "../services/jobs/queue.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
 import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
@@ -63,6 +64,9 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
   if (!r.ok) return { ok: false, errors: r.errors };
   const saved = await saveShopSettings(shop, r.settings);
   if (!saved) return { ok: false, notReady: true };
+  // Lead time, order days, safety stock and growth feed the stored forecast inputs: recompute now
+  // so the plan uses them within minutes (audit 2026-10-18).
+  await enqueueJob(shop, "compute");
   return { ok: true, form: settingsToForm(saved) };
 };
 

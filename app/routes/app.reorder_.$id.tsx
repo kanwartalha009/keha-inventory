@@ -110,7 +110,7 @@ export type OrderPageView = {
 const DAY_MS = 86_400_000;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<OrderPageData> => {
-  const { shop } = await authenticateApp(request);
+  const { shop, sample } = await authenticateApp(request);
   const { features } = await getEntitlements(shop);
   // Locked page (app.tsx shows the plan page): send nothing, like /app/reorder.
   if (!features.reorderPlan) return { enabled: false };
@@ -123,7 +123,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<O
     enabled: true,
     // The raw token never reaches the browser unless the link is usable.
     order: { ...order, confirmToken: "" },
-    link: open && appUrl && features.supplierConfirm ? confirmUrl(appUrl, order.confirmToken) : null,
+    // Sample data: nothing reaches a supplier, so no supplier link to copy (audit 2026-10-18).
+    link: open && appUrl && features.supplierConfirm && !sample ? confirmUrl(appUrl, order.confirmToken) : null,
     hidePrices: hidePricesFor(order),
     features: { poExport: features.poExport, supplierConfirm: features.supplierConfirm },
     emailProvider: emailTransportConfigured(),
@@ -146,7 +147,7 @@ export type OrderAction =
   | { ok: true; intent: "compose"; mailto: Extract<MailtoResult, { ok: true }>["mailto"]; draft: boolean; hasLink: boolean }
   | { ok: true; intent: "edit" }
   | { ok: true; intent: "delete" }
-  | { ok: true; intent: "receive" }
+  | { ok: true; intent: "receive"; closed: boolean }
   | { ok: true; intent: "reopen"; to: PoStatus }
   | { ok: false; error: string };
 
@@ -190,7 +191,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     case "receive": {
       const r = await receiveOrder(shop, id, body.received, body.closeShort === true, body.version);
-      return (r.ok ? { ok: true, intent: "receive" } : { ok: false, error: r.error }) satisfies OrderAction;
+      return (r.ok ? { ok: true, intent: "receive", closed: body.closeShort === true } : { ok: false, error: r.error }) satisfies OrderAction;
     }
     case "reopen": {
       const r = await reopenOrder(shop, id);
@@ -509,7 +510,8 @@ function OrderView({ data }: { data: OrderPageView }) {
       )}
       {result?.ok && result.intent === "edit" && <s-banner tone="success">{t("Draft saved.")}</s-banner>}
       {result?.ok && result.intent === "receive" && (
-        <s-banner tone="success">{(fetcher.json as { closeShort?: boolean } | undefined)?.closeShort ? t("Order closed.") : t("Delivery recorded.")}</s-banner>
+        <s-banner tone="success">{/* From the server: fetcher.json is cleared once the fetcher is idle (audit 2026-10-18). */}
+          {result.closed ? t("Order closed.") : t("Delivery recorded.")}</s-banner>
       )}
       {result && !result.ok && <s-banner tone="critical">{orderError(result.error, t)}</s-banner>}
       {data.stale && (

@@ -225,6 +225,11 @@ describe("the supplier order builder", () => {
       [V(3), 7],
     ]);
     expect(fake.tables.purchaseOrder.find((o) => o.id === "old")!.lines).toHaveLength(1);
+    // "Order enough for" chosen while adding: the draft records it (audit 2026-10-18).
+    expect(d1.coverDays ?? null).toBeNull();
+    const v2 = (await loadSupplierOrder(S, KEY, null, NOW))!;
+    expect((await addToSupplierDraft(S, KEY, "d1", { [V(1)]: 1 }, v2.view.draft!.updatedAt, NOW, 150)).ok).toBe(true);
+    expect(fake.tables.purchaseOrder.find((o) => o.id === "d1")!.coverDays).toBe(150);
   });
 
   it("Sidekick's get_order_plan (the same loadOrderPlan) counts lines added to a draft once", async () => {

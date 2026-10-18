@@ -106,7 +106,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (body.intent === "create")
     return (await createSupplierDraft(shop, key, quantities, { shipTo: body.shipTo, note: body.note, coverDays: readCoverDays(body.coverDays) })) satisfies BuilderAction;
   if (body.intent === "add" && typeof body.draftId === "string" && body.draftId.length <= 100) {
-    return (await addToSupplierDraft(shop, key, body.draftId, quantities, body.version)) satisfies BuilderAction;
+    return (await addToSupplierDraft(shop, key, body.draftId, quantities, body.version, new Date(), readCoverDays(body.coverDays))) satisfies BuilderAction;
   }
   throw new Response("Bad request", { status: 400 });
 };
@@ -230,7 +230,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
         intent,
         supplier: view.key,
         quantities: quantities(),
-        ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt } : { shipTo: shipToId || null, note, coverDays: view.coverDays }),
+        ...(intent === "add" && draft ? { draftId: draft.id, version: draft.updatedAt, coverDays: view.coverDays } : { shipTo: shipToId || null, note, coverDays: view.coverDays }),
       } as never,
       { method: "post", encType: "application/json" },
     );

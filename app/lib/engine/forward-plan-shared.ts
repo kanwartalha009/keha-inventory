@@ -1300,6 +1300,8 @@ export interface PlanSupplierWeek extends CashTotals {
   orderByFrom: DayKey;
   orderByTo: DayKey;
   overdue: boolean;
+  /** Really late (isLate): an order that can't arrive before it runs out — not one only below safety stock. */
+  late: boolean;
   events: PlanEvent[];
 }
 
@@ -1310,6 +1312,16 @@ export interface PlanWeek extends CashTotals {
   orderByFrom: DayKey | null;
   orderByTo: DayKey | null;
   overdue: boolean;
+  /** isLate for any of the week's orders. */
+  late: boolean;
+}
+
+/**
+ * Really late (audit 2026-10-18): overdue, and not just below safety stock with stock left past
+ * the lead time — those say "Below safety stock", so no red "Overdue" badge may sit next to them.
+ */
+export function isLate(e: Pick<PlanEvent, "overdue" | "context">): boolean {
+  return e.overdue && !e.context?.belowSafety;
 }
 
 /** Events grouped by supplier, earliest order-by first (then key). */
@@ -1326,6 +1338,7 @@ export function bySupplier(events: readonly PlanEvent[]): PlanSupplierWeek[] {
       orderByFrom: list[0]!.orderBy,
       orderByTo: list[list.length - 1]!.orderBy,
       overdue: list.some((e) => e.overdue),
+      late: list.some(isLate),
       events: list,
     });
   }
@@ -1349,6 +1362,7 @@ export function byWeek(events: readonly PlanEvent[], today: DayKey, weeks: numbe
       orderByFrom: days[0] ?? null,
       orderByTo: days[days.length - 1] ?? null,
       overdue: list.some((e) => e.overdue),
+      late: list.some(isLate),
     };
   });
 }

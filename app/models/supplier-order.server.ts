@@ -276,6 +276,8 @@ export async function addToSupplierDraft(
   quantities: Record<string, number>,
   version: unknown,
   now: Date = new Date(),
+  /** "Order enough for N days" chosen while adding: the draft records it (audit 2026-10-18). */
+  coverDays: number | null = null,
 ): Promise<SupplierOrderResult> {
   const [suppliers, basics] = await Promise.all([planSuppliers(shop), shopBasics(shop)]);
   const s = supplierOfKey(key, suppliers);
@@ -288,6 +290,7 @@ export async function addToSupplierDraft(
   const lines = await draftLines(shop, picked, basics.currency);
   const r: OrderEditResult = await addDraftLines(shop, draftId, lines, version, (o) => draftBelongs(o, info, now));
   if (!r.ok) return r;
+  if (coverDays !== null) await prisma.purchaseOrder.updateMany({ where: { id: draftId, shop, status: "draft" }, data: { coverDays } });
   const row = await prisma.purchaseOrder.findFirst({ where: { id: draftId, shop }, select: { number: true } });
   return { ok: true, id: draftId, number: row?.number ?? "", added: true };
 }

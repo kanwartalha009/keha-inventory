@@ -385,7 +385,7 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
       grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
       order_by: first,
       order_by_label: dueLabel(first, g.overdue, data.today, dueNote(g.events)),
-      overdue: g.overdue || undefined,
+      overdue: g.late || undefined,
       orders: g.lines,
       products: g.products,
       units: g.units,

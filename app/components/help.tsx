@@ -13,9 +13,19 @@ export type HelpSection = { title: string; paragraphs: string[] };
 export type HelpContent = { sections: HelpSection[]; links: HelpLink[] };
 
 /** The panel body (AppPage opens it in a large dialog). */
-export function HelpBody({ content }: { content: HelpContent }) {
+export function HelpBody({ content, onNavigate }: { content: HelpContent; /** Close the dialog first: a page change must never leave it open (audit 2026-10-18). */ onNavigate?: () => void }) {
   const { t } = useLocale();
-  const link = useLinkProps();
+  const linkProps = useLinkProps();
+  const link = (to: string) => {
+    const p = linkProps(to);
+    return {
+      ...p,
+      onClick: (e: Event) => {
+        onNavigate?.();
+        p.onClick(e);
+      },
+    };
+  };
   return (
     <s-stack direction="block" gap="base">
       {content.sections.map((s) => (
@@ -71,7 +81,7 @@ export function dashboardHelp(t: T, locale: string, d: { leadTimeDays: number; c
       { title: t("How your numbers are worked out"), paragraphs: how },
     ],
     links: [
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
       { label: d.supplierCount > 0 ? t("Suppliers: lead times, case packs and minimums") : t("Add your suppliers"), to: "/app/settings/suppliers" },
     ],
   };
@@ -131,7 +141,7 @@ export function dueNowHelp(t: T, locale: string, example: { product: string; why
     ],
     links: [
       { label: t("Suppliers: lead times, case packs and minimums"), to: "/app/settings/suppliers" },
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
@@ -150,7 +160,7 @@ export function calendarHelp(t: T): HelpContent {
     ],
     links: [
       { label: t("Due now"), to: "/app/reorder" },
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
@@ -165,7 +175,7 @@ export function productsHelp(t: T): HelpContent {
           t("Low stock: it runs out before a new order would arrive. Order it now."),
           t("In stock: enough until the next order."),
           t("Overstock: far more than you will sell before the next order."),
-          t("Dead stock: no sale in 90 days while you still have stock. A discount clears it."),
+          t("Dead stock: no sale for the days set in Settings (90 by default) while you still have stock. A discount clears it."),
           t("Insufficient data: not enough days in stock with sales to forecast yet."),
         ],
       },
@@ -175,7 +185,7 @@ export function productsHelp(t: T): HelpContent {
       },
     ],
     links: [
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
       { label: t("Suppliers: lead times, case packs and minimums"), to: "/app/settings/suppliers" },
     ],
   };
@@ -225,14 +235,14 @@ export function seasonHelp(t: T): HelpContent {
     ],
     links: [
       { label: t("Order calendar"), to: "/app/reorder/calendar" },
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
 
 /** Product detail: the chart, the forecast terms, and what can be changed on the page. */
 export function productDetailHelp(t: T, locale: string, d: { leadTimeDays: number | null; cycleDays: number | null; fromSupplier: boolean }): HelpContent {
-  const how = [t("How the forecast was built lists every number the forecast used: the sales windows, the season, the trend, the lead time, the order days and the safety stock.")];
+  const how = [t("How the forecast was built lists every number the forecast used: the sales windows, the season, the trend, the lead time, Order enough for and the safety stock.")];
   if (d.leadTimeDays !== null && d.cycleDays !== null)
     how.push(
       fill(t("An order for this product takes {lead} days to arrive and is sized to last {cycle} days after that, plus safety stock."), {
@@ -261,10 +271,10 @@ export function productDetailHelp(t: T, locale: string, d: { leadTimeDays: numbe
     links: d.fromSupplier
       ? [
           { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
-          { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+          { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
         ]
       : [
-          { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+          { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
           { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
         ],
   };
@@ -292,7 +302,7 @@ export function buildOrderHelp(t: T): HelpContent {
     ],
     links: [
       { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
-      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+      { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
@@ -301,7 +311,7 @@ export type SettingsHelpTab = "defaults" | "suppliers" | "locations" | "alerts" 
 
 /** Settings: one panel per tab, in plain words. */
 export function settingsHelp(t: T, tab: SettingsHelpTab): HelpContent {
-  const after = t("The order plan uses a change the next time it opens. Product statuses update with the nightly refresh.");
+  const after = t("After you save, the numbers are worked out again: the order plan and product statuses use your change within a few minutes.");
   switch (tab) {
     case "defaults":
       return {
@@ -325,14 +335,14 @@ export function settingsHelp(t: T, tab: SettingsHelpTab): HelpContent {
           {
             title: t("What a supplier changes"),
             paragraphs: [
-              t("A supplier's lead time, order days, minimums and case pack replace your store defaults for every product it delivers."),
+              t("A supplier's lead time, Order enough for, minimums and case pack replace your store defaults for every product it delivers."),
               t("Products match a supplier by vendor, or you assign them one by one."),
               t("Once a few orders have arrived, the measured lead time is shown, and you can use it with one click."),
               after,
             ],
           },
         ],
-        links: [{ label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS }],
+        links: [{ label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS }],
       };
     case "locations":
       return {

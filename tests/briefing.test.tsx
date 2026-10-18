@@ -8,7 +8,7 @@ import { LocaleProvider, translate, type Locale } from "../app/lib/i18n";
 // Kanwar 2026-10-18: "what's going on and what to do — orders, preorder, discounting — in 30
 // seconds", and Clearance reachable from the Dashboard instead of hidden in a tab.
 
-const sup = (key: string, overdue: boolean, cash: number) => ({ supplierKey: key, products: 2, orderByFrom: "2026-10-18", orderByTo: "2026-10-20", overdue, events: [], units: 10, cash, missingCost: 0, lines: 2 });
+const sup = (key: string, overdue: boolean, cash: number) => ({ supplierKey: key, products: 2, orderByFrom: "2026-10-18", orderByTo: "2026-10-20", overdue, late: overdue, events: [], units: 10, cash, missingCost: 0, lines: 2 });
 const input = (over: Partial<BriefingInput> = {}): BriefingInput => ({
   currency: "EUR",
   week: { suppliers: [sup("supplier:a", true, 600), sup("supplier:b", false, 400)], totals: { units: 20, cash: 1000, missingCost: 0, lines: 4 }, next: null },
@@ -69,5 +69,14 @@ describe("BriefingCard", () => {
     expect(html).toContain("Order from 2 suppliers this week (€1,000). 1 order is already late.");
     expect(html).toContain("2 products are sold out while shoppers still look for them: reorder them or take preorders.");
     expect(html).toContain("6 products aren&#x27;t selling and tie up €3,693. A discount turns that back into cash.");
+  });
+  it("audit 2026-10-18: below safety stock isn't late; no cost prices doesn't read as nothing due", () => {
+    const belowSafety = { ...sup("supplier:a", true, 600), late: false };
+    const b = buildBriefing(input({ week: { suppliers: [belowSafety], totals: { units: 10, cash: null, missingCost: 2, lines: 2 }, next: null } }))!;
+    expect(b.sentences[0]).toMatchObject({ key: "order", suppliers: 1, late: 0 });
+    const html = render("en", b);
+    expect(html).not.toContain("already late");
+    expect(html).not.toContain("Nothing due this week");
+    expect(html).toContain("Due this week");
   });
 });
