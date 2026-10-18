@@ -198,6 +198,20 @@ keep).
 - Shipped — Transfers from warehouse to stores, created in Shopify
 - Shipped — Unlimited Season planner scenarios
 
+### As entered in the Partner Dashboard (2026-10-18)
+
+App Pricing enabled (one-way, Kanwar's yes 2026-10-18). Display names Free / Growth / Pro. The form
+caps each feature at 40 characters, so the plan-card lines above are shortened without changing what
+they claim:
+
+- **Free:** Order plan preview: top 10 products · Sales at risk, lost sales, cash tied up · Top 10
+  actions each week · Numbers refreshed weekly · Weekly summary email via Shopify Flow
+- **Growth:** Everything in Free · Full order plan by supplier · Purchase orders with PDF and CSV ·
+  Order calendar with cash per week · Daily refresh and the full action list · Stock gaps and
+  dead-stock discounts · Season planner and forecast accuracy · Slack and Shopify Flow alerts
+- **Pro:** Everything in Growth · Planning per location and POS store · Transfers to stores,
+  created in Shopify · Unlimited Season planner scenarios
+
 ## Links and contacts
 
 - Privacy policy: `https://inventory.keha.io/privacy`

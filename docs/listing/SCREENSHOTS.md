@@ -1,5 +1,23 @@
 # Screenshots and feature image — Keha Inventory Planner
 
+## Uploaded 2026-10-18 (live admin, sample-data mode — fictional store, no real merchant data)
+
+Same layout as Keha Preorder: #f1f1f1 canvas, icon + app name, headline left, one-line subline
+right, the real screen in a white card bleeding off the bottom. Built from live captures with
+`build.py` (Inter, Playwright) in the session; files on the Mac in `_handoff/listing/inventory/`.
+
+| # | File | Headline | Alt text |
+|---|---|---|---|
+| Feature | keha-inventory-feature-1600x900.png | Reorder before you run out. | Orders due this week by supplier and cash needed per week |
+| 1 | keha-inventory-1-due-this-week.png | Know what to order this week | Orders due this week by supplier, with order-by dates |
+| 2 | keha-inventory-2-order-plan.png | Order the right quantity, size by size | Order quantities per size, rounded to case packs |
+| 3 | keha-inventory-3-order-calendar.png | Plan 13 weeks of orders and cash | Every order for the next 13 weeks, with cash per week |
+| 4 | keha-inventory-4-forecast.png | Forecasts you can check | How each forecast was built, period by period |
+| 5 | keha-inventory-5-weekly-actions.png | Fix what costs you money first | Weekly actions ranked by the money at stake |
+
+Amounts show in the dev store's currency (PKR). Re-shoot on a USD/EUR store before a listing refresh.
+
+
 Rules (shopify.dev App Store requirements checklist, playbook §8):
 
 - **Size:** 1600 × 900 px (16:9), PNG or JPEG. 3–6 desktop screenshots.
