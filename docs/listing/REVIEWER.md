@@ -17,7 +17,17 @@ monthly budget, measured delivery times, size-grid purchase orders); labels are 
 and plans its stock orders: what to order, from which supplier, by when, and the cash each week
 needs over the next 13 weeks. It also shows the money at stake (sales at risk, sales lost to
 sell-outs, cash stuck, sold-out page visits), a ranked weekly to-do list, purchase orders, and a
-Monday email. It has no storefront part and stores no shopper data.
+Monday summary. It has no storefront part and stores no shopper data.
+
+**How notifications work (no email service of our own).** Keha sends no email itself. Merchants get
+its summaries by email **through Shopify Flow**: the app fires the triggers **Weekly order plan
+ready** (every Monday from 08:00 store time, every plan), **First order plan ready** (once, when the
+first plan is ready, every plan), and on Growth **Product needs reorder** / **Product went dead**;
+a workflow with Flow's **Send internal email** action delivers them (Settings → Alerts explains this
+and links to Flow). Purchase orders go to suppliers from the merchant's own email app: **Open in
+your email** prepares the message (in the supplier's language, with the supplier link where the
+supplier confirms the ship date and downloads the PDF or CSV), and the merchant then presses **Mark
+as sent**. Slack works as a direct integration (Growth).
 
 **Test store requirements.**
 
@@ -59,7 +69,7 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 
 | Plan | Unlocks |
 |---|---|
-| Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday email), the four money numbers (refreshed weekly), the top 10 actions, the Monday email (top 10), and Settings → Locations' "Counts in supplier orders" toggle |
+| Free | A read-only preview of the order plan (the 10 most urgent products with days left, order-by date and suggested quantity, also in the Monday summary), the four money numbers (refreshed weekly), the top 10 actions, the Monday summary (top 10; by email through Shopify Flow's "Weekly order plan ready"), and Settings → Locations' "Counts in supplier orders" toggle |
 | Growth | Daily refresh, every action, days of stock left and suggested order quantities, the full Order plan (Order now by supplier, Next 13 weeks with its CSV, Open orders, Build supplier order), purchase orders (PDF / CSV / email) and the supplier confirmation link, what to do while a best seller is sold out (back-in-stock sign-ups; the **Sold out** tab of the actions), Clear discounts, Fix details, Products CSV export, the Season plan (1 scenario) with collection goals and the accuracy scorecard, Slack, Shopify Flow triggers |
 | Pro | Everything in Growth, plus warehouse / store roles in Settings → Locations, the location switcher on Products and Order now, the warehouse → stores transfer plan with draft transfers created in Shopify, and unlimited Season plan scenarios |
 
@@ -70,8 +80,8 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 2. The Dashboard says "First sync in progress" and shows **Setting up your order plan**: one row
    per stage (products, stock history, sales history, store visits, building your plan) with the
    months read, the time left (worked out from how fast the store is being read), what to do
-   meanwhile (the **Setup guide** below it, or **Import from a CSV**), and "We'll email you when
-   your order plan is ready" when email sending is on. The newest 90 days are read first; the
+   meanwhile (the **Setup guide** below it, or **Import from a CSV**), and "Your order plan
+   appears here when it's ready" (with Shopify Flow, **First order plan ready** fires then). The newest 90 days are read first; the
    numbers appear when they are in, labelled "Based on the last 90 days so far" until the older
    months are read, and the header then shows the real update time.
 3. **Dashboard → Order this week** (first on the page): each supplier with orders due in the
@@ -109,7 +119,10 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
    supplier, each line on its own order-by date, with case packs and the supplier's minimums →
    **Create order** → confirm (a draft; nothing is sent). On the draft: change quantities or
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
-   **Download CSV**, **Download CSV (size grid)**, **Email supplier** (or **Copy link**), or **Mark as sent**.
+   **Download CSV**, **Download CSV (size grid)**, **Open in your email** (shows to, subject and the
+   message; the button opens it in your own email app, from your address — on a long order the
+   message lists the first lines and "+N more lines in the order link"; **Copy message** for
+   webmail), then **Mark as sent** (always its own confirm — opening the email never marks it sent).
    The PDF lists clothing and shoes as a size grid (one row per style and colour, sizes as columns,
    the style code — the product page's **Supplier code**, else the start of the SKUs — and totals);
    it never shows freight & duty. A draft not sent
@@ -135,7 +148,8 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
     month with it; a month over it has **Fit to budget**: the orders that could wait until next month
     (lowest priority first; never below a supplier's minimum), each with its risk — a suggestion,
     nothing changes.
-12. Open the supplier link from the email (no login): pick a date → **Confirm ship date**. Back
+12. Open the supplier link from the email (no login; it works once the order is marked sent; the
+    page also has **Download the order as PDF / as CSV**): pick a date → **Confirm ship date**. Back
     in the app **Order plan → Open orders** shows the ship date and the arrival (ship date + the
     supplier's transit time), sorted by arrival, and **Products** shows "On order with Keha".
     On the order, **Receive items** records a delivery per line ("Received 8 of 20 · 12 still to
@@ -145,13 +159,20 @@ plan page (**Plans → Choose plan**; no charge on a development store) — the 
 13. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
     **More options**: Order cycle, Too much stock after, Dead after, **Safety level** (Lean /
     Balanced / Safe), **Growth assumption** (off and recommended by default, or add the store's
-    year-on-year growth) and an optional **Monthly budget for stock**. **Settings → Alerts:** Monday email recipients, instant alerts on/off; paste a Slack
-    incoming-webhook link → **Send a test message**. The Monday email opens with **Order this
-    week** (one line per supplier with units, cash and order-by date, **Review order**), and its
-    subject says what to order (for example "2 orders due this week · first by Wed, Oct 21").
-14. **Shopify Flow:** create a workflow with the trigger **Product needs reorder** or **Product
-    went dead** (Keha Inventory Planner). The app fires them from its hourly job, once per
-    product per episode, so a test workflow may need up to an hour after a product qualifies.
+    year-on-year growth) and an optional **Monthly budget for stock**. **Settings → Alerts:** the
+    **Monday summary** card ("Get it by email with Shopify Flow", **Open Shopify Flow**), instant
+    alerts on/off (Slack; by email through Flow's "Product needs reorder" on Growth); paste a Slack
+    incoming-webhook link → **Send a test message**. The Monday summary (Flow's "Summary text", and
+    Slack) opens with **Order this week** (one line per supplier with units, cash and order-by date,
+    **Review order**), and its subject says what to order (for example "2 orders due this week ·
+    first by Wed, Oct 21").
+14. **Shopify Flow:** create a workflow with a Keha Inventory Planner trigger and the **Send
+    internal email** action (Subject `{{ subject }}`, Message `{{ summaryText }}` for the two
+    summary triggers). **Weekly order plan ready** fires on Mondays from 08:00 store time, once per
+    store week; **First order plan ready** once per store, when the first plan is ready (on a
+    fresh install); **Product needs reorder** / **Product went dead** (Growth) from the hourly job,
+    once per product per episode, so a test workflow may need up to an hour after a product
+    qualifies.
 15. **Season plan (Growth):** **Order plan → Season plan** (`/app/reorder/season`) → **New scenario** → pick an event (Black
     Friday, Christmas or custom dates) and a target (grow X %, a revenue target, or keep pace) →
     **Save and calculate**. The scenario shows demand per collection, the order list with
@@ -225,8 +246,8 @@ The app requests no `read_orders`, `read_customers` or `read_all_orders`, subscr
 
 ## B. Before submitting (Kanwar)
 
-- [ ] Railway: `INVENTORY_EMAIL_API_KEY` and `INVENTORY_EMAIL_FROM` set (supplier emails,
-      Monday email and data-request answers depend on them); `INVENTORY_SUPPORT_EMAIL`,
+- [ ] Railway: no email provider needed (`/health` → `config.email` = `"flow"`; owner decision
+      2026-10-18; Flow templates: `docs/FLOW-TEMPLATES.md`, optional); `INVENTORY_SUPPORT_EMAIL`,
       `INVENTORY_LEGAL_NAME` set; `/health` shows sync fresh and `pricing.lastOkAt`.
 - [ ] Partner Dashboard → App pricing: plans `free`, `growth` ($49 / $490), `pro` ($99 / $990),
       7-day trial on paid plans.

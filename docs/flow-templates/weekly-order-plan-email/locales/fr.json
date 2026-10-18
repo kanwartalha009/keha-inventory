@@ -1,0 +1,5 @@
+{
+  "name": "Recevoir par e-mail le plan de commandes hebdomadaire de Keha",
+  "description": "Chaque lundi, envoyez à votre équipe le récapitulatif de Keha Inventory Planner : quoi commander cette semaine, la trésorerie nécessaire et l'argent en jeu.",
+  "preInstallNote": "Avant d'activer le workflow, saisissez dans l'étape Send internal email les adresses qui doivent recevoir le récapitulatif."
+}

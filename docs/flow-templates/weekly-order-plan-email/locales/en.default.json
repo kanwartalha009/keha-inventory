@@ -1,0 +1,5 @@
+{
+  "name": "Email me Keha's weekly order plan",
+  "description": "Every Monday, email your team Keha Inventory Planner's summary: what to order this week, the cash it needs and the money at stake.",
+  "preInstallNote": "Type the email addresses that should get the summary in the Send internal email step before you turn the workflow on."
+}

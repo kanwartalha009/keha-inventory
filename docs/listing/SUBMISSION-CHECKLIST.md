@@ -24,8 +24,14 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
    `SHOPIFY_ORG_ID`). Live `/health` shows `"pricing":{"configured":false}`: every plan change shows "Plan not
    checked yet" and nothing is locked — the exact reason a previous review failed 1.2.2 / 1.2.3
    (`app/services/app-pricing.server.ts:101`). Done when `/health` shows `pricing.lastOkAt`.
-3. **Turn on email** on Railway: `INVENTORY_EMAIL_API_KEY`, `INVENTORY_EMAIL_FROM` (live `/health`:
-   `"emailSending":false`). Supplier emails, the Monday email and data-request answers depend on it.
+3. **No email provider needed** (owner decision 2026-10-18): leave `INVENTORY_EMAIL_API_KEY` /
+   `INVENTORY_EMAIL_FROM` unset; `/health` shows `"config":{"email":"flow"}` — the normal setup, not a
+   failure. Purchase orders go out from the merchant's own email app ("Open in your email"), the Monday
+   summary and the first-plan notice reach the merchant by email through Shopify Flow triggers, and
+   data requests are answered in the access log. **Instead: the Flow templates** — build the three
+   workflows in the dev store, export each `.flow`, add the template extensions and deploy
+   (`docs/FLOW-TEMPLATES.md`; they go through Flow's own review, which doesn't block the app version).
+   Optional and not needed for review.
 3b. **Worker service** on Railway: a second service from the same repo with `WORKER_MODE=worker`, and the web
    service on `WORKER_MODE=web` (`docs/OPERATIONS.md` "Services"). With one service (`all`), a large store's
    nightly compute shares the core with page loads; compute logs a warning above 5,000 variants.
@@ -111,7 +117,7 @@ Status: ✅ met (code or test proves it) · ⚠️ needs a live check on the rel
 | `read_all_orders`, `write_payment_mandate`, `write_checkout_extensions_apis`, `read_advanced_dom_pixel_events`, `read_checkout_extensions_chat` only if needed | 3.2.1 – 3.2.5 | ✅ | None requested (`shopify.app.toml` `scopes`) | — |
 | Mandatory compliance webhooks subscribed | privacy-law-compliance | ✅ | `compliance_topics` for `customers/data_request`, `customers/redact`, `shop/redact` (`shopify.app.toml`), routes exist (`tests/config.test.ts`) | — |
 | Compliance webhooks: 401 on a bad HMAC, 2xx when valid | privacy-law-compliance | ✅ | `tests/compliance-webhooks.test.ts` runs all three routes against a real `shopifyApp`: bad HMAC → 401 and nothing runs; valid → 200 and the handler runs | — |
-| Act within 30 days; shop data deleted on `shop/redact` | privacy-law-compliance | ✅ | Data request answered by email at once; customer redact removes outbox copies; shop redact purges every shop table (`app/services/gdpr.server.ts`, `tests/gdpr.test.ts:123,148,193,206`); 500 on failure so Shopify retries | — |
+| Act within 30 days; shop data deleted on `shop/redact` | privacy-law-compliance | ✅ | Data request answered at once in the access log (no customer data held; also by email to the owner when a provider is set — `tests/gdpr.test.ts` "without an email provider"); customer redact removes outbox copies; shop redact purges every shop table (`app/services/gdpr.server.ts`, `tests/gdpr.test.ts:123,148,193,206`); 500 on failure so Shopify retries | — |
 | Uninstall cleanup | pass-app-review (data) | ✅ | Token deleted at once, all store data 48 h later (`app/routes/webhooks.app.uninstalled.tsx`, `app/routes/cron.purge-uninstalled.tsx`, hourly in `app/services/scheduler.server.ts`) | — |
 | Protected customer data (Level 2 for `read_reports`) | pass-app-review; `queries/shopifyqlQuery` | 🧑 | Queries select no customer field (I-2, `REVIEWER.md` lists them); answers drafted in `PCD-ANSWERS.md` | Owner action 6 |
 

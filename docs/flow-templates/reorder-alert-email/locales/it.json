@@ -1,0 +1,5 @@
+{
+  "name": "Avvisami via email quando Keha dice che un prodotto va riordinato",
+  "description": "Quando un prodotto finirà prima che arrivi nuovo stock, invia al tuo team il prodotto, i giorni di stock rimasti, la data entro cui ordinare e la quantità suggerita da Keha.",
+  "preInstallNote": "Prima di attivare il flusso, scrivi nel passaggio Send internal email gli indirizzi che devono ricevere gli avvisi."
+}

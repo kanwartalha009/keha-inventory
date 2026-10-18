@@ -24,9 +24,10 @@ Intelligence → API access → Protected customer data access.
 
 **The one place customer data passes through the app (be accurate about it):** Shopify's
 mandatory compliance webhooks (`customers/data_request`, `customers/redact`) carry the
-customer's ID, email and phone. The app (1) answers the data request to the store owner by
-email (stating the app holds no data about the customer), (2) logs the request in
-`PersonalDataAccessLog` without personal data, and (3) forwards a copy to our own Nova Apps
+customer's ID, email and phone. The app (1) answers the data request: it holds no data about the
+customer, recorded in (2) `PersonalDataAccessLog` without personal data (with an email provider
+configured — none by default since 2026-10-18 — the store owner also gets an email saying so), and
+(3) forwards a copy to our own Nova Apps
 platform through an outbox. The outbox copy is emptied within an hour of delivery (hourly job) and
 deleted 30 days later; a copy that could not be delivered stays until the customer's deletion request or
 the store's purge removes it.
@@ -43,7 +44,7 @@ the store's purge removes it.
 | 6 | Opt-out of automated decisions with legal or similar effect | Not applicable: the app makes suggestions to merchants only; nothing changes in the store until the merchant confirms. |
 | 7 | Privacy and data protection agreements with merchants | The Terms of Service and Privacy Policy, accepted on install. **[Kanwar to confirm]** whether the company also offers a data processing agreement on request. |
 | 8 | Apply retention periods | Yes. Daily totals: deleted after 25 months. Privacy-request access log: 90 days. Delivered platform copies: emptied within an hour of delivery, deleted after 30 days. All store data: deleted 48 hours after uninstall, immediately on `shop/redact`. |
-| 9 | Encrypt data at rest and in transit | In transit: HTTPS to Shopify, to the email provider, to Slack and for every app page. At rest: Slack webhook links and supplier email addresses are encrypted in the app with AES-256-GCM. Database disk encryption is the hosting provider's: **[Kanwar to confirm]** that Railway encrypts the Postgres volume at rest, and whether the app's database connection uses TLS on Railway's private network. |
+| 9 | Encrypt data at rest and in transit | In transit: HTTPS to Shopify, to Slack (and to an email provider, if one is ever configured) and for every app page. At rest: Slack webhook links and supplier email addresses are encrypted in the app with AES-256-GCM. Database disk encryption is the hosting provider's: **[Kanwar to confirm]** that Railway encrypts the Postgres volume at rest, and whether the app's database connection uses TLS on Railway's private network. |
 
 ## Level 2 requirements
 
@@ -53,7 +54,7 @@ the store's purge removes it.
 | 11 | Keep test and production data separate | The code has a separate dev app config (`shopify.app.dev.toml`, its own client ID). **[Kanwar to confirm]** that the dev app uses its own database (e.g. a Railway staging environment), not production's. |
 | 12 | Data loss prevention | **[Kanwar to confirm]** the strategy: Railway backups and their schedule, restore tested, who can delete the database. |
 | 13 | Limit staff access to customer data | There is no admin screen that shows shopper data (the app stores none). **[Kanwar to confirm]** who has Railway, database, GitHub and Partner Dashboard access, and that it is limited to named people. |
-| 14 | Strong passwords and authentication for staff | **[Kanwar to confirm]** password manager and two-factor sign-in on Shopify Partners, Railway, GitHub, the email provider and Nova admin. |
+| 14 | Strong passwords and authentication for staff | **[Kanwar to confirm]** password manager and two-factor sign-in on Shopify Partners, Railway, GitHub and Nova admin (and an email provider, if one is ever configured). |
 | 15 | Log access to personal data | **Yes.** `PersonalDataAccessLog` records every privacy request the app handles (who, what, how many records, no personal data), kept 90 days. The app has no other screen or export that shows shopper data. **[Kanwar to confirm]** that database access by staff is logged on the hosting side if Shopify asks about direct database access. |
 | 16 | Security incident response policy | Draft below. **[Kanwar to confirm]** that the company adopts it and who is on call. |
 
@@ -61,8 +62,9 @@ the store's purge removes it.
 
 - **Customer deletion (`customers/redact`):** removes any outbox copy carrying the customer's
   email. Nothing else holds customer data.
-- **Customer data request (`customers/data_request`):** the store owner receives an email that
-  the app holds no data about the customer; the request is logged.
+- **Customer data request (`customers/data_request`):** answered at once — the app holds no data
+  about the customer; the request is logged in the access log (and emailed to the store owner only
+  when an email provider is configured; none is by default).
 - **Store deletion (`shop/redact`):** every table with a `shop` column is deleted immediately
   (the purge list is generated from the database schema, so new tables are covered), plus the
   uninstall record.
@@ -78,16 +80,19 @@ the store's purge removes it.
 |---|---|---|
 | Shopify | Everything (the platform) | Always |
 | Railway | App hosting and the Postgres database | Always. **[Kanwar to confirm]** the region the project runs in. |
-| Resend (the default of `INVENTORY_EMAIL_API_URL`) | Emails to store staff and suppliers: recipient address, store name, order content | When an email is sent. **[Kanwar to confirm]** the provider actually configured on Railway; the privacy page names whichever the URL points to. |
+| (No email provider — owner decision 2026-10-18) | The app sends no email itself: summaries go through the merchant's own Shopify Flow, purchase orders through the merchant's own email app | If a provider is ever configured (`INVENTORY_EMAIL_API_KEY` / `_FROM`), the privacy page names it automatically (Resend by default of `INVENTORY_EMAIL_API_URL`) and it must be added here. |
 | Slack | The Monday summary and alerts (product names, amounts) | Only when the merchant connects a webhook |
+| Shopify Flow (part of Shopify) | The Monday summary, the first-plan notice and product events, sent to Flow in the merchant's own store | Only the merchant's own workflows act on them |
 | Nova Apps platform (operated by us) | Install, plan and support records; copies of compliance webhooks | Always. **[Kanwar to confirm]** where Nova is hosted, and add that host as a sub-processor if it is a third party. |
 
 ## Personal data that is not customer data (for completeness)
 
-- Store staff: email addresses the merchant enters for the Monday email (stored as entered);
-  the store owner's email is read from Shopify when an email is sent and not stored.
-- Suppliers: name and email address (email encrypted with AES-256-GCM, decrypted only to send
-  an order). Supplier IP addresses are used in memory for rate limiting and not stored.
+- Store staff: email addresses the merchant enters for the Monday email (stored as entered; the
+  field is shown only when an email provider is configured); the store owner's email is read from
+  Shopify when an email is sent and not stored. With no provider, the addresses live in the
+  merchant's own Flow workflow, not in the app.
+- Suppliers: name and email address (email encrypted with AES-256-GCM, decrypted only to prepare
+  or send an order, and then shown only to the merchant in "Open in your email"). Supplier IP addresses are used in memory for rate limiting and not stored.
 - The offline access token for the store is stored in the database (needed to sync).
 
 ## Draft security incident response policy

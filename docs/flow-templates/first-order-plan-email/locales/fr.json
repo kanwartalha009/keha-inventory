@@ -1,0 +1,5 @@
+{
+  "name": "Me prévenir par e-mail quand mon premier plan de commandes Keha est prêt",
+  "description": "Recevez un e-mail quand Keha Inventory Planner a lu l'historique de votre boutique et que votre premier plan de commandes est prêt.",
+  "preInstallNote": "Avant d'activer le workflow, saisissez dans l'étape Send internal email l'adresse qui doit recevoir l'avis."
+}

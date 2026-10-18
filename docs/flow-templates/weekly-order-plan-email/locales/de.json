@@ -1,0 +1,5 @@
+{
+  "name": "Keha-Wochenbestellplan per E-Mail",
+  "description": "Schick deinem Team jeden Montag die Übersicht von Keha Inventory Planner: was diese Woche zu bestellen ist, das nötige Geld und das Geld im Spiel.",
+  "preInstallNote": "Trag im Schritt Send internal email die Adressen ein, die die Übersicht bekommen sollen, bevor du den Workflow einschaltest."
+}

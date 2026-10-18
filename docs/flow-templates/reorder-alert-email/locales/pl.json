@@ -1,0 +1,5 @@
+{
+  "name": "Powiadom mnie e-mailem, gdy Keha wskaże produkt do ponownego zamówienia",
+  "description": "Gdy produkt skończy się, zanim dotrze nowy towar, wyślij zespołowi produkt, liczbę dni zapasu, termin zamówienia i ilość proponowaną przez Keha.",
+  "preInstallNote": "Zanim włączysz przepływ, wpisz w kroku Send internal email adresy, które mają otrzymywać alerty."
+}

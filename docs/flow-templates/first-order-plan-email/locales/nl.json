@@ -1,0 +1,5 @@
+{
+  "name": "Mail me als mijn eerste Keha-bestelplan klaar is",
+  "description": "Krijg één e-mail zodra Keha Inventory Planner de geschiedenis van je winkel heeft gelezen en je eerste bestelplan klaar is.",
+  "preInstallNote": "Vul in de stap Send internal email het adres in dat de melding moet krijgen voordat je de workflow aanzet."
+}

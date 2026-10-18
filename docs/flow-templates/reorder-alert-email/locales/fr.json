@@ -1,0 +1,5 @@
+{
+  "name": "Me prévenir par e-mail quand Keha indique qu'un produit doit être réapprovisionné",
+  "description": "Quand un produit va manquer avant l'arrivée du nouveau stock, envoyez à votre équipe le produit, les jours de stock restants, la date limite de commande et la quantité suggérée par Keha.",
+  "preInstallNote": "Avant d'activer le workflow, saisissez dans l'étape Send internal email les adresses qui doivent recevoir les alertes."
+}

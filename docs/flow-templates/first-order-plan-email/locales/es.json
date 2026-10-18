@@ -1,0 +1,5 @@
+{
+  "name": "Avísame por email cuando mi primer plan de pedidos de Keha esté listo",
+  "description": "Recibe un email cuando Keha Inventory Planner haya leído el historial de tu tienda y tu primer plan de pedidos esté listo.",
+  "preInstallNote": "Antes de activar el flujo, escribe en el paso Send internal email la dirección que debe recibir el aviso."
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Receber por email o plano de encomendas semanal do Keha",
+  "description": "Todas as segundas-feiras, envie à sua equipa o resumo do Keha Inventory Planner: o que encomendar esta semana, o dinheiro necessário e o dinheiro em jogo.",
+  "preInstallNote": "Antes de ativar o fluxo, escreva no passo Send internal email os endereços que devem receber o resumo."
+}

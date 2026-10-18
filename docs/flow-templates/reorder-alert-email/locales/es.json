@@ -1,0 +1,5 @@
+{
+  "name": "Avísame por email cuando Keha diga que un producto necesita reposición",
+  "description": "Cuando un producto se vaya a agotar antes de que llegue stock nuevo, envía a tu equipo el producto, los días de stock, la fecha límite de pedido y la cantidad que sugiere Keha.",
+  "preInstallNote": "Antes de activar el flujo, escribe en el paso Send internal email las direcciones que deben recibir los avisos."
+}

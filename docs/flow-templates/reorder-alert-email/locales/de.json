@@ -1,0 +1,5 @@
+{
+  "name": "E-Mail, wenn Keha meldet, dass ein Produkt nachbestellt werden muss",
+  "description": "Wenn ein Produkt ausgeht, bevor neue Ware ankommen kann, schick deinem Team das Produkt, die Tage Bestand, das Bestelldatum und die von Keha vorgeschlagene Menge.",
+  "preInstallNote": "Trag im Schritt Send internal email die Adressen ein, die die Warnungen bekommen sollen, bevor du den Workflow einschaltest."
+}

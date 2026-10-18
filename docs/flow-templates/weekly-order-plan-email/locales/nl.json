@@ -1,0 +1,5 @@
+{
+  "name": "Keha's wekelijkse bestelplan per e-mail",
+  "description": "Stuur je team elke maandag het overzicht van Keha Inventory Planner: wat je deze week bestelt, het geld dat nodig is en het geld op het spel.",
+  "preInstallNote": "Vul in de stap Send internal email de adressen in die het overzicht moeten krijgen voordat je de workflow aanzet."
+}

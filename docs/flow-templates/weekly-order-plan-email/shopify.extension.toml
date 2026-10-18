@@ -1,0 +1,20 @@
+# Flow TEMPLATE extension — NOT DEPLOYED YET. Template for the trigger "Weekly order plan ready" + Flow's "Send internal email".
+# Copy this folder to extensions/weekly-order-plan-email/ only together with the workflow exported from the Flow app
+# as template.flow (docs/FLOW-TEMPLATES.md step 3): `shopify app deploy` fails without the module
+# file, and tests/flow-extensions.test.ts refuses a flow_template extension without it.
+# Generate the extension with `shopify app generate extension` (Flow Template) first and keep the
+# uid line the CLI writes; replace the rest with this file.
+
+[[extensions]]
+name = "t:name"
+type = "flow_template"
+# uid = "<keep the uid the CLI generated>"
+handle = "weekly-order-plan-email"
+description = "t:description"
+
+  [extensions.template]
+  categories = ["inventory_and_merch"]
+  module = "./template.flow"
+  require_app = false
+  discoverable = true
+  enabled = true

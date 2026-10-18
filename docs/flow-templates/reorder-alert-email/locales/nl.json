@@ -1,0 +1,5 @@
+{
+  "name": "Mail me als Keha zegt dat een product opnieuw besteld moet worden",
+  "description": "Als een product opraakt voordat nieuwe voorraad kan aankomen, stuur je team het product, de dagen voorraad, de uiterste besteldatum en de hoeveelheid die Keha voorstelt.",
+  "preInstallNote": "Vul in de stap Send internal email de adressen in die de meldingen moeten krijgen voordat je de workflow aanzet."
+}

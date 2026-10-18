@@ -1,0 +1,5 @@
+{
+  "name": "Email me when my first Keha order plan is ready",
+  "description": "Get one email when Keha Inventory Planner has read your store's history and your first order plan is ready to open.",
+  "preInstallNote": "Type the email address that should get the notice in the Send internal email step before you turn the workflow on."
+}

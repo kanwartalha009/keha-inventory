@@ -141,6 +141,27 @@ A Railway Postgres read replica can take the page reads once the primary is busy
 a second Prisma client for reads (not wired today: `@prisma/extension-read-replicas` is not a
 dependency) — measure first: SCALE.md's page-load p95s are on a single primary.
 
+## Email and notifications (no email provider)
+
+Owner decision 2026-10-18: the app runs with **no email provider**. Leave `INVENTORY_EMAIL_API_KEY`
+/ `INVENTORY_EMAIL_FROM` unset; `/health` → `config.email` is `"flow"` (normal, not a failure).
+
+- **Monday summary** → Shopify Flow trigger "Weekly order plan ready" (every plan; the Monday job,
+  once per store week, `OwnerEmailLog` kind `monday_flow`). **First plan ready** → "First order plan
+  ready" (after a compute job, once per store, kind `plan_ready_flow`). Instant alerts → "Product
+  needs reorder" (Growth, hourly alerts job) and Slack. Merchants get them by email with a Flow
+  workflow (Send internal email); templates: `docs/FLOW-TEMPLATES.md`.
+- A trigger Shopify refuses (extension not released yet) is logged `[flow] … rejected` and marked
+  FAILED for that period (next week fires again); a network error gets one retry an hour later.
+  Check: `SELECT kind, status, error, count(*) FROM "OwnerEmailLog" WHERE kind LIKE '%flow' GROUP BY 1,2,3;`
+- **Purchase orders** go from the merchant's own email app ("Open in your email", a mailto); the
+  supplier page serves the PDF and CSV (`/supplier/confirm/:token/pdf|csv`, same rate limit).
+- **Data requests** (`customers/data_request`) are answered in the access log; the log line is
+  `[gdpr] data_request for <shop>: no customer data held; recorded in the access log` (info).
+- Setting a provider later turns the app's own emails back on (Monday email, alert emails, "Email
+  supplier", data-request email) with no code change; the privacy page then names it as a
+  sub-processor automatically — add it to `docs/listing/PCD-ANSWERS.md` too.
+
 ## Routine checks
 
 - Partitions: `SELECT parent.relname, count(*) FROM pg_inherits i JOIN pg_class parent ON parent.oid = i.inhparent GROUP BY 1;`
