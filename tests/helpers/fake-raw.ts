@@ -1,7 +1,8 @@
 /**
  * The app's raw SQL statements, answered from the fake Prisma's tables (tests/helpers/fake-prisma
  * `extras`): the product-type season series (lib/season-sql-shared productTypeSeriesQuery, read
- * from its own SQL text and parameters) and the Products filter's collection list. Any other
+ * from its own SQL text and parameters), the Products filter's collection list and the alerts
+ * job's aggregations (lib/alerts-sql-shared; the same answers as Postgres: tests/alerts-sql-pg.test.ts). Any other
  * statement throws, so a new raw query can't pass silently. Real Postgres runs the real SQL
  * (tests/helpers/pg-prisma).
  */
@@ -45,8 +46,56 @@ function collections(db: FakeDb, shop: unknown): Record<string, unknown>[] {
   return [...set].sort().slice(0, 500).map((c) => ({ c }));
 }
 
+
+/** lib/alerts-sql-shared over the fake tables: the planned variants (tracked, active, not a bundle). */
+const planned = (v: Row) => v.tracked === true && v.isBundle === false && v.status === "ACTIVE";
+
+function fullyOutProducts(db: FakeDb, shop: unknown, pool: unknown): Record<string, unknown>[] {
+  const locs = new Set(Array.isArray(pool) ? pool : []);
+  const available = new Map<string, number>();
+  for (const s of db.tables.stockNow ?? []) if (s.shop === shop && locs.has(s.locationId)) available.set(s.variantId as string, (available.get(s.variantId as string) ?? 0) + Number(s.available));
+  const out = new Map<string, boolean>();
+  for (const v of db.tables.variant ?? []) {
+    if (v.shop !== shop || !planned(v)) continue;
+    const a = available.get(v.id as string);
+    out.set(v.productId as string, (out.get(v.productId as string) ?? true) && a !== undefined && a <= 0);
+  }
+  return [...out].filter(([, o]) => o).map(([productId]) => ({ productId }));
+}
+
+function plannedMetrics(db: FakeDb, shop: unknown, scope: unknown): { m: Row; productId: string }[] {
+  const productOf = new Map<string, string>();
+  for (const v of db.tables.variant ?? []) if (v.shop === shop && planned(v)) productOf.set(v.id as string, v.productId as string);
+  return (db.tables.variantMetric ?? []).filter((m) => m.shop === shop && m.scope === scope && productOf.has(m.variantId as string)).map((m) => ({ m, productId: productOf.get(m.variantId as string)! }));
+}
+
+function alertMetrics(db: FakeDb, shop: unknown, scope: unknown): Record<string, unknown>[] {
+  const num = (x: unknown) => (x === null || x === undefined ? null : Number(x));
+  return plannedMetrics(db, shop, scope)
+    .filter(({ m }) => {
+      const days = num(m.daysLeft);
+      const qty = num(m.orderQty);
+      return (m.role === "A" && days !== null && days < 365) || ((m.status === "running_low" || m.status === "out") && qty !== null && qty > 0 && days !== null && m.orderBy != null);
+    })
+    .map(({ m, productId }) => ({ variantId: m.variantId, productId, status: m.status, role: m.role, daysLeft: m.daysLeft ?? null, orderQty: m.orderQty ?? null, orderBy: m.orderBy ?? null, computedAt: m.computedAt }));
+}
+
+function deadProducts(db: FakeDb, shop: unknown, scope: unknown): Record<string, unknown>[] {
+  const by = new Map<string, { dead: boolean; ids: string[] }>();
+  for (const { m, productId } of plannedMetrics(db, shop, scope)) {
+    const cur = by.get(productId) ?? { dead: true, ids: [] };
+    cur.dead &&= m.status === "dead";
+    cur.ids.push(m.variantId as string);
+    by.set(productId, cur);
+  }
+  return [...by].filter(([, x]) => x.dead).map(([productId, x]) => ({ productId, variantIds: x.ids.sort() }));
+}
+
 function run(db: FakeDb, sql: string, params: unknown[]): Record<string, unknown>[] {
   if (sql.includes(`FROM "SalesFact" s`) && sql.includes(`v."productType" IN`)) return productTypeSeries(db, sql, params);
+  if (sql.includes(`HAVING bool_and(n."available" IS NOT NULL`)) return fullyOutProducts(db, params[0], params[1]);
+  if (sql.includes(`m."role" = 'A' AND m."daysLeft" < 365`)) return alertMetrics(db, params[0], params[1]);
+  if (sql.includes(`HAVING bool_and(m."status" = 'dead')`)) return deadProducts(db, params[0], params[1]);
   if (sql.includes(`unnest("collections")`)) return collections(db, params[0]);
   throw new Error(`fake-raw: statement not emulated: ${sql.slice(0, 120)}`);
 }

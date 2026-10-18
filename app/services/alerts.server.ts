@@ -7,6 +7,11 @@
  * SessionsDaily, AlertLog). Metric-based rules (best seller running out, Flow)
  * are skipped when the metrics are over 36 h old — never alert on stale numbers.
  *
+ * Perf 2026-10-18 (#7): Postgres aggregates and returns only the candidates (lib/alerts-sql-shared:
+ * products fully out now, the metrics a rule can use, the dead products) and the catalog of those
+ * products — not every metric and every stock-now row of the store every hour. The rules are the
+ * same functions on the same rows.
+ *
  * Instant alerts: respects Settings → Alerts "Send instant alerts" (also turned
  * off by the alert email's unsubscribe link / List-Unsubscribe). Email goes to
  * the Monday email recipients (else the store owner), in the store's language,
@@ -58,7 +63,6 @@ import {
   FLOW_NEEDS_REORDER,
   FLOW_WENT_DEAD,
   MAX_FLOW_PER_TICK,
-  deadProductIds,
   episodeStep,
   needsReorderPayload,
   needsReorderProducts,
@@ -76,6 +80,10 @@ import { planFor } from "./entitlements.server";
 import { emailUnsubscribeUrl, ownerContact, sendOwnerEmailOnce } from "./owner-email.server";
 import { listUnsubscribeHeaders } from "../lib/owner-email-shared";
 import { deliverSlack } from "./slack.server";
+import { SQL_ALERT_METRICS, SQL_DEAD_PRODUCTS, SQL_FULLY_OUT_PRODUCTS } from "../lib/alerts-sql-shared";
+
+type RawQuery = (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>;
+const raw: RawQuery = (sql, params) => prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Metrics older than this are not alerted on (same bound as the Monday email on paid plans). */
@@ -100,9 +108,11 @@ export type InstantResult = {
 /** The store's tracked, active, non-bundle variants grouped by product (what compute plans). */
 export type CatalogProduct = { title: string; handle: string; variantIds: string[]; variantTitles: Map<string, string> };
 
-export async function loadCatalog(shop: string): Promise<Map<string, CatalogProduct>> {
+/** The planned catalog — only of `productIds` when given (the alert candidates). */
+export async function loadCatalog(shop: string, productIds?: readonly string[]): Promise<Map<string, CatalogProduct>> {
+  if (productIds && !productIds.length) return new Map();
   const variants = await prisma.variant.findMany({
-    where: { shop, tracked: true, isBundle: false, status: "ACTIVE" },
+    where: { shop, tracked: true, isBundle: false, status: "ACTIVE", ...(productIds ? { productId: { in: [...productIds] } } : {}) },
     select: { id: true, productId: true, productTitle: true, variantTitle: true, handle: true },
   });
   const out = new Map<string, CatalogProduct>();
@@ -119,6 +129,7 @@ export async function loadCatalog(shop: string): Promise<Map<string, CatalogProd
 
 export type MetricRowLite = {
   variantId: string;
+  productId: string;
   status: string;
   role: string;
   daysLeft: number | null;
@@ -127,15 +138,47 @@ export type MetricRowLite = {
   computedAt: Date;
 };
 
-/** The online-pool metrics, and whether they are fresh enough to alert on. */
-export async function loadMetrics(shop: string, now: Date): Promise<{ rows: MetricRowLite[]; fresh: boolean }> {
-  const rows = (await prisma.variantMetric.findMany({
-    where: { shop, scope: SCOPE_ONLINE },
-    select: { variantId: true, status: true, role: true, daysLeft: true, orderQty: true, orderBy: true, computedAt: true },
-  })) as MetricRowLite[];
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+const dateOrNull = (v: unknown): Date | null => (v === null || v === undefined ? null : v instanceof Date ? v : new Date(String(v)));
+
+export type AlertMetrics = {
+  /** The planned variants' online metrics a rule can use (SQL_ALERT_METRICS), with their product. */
+  rows: MetricRowLite[];
+  /** Products whose every planned variant with a metric is Dead → those variants. */
+  dead: Map<string, string[]>;
+  /** The latest run is fresh enough to alert on. */
+  fresh: boolean;
+};
+
+/** The online-pool metrics the rules can use (perf #7: candidates only), and whether they are fresh enough. */
+export async function loadMetrics(shop: string, now: Date): Promise<AlertMetrics> {
+  const [rowsRaw, deadRaw, any] = await Promise.all([
+    raw(SQL_ALERT_METRICS, [shop, SCOPE_ONLINE]),
+    raw(SQL_DEAD_PRODUCTS, [shop, SCOPE_ONLINE]),
+    prisma.variantMetric.findFirst({ where: { shop, scope: SCOPE_ONLINE }, select: { variantId: true } }),
+  ]);
+  const rows: MetricRowLite[] = rowsRaw.map((r) => ({
+    variantId: String(r.variantId),
+    productId: String(r.productId),
+    status: String(r.status),
+    role: String(r.role),
+    daysLeft: numOrNull(r.daysLeft),
+    orderQty: numOrNull(r.orderQty),
+    orderBy: dateOrNull(r.orderBy),
+    computedAt: dateOrNull(r.computedAt) ?? new Date(0),
+  }));
+  const dead = new Map(deadRaw.map((r) => [String(r.productId), ((r.variantIds as unknown[]) ?? []).map(String)]));
   // The latest run, not the rows' computedAt (unchanged rows keep the run that last changed them).
-  const newest = rows.length ? ((await latestMetricRun(shop, SCOPE_ONLINE))?.getTime() ?? 0) : 0;
-  return { rows, fresh: newest > 0 && now.getTime() - newest <= MAX_METRIC_AGE_MS };
+  const newest = any ? ((await latestMetricRun(shop, SCOPE_ONLINE))?.getTime() ?? 0) : 0;
+  return { rows, dead, fresh: newest > 0 && now.getTime() - newest <= MAX_METRIC_AGE_MS };
+}
+
+/** Products fully out now over the pool (every planned variant has stock-now rows, Σ available ≤ 0). */
+async function fullyOutProducts(shop: string): Promise<{ pool: string[]; products: string[] }> {
+  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
+  const pool = poolLocationIds(locations);
+  if (!pool.length) return { pool, products: [] };
+  return { pool, products: (await raw(SQL_FULLY_OUT_PRODUCTS, [shop, pool])).map((r) => String(r.productId)) };
 }
 
 /** VariantMetric.inputs for a few variants (the heavy JSON is read only where needed). */
@@ -172,16 +215,20 @@ async function bestSellerMetrics(
 }
 
 /** Rule (b): products fully out now that were not fully out on the last stock day, with ≥ 50 sessions a week. */
-async function startedSellOuts(shop: string, timezone: string, catalog: Map<string, CatalogProduct>, now: Date): Promise<Map<string, number>> {
-  const locations = await prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT });
-  const pool = poolLocationIds(locations);
+async function startedSellOuts(
+  shop: string,
+  timezone: string,
+  catalog: Map<string, CatalogProduct>,
+  out: { pool: string[]; products: string[] },
+  now: Date,
+): Promise<Map<string, number>> {
+  const pool = out.pool;
   if (!pool.length) return new Map();
   // Out now = nothing left to sell: Σ Shopify available over the pool ≤ 0 (the planning position
-  // compute's "Out" uses; on hand that is all committed to orders can't be sold either).
-  const stock = await prisma.stockNow.findMany({ where: { shop, locationId: { in: pool } }, select: { variantId: true, available: true } });
-  const available = new Map<string, number>();
-  for (const s of stock) available.set(s.variantId, (available.get(s.variantId) ?? 0) + s.available);
-  const outNow = new Map([...available].map(([v, n]) => [v, n <= 0] as const));
+  // compute's "Out" uses; on hand that is all committed to orders can't be sold either) — for every
+  // planned variant of the product (SQL_FULLY_OUT_PRODUCTS).
+  const outNow = new Map<string, boolean>();
+  for (const pid of out.products) for (const v of catalog.get(pid)?.variantIds ?? []) outNow.set(v, true);
   const candidates = [...catalog].filter(([, p]) => fullyOut(p.variantIds, outNow));
   if (!candidates.length) return new Map();
 
@@ -248,13 +295,14 @@ export async function runInstantAlerts(
   settings: ShopSettings,
   plan: PlanCode,
   catalog: Map<string, CatalogProduct>,
-  metrics: { rows: MetricRowLite[]; fresh: boolean },
+  metrics: AlertMetrics,
   now: Date,
+  fullyOutNow?: { pool: string[]; products: string[] },
 ): Promise<InstantResult> {
   const shop = row.domain;
   if (!settings.alerts.instant) return { status: "off" };
   const low = metrics.fresh ? lowBestSellers(await bestSellerMetrics(shop, catalog, metrics.rows, settings)) : new Map();
-  const sellOuts = await startedSellOuts(shop, row.timezone, catalog, now);
+  const sellOuts = await startedSellOuts(shop, row.timezone, catalog, fullyOutNow ?? (await fullyOutProducts(shop)), now);
   if (!low.size && !sellOuts.size) return { status: "nothing" };
 
   const recent = await recentlyAlerted(shop, now);
@@ -318,7 +366,7 @@ const dayKey = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 export async function runFlowTriggers(
   shop: string,
   catalog: Map<string, CatalogProduct>,
-  metrics: { rows: MetricRowLite[]; fresh: boolean },
+  metrics: AlertMetrics,
   now: Date,
   deps: FlowDeps = {},
 ): Promise<FlowResult> {
@@ -331,14 +379,14 @@ export async function runFlowTriggers(
     .map((m) => ({ ...m, productId: productOf.get(m.variantId)!, orderBy: dayKey(m.orderBy) }));
 
   const reorder = needsReorderProducts(rows);
-  const deadIds = deadProductIds(rows);
+  // Every planned variant with a metric is Dead (deadProductIds, aggregated in SQL: SQL_DEAD_PRODUCTS).
+  const deadIds = new Set([...metrics.dead.keys()].filter((pid) => catalog.has(pid)));
   const dead = new Map<string, number>();
   if (deadIds.size) {
-    const deadVariants = rows.filter((r) => deadIds.has(r.productId)).map((r) => r.variantId);
-    const inputs = await loadInputs(shop, deadVariants);
+    const vidsOf = (pid: string) => (metrics.dead.get(pid) ?? []).filter((v) => productOf.get(v) === pid);
+    const inputs = await loadInputs(shop, [...deadIds].flatMap(vidsOf));
     for (const pid of deadIds) {
-      const vids = rows.filter((r) => r.productId === pid).map((r) => r.variantId);
-      const cash = productCash(vids, (v) => variantCash(inputs.get(v)));
+      const cash = productCash(vidsOf(pid), (v) => variantCash(inputs.get(v)));
       if (cash != null) dead.set(pid, cash);
     }
   }
@@ -423,13 +471,15 @@ export async function runAlertsForShop(row: AlertsShopRow, now: Date = new Date(
   }
   const flowOn = hasFeature(plan, "flowTriggers");
   if (!settings.alerts.instant && !flowOn) return { instant: "off", flow: "off" };
-  const catalog = await loadCatalog(row.domain);
+  // Perf #7: the candidates first (SQL aggregates), then the catalog of only their products.
   const metrics = await loadMetrics(row.domain, now);
+  const out = settings.alerts.instant ? await fullyOutProducts(row.domain) : { pool: [], products: [] };
+  const catalog = await loadCatalog(row.domain, [...new Set([...out.products, ...metrics.rows.map((m) => m.productId), ...metrics.dead.keys()])]);
 
   let instant: AlertsShopResult["instant"] = "off";
   if (settings.alerts.instant) {
     try {
-      instant = (await runInstantAlerts(row, settings, plan, catalog, metrics, now)).status;
+      instant = (await runInstantAlerts(row, settings, plan, catalog, metrics, now, out)).status;
     } catch (e) {
       instant = "failed";
       console.error(`[alerts] ${row.domain} instant alerts failed`, e);

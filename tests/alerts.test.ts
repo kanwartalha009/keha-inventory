@@ -11,7 +11,10 @@ import type { FakeDb, Row } from "./helpers/fake-prisma";
 
 vi.mock("../app/db.server", async () => {
   const { createFakePrisma } = await import("./helpers/fake-prisma");
-  const db = createFakePrisma({ alertLog: ["shop", "productId", "kind", "channel", "sentAt"] });
+  const { fakeRaw } = await import("./helpers/fake-raw");
+  // eslint-disable-next-line prefer-const
+  let db: ReturnType<typeof createFakePrisma>;
+  db = createFakePrisma({ alertLog: ["shop", "productId", "kind", "channel", "sentAt"] }, [], fakeRaw(() => db));
   return { default: db.client, __fake: db };
 });
 const { planFor, sendOwnerEmailOnce, deliverSlack, ownerContact } = vi.hoisted(() => ({
@@ -121,6 +124,18 @@ describe("instant alerts", () => {
       [P(1), "low_best_seller", "email"],
     ]);
     expect(deliverSlack).not.toHaveBeenCalled(); // Slack not connected
+  });
+
+  it("perf 2026-10-18: reads only the candidates (SQL aggregates), never every metric or stock-now row", async () => {
+    db.calls.length = 0;
+    await runAlertsForShop(shopRow(), NOW);
+    expect(db.calls.filter((c) => c.table === "stockNow" && c.op === "findMany")).toEqual([]);
+    // VariantMetric: only the inputs of the few variants a rule needs (by id), and a one-row probe.
+    for (const c of db.calls.filter((x) => x.table === "variantMetric" && x.op === "findMany")) expect((c.args as { where: { variantId?: unknown } }).where.variantId).toBeDefined();
+    // The catalog of the candidate products only.
+    const catalog = db.calls.filter((c) => c.table === "variant" && c.op === "findMany");
+    expect(catalog.length).toBe(1);
+    expect((catalog[0]!.args as { where: { productId?: { in: string[] } } }).where.productId?.in.sort()).toEqual([P(1), P(2)].sort());
   });
 
   it("has a one-click unsubscribe that turns instant alerts off (footer link + List-Unsubscribe headers)", async () => {
