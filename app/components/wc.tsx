@@ -12,7 +12,7 @@
  *  - Event handlers are typed `(event: Event) => void`; the value lives on
  *    `currentTarget`. `val()` / `isChecked()` read it without casts everywhere.
  */
-import { useEffect, useRef, type ReactNode } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, type ReactElement, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 /** `flag(cond)` → `true` or `undefined` (never `false`) for boolean attributes. */
@@ -57,6 +57,19 @@ export function useLinkProps() {
  * Controlled wrapper over `<s-modal>`: the element is imperative
  * (`showOverlay()` / `hideOverlay()`), React state is declarative.
  */
+/**
+ * Puts `slot` on the action buttons themselves. In the embedded admin the modal is drawn by App
+ * Bridge outside the app's iframe, and it only picks up `s-button` elements that carry the slot
+ * directly — buttons wrapped in an `s-box slot=…` were dropped, so confirm dialogs showed no
+ * buttons at all (live check 2026-10-18: "Explore with sample data?" had no Load / Cancel).
+ */
+function withSlot(node: ReactNode, slot: "primary-action" | "secondary-actions"): ReactNode {
+  if (node === null || node === undefined || node === false) return null;
+  return Children.toArray(
+    isValidElement(node) && node.type === Fragment ? (node.props as { children?: ReactNode }).children : node,
+  ).map((child) => (isValidElement(child) ? cloneElement(child as ReactElement<{ slot?: string }>, { slot }) : child));
+}
+
 export function Modal({
   open,
   onClose,
@@ -88,8 +101,8 @@ export function Modal({
   return (
     <s-modal ref={ref as never} heading={heading} size={size} onHide={onClose}>
       {children}
-      {primaryAction && <s-box slot="primary-action">{primaryAction}</s-box>}
-      {secondaryActions && <s-box slot="secondary-actions">{secondaryActions}</s-box>}
+      {withSlot(primaryAction, "primary-action")}
+      {withSlot(secondaryActions, "secondary-actions")}
     </s-modal>
   );
 }

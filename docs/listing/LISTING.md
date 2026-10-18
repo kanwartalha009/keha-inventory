@@ -33,7 +33,7 @@ Know what to order, from whom, by when and the cash it takes
 ## App introduction
 
 ```text
-Order best sellers before they run out, and see the cash each order needs, week by week.
+Reorder before your products run out, and see the cash each order needs, week by week.
 ```
 
 ## App details
