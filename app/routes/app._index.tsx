@@ -66,6 +66,7 @@ import {
   formatDay,
   formatPercent,
   moneyCardTitle,
+  seasonsLearningText,
   updatedLabel,
   type Fmt,
   type HomeData,
@@ -251,7 +252,14 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const op = data.orderPlan;
   if (data.state !== "ready" || !op) return null;
   // Numbers from the newest months while older ones load: say so (owner 2026-10-17).
-  const partial = data.syncView.partial ? <PartialBadge monthsRead={data.syncView.monthsRead} /> : null;
+  // Data quality, quietly: older months still loading; under 13 months of sales, seasons still learning.
+  const partial =
+    data.syncView.partial || data.seasonsLearning != null ? (
+      <s-stack direction="inline" gap="small-200">
+        {data.syncView.partial && <PartialBadge monthsRead={data.syncView.monthsRead} />}
+        {data.seasonsLearning != null && <SeasonsLearningBadge months={data.seasonsLearning} />}
+      </s-stack>
+    ) : null;
   if (op.kind === "preview") {
     return (
       <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
@@ -266,6 +274,16 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
 }
 
 /** "Based on the last 90 days so far" — on every number shown before the whole history is read. */
+/** Under 13 months of sales: the seasons are still being learned (a status, not a warning). */
+function SeasonsLearningBadge({ months }: { months: number }) {
+  const { t, locale } = useLocale();
+  return (
+    <s-badge tone="neutral" icon="calendar">
+      {seasonsLearningText(months, t, (n) => formatCount(n, locale))}
+    </s-badge>
+  );
+}
+
 function PartialBadge({ monthsRead }: { monthsRead: number }) {
   const { t, locale } = useLocale();
   return (

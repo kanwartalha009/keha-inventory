@@ -402,6 +402,13 @@ export function readSeasonSource(raw: unknown): SeasonSourceView | null {
   return s.level === "store" ? { level: "store" } : null;
 }
 
+/** inputs.season.seasonHistoryMonths (accuracy audit 2026-10-18); null when not under 13 months. */
+function readSeasonsLearning(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = (raw as Record<string, unknown>).seasonHistoryMonths;
+  return typeof m === "number" && Number.isInteger(m) && m >= 0 && m < 13 ? m : null;
+}
+
 export type ForecastInputsView = {
   windows: RateWindowView[];
   inStockDays: number | null;
@@ -418,6 +425,8 @@ export type ForecastInputsView = {
   leadSigma?: number | null;
   /** Where the seasonal pattern came from; null for rows stored without it. */
   seasonSource?: SeasonSourceView | null;
+  /** Under 13 months of sales: the whole months there are ("Seasons: learning — {n} of 13 months"); null otherwise. */
+  seasonsLearning?: number | null;
   /** R4: unusual (spike) days capped in the pace; null for rows stored without it. */
   spikes?: SpikesView | null;
   /** R4: planned like another product / its type; null when not. */
@@ -515,6 +524,7 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
     safety,
     leadSigma: n(r.leadSigma),
     seasonSource: readSeasonSource(r.season),
+    seasonsLearning: readSeasonsLearning(r.season),
     spikes: readSpikes(r.spikes),
     planLike: readPlanLike(r.planLike),
     sigmaSeasonal: r.sigmaSeasonal === true,

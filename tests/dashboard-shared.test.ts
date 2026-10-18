@@ -216,3 +216,16 @@ describe("updatedLabel (Dashboard header)", () => {
     expect(updatedLabel("not a date", null, "en", NOW, id)).toBe("First sync in progress");
   });
 });
+
+describe("seasonsLearning (accuracy audit 2026-10-18)", () => {
+  it("whole months of sales under 13, only when ready and fully read", async () => {
+    const { seasonsLearning, seasonsLearningText } = await import("../app/lib/dashboard-shared");
+    expect(seasonsLearning("ready", true, "2026-01-01", "2026-10-16")).toBe(9);
+    expect(seasonsLearning("ready", true, "2025-10-16", "2026-10-16")).toBe(12);
+    expect(seasonsLearning("ready", true, "2025-09-16", "2026-10-16")).toBeNull(); // 13 months
+    expect(seasonsLearning("ready", false, "2026-01-01", "2026-10-16")).toBeNull();
+    expect(seasonsLearning("noSales", true, "2026-01-01", "2026-10-16")).toBeNull();
+    expect(seasonsLearning("ready", true, null, "2026-10-16")).toBeNull();
+    expect(seasonsLearningText(9, (k) => k, String)).toBe("Seasons: learning — 9 of 13 months");
+  });
+});

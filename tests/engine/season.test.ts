@@ -15,6 +15,7 @@ import {
   TREND_NOT_APPLIED,
   chooseSeasonSource,
   createSeasonContext,
+  historyMonths,
   isCovered,
   monthsEarlier,
   planMultiplier,
@@ -340,6 +341,17 @@ describe("store vs season group (collection or product type)", () => {
     const fb = ctx.forVariant(["dead"], 28);
     expect(fb.level).toBe("store");
     expect(fb.seasonal).toBeCloseTo(ctx.forVariant(["small"], 28).seasonal, 12);
+  });
+
+  it("historyMonths and the facts' seasonHistoryMonths under 13 months (accuracy audit 2026-10-18)", () => {
+    expect(historyMonths("2026-01-01", TODAY)).toBe(9);
+    expect(historyMonths("2025-09-16", TODAY)).toBe(13);
+    expect(historyMonths("2020-01-01", TODAY)).toBe(13);
+    expect(historyMonths(null, TODAY)).toBeNull();
+    const young = createSeasonContext({ today: TODAY, store: series(() => 10, { from: "2026-01-01", to: "2026-10-15" }, "2026-01-01") });
+    expect(seasonFacts(young.forVariant([], 28))).toMatchObject({ seasonalReason: "short_history", seasonHistoryMonths: 9 });
+    const old = createSeasonContext({ today: TODAY, store: series(() => 10) });
+    expect(seasonFacts(old.forVariant([], 28)).seasonHistoryMonths).toBeNull();
   });
 
   it("facts label the fallback 'No seasonal data yet'", () => {

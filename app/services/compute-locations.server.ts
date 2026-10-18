@@ -287,6 +287,7 @@ async function computeLocation(
       noReorder: v.noReorder === true,
       noCap: !!v.productId && x.noCapProducts?.has(v.productId) === true,
       levels: x.levelsOf?.get(v.id) ?? null,
+      seasonKnown: season ? season.seasonalResult.applied : null,
       sellsWhenOut: v.inventoryPolicy === "CONTINUE",
       price: numOrNull(v.price),
       cost: numOrNull(v.cost),

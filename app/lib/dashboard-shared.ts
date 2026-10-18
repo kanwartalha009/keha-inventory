@@ -17,6 +17,7 @@ import {
 } from "./sync/backfill-shared";
 import { fill } from "./i18n";
 import { buildSyncView, salesSpan, showReadyNotice, type SalesSpan, type SyncView } from "./sync-progress-shared";
+import { SEASON, historyMonths } from "./engine/season-shared";
 import { readWeeklyRecheck, showRecheckNotice } from "./sync/weekly-recheck-shared";
 
 /** The weekly re-check's Dashboard line (lib/sync/weekly-recheck-shared): only above 2%, for 8 days. */
@@ -90,6 +91,12 @@ export type HomeData = {
   /** "noSales": the earliest day the first order plan can appear (14 days of sales); else null. */
   noSalesReadyOn: string | null;
   dataLate: boolean;
+  /**
+   * Under 13 months of sales once the whole history is read: the whole months there are, for the
+   * quiet "Seasons: learning — {n} of 13 months" (accuracy audit 2026-10-18; the plan forecasts from
+   * what there is, the seasons come with the 13th month). Null otherwise, and while still reading.
+   */
+  seasonsLearning: number | null;
   state: HomeState;
   refresh: MoneyRefresh;
   money: MoneySnapshot | null;
@@ -209,6 +216,18 @@ export function firstPlanDay(today: string, salesDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** HomeData.seasonsLearning: whole months of sales under 13 when ready and fully read; else null. */
+export function seasonsLearning(state: HomeState, backfillDone: boolean, salesFrom: string | null, today: string): number | null {
+  if (state !== "ready" || !backfillDone) return null;
+  const n = historyMonths(salesFrom, today);
+  return n !== null && n < SEASON.minHistoryMonths ? n : null;
+}
+
+/** "Seasons: learning — {n} of 13 months" (literal t() call for the coverage test). */
+export function seasonsLearningText(n: number, t: T, count: (n: number) => string): string {
+  return fill(t("Seasons: learning — {n} of 13 months"), { n: count(n) });
+}
+
 /** Everything Home renders, from the raw database facts. */
 export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
   const settings = readSettings(raw.shop?.settings);
@@ -240,6 +259,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
     updatedAt: raw.shop ? latestIso(last, computedAt) : null,
     noSalesReadyOn: state === "noSales" ? firstPlanDay(todayIn(raw.shop?.timezone, now), raw.salesDays) : null,
     dataLate: isDataLate(last, now),
+    seasonsLearning: seasonsLearning(state, backfillDone, backfill.datasets?.sales?.doneThrough ?? null, todayIn(raw.shop?.timezone, now)),
     state,
     refresh: MONEY_REFRESH[plan],
     money: raw.shop ? toMoneySnapshot(raw.money, raw.shop.currency) : null,

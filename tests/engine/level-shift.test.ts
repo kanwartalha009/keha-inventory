@@ -77,3 +77,28 @@ describe("computeVariant with a level shift", () => {
     expect(whyLines({ ...why, levelShift: { day: ago(30), ratio: 0.2 } }, (x) => translate("de", x), "de").some((l) => l.startsWith("Die Verkäufe sind am"))).toBe(true);
   });
 });
+
+describe("no seasonal index yet: drops are tested on the raw sales (accuracy audit 2026-10-18)", () => {
+  // 10 a day, then 1 a day for the last 34 days; 300 days of history, under 13 months (no index).
+  const all = buildSeries({ days: 300, sold: (k) => (k <= 34 ? 1 : k % 2 ? 9 : 11) });
+  const split = { series: all.filter((r) => r.day >= ago(90)), history: all.filter((r) => r.day < ago(90)), onHand: 20, role: "B" as const };
+
+  it("a product falling from 10 to 1 a day is planned at 1 a day (before: 3.18 a day, order 64)", () => {
+    const before = computeVariant(variantInput(split))!; // no seasonKnown: as before
+    expect(before.rate!).toBeCloseTo(3.18, 2);
+    expect(before.orderQty).toBe(64);
+    expect(before.inputs.levelShift).toBeNull();
+    const now = computeVariant(variantInput({ ...split, seasonKnown: false }))!;
+    expect(now.rate!).toBeCloseTo(1, 9);
+    expect(now.orderQty).toBe(12);
+    expect(now.inputs.levelShift).toMatchObject({ day: ago(34), before: 10, after: 1, afterDays: 34 });
+    // With a seasonal index but no levels (the old rule): nothing.
+    expect(computeVariant(variantInput({ ...split, seasonKnown: true }))!.inputs.levelShift).toBeNull();
+  });
+
+  it("a step UP is not taken from raw sales (a season or Black Friday can't be told from a new level)", () => {
+    const up = buildSeries({ days: 300, sold: (k) => (k <= 34 ? 30 : k % 2 ? 9 : 11) });
+    const r = computeVariant(variantInput({ series: up.filter((x) => x.day >= ago(90)), history: up.filter((x) => x.day < ago(90)), seasonKnown: false }))!;
+    expect(r.inputs.levelShift).toBeNull();
+  });
+});

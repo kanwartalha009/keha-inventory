@@ -390,6 +390,9 @@ describe("Product type: the Products filter and the season source on the detail 
     // A small group blended with the store's season (accuracy audit 2026-10-18); 1 = its own index.
     expect(renderDetail(withSource({ level: "productType", productType: "Swimwear", groupWeight: 0.9 }))).toContain("Product type “Swimwear”, blended with your whole store (90 % its own)");
     expect(renderDetail(withSource({ level: "productType", productType: "Jackets", groupWeight: 1 }))).not.toContain("blended");
+    // Under 13 months of sales: the seasonal row says the seasons are being learned (accuracy audit 2026-10-18).
+    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: 9 }))).toMatch(/Seasonal change.*Seasons: learning — 9 of 13 months/s);
+    expect(renderDetail(withSource({ level: "store", seasonHistoryMonths: null }))).not.toContain("Seasons: learning");
     // Rows stored before the source was recorded: no row.
     expect(renderDetail(detail(true))).not.toContain("Season from");
   });

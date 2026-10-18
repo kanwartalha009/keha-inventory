@@ -115,6 +115,13 @@ export interface VariantInput {
   errorOrigins?: readonly { day: DayKey; multiplier: number }[] | null;
   /** The ABC role's pooled ratio of real to model error (error-shared rolePrior); absent: 1. */
   errorPrior?: number | null;
+  /**
+   * Whether the season source's seasonal index exists (season-shared seasonalResult.applied).
+   * false: no index yet (under 13 months of sales, or too little coverage) — level-shift detection
+   * then runs on the raw sales, for DROPS only (accuracy audit 2026-10-18). Absent: as before
+   * (detection only with `levels`).
+   */
+  seasonKnown?: boolean | null;
   /** "Don't cap" (the product's forecast override): no spike capping for this variant. */
   noCap?: boolean | null;
   /**
@@ -427,10 +434,16 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   let pace: ReturnType<typeof inStockPace> = null;
   if (!r.enoughData && input.olderSeries?.length) pace = inStockPace(applyCap(all, spikes.cap, spikes.days), today, settings);
   // B5: a sustained change in the sales level (went viral, died) → the level since the change.
-  const shift: LevelShift | null =
-    !pace && r.rate !== null && r.enoughData && settings.levelShiftZ > 0 && input.levels && input.levels.size
-      ? levelShift(capped, today, settings.rateWindows, input.levels, { z: settings.levelShiftZ })
+  // Without a seasonal index (seasonKnown false) the test runs on the raw sales and keeps only a
+  // drop (accuracy audit 2026-10-18): a product falling from 10 to 1 a day in a store with under 13
+  // months of sales was planned at 3.2 a day. A step UP there can't be told from a season (raw
+  // step-ups cost 1.4–2.3 points of WAPE on the real store's backtest; drops only: neutral).
+  const rawShift = !(input.levels && input.levels.size) && input.seasonKnown === false;
+  const shiftFound: LevelShift | null =
+    !pace && r.rate !== null && r.enoughData && settings.levelShiftZ > 0 && ((input.levels && input.levels.size) || rawShift)
+      ? levelShift(capped, today, settings.rateWindows, rawShift ? null : input.levels, { z: settings.levelShiftZ })
       : null;
+  const shift = rawShift && shiftFound && shiftFound.ratio > 1 ? null : shiftFound;
   // Recurring high days (outliers-shared SPIKE_RECURRING): capped in the windows, their units
   // above the cap averaged over the last year added back.
   const recurring = spikes.recurring;

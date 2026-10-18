@@ -168,6 +168,18 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 
 export type SeasonalReason = "ok" | "short_history" | "low_coverage" | "no_base_sales";
 
+/**
+ * Whole calendar months of sales history up to today (0 … minHistoryMonths): the largest n with
+ * `from` ≤ today − n months; null without a history. "Seasons: learning — {n} of 13 months"
+ * (accuracy audit 2026-10-18).
+ */
+export function historyMonths(from: DayKey | null | undefined, today: DayKey): number | null {
+  if (!from) return null;
+  let n = 0;
+  while (n < SEASON.minHistoryMonths && from <= monthsEarlier(today, n + 1)) n++;
+  return n;
+}
+
 export interface SeasonalResult {
   /** The multiplier to apply: the shrunk, clamped index, or 1 when not applied. */
   value: number;
@@ -183,6 +195,8 @@ export interface SeasonalResult {
   /** Usable years (0–2) and the share of last year's change kept (shrinkWeight; 1 with two years). */
   years: number;
   weight: number;
+  /** Whole months of history (historyMonths, at most minHistoryMonths); null without a history. */
+  historyMonths: number | null;
 }
 
 /** Covered-day units/day per day of [from, to] for fast windowed means (prefix sums). */
@@ -288,6 +302,7 @@ export function seasonalIndex(s: UnitsSeries, today: DayKey, horizonDays: number
     base: { ...y1.base.first, blendedPerDay: y1.base.perDay },
     years: reason === "ok" ? usable.length : 0,
     weight: reason === "ok" && raw !== null ? Math.round(shrinkWeight(raw, usable.length) * 1000) / 1000 : 0,
+    historyMonths: historyMonths(s.coverage.from, t),
   });
   const from = s.coverage.from;
   if (!from || from > monthsEarlier(t, SEASON.minHistoryMonths)) return out("short_history");
@@ -832,6 +847,8 @@ export function seasonFacts(s: VariantSeason) {
     trendCurrentPerDay: s.trendResult.current.unitsPerDay,
     trendLastYearPerDay: s.trendResult.lastYear.unitsPerDay,
     label: s.seasonalResult.applied ? null : NO_SEASONAL_DATA,
+    /** Under 13 months of sales: how many whole months there are ("Seasons: learning — {n} of 13 months"). */
+    seasonHistoryMonths: s.seasonalResult.reason === "short_history" ? s.seasonalResult.historyMonths : null,
   };
 }
 

@@ -35,7 +35,7 @@ import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { fill, useLocale, plural } from "../lib/i18n";
 import { inStockTargetPct } from "../lib/service-level-shared";
-import { formatCount, formatDay, formatPercent } from "../lib/dashboard-shared";
+import { formatCount, formatDay, formatPercent, seasonsLearningText } from "../lib/dashboard-shared";
 import { shortDay } from "../lib/order-plan-shared";
 import {
   dailySeries,
@@ -386,7 +386,13 @@ function ForecastInputs({
             />
             <KvRow
               label={t("Seasonal change")}
-              value={isNeutralMultiplier(inputs.seasonal) ? t("No seasonal data yet") : `× ${num(inputs.seasonal, 2)}`}
+              value={
+                inputs.seasonsLearning != null
+                  ? seasonsLearningText(inputs.seasonsLearning, t, (n) => num(n, 0))
+                  : isNeutralMultiplier(inputs.seasonal)
+                    ? t("No seasonal data yet")
+                    : `× ${num(inputs.seasonal, 2)}`
+              }
             />
             {inputs.seasonSource && <KvRow label={t("Season from")} value={seasonSourceLabel(inputs.seasonSource, seasonCollection, t, locale)} />}
             <KvRow

@@ -7,9 +7,11 @@
  *
  * Series: the in-stock full days of the last `windowDays` days after spike capping (sold-out,
  * partial and return-heavy days left out), DE-SEASONALISED by the season source's daily level
- * (y = sold ÷ level). Without levels (no seasonal index yet) nothing is detected: a seasonal ramp
- * or Black Friday can't be told from a new level (on a real store's backtest, detection on raw
- * sales flagged the November peak in a third of the products and cost 2 points of WAPE).
+ * (y = sold ÷ level). Without levels the raw sales are tested (y = sold): computeVariant does that
+ * only when the store has no seasonal index yet, and keeps only a DROP there (accuracy audit
+ * 2026-10-18) — a seasonal ramp or Black Friday can't be told from a new level (on a real store's
+ * backtest, detection on raw sales flagged the November peak in a third of the products and cost
+ * 2 points of WAPE; drops only: neutral, and a product falling from 10 to 1 a day is caught).
  *
  * Test (the change point found by maximising the two-window contrast): for every split with at
  * least `minBeforeDays` in-stock days before and `searchAfterDays` after,

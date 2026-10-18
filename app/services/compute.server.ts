@@ -324,6 +324,7 @@ async function roleErrorPriors(
         seasonal: season.seasonal,
         trend: season.trend,
         levels: x.seasonCtx.levelsFor(season, x.historyDays),
+        seasonKnown: season.seasonalResult.applied,
         errorOrigins: x.seasonCtx.originsFor(season, errorOriginDays(x.today, p.horizon), p.horizon),
         settings: x.overrides,
       });
@@ -720,6 +721,8 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         // R4: spike capping unless the product says "Don't cap"; σ on de-seasonalised demand.
         noCap: forecastChoices.get(v.productId)?.noCap === true,
         levels: seasonCtx.levelsFor(season, settings.historyDays),
+        // No seasonal index yet: level shifts (drops) are tested on the raw sales.
+        seasonKnown: season.seasonalResult.applied,
         planLike: ref ? { rate: ref.rate * share, kind: ref.kind, name: ref.name, pct: ref.pct, share } : null,
         // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
         sellsWhenOut: v.inventoryPolicy === "CONTINUE",

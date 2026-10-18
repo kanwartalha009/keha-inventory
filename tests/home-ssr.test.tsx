@@ -324,6 +324,25 @@ describe("Home: this week's actions (task 2.3)", () => {
 describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
   const ready = (plan: PlanCode = "growth") => buildHome(homeRaw(), plan, NOW);
 
+  it("under 13 months of sales: a quiet 'Seasons: learning' badge next to the plan, never a banner (accuracy audit 2026-10-18)", () => {
+    const read = (salesFrom: string) => {
+      const raw = homeRaw();
+      raw.shop!.backfillState = { startedAt: "2026-10-15T10:00:00Z", finishedAt: "2026-10-15T12:00:00Z", first90Ready: true, datasets: { sales: { done: 10, total: 10, doneThrough: salesFrom } } };
+      return buildHome(raw, "growth", NOW);
+    };
+    const young = read("2026-01-01");
+    expect(young.seasonsLearning).toBe(9);
+    const html = render({ ...young, orderPlan: { kind: "full", plan: orderPlanFixture() } });
+    expect(html).toContain("Seasons: learning — 9 of 13 months");
+    expect(html).not.toMatch(/<s-banner[^>]*>[^<]*Seasons/);
+    expect(html).not.toContain("Based on the last"); // the whole history is read
+    // 13 months or more: nothing.
+    expect(read("2025-09-01").seasonsLearning).toBeNull();
+    expect(render({ ...read("2025-09-01"), orderPlan: { kind: "full", plan: orderPlanFixture() } })).not.toContain("Seasons: learning");
+    // Still reading: the partial badge says it; no seasons line yet.
+    expect(ready().seasonsLearning).toBeNull();
+  });
+
   it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 13-week strip", () => {
     const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
     expect(html.indexOf("Order this week")).toBeLessThan(html.indexOf("Money at stake"));
