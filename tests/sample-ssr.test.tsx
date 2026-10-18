@@ -181,12 +181,12 @@ describe("store-changing actions are off on sample data, with a note", () => {
     for (const locale of ["en", "de"] as const) {
       const html = render(OrderPage, view, { sample: ON, locale, path: "/app/reorder/:id", url: "/app/reorder/po1" });
       expect(has(html, locale, "In sample data you can draft orders, but nothing is emailed, sent or received.")).toBe(true);
-      expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Email supplier")}`));
+      expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Open in your email")}`));
       expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Mark as sent")}`));
       expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Delete draft")}`));
     }
     const live = render(OrderPage, view, { path: "/app/reorder/:id", url: "/app/reorder/po1" });
-    expect(live).not.toMatch(/disabled="(?:true)?"[^>]*>Email supplier/);
+    expect(live).not.toMatch(/disabled="(?:true)?"[^>]*>Open in your email/);
   });
 
   it("Settings → Alerts: the store's own alerts, shown but not changed from sample data", () => {

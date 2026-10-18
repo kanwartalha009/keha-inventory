@@ -14,7 +14,10 @@ import { storeLabel, todayIn } from "../lib/dashboard-shared";
 import { defaultShipTo, poDates, readPoLanguage, type PoDetails } from "../lib/po-document-shared";
 import { poBuyer, poShipTo } from "./po-parties.server";
 import { confirmLinkOpen, supplierLines, type SupplierLine } from "../lib/purchase-order-shared";
-import type { GridLine } from "../lib/po-grid-shared";
+import { buildPoGrid, poGridCsv, type GridLine } from "../lib/po-grid-shared";
+import { poCsv, poFileName } from "../lib/purchase-order-shared";
+import { poDetailRows, withDetailRows } from "../lib/po-document-shared";
+import { translate } from "../lib/i18n";
 import { confirmUrl } from "../lib/po-email-shared";
 import { getShopContact } from "./shop-contact.server";
 import { getOrder, hidePricesFor, pricingFor, type OrderDetail } from "../models/reorder.server";
@@ -105,4 +108,19 @@ export async function poDocument(shop: string, id: string): Promise<{ pdf: PoPdf
   const order = await getOrder(shop, id);
   if (!order || order.source !== "keha") return null;
   return { pdf: await documentFor(shop, order) };
+}
+
+/**
+ * The order as CSV (one line per variant; `grid` = the size grid), headers in the supplier's PO
+ * language, the detail rows above the table, no unit costs when the supplier sees no prices.
+ * Shared by the merchant download (/app/reorder/:id/csv) and the supplier page
+ * (/supplier/confirm/:token/csv).
+ */
+export function poCsvFile(pdf: PoPdfInput, grid: boolean): { csv: string; fileName: string } {
+  const tr = (s: string) => translate(pdf.locale, s);
+  const table = grid
+    ? poGridCsv(buildPoGrid(pdf.gridLines ?? pdf.lines.map((l, i) => ({ ...l, group: `l${i}` })), pdf.hidePrices), tr, { hidePrices: pdf.hidePrices, currency: pdf.currency })
+    : poCsv(pdf.lines, tr, { hidePrices: pdf.hidePrices, currency: pdf.currency });
+  const csv = withDetailRows(table, pdf.details ? poDetailRows(pdf.details, tr, (d) => d) : []);
+  return { csv, fileName: poFileName(grid ? `${pdf.number}-grid` : pdf.number, "csv") };
 }

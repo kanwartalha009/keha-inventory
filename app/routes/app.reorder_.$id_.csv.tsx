@@ -9,11 +9,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
-import { poDocument } from "../services/po-document.server";
-import { translate } from "../lib/i18n";
-import { poCsv, poFileName } from "../lib/purchase-order-shared";
-import { buildPoGrid, poGridCsv } from "../lib/po-grid-shared";
-import { poDetailRows, withDetailRows } from "../lib/po-document-shared";
+import { poCsvFile, poDocument } from "../services/po-document.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { shop } = await authenticateApp(request);
@@ -21,17 +17,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!features.poExport) return upgradeResponse("poExport", "Purchase order downloads are on the Growth plan.");
   const doc = await poDocument(shop, params.id ?? "");
   if (!doc) throw new Response("Not found", { status: 404 });
-  const { pdf } = doc;
-  const tr = (s: string) => translate(pdf.locale, s);
-  const grid = new URL(request.url).searchParams.get("layout") === "grid";
-  const table = grid
-    ? poGridCsv(buildPoGrid(pdf.gridLines ?? pdf.lines.map((l, i) => ({ ...l, group: `l${i}` })), pdf.hidePrices), tr, { hidePrices: pdf.hidePrices, currency: pdf.currency })
-    : poCsv(pdf.lines, tr, { hidePrices: pdf.hidePrices, currency: pdf.currency });
-  const csv = withDetailRows(table, pdf.details ? poDetailRows(pdf.details, tr, (d) => d) : []);
+  const { csv, fileName } = poCsvFile(doc.pdf, new URL(request.url).searchParams.get("layout") === "grid");
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${poFileName(grid ? `${pdf.number}-grid` : pdf.number, "csv")}"`,
+      "Content-Disposition": `attachment; filename="${fileName}"`,
       "Cache-Control": "no-store",
     },
   });

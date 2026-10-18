@@ -41,6 +41,7 @@ const SAME_WORD: Record<string, string[]> = {
   "{n} per product": ["nl"],
   Problem: ["de", "pl"],
   Email: ["es", "it", "pt"],
+  Message: ["fr"],
 };
 
 function files(dir: string): string[] {

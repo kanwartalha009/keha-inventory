@@ -8,6 +8,10 @@
  *
  * A draft is marked Sent only after the email went out.
  *
+ * Only when an email provider is configured (INVENTORY_EMAIL_API_KEY / _FROM). Without one — the
+ * default since the owner decision of 2026-10-18 — the order page offers "Open in your email"
+ * (supplierMailtoFor below: a mailto link for the merchant's own email app, nothing sent by Keha).
+ *
  * Limits (lib/po-email-shared): one email per order per 10 minutes and 50
  * per store per UTC day, claimed in OwnerEmailLog before sending (atomic:
  * conditional update / unique insert) and given back when the send fails.
@@ -16,7 +20,7 @@ import prisma from "../db.server";
 import { decryptSecret } from "../lib/crypto.server";
 import { emailTransportConfigured, sendEmail } from "./email.server";
 import { getShopContact } from "./shop-contact.server";
-import { translate } from "../lib/i18n";
+import { translate, type Locale } from "../lib/i18n";
 import { formatDay, storeLabel } from "../lib/dashboard-shared";
 import { poDetailRows, readPoLanguage } from "../lib/po-document-shared";
 import { documentFor } from "./po-document.server";
@@ -28,10 +32,12 @@ import {
   confirmUrl,
   supplierEmail,
   supplierEmailDayPrefix,
+  type SupplierEmailInput,
   supplierEmailOrderKey,
 } from "../lib/po-email-shared";
 import { supplierLines } from "../lib/purchase-order-shared";
-import { getOrder, hidePricesFor, pricingFor, transitionOrder } from "../models/reorder.server";
+import { supplierMailto, type SupplierMailto } from "../lib/po-mailto-shared";
+import { getOrder, hidePricesFor, pricingFor, transitionOrder, type OrderDetail } from "../models/reorder.server";
 
 export type EmailSupplierResult =
   | { ok: true; markedSent: boolean }
@@ -80,27 +86,28 @@ export async function claimSupplierEmail(shop: string, orderId: string, now: Dat
   return { ok: false, error: "dailyCap" };
 }
 
-export async function emailSupplier(shop: string, orderId: string, now: Date = new Date()): Promise<EmailSupplierResult> {
-  const order = await getOrder(shop, orderId);
-  if (!order) return { ok: false, error: "notFound" };
-  if (order.source !== "keha" || !["draft", "sent", "confirmed"].includes(order.status)) return { ok: false, error: "notAllowed" };
-  if (!emailTransportConfigured()) return { ok: false, error: "noTransport" };
-  const appUrl = process.env.SHOPIFY_APP_URL || "";
-  if (!appUrl) return { ok: false, error: "noAppUrl" };
+/** Who the order goes to and what it says: shared by "Email supplier" and "Open in your email". */
+export async function supplierMessage(
+  shop: string,
+  order: OrderDetail,
+  now: Date,
+): Promise<{ to: string; storeName: string; replyTo?: string; locale: Locale; input: Omit<SupplierEmailInput, "confirmUrl"> }> {
   const supplier = order.supplierId
     ? await prisma.supplier.findFirst({ where: { id: order.supplierId, shop }, select: { email: true, name: true } })
     : null;
   const to = supplier?.email ? decryptSecret(supplier.email) : "";
-  if (!to) return { ok: false, error: "noEmail" };
-
   const [contact, doc] = await Promise.all([getShopContact(shop), documentFor(shop, order, now)]);
   const locale = readPoLanguage(order.supplier?.poLanguage);
   const tr = (k: string) => translate(locale, k);
   const storeName = contact?.name || storeLabel(shop);
   const hidePrices = hidePricesFor(order);
   const pricing = pricingFor(order);
-  const mail = supplierEmail(
-    {
+  return {
+    to,
+    storeName,
+    locale,
+    replyTo: contact?.contactEmail || contact?.ownerEmail || undefined,
+    input: {
       storeName,
       supplierName: supplier?.name ?? order.supplierName,
       number: order.number,
@@ -109,13 +116,24 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
       hidePrices,
       shipDate: order.confirmedShipDate,
       arrival: order.arrival,
-      confirmUrl: confirmUrl(appUrl, order.confirmToken),
       locale,
       details: doc.details ? poDetailRows(doc.details, tr, (d) => formatDay(d, locale)) : undefined,
     },
-    tr,
-  );
-  const replyTo = contact?.contactEmail || contact?.ownerEmail || undefined;
+  };
+}
+
+export async function emailSupplier(shop: string, orderId: string, now: Date = new Date()): Promise<EmailSupplierResult> {
+  const order = await getOrder(shop, orderId);
+  if (!order) return { ok: false, error: "notFound" };
+  if (order.source !== "keha" || !["draft", "sent", "confirmed"].includes(order.status)) return { ok: false, error: "notAllowed" };
+  if (!emailTransportConfigured()) return { ok: false, error: "noTransport" };
+  const appUrl = process.env.SHOPIFY_APP_URL || "";
+  if (!appUrl) return { ok: false, error: "noAppUrl" };
+  const msg = await supplierMessage(shop, order, now);
+  const { to, storeName, replyTo } = msg;
+  if (!to) return { ok: false, error: "noEmail" };
+  const tr = (k: string) => translate(msg.locale, k);
+  const mail = supplierEmail({ ...msg.input, confirmUrl: confirmUrl(appUrl, order.confirmToken) }, tr);
   const claim = await claimSupplierEmail(shop, order.id, now);
   if (!claim.ok) return { ok: false, error: claim.error };
   const r = await sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html, replyTo, fromName: storeName });
@@ -129,4 +147,26 @@ export async function emailSupplier(shop: string, orderId: string, now: Date = n
     return { ok: true, markedSent: t.ok };
   }
   return { ok: true, markedSent: false };
+}
+
+export type MailtoResult =
+  | { ok: true; mailto: SupplierMailto; draft: boolean; hasLink: boolean }
+  | { ok: false; error: "notFound" | "notAllowed" };
+
+/**
+ * "Open in your email" (owner decision 2026-10-18, works without an email provider): the order as
+ * a mailto link for the merchant's own email app. Builds text only — nothing is sent and the order
+ * stays as it is; the merchant marks it sent themselves afterwards. `withLink`: the plan includes
+ * the supplier link (and the app URL is set). The decrypted supplier email and the link reach the
+ * browser only in this answer, when the merchant asks for it.
+ */
+export async function supplierMailtoFor(shop: string, orderId: string, withLink: boolean, now: Date = new Date()): Promise<MailtoResult> {
+  const order = await getOrder(shop, orderId);
+  if (!order) return { ok: false, error: "notFound" };
+  if (order.source !== "keha" || !["draft", "sent", "confirmed"].includes(order.status)) return { ok: false, error: "notAllowed" };
+  const appUrl = process.env.SHOPIFY_APP_URL || "";
+  const msg = await supplierMessage(shop, order, now);
+  const link = withLink && appUrl ? confirmUrl(appUrl, order.confirmToken) : null;
+  const mailto = supplierMailto({ ...msg.input, to: msg.to || null, confirmUrl: link }, (k) => translate(msg.locale, k));
+  return { ok: true, mailto, draft: order.status === "draft", hasLink: !!link };
 }

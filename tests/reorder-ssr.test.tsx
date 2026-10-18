@@ -367,11 +367,13 @@ const pageData = (o: OrderDetail, over: Partial<OrderPageView> = {}): OrderPageV
 });
 
 describe("Order page", () => {
-  it("draft: email the supplier, downloads, delete; lines and totals", () => {
-    const html = render("/app/reorder/po1", "order", OrderPage, pageData(order()));
+  it("draft with an email provider: email the supplier (first), open in your email, downloads, delete; lines and totals", () => {
+    const html = render("/app/reorder/po1", "order", OrderPage, pageData(order(), { emailProvider: true }));
     expect(html).toContain("PO-0001");
     expect(html).toContain("Draft");
     expect(html).toContain("Email supplier");
+    expect(html).toContain("Open in your email");
+    expect(html.indexOf("Email supplier")).toBeLessThan(html.indexOf("Open in your email"));
     expect(html).toContain("Mark as sent");
     expect(html).toContain("Download PDF");
     expect(html).toContain("Download CSV");
@@ -382,6 +384,32 @@ describe("Order page", () => {
     expect(html).not.toContain("Supplier link");
   });
 
+  it("draft without an email provider: Open in your email is the primary action, never Email supplier", () => {
+    const html = render("/app/reorder/po1", "order", OrderPage, pageData(order()));
+    expect(html).not.toContain("Email supplier");
+    expect(html).not.toContain("Email again");
+    expect(html).toMatch(/variant="primary"[^>]*>Open in your email/);
+    expect(html).toContain("Mark as sent");
+    // Also when the supplier has no saved email: the merchant types it in their email app.
+    const noEmail = render("/app/reorder/po1", "order", OrderPage, pageData(order({ supplier: { ...order().supplier!, hasEmail: false } })));
+    expect(noEmail).toContain("Open in your email");
+    // Free / no poExport: nothing to email.
+    const locked = render("/app/reorder/po1", "order", OrderPage, pageData(order(), { features: { poExport: false, supplierConfirm: false } }));
+    expect(locked).not.toContain("Open in your email");
+  });
+
+  it("sent without an email provider: Open in your email again, never Email again", () => {
+    const html = render(
+      "/app/reorder/po1",
+      "order",
+      OrderPage,
+      pageData(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" })),
+    );
+    expect(html).toContain("Open in your email");
+    expect(html).not.toContain("Email again");
+    expect(html).toMatch(/variant="primary"[^>]*>Receive items/);
+  });
+
   it("sent: the supplier link, mark received / confirmed", () => {
     const html = render(
       "/app/reorder/po1",
@@ -390,6 +418,7 @@ describe("Order page", () => {
       pageData(order({ status: "sent", sentAt: "2026-10-16T10:00:00Z", expectedDate: "2026-11-15", arrival: "2026-11-15", confirmExpiresAt: "2026-12-15T10:00:00Z" }), {
         link: "https://inventory.keha.io/supplier/confirm/abc",
         hidePrices: true,
+        emailProvider: true,
       }),
     );
     expect(html).toContain("Supplier link");

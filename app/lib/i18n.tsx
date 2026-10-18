@@ -45,6 +45,7 @@ import { ENGINE_TR } from "./i18n-engine";
 import { COPY_TR } from "./i18n-copy";
 import { MERCHANT_TR } from "./i18n-merchant";
 import { ACCURACY_TR } from "./i18n-accuracy";
+import { NOTIFY_TR } from "./i18n-notify";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -111,6 +112,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   copy: COPY_TR,
   merchant: MERCHANT_TR,
   accuracy: ACCURACY_TR,
+  notify: NOTIFY_TR,
 };
 
 for (const area of Object.values(AREAS)) {

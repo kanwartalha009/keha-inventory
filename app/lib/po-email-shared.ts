@@ -44,24 +44,30 @@ function money(v: number | null, currency: string | null, locale: string): strin
   }
 }
 
+/** "12 × Product — Variant (SKU X) · €3.00": one supplier line as text (the email and "Open in your email"). */
+export function supplierLineText(l: SupplierLine, input: Pick<SupplierEmailInput, "hidePrices" | "currency" | "locale">, tr: T): string {
+  const num = (n: number) => new Intl.NumberFormat(input.locale).format(n);
+  const name = [l.productTitle, lineVariant(l.variantTitle)].filter(Boolean).join(" — ");
+  const sku = l.sku ? ` (${tr("SKU")} ${l.sku})` : "";
+  const price = input.hidePrices ? "" : ` · ${money(l.unitCost ?? null, input.currency, input.locale)}`;
+  return `${num(l.qty)} × ${name}${sku}${price}`;
+}
+
+/** "Total units: 40 · Total cost: €120.00" (no cost when the supplier sees no prices). */
+export function supplierTotalText(input: Pick<SupplierEmailInput, "lines" | "hidePrices" | "currency" | "locale">, tr: T): string {
+  const totals = supplierTotals(input.lines, input.hidePrices);
+  const num = (n: number) => new Intl.NumberFormat(input.locale).format(n);
+  const units = fill(tr("Total units: {n}"), { n: num(totals.units) });
+  return input.hidePrices ? units : `${units} · ${fill(tr("Total cost: {amount}"), { amount: money(totals.cost ?? null, input.currency, input.locale) })}`;
+}
+
 export function supplierEmail(input: SupplierEmailInput, tr: T): { subject: string; text: string; html: string } {
   const subject = fill(tr("Purchase order {number} from {store}"), { number: input.number, store: input.storeName });
   const greeting = input.supplierName ? fill(tr("Hello {name},"), { name: input.supplierName }) : tr("Hello,");
   const intro = fill(tr("{store} would like to order the items below."), { store: input.storeName });
   const ask = tr("Please confirm the ship date with the link below. You can also download the order as a PDF there.");
-  const totals = supplierTotals(input.lines, input.hidePrices);
-  const num = (n: number) => new Intl.NumberFormat(input.locale).format(n);
-  const lineText = (l: SupplierLine) => {
-    const name = [l.productTitle, lineVariant(l.variantTitle)].filter(Boolean).join(" — ");
-    const sku = l.sku ? ` (${tr("SKU")} ${l.sku})` : "";
-    const price = input.hidePrices ? "" : ` · ${money(l.unitCost ?? null, input.currency, input.locale)}`;
-    return `${num(l.qty)} × ${name}${sku}${price}`;
-  };
-  const totalLine = input.hidePrices
-    ? fill(tr("Total units: {n}"), { n: num(totals.units) })
-    : `${fill(tr("Total units: {n}"), { n: num(totals.units) })} · ${fill(tr("Total cost: {amount}"), {
-        amount: money(totals.cost ?? null, input.currency, input.locale),
-      })}`;
+  const lineText = (l: SupplierLine) => supplierLineText(l, input, tr);
+  const totalLine = supplierTotalText(input, tr);
   const dates = input.details
     ? input.details.map(detailText).join("\n")
     : [

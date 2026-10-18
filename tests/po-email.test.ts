@@ -26,7 +26,7 @@ vi.mock("../app/services/po-parties.server", () => ({
 }));
 
 import * as dbModule from "../app/db.server";
-import { emailSupplier } from "../app/services/po-email.server";
+import { emailSupplier, supplierMailtoFor } from "../app/services/po-email.server";
 import { SUPPLIER_EMAIL_DAILY_CAP, SUPPLIER_EMAIL_DAY_KIND } from "../app/lib/po-email-shared";
 import { fill, translate } from "../app/lib/i18n";
 
@@ -125,5 +125,60 @@ describe("supplier email language and details (merchant audit 2026-10-18)", () =
     expect(mail().text).toContain("Buyer: Acme Retail SL, Calle Mayor 1, 28013 Madrid");
     expect(mail().text).toContain("Ship to: Getafe warehouse, Polígono Sur 4");
     expect(mail().text).toContain("Note: Label cartons with the PO number");
+  });
+});
+
+describe("Open in your email (owner decision 2026-10-18: no provider needed)", () => {
+  it("builds the mailto from the order — sends nothing, logs nothing, leaves a draft a draft", async () => {
+    fake.tables.purchaseOrder![0]!.status = "draft";
+    fake.tables.purchaseOrder![0]!.note = "Label cartons with the PO number";
+    const r = await supplierMailtoFor(S, "po1", true, NOW);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft).toBe(true);
+    expect(r.hasLink).toBe(true);
+    expect(r.mailto.to).toBe("orders@supplier.test");
+    expect(r.mailto.subject).toBe("Purchase order PO-0001 from Acme Store");
+    expect(r.mailto.body).toContain("Hello Acme Textiles,");
+    expect(r.mailto.body).toContain("Buyer: Acme Retail SL, Calle Mayor 1, 28013 Madrid");
+    expect(r.mailto.body).toContain("Note: Label cartons with the PO number");
+    expect(r.mailto.body).toContain(`https://inventory.test/supplier/confirm/${"po1".padEnd(43, "x")}`);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(fake.tables.ownerEmailLog ?? []).toHaveLength(0);
+    expect(fake.tables.purchaseOrder![0]!.status).toBe("draft");
+  });
+
+  it("works with no email transport configured", async () => {
+    vi.resetModules();
+    vi.doMock("../app/services/email.server", () => ({ emailTransportConfigured: () => false, sendEmail: vi.fn() }));
+    const mod = await import("../app/services/po-email.server");
+    expect(await mod.emailSupplier(S, "po1", NOW)).toEqual({ ok: false, error: "noTransport" });
+    expect(await mod.supplierMailtoFor(S, "po1", true, NOW)).toMatchObject({ ok: true, hasLink: true });
+    vi.doUnmock("../app/services/email.server");
+  });
+
+  it("in the supplier's PO language; without the supplier-link feature no token is written", async () => {
+    fake.tables.supplier![0]!.poLanguage = "fr";
+    const r = await supplierMailtoFor(S, "po1", false, NOW);
+    expect(r).toMatchObject({ ok: true, hasLink: false, draft: false });
+    if (!r.ok) return;
+    expect(r.mailto.subject).toBe(fill(translate("fr", "Purchase order {number} from {store}"), { number: "PO-0001", store: "Acme Store" }));
+    expect(r.mailto.body).toContain(translate("fr", "The order is attached as a PDF."));
+    expect(r.mailto.body).not.toContain("supplier/confirm");
+  });
+
+  it("no saved supplier email: To stays empty (typed in the email app)", async () => {
+    fake.tables.supplier![0]!.email = null;
+    const r = await supplierMailtoFor(S, "po1", true, NOW);
+    expect(r).toMatchObject({ ok: true });
+    if (r.ok) expect(r.mailto.url.startsWith("mailto:?subject=")).toBe(true);
+  });
+
+  it("closed or Shopify orders: not allowed; unknown: not found", async () => {
+    fake.tables.purchaseOrder![0]!.status = "cancelled";
+    expect(await supplierMailtoFor(S, "po1", true, NOW)).toEqual({ ok: false, error: "notAllowed" });
+    fake.tables.purchaseOrder![1]!.source = "shopify";
+    expect(await supplierMailtoFor(S, "po2", true, NOW)).toEqual({ ok: false, error: "notAllowed" });
+    expect(await supplierMailtoFor(S, "nope", true, NOW)).toEqual({ ok: false, error: "notFound" });
   });
 });

@@ -188,9 +188,12 @@ export default function SupplierConfirm() {
           {tr("Confirm ship date")}
         </button>
       </Form>
-      <p style={{ marginTop: 24 }}>
+      <p style={{ marginTop: 24, display: "flex", gap: 16, flexWrap: "wrap" }}>
         <a href={`/supplier/confirm/${encodeURIComponent(d.token)}/pdf`} style={{ color: "#1a56db" }}>
           {tr("Download the order as PDF")}
+        </a>
+        <a href={`/supplier/confirm/${encodeURIComponent(d.token)}/csv`} style={{ color: "#1a56db" }}>
+          {tr("Download the order as CSV")}
         </a>
       </p>
     </main>

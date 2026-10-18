@@ -2,9 +2,14 @@
  * One purchase order (/app/reorder/:id) — spec §5.3, J3, Growth.
  *
  * Keha orders move Draft → Sent → Confirmed → Received (or Cancelled), each
- * step behind a confirm. Downloads: PDF and CSV (`poExport`). "Email
- * supplier" sends the order with the supplier-page link and marks a draft
- * Sent. Once sent, the supplier confirmation link (`supplierConfirm`) can be
+ * step behind a confirm. Downloads: PDF and CSV (`poExport`). "Open in your
+ * email" (owner decision 2026-10-18: no paid email provider) builds the order
+ * as a mailto link for the merchant's own email app, in the supplier's PO
+ * language, with the supplier-page link; afterwards the merchant marks a
+ * draft Sent with its own confirm (never automatically). When an email
+ * provider is configured, "Email supplier" (sent by the app, marks a draft
+ * Sent) stays the primary button and "Open in your email" is secondary.
+ * Once sent, the supplier confirmation link (`supplierConfirm`) can be
  * copied; it works for 60 days. Orders read from Shopify are read-only.
  *
  * Merchant audit 2026-10-17:
@@ -41,7 +46,8 @@ import {
 } from "../models/reorder.server";
 import { PoDetailsFields, type ShipToChoice } from "../components/po-details";
 import { defaultShipTo, type ShipToLocation } from "../lib/po-document-shared";
-import { emailSupplier, type EmailSupplierResult } from "../services/po-email.server";
+import { emailSupplier, supplierMailtoFor, type EmailSupplierResult, type MailtoResult } from "../services/po-email.server";
+import { emailTransportConfigured } from "../services/email.server";
 import { AppPage, FormCard, FormSaveBar, KvRow, sameValues } from "../components/ui";
 import { LockedPage } from "../components/plan";
 import { SampleOffNote, useSample } from "../components/sample";
@@ -88,6 +94,8 @@ export type OrderPageView = {
   link: string | null;
   hidePrices: boolean;
   features: { poExport: boolean; supplierConfirm: boolean };
+  /** An email provider is configured: "Email supplier" (sent by the app) is offered next to "Open in your email". */
+  emailProvider?: boolean;
   /** Today in the store's time zone ("YYYY-MM-DD"), for overdue arrivals. */
   today?: string;
   /** A draft older than 14 days: no longer counted as ordered. */
@@ -117,6 +125,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs): Promise<O
     link: open && appUrl && features.supplierConfirm ? confirmUrl(appUrl, order.confirmToken) : null,
     hidePrices: hidePricesFor(order),
     features: { poExport: features.poExport, supplierConfirm: features.supplierConfirm },
+    emailProvider: emailTransportConfigured(),
     today: todayIn((await shopBasics(shop)).timezone, now),
     stale: order.source === "keha" && order.status === "draft" && !poCountsAsOrdered({ status: "draft", createdAt: new Date(order.createdAt) }, now),
     reopenTo: reopenTarget(order, now),
@@ -133,6 +142,7 @@ function shipToOf(locations: ShipToLocation[], own: string | null): { choices: S
 export type OrderAction =
   | { ok: true; intent: "transition"; to: PoStatus }
   | { ok: true; intent: "email"; markedSent: boolean }
+  | { ok: true; intent: "compose"; mailto: Extract<MailtoResult, { ok: true }>["mailto"]; draft: boolean; hasLink: boolean }
   | { ok: true; intent: "edit" }
   | { ok: true; intent: "delete" }
   | { ok: true; intent: "receive" }
@@ -162,6 +172,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!features.poExport) return upgradeResponse("poExport", "Emailing purchase orders is on the Growth plan.");
       const r: EmailSupplierResult = await emailSupplier(shop, id);
       return (r.ok ? { ok: true, intent: "email", markedSent: r.markedSent } : { ok: false, error: r.error }) satisfies OrderAction;
+    }
+    case "compose": {
+      if (!features.poExport) return upgradeResponse("poExport", "Emailing purchase orders is on the Growth plan.");
+      const r = await supplierMailtoFor(shop, id, features.supplierConfirm);
+      return (r.ok ? { ok: true, intent: "compose", mailto: r.mailto, draft: r.draft, hasLink: r.hasLink } : { ok: false, error: r.error }) satisfies OrderAction;
     }
     case "edit": {
       const r = await updateDraft(shop, id, body.quantities, body.version, { shipTo: body.shipTo, note: body.note });
@@ -209,6 +224,11 @@ const wholeOrNull = (s: string): number | null => (/^\d{1,7}$/.test(s.trim()) ? 
 function OrderView({ data }: { data: OrderPageView }) {
   const { t, locale } = useLocale();
   const fetcher = useFetcher<OrderAction>();
+  // "Open in your email": its own fetcher, so building the email never shows as the page's result banner.
+  const composeFetcher = useFetcher<OrderAction>();
+  const [composing, setComposing] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const navigate = useNavigate();
   const [pending, setPending] = useState<Pending | null>(null);
   const [copied, setCopied] = useState(false);
@@ -270,7 +290,17 @@ function OrderView({ data }: { data: OrderPageView }) {
   }, [result, navigate]);
 
   const can = (to: PoStatus) => keha && canTransition(order.status, to, order.source);
-  const canEmail = keha && features.poExport && !!order.supplier?.hasEmail && ["draft", "sent", "confirmed"].includes(order.status);
+  const openStatus = ["draft", "sent", "confirmed"].includes(order.status);
+  // Sent by the app: only with an email provider configured (owner decision 2026-10-18: none by default).
+  const canEmail = !!data.emailProvider && keha && features.poExport && !!order.supplier?.hasEmail && openStatus;
+  // The merchant's own email app (mailto): always, also without a saved supplier email (they type it there).
+  const canCompose = keha && features.poExport && openStatus;
+  const openCompose = () => {
+    setOpened(false);
+    setCopiedMessage(false);
+    setComposing(true);
+    composeFetcher.submit({ intent: "compose" } as never, { method: "post", encType: "application/json" });
+  };
   const canReceive = keha && (order.status === "sent" || order.status === "confirmed");
   const reopenTo = keha ? (data.reopenTo ?? null) : null;
   const run = (p: Pending) =>
@@ -304,9 +334,11 @@ function OrderView({ data }: { data: OrderPageView }) {
   const primary = draft
     ? canEmail
       ? button({ kind: "email" }, t("Email supplier"), true, false, dirty)
-      : can("sent")
-        ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), true, false, dirty)
-        : undefined
+      : canCompose
+        ? button(openCompose, t("Open in your email"), true, false, dirty)
+        : can("sent")
+          ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), true, false, dirty)
+          : undefined
     : canReceive
       ? button(openReceive, t("Receive items"), true)
       : reopenTo
@@ -323,7 +355,9 @@ function OrderView({ data }: { data: OrderPageView }) {
     keha && features.poExport ? (
       <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />
     ) : null,
-    draft && canEmail && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), false, false, dirty) : null,
+    draft && (canEmail || canCompose) && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), false, false, dirty) : null,
+    // With a provider the app's own send stays first; "Open in your email" is the second way.
+    canCompose && (canEmail || !draft) ? button(openCompose, t("Open in your email"), false, false, dirty) : null,
     !draft && canEmail ? button({ kind: "email" }, t("Email again")) : null,
     can("confirmed") ? button({ kind: "transition", to: "confirmed" }, t("Mark as confirmed")) : null,
     // Drafts were never sent: delete them. Sent orders are cancelled (and can be re-opened for 30 days).
@@ -730,6 +764,26 @@ function OrderView({ data }: { data: OrderPageView }) {
         </Modal>
       )}
 
+      {canCompose && (
+        <ComposeModal
+          open={composing}
+          number={order.number}
+          supplier={supplierName}
+          result={composeFetcher.data}
+          loading={composeFetcher.state !== "idle"}
+          opened={opened}
+          copied={copiedMessage}
+          canMarkSent={draft && can("sent")}
+          onOpened={() => setOpened(true)}
+          onCopied={setCopiedMessage}
+          onClose={() => setComposing(false)}
+          onMarkSent={() => {
+            setComposing(false);
+            setPending({ kind: "transition", to: "sent" });
+          }}
+        />
+      )}
+
       <ConfirmModal
         open={!!pending}
         destructive={copy?.destructive ?? false}
@@ -743,6 +797,104 @@ function OrderView({ data }: { data: OrderPageView }) {
         }}
       />
     </AppPage>
+  );
+}
+
+/**
+ * "Open in your email": what the email says (to, subject, message), then a link that opens it in
+ * the merchant's email app. A draft is never marked sent here — after opening, "Mark as sent"
+ * leads to the usual confirm. "Copy message" is for webmail without a mailto handler.
+ */
+export function ComposeModal(props: {
+  open: boolean;
+  number: string;
+  supplier: string;
+  result: OrderAction | undefined;
+  loading: boolean;
+  opened: boolean;
+  copied: boolean;
+  canMarkSent: boolean;
+  onOpened: () => void;
+  onCopied: (v: boolean) => void;
+  onClose: () => void;
+  onMarkSent: () => void;
+}) {
+  const { t, locale } = useLocale();
+  const r = props.result;
+  const ready = !props.loading && r?.ok && r.intent === "compose" ? r : null;
+  const failed = !props.loading && r && !r.ok ? r : null;
+  const m = ready?.mailto;
+  const copy = async () => {
+    if (!m) return;
+    try {
+      await navigator.clipboard.writeText(`${m.subject}\n\n${m.body}`);
+      props.onCopied(true);
+    } catch {
+      props.onCopied(false);
+    }
+  };
+  const openButton = (primary: boolean) =>
+    m ? (
+      <s-button key="open" variant={primary ? "primary" : undefined} href={m.url} target="_blank" onClick={props.onOpened}>
+        {t("Open in your email")}
+      </s-button>
+    ) : null;
+  const markSent = ready?.draft && props.canMarkSent && props.opened;
+  return (
+    <Modal
+      open={props.open}
+      onClose={props.onClose}
+      heading={fill(t("Email {number} to {supplier}"), { number: props.number, supplier: props.supplier })}
+      primaryAction={
+        markSent ? (
+          <s-button variant="primary" onClick={props.onMarkSent}>
+            {t("Mark as sent")}
+          </s-button>
+        ) : (
+          openButton(true)
+        )
+      }
+      secondaryActions={
+        <>
+          {markSent && openButton(false)}
+          {m && <s-button onClick={copy}>{t("Copy message")}</s-button>}
+          <s-button onClick={props.onClose}>{t("Close")}</s-button>
+        </>
+      }
+    >
+      {!ready && !failed && <s-paragraph color="subdued">{t("Preparing the email…")}</s-paragraph>}
+      {failed && <s-banner tone="critical">{orderError(failed.error, t)}</s-banner>}
+      {ready && m && (
+        <s-stack direction="block" gap="base">
+          <s-paragraph color="subdued">
+            {t("This opens a new email in your own email app, from your own address, so the supplier replies straight to you.")}
+          </s-paragraph>
+          {markSent && (
+            <s-banner tone="info">{t("Did you send it? Mark the order as sent so it counts as ordered and the supplier link starts working.")}</s-banner>
+          )}
+          {!markSent && ready.draft && ready.hasLink && (
+            <s-text color="subdued">{t("The supplier link in the email starts working when you mark the order as sent.")}</s-text>
+          )}
+          {!ready.hasLink && <s-text color="subdued">{t("Download the PDF and attach it to the email.")}</s-text>}
+          {m.moreLines > 0 && (
+            <s-banner tone="info">
+              {fill(
+                ready.hasLink
+                  ? plural(m.moreLines, t("1 line is left out to keep the email short. The supplier sees every line at the order link."), t("{n} lines are left out to keep the email short. The supplier sees every line at the order link."))
+                  : plural(m.moreLines, t("1 line is left out to keep the email short. Attach the PDF so the supplier sees every line."), t("{n} lines are left out to keep the email short. Attach the PDF so the supplier sees every line.")),
+                { n: formatCount(m.moreLines, locale) },
+              )}
+            </s-banner>
+          )}
+          {m.detailsCut && <s-text color="subdued">{t("The order details were shortened to keep the email short.")}</s-text>}
+          <s-text-field label={t("To")} value={m.to} placeholder={t("Type the supplier's address in your email app")} readOnly />
+          {!m.to && <s-text color="subdued">{t("No email saved for this supplier. You can save one in Settings → Suppliers.")}</s-text>}
+          <s-text-field label={t("Subject")} value={m.subject} readOnly />
+          <s-text-area label={t("Message")} value={m.body} rows={8} readOnly />
+          {props.copied && <s-text color="subdued">{t("Copied")}</s-text>}
+        </s-stack>
+      )}
+    </Modal>
   );
 }
 
