@@ -1,7 +1,9 @@
 /**
  * GDPR compliance webhook — customers/data_request.
- * The app stores no shopper personal data (spec §10); the store owner gets an
- * email saying so, and the request is logged in the access log.
+ * The app stores no shopper personal data (spec §10); the request is logged in
+ * the access log (that is the whole answer when no email provider is set — the
+ * default since 2026-10-18), and with a provider the store owner also gets an
+ * email saying so.
  * `authenticate.webhook` verifies the HMAC and returns 401 on a bad signature.
  *
  * The email is sent after the 200 is returned, so a slow email provider can't

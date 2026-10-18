@@ -41,6 +41,7 @@ describe("/health", () => {
     expect(body).toMatchObject({ status: "ok", db: "ok", outbox: { pending: 0, dead: 0 } });
     expect(body.pricing).toEqual({ configured: false });
     expect(body.config).toBeDefined();
+    expect(body.config).not.toHaveProperty("emailSending");
     expect(body.sync).toEqual({ lastNightlyAt: null, backfillPct: null, lastErrorCode: null, lastErrorAt: null, degradedShops: 0 });
     expect(body.shopifyqlBudget).toEqual({ lastCost: null, lastRemaining: null, lastAt: null });
     expect(body.compute).toEqual({ lastAt: null, shopsComputed: 0 });
@@ -175,6 +176,28 @@ describe("/health", () => {
       expect(body.jobs).toEqual({ due: 1, running: 0, later: 1, failing: 0, oldestDueSec: 5 });
     } finally {
       setJobStore(null);
+    }
+  });
+});
+
+describe("/health · email", () => {
+  it("no email provider reads as the normal Shopify Flow setup, never as a failure; a provider reads as provider", async () => {
+    const saved = { key: process.env.INVENTORY_EMAIL_API_KEY, from: process.env.INVENTORY_EMAIL_FROM };
+    try {
+      delete process.env.INVENTORY_EMAIL_API_KEY;
+      delete process.env.INVENTORY_EMAIL_FROM;
+      const none = await health();
+      expect(none.status).toBe(200);
+      expect(none.body.status).toBe("ok");
+      expect(none.body.config.email).toBe("flow");
+      process.env.INVENTORY_EMAIL_API_KEY = "re_test";
+      process.env.INVENTORY_EMAIL_FROM = "Keha <mail@keha.test>";
+      expect((await health()).body.config.email).toBe("provider");
+    } finally {
+      if (saved.key === undefined) delete process.env.INVENTORY_EMAIL_API_KEY;
+      else process.env.INVENTORY_EMAIL_API_KEY = saved.key;
+      if (saved.from === undefined) delete process.env.INVENTORY_EMAIL_FROM;
+      else process.env.INVENTORY_EMAIL_FROM = saved.from;
     }
   });
 });

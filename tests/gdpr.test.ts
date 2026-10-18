@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = Record<string, unknown> & { id?: string; shop?: string };
-const { tables, calls, fakeDb, sendEmail, failing } = vi.hoisted(() => {
+const { tables, calls, fakeDb, sendEmail, failing, transport } = vi.hoisted(() => {
 const tables: Record<string, Row[]> = {};
 const failing = new Set<string>();
 const calls: { table: string; op: string; where: unknown }[] = [];
@@ -57,18 +57,20 @@ function model(table: string) {
 
   const fakeDb = new Proxy({}, { get: (_t, name: string) => model(name) });
   const sendEmail = vi.fn(async (...args: unknown[]) => ({ ok: args.length > 0 }));
-  return { tables, calls, fakeDb, sendEmail, failing };
+  const transport = { on: true };
+  return { tables, calls, fakeDb, sendEmail, failing, transport };
 });
 
 vi.mock("../app/db.server", () => ({ default: fakeDb }));
+const { accessLog } = vi.hoisted(() => ({ accessLog: vi.fn(async (_e: Record<string, unknown>) => {}) }));
 vi.mock("../app/services/pii-log.server", () => ({
-  logPersonalDataAccess: vi.fn(async () => {}),
+  logPersonalDataAccess: (e: Record<string, unknown>) => accessLog(e),
   deleteShopPersonalDataLogs: vi.fn(async () => 0),
 }));
 vi.mock("../app/shopify.server", () => ({ unauthenticated: { admin: vi.fn() } }));
 vi.mock("../app/services/email.server", () => ({
   sendEmail: (...a: unknown[]) => sendEmail(...a),
-  emailTransportConfigured: () => true,
+  emailTransportConfigured: () => transport.on,
 }));
 vi.mock("../app/services/shop-contact.server", () => ({
   getShopContact: async () => ({ name: "Acme", contactEmail: "hello@acme.com", ownerEmail: "owner@acme.com" }),
@@ -209,9 +211,33 @@ describe("customers/redact", () => {
 });
 
 describe("customers/data_request", () => {
+  it("without an email provider: answered by the access-log entry, an info line (never an error), no email", async () => {
+    transport.on = false;
+    sendEmail.mockClear();
+    accessLog.mockClear();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await deliverDataRequest(S, { customer: { email: "ann@x.com" }, data_request: { id: 9 } });
+      expect(r).toEqual({ ok: true, delivered: "logged" });
+      expect(accessLog).toHaveBeenCalledWith({ shop: S, actor: "system", action: "gdpr_export", resource: "customer_data_request", records: 0 });
+      expect(sendEmail).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      expect(info).toHaveBeenCalledTimes(1);
+      // The log line carries no customer data.
+      expect(String(info.mock.calls[0]![0])).not.toContain("ann@x.com");
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      transport.on = true;
+    }
+  });
+
   it("tells the store owner no shopper data is stored", async () => {
+    accessLog.mockClear();
     const r = await deliverDataRequest(S, { customer: { email: "ann@x.com" }, data_request: { id: 9 } });
-    expect(r.ok).toBe(true);
+    expect(r).toEqual({ ok: true, delivered: "emailed" });
+    expect(accessLog).toHaveBeenCalledTimes(1);
     const arg = (sendEmail.mock.calls[0] as unknown as [{ to: string; text: string }])[0];
     expect(arg.to).toBe("owner@acme.com");
     expect(arg.text).toContain("stores no personal data about this customer");

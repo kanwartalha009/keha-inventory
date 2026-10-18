@@ -10,8 +10,9 @@
  *                how long the oldest due job has waited (s) — over every instance
  *   - outbox:    PENDING / DEAD row counts (delivery backlog to the Nova backend)
  *   - pricing:   are plan checks configured, last success / error code (2026-10-13)
- *   - config:    booleans for settings the privacy policy relies on (2026-09-28):
- *                secrets encrypted at rest, shopper email sending, legal contact
+ *   - config:    settings the privacy policy relies on (2026-09-28): secrets encrypted at
+ *                rest, legal contact, and `email`: "flow" (no email provider — the default,
+ *                not a failure) or "provider"
  *   - sync:      max lastNightlyAt and mean backfill % over installed shops, and the
  *                most recent dataset error as a short CODE only — never raw error text,
  *                which can carry store data (spec §17, task 1.2b, review M)
@@ -27,6 +28,7 @@ import prisma from "../db.server";
 import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import { schedulerHeartbeat } from "../services/scheduler.server";
 import { pricingStatus } from "../services/app-pricing.server";
+import { emailTransportConfigured } from "../services/email.server";
 import { shopifyqlBudget } from "../services/sync/shopifyql.server";
 import { backfillPercent, isDegraded, latestError, readBackfillState } from "../lib/sync/backfill-shared";
 import { knownCode, type SyncErrorCode } from "../lib/sync/errors-shared";
@@ -162,7 +164,10 @@ export const loader = async () => {
       outbox: { pending, dead },
       config: {
         secretsEncrypted: /^[0-9a-f]{64}$/i.test(process.env.APP_ENCRYPTION_KEY ?? ""),
-        emailSending: Boolean(process.env.INVENTORY_EMAIL_API_KEY && process.env.INVENTORY_EMAIL_FROM),
+        // How store-owner notifications reach the merchant (owner decision 2026-10-18): "flow" = no email
+        // provider, the normal setup (Shopify Flow triggers + the merchant's own email app for POs);
+        // "provider" = INVENTORY_EMAIL_API_KEY / _FROM set and Keha also sends emails itself.
+        email: emailTransportConfigured() ? "provider" : "flow",
         legalContact: Boolean(process.env.INVENTORY_SUPPORT_EMAIL),
         database: (process.env.DATABASE_URL ?? "").startsWith("postgres") ? "postgresql" : "other",
       },

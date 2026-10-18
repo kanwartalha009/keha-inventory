@@ -5,9 +5,10 @@
  * visits are aggregated by variant, day and location (ShopifyQL), and the app
  * requests no order or customer scopes. The handlers still do their job:
  *
- *   - customers/data_request → deliverDataRequest: tells the store owner that
- *                              the app holds no data about the customer, and
- *                              logs the request in the access log
+ *   - customers/data_request → deliverDataRequest: logs the request in the
+ *                              access log (the answer: the app holds no data
+ *                              about the customer); with an email provider it
+ *                              also tells the store owner so by email
  *   - customers/redact       → redactCustomer: removes delivered Nova outbox
  *                              copies that still carry the customer's email
  *                              (the compliance forward itself)
@@ -57,18 +58,24 @@ export function dataRequestEmailText(shop: string, customer: GdprCustomer | null
 }
 
 /**
- * Answer a data request to the store owner (Shopify: the app must give the
- * merchant the customer's data — here, that there is none). Never throws.
+ * Answer a data request (Shopify: the app must give the merchant the customer's data — here,
+ * that there is none). The answer is complete without email (owner decision 2026-10-18: no email
+ * provider by default): the request is recorded in the access log with 0 records, and the Nova
+ * platform keeps the forwarded request until it is closed. With a provider configured, the store
+ * owner also gets an email saying no data is held. Never throws.
+ *
+ * `delivered`: "logged" (no provider: the access-log entry is the answer — an info line, not an
+ * error) or "emailed".
  */
 export async function deliverDataRequest(
   shop: string,
   req: GdprRequest & { data_request?: { id?: number | string | null } | null },
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; delivered?: "logged" | "emailed"; reason?: string }> {
   try {
     await logPersonalDataAccess({ shop, actor: "system", action: "gdpr_export", resource: "customer_data_request", records: 0 });
     if (!emailTransportConfigured()) {
-      console.error("[gdpr] data_request not emailed: no email transport (INVENTORY_EMAIL_API_KEY / INVENTORY_EMAIL_FROM)");
-      return { ok: false, reason: "no_transport" };
+      console.info(`[gdpr] data_request for ${shop}: no customer data held; recorded in the access log (no email provider, nothing to email)`);
+      return { ok: true, delivered: "logged" };
     }
     const contact = await getShopContact(shop);
     const to = contact?.ownerEmail || contact?.contactEmail || "";
@@ -83,7 +90,7 @@ export async function deliverDataRequest(
       text: dataRequestEmailText(shop, req.customer, reqId),
     });
     if (!r.ok) console.error(`[gdpr] data_request email failed: ${r.reason}`);
-    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+    return r.ok ? { ok: true, delivered: "emailed" } : { ok: false, reason: r.reason };
   } catch (e) {
     console.error("[gdpr] data_request failed", e);
     return { ok: false, reason: String(e) };
