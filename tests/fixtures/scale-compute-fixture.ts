@@ -248,9 +248,11 @@ export function seedScaleFixture(db: FakeDb, opts: FixtureOptions = {}): { varia
 export function computeOutput(db: FakeDb): unknown {
   const plain = (v: unknown): unknown => JSON.parse(JSON.stringify(v));
   const metrics = (db.tables.variantMetric ?? [])
-    // contentHash is storage bookkeeping (DB scale: change-only writes), not compute output.
+    // contentHash is storage bookkeeping (DB scale: change-only writes), not compute output; so are
+    // the order plan's columns (perf 2026-10-18, derived from inputs — tests/plan-columns.test.ts).
     .map((m) => {
       const { contentHash: _h, ...rest } = plain(m) as Record<string, unknown>;
+      for (const k of Object.keys(rest)) if (k.startsWith("plan")) delete rest[k];
       return rest;
     })
     .sort((a, b) => `${a.scope}|${a.variantId}`.localeCompare(`${b.scope}|${b.variantId}`));

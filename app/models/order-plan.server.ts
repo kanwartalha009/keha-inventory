@@ -64,6 +64,7 @@ import { readLeadStats, type LeadStats } from "../lib/lead-time-shared";
 import { localDate } from "../lib/sync/store-time-shared";
 import { firstSaleRows } from "./fact-days.server";
 import { kehaOrdersById, kehaPlanOrders, shopBasics, staleDraftCount, type KehaPlanOrder } from "./reorder.server";
+import { planInputsOf, readCurves, type PlanCurve } from "../lib/plan-columns-shared";
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
@@ -174,7 +175,59 @@ const VARIANT_SELECT = {
   productCreatedAt: true,
 } as const;
 
-const METRIC_SELECT = { variantId: true, status: true, rate: true, sigma: true, orderQty: true, orderBy: true, daysLeft: true, neverRunsOut: true, inputs: true, computedAt: true } as const;
+/**
+ * Perf 2026-10-18 (#8): the metric columns and the order plan's typed inputs (lib/plan-columns-shared),
+ * not the inputs JSON; `withPlanInputs` rebuilds the subset of inputs the plan reads (rows written
+ * before the columns: their inputs, read for those rows only).
+ */
+const METRIC_SELECT = {
+  variantId: true,
+  status: true,
+  rate: true,
+  sigma: true,
+  orderQty: true,
+  orderBy: true,
+  daysLeft: true,
+  neverRunsOut: true,
+  computedAt: true,
+  planVersion: true,
+  planSafety: true,
+  planSeasonal: true,
+  planTrend: true,
+  planPlan: true,
+  planLeadDays: true,
+  planCycleDays: true,
+  planOnHand: true,
+  planIncoming: true,
+  planNeed: true,
+  planZ: true,
+  planOutSince: true,
+  planSellsWhenOut: true,
+  planCurveKey: true,
+  planExtra: true,
+} as const;
+
+type PlanMetricRow = { variantId: string; planVersion?: number | null; planCurveKey?: string | null } & Record<string, unknown>;
+
+/** The rows with `inputs` (the plan's subset from the columns, else the stored inputs). */
+async function withPlanInputs<R extends PlanMetricRow>(shop: string, scope: string, rows: R[], curves: Promise<Map<string, PlanCurve>>): Promise<(R & { inputs: unknown })[]> {
+  const byCurve = await curves;
+  const out = rows.map((r) => ({ ...r, inputs: planInputsOf(r, byCurve) as unknown }));
+  const missing = out.filter((r) => r.inputs === null).map((r) => r.variantId);
+  if (missing.length) {
+    const stored = new Map<string, unknown>();
+    for (let i = 0; i < missing.length; i += 5000)
+      for (const m of await prisma.variantMetric.findMany({ where: { shop, scope, variantId: { in: missing.slice(i, i + 5000) } }, select: { variantId: true, inputs: true } })) stored.set(m.variantId, m.inputs);
+    for (const r of out) if (r.inputs === null) r.inputs = stored.get(r.variantId) ?? null;
+  }
+  return out;
+}
+
+/** The latest run's curves of a scope (MetricRun.curves). */
+async function runCurves(shop: string, scope: string): Promise<Map<string, PlanCurve>> {
+  const run = await prisma.metricRun.findUnique({ where: { shop_scope: { shop, scope } }, select: { curves: true } });
+  return readCurves(run?.curves);
+}
 
 export type PlanSupplierRow = SupplierLite & {
   email: string | null;
@@ -256,7 +309,8 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
   const onOrderAll = onOrderByVariant(kehaRead.orders, { now, transitOf: (id) => kehaRead.transit.get(id) });
   const kehaOrders = new Map(kehaRead.orders.map((o) => [o.id, o]));
   const withKeha = [...new Set([...onOrderAll.keys(), ...kehaRead.orders.flatMap((o) => o.lines.map((l) => l.variantId))])];
-  const [metricRows, unplannable] = await Promise.all([
+  const curves = runCurves(shop, scope);
+  const [metricColumns, unplannable] = await Promise.all([
     prisma.variantMetric.findMany({
       where: {
         shop,
@@ -277,6 +331,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       select: { variantId: true, status: true },
     }),
   ]);
+  const metricRows = await withPlanInputs(shop, scope, metricColumns, curves);
   const metrics = new Map(metricRows.map((m) => [m.variantId, m]));
   const ids = [...metrics.keys()];
   // Orders a metric counted that aren't open any more nor closed since the window above (deleted,
@@ -305,10 +360,15 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
       await prisma.variant.findMany({ where: { shop, productId: { in: [...styleProducts] }, tracked: true, isBundle: false, NOT: { noReorder: true } }, select: VARIANT_SELECT })
     ).filter((v) => !known.has(v.id));
     if (siblings.length) {
-      const sibMetrics = await prisma.variantMetric.findMany({
-        where: { shop, scope, variantId: { in: siblings.map((v) => v.id) }, status: { notIn: ["dead", "not_enough_data"] } },
-        select: METRIC_SELECT,
-      });
+      const sibMetrics = await withPlanInputs(
+        shop,
+        scope,
+        await prisma.variantMetric.findMany({
+          where: { shop, scope, variantId: { in: siblings.map((v) => v.id) }, status: { notIn: ["dead", "not_enough_data"] } },
+          select: METRIC_SELECT,
+        }),
+        curves,
+      );
       for (const m of sibMetrics) metrics.set(m.variantId, m);
       const withMetric = new Set(sibMetrics.map((m) => m.variantId));
       variants.push(...siblings.filter((v) => withMetric.has(v.id)));

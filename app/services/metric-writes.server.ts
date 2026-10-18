@@ -12,11 +12,18 @@
  * the old "computedAt < startedAt" sweep was — removes the rows of variants the run no longer
  * computes, and MetricRun records the run (started, finished, rows confirmed, rows changed): the
  * freshness checks and the order-plan cache read MetricRun (latestMetricRun), not computedAt.
+ *
+ * Perf 2026-10-18 (#8): each row also gets the order plan's typed columns (lib/plan-columns-shared
+ * planColumnsOf, derived from the stored inputs) and MetricRun.curves the run's seasonal curves by
+ * key — while a run is being written, the previous run's curves are kept beside them (rows not
+ * rewritten yet still point at them); at the sweep exactly this run's remain. The column format's
+ * version is part of the content hash, so a new version rewrites every row once.
  */
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { metricContentText, storedMetric } from "../lib/metric-store-shared";
+import { PLAN_COLUMNS_VERSION, curveOf, planColumnsOf, readCurves, type PlanCurve } from "../lib/plan-columns-shared";
 import { slices } from "../lib/concurrency-shared";
 
 export const METRIC_WRITE_BATCH = 1000;
@@ -35,7 +42,15 @@ export type MetricData = {
   inputs: Prisma.InputJsonValue;
 };
 
-type RunState = { ids: Set<string>; rows: number; changed: number };
+type RunState = {
+  ids: Set<string>;
+  rows: number;
+  changed: number;
+  /** This run's curves by key, and the previous run's (kept until the sweep); null = not read yet. */
+  curves: Map<string, PlanCurve>;
+  prevCurves: Map<string, PlanCurve> | null;
+  curvesDirty: boolean;
+};
 const g = globalThis as unknown as { __kehaMetricRuns?: Map<string, RunState> };
 /** Runs in progress in this process: shop|scope|startedAt → what they confirmed. */
 const runs: Map<string, RunState> = (g.__kehaMetricRuns ??= new Map());
@@ -46,21 +61,46 @@ function hashOf(text: string): string {
   return createHash("sha1").update(text).digest("hex").slice(0, 16);
 }
 
+const curvesJson = (...maps: ReadonlyMap<string, PlanCurve>[]) => {
+  const out: Record<string, PlanCurve> = {};
+  for (const m of maps) for (const [k, v] of m) out[k] = v;
+  return out as unknown as Prisma.InputJsonValue;
+};
+
 async function recordRun(shop: string, scope: string, startedAt: Date, state: RunState, finishedAt: Date | null): Promise<void> {
-  const data = { startedAt, finishedAt, rows: state.rows, changed: state.changed };
+  // The curves: written when new ones came in (during the run, with the previous run's) and at the end (this run's only).
+  const curves = finishedAt ? { curves: curvesJson(state.curves) } : state.curvesDirty ? { curves: curvesJson(state.prevCurves ?? new Map(), state.curves) } : {};
+  state.curvesDirty = false;
+  const data = { startedAt, finishedAt, rows: state.rows, changed: state.changed, ...curves };
   await prisma.metricRun.upsert({ where: { shop_scope: { shop, scope } }, create: { shop, scope, ...data }, update: data });
 }
+
+const newRun = (): RunState => ({ ids: new Set(), rows: 0, changed: 0, curves: new Map(), prevCurves: null, curvesDirty: false });
 
 /** Writes one scope's rows of a run (all rows share computedAt = the run's start). Returns the rows changed. */
 export async function writeVariantMetrics(shop: string, scope: string, rows: readonly MetricData[]): Promise<number> {
   if (!rows.length) return 0;
   let changedTotal = 0;
+  const startedAt = rows[0]!.computedAt;
+  const key = runKey(shop, scope, startedAt);
+  const state = runs.get(key) ?? runs.set(key, newRun()).get(key)!;
+  if (state.prevCurves === null) {
+    const prev = await prisma.metricRun.findUnique({ where: { shop_scope: { shop, scope } }, select: { startedAt: true, curves: true } });
+    state.prevCurves = prev && prev.startedAt.getTime() !== startedAt.getTime() ? readCurves(prev.curves) : new Map();
+  }
   for (let i = 0; i < rows.length; i += METRIC_WRITE_BATCH) {
     const batch = rows.slice(i, i + METRIC_WRITE_BATCH).map((r) => {
-      // What is stored (slim inputs, floats at STORED_DIGITS) is what is hashed (perf 2026-10-18).
+      // What is stored (slim inputs, floats at STORED_DIGITS) is what is hashed (perf 2026-10-18),
+      // with the order plan's columns derived from it (their format version in the hash).
       const s = storedMetric(r);
+      const plan = planColumnsOf(s.inputs);
+      const c = curveOf(s.inputs);
+      if (c && !state.curves.has(c.key)) {
+        state.curves.set(c.key, c.curve);
+        state.curvesDirty = true;
+      }
       const inputs = s.inputs as Prisma.InputJsonValue;
-      return { ...s, inputs, contentHash: hashOf(metricContentText({ ...s, inputs })) };
+      return { ...s, inputs, ...plan, planExtra: plan.planExtra as Prisma.InputJsonValue, contentHash: hashOf(`p${PLAN_COLUMNS_VERSION}|${metricContentText({ ...s, inputs })}`) };
     });
     const ids = batch.map((r) => r.variantId);
     const stored = await prisma.variantMetric.findMany({ where: { shop, scope, variantId: { in: ids } }, select: { variantId: true, contentHash: true } });
@@ -74,9 +114,6 @@ export async function writeVariantMetrics(shop: string, scope: string, rows: rea
     }
     changedTotal += changed.length;
     // The run: every variant written or confirmed, so the sweep keeps them.
-    const startedAt = batch[0]!.computedAt;
-    const key = runKey(shop, scope, startedAt);
-    const state = runs.get(key) ?? runs.set(key, { ids: new Set(), rows: 0, changed: 0 }).get(key)!;
     for (const id of ids) state.ids.add(id);
     state.rows = state.ids.size;
     state.changed += changed.length;
@@ -91,7 +128,7 @@ export async function writeVariantMetrics(shop: string, scope: string, rows: rea
  */
 export async function sweepVariantMetrics(shop: string, scope: string, startedAt: Date, now: Date = new Date()): Promise<number> {
   const key = runKey(shop, scope, startedAt);
-  const state = runs.get(key) ?? { ids: new Set<string>(), rows: 0, changed: 0 };
+  const state = runs.get(key) ?? newRun();
   runs.delete(key);
   const existing = await prisma.variantMetric.findMany({ where: { shop, scope }, select: { variantId: true } });
   const stale = existing.map((r) => r.variantId).filter((id) => !state.ids.has(id));

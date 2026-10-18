@@ -375,6 +375,24 @@ model VariantMetric {
   inputs       Json
   /// Hash of every column above but computedAt (services/metric-writes.server): unchanged rows are not rewritten.
   contentHash  String?
+  /// The order plan's inputs as columns (perf 2026-10-18, lib/plan-columns-shared; null = written before them).
+  planVersion      Int?
+  planSafety       Float?
+  planSeasonal     Float?
+  planTrend        Float?
+  planPlan         Float?
+  planLeadDays     Float?
+  planCycleDays    Float?
+  planOnHand       Float?
+  planIncoming     Float?
+  planNeed         Float?
+  planZ            Float?
+  planOutSince     DateTime? @db.Date
+  planSellsWhenOut Boolean?
+  /// Key of the seasonal curve in MetricRun.curves (null = no curve).
+  planCurveKey     String?
+  /// Dated arrivals, Keha orders and the Why's figures (small JSON).
+  planExtra        Json?
 
   @@id([shop, variantId, scope])
   @@index([shop, status])
@@ -392,6 +410,8 @@ model MetricRun {
   finishedAt DateTime?
   rows       Int       @default(0)
   changed    Int       @default(0)
+  /// The run's seasonal curves by VariantMetric.planCurveKey: { key: { today, curve } } (perf 2026-10-18).
+  curves     Json?
 
   @@id([shop, scope])
 }

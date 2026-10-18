@@ -48,14 +48,14 @@ describe("change-only VariantMetric writes", () => {
   it("a run whose content did not change rewrites nothing (the calendar alone changes nothing)", async () => {
     expect(await writeVariantMetrics(S, "online", [1, 2, 3].map((n) => row(n, RUN1)))).toBe(3);
     await sweepVariantMetrics(S, "online", RUN1, RUN1);
-    expect(db.tables.metricRun).toEqual([{ shop: S, scope: "online", startedAt: RUN1, finishedAt: RUN1, rows: 3, changed: 3 }]);
+    expect(db.tables.metricRun).toEqual([{ shop: S, scope: "online", startedAt: RUN1, finishedAt: RUN1, rows: 3, changed: 3, curves: {} }]);
     db.calls.length = 0;
     // Next night: same numbers; today and the product's age moved — not stored, so no change.
     expect(await writeVariantMetrics(S, "online", [1, 2, 3].map((n) => row(n, RUN2)))).toBe(0);
     expect(await sweepVariantMetrics(S, "online", RUN2, RUN2)).toBe(0);
     expect(writes()).toEqual([]);
     expect(db.tables.variantMetric.every((m) => (m.computedAt as Date).getTime() === RUN1.getTime())).toBe(true);
-    expect(db.tables.metricRun).toEqual([{ shop: S, scope: "online", startedAt: RUN2, finishedAt: RUN2, rows: 3, changed: 0 }]);
+    expect(db.tables.metricRun).toEqual([{ shop: S, scope: "online", startedAt: RUN2, finishedAt: RUN2, rows: 3, changed: 0, curves: {} }]);
     expect(await latestMetricRun(S, "online")).toEqual(RUN2);
   });
 
