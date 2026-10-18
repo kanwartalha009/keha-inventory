@@ -1,12 +1,167 @@
 # Forecast accuracy on real data
 
-Two rounds on the same data and method (below): **2026-10-17 engine round** (this section) and
-**R4** (the original measurement, kept further down). Aggregates only: no store name, no product
-names, no customer data. The throwaway scripts and the transcribed daily figures stay outside the
-repository. Every number below comes from the app's own engine (`app/lib/engine`) run on the
-read-only real-store data R4 transcribed (38 variants, 776 days); no new store data was read.
+Three rounds on the same store: **accuracy audit 2026-10-18** (this section), the **2026-10-17
+engine round** and **R4** (the original measurement), both kept further down. Aggregates only: no
+store name, no product names, no customer data, no money.
 
-## Engine round 2026-10-17: what changed
+## Reproduce it: `npm run accuracy`
+
+Since 2026-10-18 the harness and its data are in the repository (`scripts/accuracy/`): the app's
+real engine on a frozen, anonymised copy of the R4 data, `scripts/accuracy/data/store.json.gz`
+(18 KB). It holds random variant ids, the ABC role, net units sold per day, the sold-out days and the
+store's total units per day — no product names, SKUs, titles, handles, prices, money or store name
+(`tests/accuracy-dataset.test.ts` keeps it that way). The calendar start (2024-09-01) is kept:
+weekdays and Black Friday must line up for the seasonal index. 38 variants (25 A, 8 B, 5 C), 776
+days. It reproduces the 2026-10-17 forecast-error numbers below exactly (that round's service
+simulation valued stock in euros and refreshed the role priors daily; `--service` reports units and
+refreshes them weekly, so its figures are not comparable one to one).
+
+| Command | What it runs |
+|---|---|
+| `npm run accuracy` | the three cutoff sets below, H = 28 / 56 / 90 days, Keha vs naive vs seasonal naive |
+| `-- --mode holdout --strict` | the hold-out only; refuses any parameter change |
+| `-- --mode random --samples 600 --seed 7` | another random sample |
+| `-- --young 365` | as if the store had only 365 days of history at each cutoff |
+| `-- --service '{"L":90,"R":30,"late":0.25,"lateMax":0.3,"moqDays":30,"start":"2025-06-01"}'` | the service simulation: fill vs each role's target, stock in units and days |
+
+Cutoff sets: **rolling** — every 28 days from 2025-10-06 (the earlier rounds' grid); "tune" =
+horizon ends before the hold-out, "hold" = starts in it. **Hold-out** — weekly cutoffs whose whole
+horizon lies in the last 120 days (2026-06-19 … 2026-10-16); `--strict`: engine defaults, nothing
+tuned in this round looked at these numbers first (the earlier rounds' last two cutoffs fall in this
+period, so it is not data no one has ever seen). **Random** — 400 seeded (cutoff, variant) pairs,
+cutoffs anywhere from day 120 (before the seasonal index exists, "season unknown") to the end.
+Baselines: naive = the last 28 days' mean × H; seasonal naive = the same H days 364 days earlier,
+naive where the variant is younger than that (the count in brackets in the harness output).
+
+Limit that the random mode does not remove: the 38 variants are today's best sellers. A sample of
+"what the store sold then" would need the whole catalogue, which was not transcribed.
+
+## What changed (accuracy audit 2026-10-18)
+
+| # | Defect found | Fix | Fixture before → after |
+|---|---|---|---|
+| 1 | Spike cap could cap only max(1, ⌊1 % × days⌋) days: with < ~200 days of history two wholesale days passed uncapped | High days grouped into bursts; bursts ≤ 7 days are spikes and capped; recurring when ≥ 3 such days in ≥ 3 months, then their units above the cap and above their own weeks' level are averaged over the last year and added back; longer runs (a season, a viral product) are not capped | 2 × 300 units on a 2-a-day product, 150 days: pace 11.84 → 2.39, order 606 → 42. Five 300-unit orders a year: order 602 / 431 (two vs one in the last 90 days) → 93 / 90 |
+| 2 | Long lead times: the fill-rate rule gave k ≈ 0 (lead 75 + cycle 60: safety 0 on 1,350 units) and A items fell short of 95 % | A items: k ≥ 1.5 × z, ramped in from a 42- to a 90-day lead time (error-shared `longLeadFloor`) | k 0 → 1.70, safety 0 → 120 units; service below |
+| 3 | A group needed 2,000 units / 12 months for its own seasonal index, else the store's: a small store's swimwear got the store's flat shape | Smaller groups (≥ 50 units) blend: group^w × store^(1 − w), w = u(2000 + K) ÷ (2000(u + K)), K = 100 (1 from 2,000 units: unchanged there) | Small store (swimwear and coats ~620 units a year each): swimwear in January ordered now → "Next season" |
+| 4 | < 13 months of sales: no seasonal index, so no level-shift detection | Without an index the shift test runs on raw sales and keeps only drops; Dashboard and product page say "Seasons: learning — {n} of 13 months" (a status, not a banner) | 10 → 1 a day: pace 3.18 → 1.00, order 64 → 12 |
+| 5 | The backtest lived outside the repository | `npm run accuracy` on the frozen anonymised data (above) | — |
+| 6 | A late purchase order counted as arriving today without a word | Still lands today in the projection; "An open order is {n} days late: counted as arriving now, with {units} more safety while it is late." in Why this quantity; safety + the forecast × min(days late, 7) | 200 units 12 days late, 10 a day: no word, safety 0, order 140 → "12 days late", safety 70, order 210 |
+
+Parts measured and not used:
+- **Bias correction for A items** (adding the role's measured backtest bias × the protection
+  period's demand to safety): at lead 90 days +1.3 points of A fill for +21 % stock — the floor did
+  more per unit of stock.
+- **Raw-sales level shifts in both directions** for young stores: 28 / 56 / 90-day WAPE 34.6 / 37.0
+  / 38.9 % → 36.0 / 38.7 / 41.2 % (`--young 365`; the November peak read as a new level). Drops
+  only: 34.6 / 37.2 / 39.1 % — kept.
+- **Every run of high days as a spike** (no 7-day limit): the real store's hold-out was slightly
+  better (28 days 25.7 %), but in a store without a seasonal index yet the December peak was spread
+  over its first months (28-day bias +25 → +35 % on those cutoffs).
+- **Short bursts without the own-level floor**: the simulated store ordered its winter coats 40 % up
+  in October (last winter's days added back against this summer's cap).
+- **A partial year** (e.g. 9 months) for a seasonal comparison: the index compares the coming weeks
+  with the same weeks a year earlier, which a 9-month history has not seen; nothing sound to
+  measure on this data (a group-vs-store shape over the months seen needs groups, which the frozen
+  data does not hold).
+
+## Forecast error now (HEAD 51de671 → this round)
+
+WAPE / bias, %. Keha before → after; naive and seasonal naive don't change.
+
+**Hold-out** (weekly cutoffs in the last 120 days, strict):
+
+| H | n | Keha before | **Keha after** | Naive | Seasonal naive |
+|---|---:|---:|---:|---:|---:|
+| 28 days | 520 | 27.5 / −9.6 | **27.2 / −10.3** | 28.2 / −6.8 | 55.1 / −45.2 |
+| 56 days | 368 | 25.5 / −16.1 | **25.7 / −16.3** | 25.1 / −15.6 | 53.5 / −49.1 |
+| 90 days | 180 | 31.3 / −21.1 | **31.4 / −21.2** | 34.8 / −23.8 | 53.5 / −49.0 |
+
+**Rolling** (13 / 12 / 11 cutoffs every 28 days from 2025-10-06):
+
+| H | Group | n | Keha before | **Keha after** | Naive | Seasonal naive |
+|---|---|---:|---:|---:|---:|---:|
+| 28 | All | 440 | 31.7 / −5.4 | **31.6 / −6.3** | 37.5 / −3.2 | 61.0 / −17.5 |
+| 28 | A / B / C WAPE | 279 / 96 / 65 | 31.5 / 34.3 / 45.3 | **31.4 / 34.1 / 45.0** | 36.9 / 46.9 / 59.6 | 60.9 / 62.5 / 64.6 |
+| 56 | All | 402 | 30.2 / −9.1 | **30.3 / −9.7** | 39.7 / −7.0 | 60.6 / −17.8 |
+| 56 | A / B / C WAPE | 254 / 88 / 60 | 30.1 / 30.2 / 34.6 | **30.3 / 29.1 / 34.2** | 39.4 / 47.0 / 53.8 | 60.6 / 59.2 / 62.0 |
+| 90 | All | 364 | 29.8 / −6.2 | **29.7 / −6.8** | 42.9 / −4.9 | 60.9 / −15.0 |
+| 90 | A / B / C WAPE | 229 / 80 / 55 | 29.7 / 33.1 / 30.7 | **29.6 / 31.9 / 30.4** | 42.7 / 48.8 / 50.0 | 61.0 / 57.5 / 61.8 |
+
+**Random** (400 pairs, seed 1; "season unknown" = cutoffs in the store's first 13 months):
+
+| H | Group | n | Keha before | **Keha after** | Naive | Seasonal naive |
+|---|---|---:|---:|---:|---:|---:|
+| 28 | All | 400 | 37.7 / +7.4 | **37.8 / +6.8** | 44.8 / +11.5 | 58.1 / +0.5 |
+| 28 | Season known / unknown WAPE | 211 / 189 | 32.2 / 46.3 | **32.4 / 46.1** | 41.4 / 50.0 | 62.1 / 52.0 |
+| 56 | All | 400 | 40.1 / +12.1 | **40.1 / +11.1** | 46.9 / +15.4 | 62.1 / +2.0 |
+| 90 | All | 400 | 43.9 / +11.7 | **43.0 / +10.3** | 54.8 / +11.5 | 67.3 / +7.2 |
+
+Reading it honestly:
+- **This round fixes the audit's cases; it does not make this store's forecast better.** The
+  all-variant WAPE moved by at most 0.3 points on the rolling and hold-out cutoffs (random sample:
+  −0.9 at 90 days); bias moved 0.1–0.9 points further negative there (fewer high days kept in the
+  pace windows).
+- **On the hold-out Keha beats naive at 28 days (27.2 vs 28.2 %) and 90 days (31.4 vs 34.8 %) but
+  still loses at 56 days (25.7 vs 25.1 %).** It beats seasonal naive everywhere by a wide margin
+  (seasonal naive misses this store's doubling year on year).
+- **Bias stays negative for A items** (−10.5 % at 28 days, −16.8 / −21.5 % at 56 / 90 days on the
+  hold-out): the store's growth, which the forecast doesn't extrapolate (trend off, owner decision
+  C4). The long-lead floor (below) protects the fill against it; the forecast itself still lags.
+- In the store's first 13 months (no seasonal index) Keha is only a little better than naive
+  (28 days 46.1 vs 50.0 %) and both run ~25 % high: after the first Black Friday the pace falls
+  slower than demand, and without a year of history there is no season to say so.
+
+## Service level at long lead times (fill vs target)
+
+`--service`, balanced safety level, lost sales when out, 25 % of deliveries late by up to 30 % of
+the lead time (seeded; the engine gets their measured σ after 3 deliveries, as compute does), a
+supplier minimum of 30 days of each variant's demand, simulated from 2025-06-01, measured after a
+warm-up of L + R days. Fill per role (target), stock = the average units on the shelf; days =
+each variant's average stock ÷ its average daily demand, averaged.
+
+| Lead / cycle | Role (target) | Fill before | **Fill after** | Stock before | **Stock after** |
+|---|---|---:|---:|---:|---:|
+| 90 / 30 | A (95) | 90.2 % | **94.3 %** | 35.9 k u · 105 days | 56.4 k u · 163 days (+57 %) |
+| 90 / 30 | B (90) / C (85) | 95.8 / 100.0 % | 95.8 / 100.0 % | | unchanged |
+| 135 / 30 | A (95) | 92.1 % | **94.4 %** | 59.2 k u · 173 days | 81.7 k u · 234 days (+38 %) |
+| 135 / 30 | B / C | 97.8 / 100.0 % | 97.8 / 100.0 % | | unchanged |
+| 75 / 60 | A (95) | 92.6 % | **95.1 %** | 46.1 k u · 121 days | 55.4 k u · 147 days (+20 %) |
+| 75 / 60 | B / C | 96.4 / 100.0 % | 96.4 / 100.0 % | | unchanged |
+| 14 / 14 (no late, no minimum) | A / B / C | 94.1 / 93.4 / 89.3 % | unchanged (the floor starts above 42 days) | 5.8 k u | unchanged |
+| 42 / 14 (no late, no minimum) | A / B / C | 94.9 / 99.1 / 96.5 % | unchanged | 12.8 k u | unchanged |
+
+Naive order-up-to (c × z × σ × √(L + R)) at lead 90: A fills 77.4 / 80.6 / 84.4 % at c = 1 / 2 / 3
+for 30.3 / 35.0 / 41.7 k units; at lead 135: 80.9 / 81.4 / 82.2 % for 47.6 / 55.6 / 64.4 k units.
+
+- **Calibration met for A** at 90 / 135 days and at lead 75 + cycle 60 (within 0.7 points).
+- **The cost is real stock**: +20 % to +57 % of A units at those lead times. On the simulator store
+  (sim:check, 17 Oct, Ningbo Outerwear: lead 75, winter coats in season) the week's order rose from
+  1,090 to 1,980 units (€72 k → €125 k) while the next 13 weeks rose 10,105 → 10,345 units: the floor
+  pulls stock forward into the season. A multiple of 1.3 instead of 1.5 (measured with the earlier
+  spike rule): A 92.9 % at both 90 and 135 days for +39 % / +23 % stock — about 2 points short.
+- **B and C overshoot** (96–100 % against 90 / 85 %) and the floor doesn't touch them: at these lead
+  times the supplier minimum (30 days of demand) and the order cycle already hold more than the
+  target needs; lowering safety can't go below 0.
+- Late deliveries themselves cost little here (lead 90, no minimum, an earlier engine of this round:
+  A 91.0 % with none late, 90.6 % with 25 % late): the measured lead-time spread already sits in
+  the safety stock. The shortfall was the forecast running low on fast sellers over long horizons.
+
+## Limits of the 2026-10-18 numbers
+
+- One store, 38 variants (B and C rest on 8 and 5 products), today's best sellers.
+- No season groups in the frozen data: the group blend (3) is pinned by the unit fixture and seen
+  on the simulator store only (sim:check: next 13 weeks 10,193 → 10,105 units).
+- The service simulation refreshes the roles' pooled error ratios weekly (compute does it nightly).
+- Stock in units, not money: the dataset holds no prices.
+
+---
+
+# 2026-10-17 engine round (before this audit)
+
+Measured with the throwaway scripts of that round, on the same data now frozen in
+`scripts/accuracy/data` (`npm run accuracy` reproduces the forecast-error tables exactly).
+
+## What changed
 
 | Change | Where | Why |
 |---|---|---|
