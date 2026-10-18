@@ -90,6 +90,17 @@ describe("Settings page", () => {
     expect(html).not.toContain("Year-over-year growth"); // in More options, collapsed while it is off
   });
 
+  it("S4: a Change link (?more=1) lands with More options open; the order days read Order enough for", () => {
+    const data = { form: settingsToForm(DEFAULT_SETTINGS) };
+    const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
+    const closed = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expect(closed).not.toContain("Order enough for");
+    const html = renderToString(<Stub initialEntries={["/app/settings?more=1"]} hydrationData={{ loaderData: { settings: data } }} />);
+    expect(html).toContain('label="Order enough for"');
+    expect(html).toContain("Days of stock each order should last after it arrives");
+    expect(html).not.toContain("Order cycle");
+  });
+
   it("a store that turned the growth assumption on sees it (More options open), with the honest note", () => {
     const data = { form: settingsToForm({ ...DEFAULT_SETTINGS, trendMode: "store" }) };
     const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);

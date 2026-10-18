@@ -244,6 +244,19 @@ describe("Variant detail", () => {
     expect(html).toContain('href="/app/products"');
   });
 
+  it("S4: lead time, order days, in-stock target and safety stock each link to the setting behind them", () => {
+    const html = renderDetail(detail(true));
+    expect(html).toContain("Order enough for");
+    expect(html).not.toContain("Order cycle");
+    // Store defaults: Settings with More options open, where these fields live.
+    expect(count(html, 'href="/app/settings?more=1"')).toBe(4);
+    const supplier = detail(true);
+    const html2 = renderDetail({ ...supplier, inputs: { ...supplier.inputs!, leadTimeSource: "supplier" } });
+    expect(count(html2, 'href="/app/settings/suppliers"')).toBe(2);
+    // Locked (Free): no link to change numbers the plan doesn't show.
+    expect(renderDetail(detail(false))).not.toContain('href="/app/settings');
+  });
+
   it("days of stock left with no recent sales: a dash with the reason, never ∞", () => {
     const d = detail(true);
     const html = renderDetail({ ...d, row: { ...d.row, daysLeft: null, neverRunsOut: true } });

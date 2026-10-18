@@ -258,7 +258,7 @@ export const SUPPLIER_COLUMNS: SupplierColumn[] = [
   { header: "email", aliases: ["emails", "supplier_email"], role: "value", label: "Email", hint: "Where purchase orders go. Stored encrypted.", example: "orders@acme.example", ...textField("email") },
   { header: "lead_time_days", aliases: ["lead_time"], role: "value", label: "Lead time (days)", hint: "From placing the order to stock arriving. Required.", example: "30", ...textField("leadTimeDays") },
   { header: "transit_days", aliases: ["transit"], role: "value", label: "Transit time (days)", hint: "The shipping part of the lead time (sea or air freight).", example: "21", ...textField("transitDays") },
-  { header: "order_every_days", aliases: ["order_cycle_days"], role: "value", label: "Order cycle (days)", hint: "How often you order from this supplier. Empty = your store's order cycle.", example: "30", ...textField("orderCycleDays") },
+  { header: "order_every_days", aliases: ["order_cycle_days"], role: "value", label: "Order enough for (days)", hint: "Days of stock each order should last after it arrives. Empty = your store's setting.", example: "30", ...textField("orderCycleDays") },
   { header: "min_per_item", aliases: ["moq"], role: "value", label: "Minimum per item", hint: "Minimum units per line.", example: "10", ...textField("minOrder") },
   {
     header: "min_per_item_applies_to",

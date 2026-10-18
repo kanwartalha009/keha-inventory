@@ -129,7 +129,7 @@ export default function ImportExportSettings() {
       <EntityCard
         entity="suppliers"
         title={t("Suppliers")}
-        sub={t("One row per supplier: lead time, transit, order cycle, minimums, case pack, currency and vendors. New names are added; suppliers not in the file stay as they are.")}
+        sub={t("One row per supplier: lead time, transit, days per order, minimums, case pack, currency and vendors. New names are added; suppliers not in the file stay as they are.")}
         count={fill(data.counts.suppliers === 1 ? t("1 supplier set up.") : t("{n} suppliers set up."), { n: formatCount(data.counts.suppliers, locale) })}
         enabled={data.enabled}
         busy={busy && picked?.entity === "suppliers"}

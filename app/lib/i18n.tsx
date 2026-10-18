@@ -48,6 +48,7 @@ import { COPY_TR } from "./i18n-copy";
 import { MERCHANT_TR } from "./i18n-merchant";
 import { ACCURACY_TR } from "./i18n-accuracy";
 import { NOTIFY_TR } from "./i18n-notify";
+import { CONTROL_TR } from "./i18n-control";
 
 export type Locale = "en" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "pl";
 
@@ -117,6 +118,7 @@ export const AREAS: Record<string, Record<string, Tr>> = {
   notify: NOTIFY_TR,
   briefing: BRIEFING_TR,
   help: HELP_TR,
+  control: CONTROL_TR,
 };
 
 for (const area of Object.values(AREAS)) {

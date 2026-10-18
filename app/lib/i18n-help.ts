@@ -33,15 +33,6 @@ export const HELP_TR: Record<string, Tr> = {
     nl: "Een bestelling komt na de levertijd aan ({lead} dagen, tenzij een leverancier een eigen levertijd heeft) en dekt daarna {cycle} dagen verkoop, plus veiligheidsvoorraad voor verrassingen.",
     pl: "Zamówienie przychodzi po czasie dostawy ({lead} dni, chyba że dostawca ma własny) i pokrywa potem {cycle} dni sprzedaży, plus zapas bezpieczeństwa na niespodzianki.",
   },
-  "An order arrives after the lead time ({lead} days unless a supplier has its own) and covers your order cycle, plus safety stock for surprises.": {
-    es: "Un pedido llega tras el plazo de entrega ({lead} días, salvo que el proveedor tenga el suyo) y cubre tu ciclo de pedidos, más stock de seguridad para imprevistos.",
-    fr: "Une commande arrive après le délai ({lead} jours, sauf délai propre au fournisseur) et couvre votre cycle de commande, plus un stock de sécurité pour les imprévus.",
-    de: "Eine Bestellung kommt nach der Lieferzeit an ({lead} Tage, außer ein Lieferant hat eine eigene) und deckt deinen Bestellzyklus, plus Sicherheitsbestand für Überraschungen.",
-    it: "Un ordine arriva dopo il tempo di consegna ({lead} giorni, salvo che il fornitore ne abbia uno proprio) e copre il tuo ciclo d'ordine, più una scorta di sicurezza per gli imprevisti.",
-    pt: "Uma encomenda chega após o prazo de entrega ({lead} dias, salvo se o fornecedor tiver o seu) e cobre o seu ciclo de encomendas, mais stock de segurança para imprevistos.",
-    nl: "Een bestelling komt na de levertijd aan ({lead} dagen, tenzij een leverancier een eigen levertijd heeft) en dekt je bestelcyclus, plus veiligheidsvoorraad voor verrassingen.",
-    pl: "Zamówienie przychodzi po czasie dostawy ({lead} dni, chyba że dostawca ma własny) i pokrywa Twój cykl zamówień, plus zapas bezpieczeństwa na niespodzianki.",
-  },
   "Cost prices are known for {pct}% of your products. The rest are left out of cash totals until you add a cost in Shopify.": {
     es: "Conocemos el coste del {pct}% de tus productos. El resto queda fuera de los totales hasta que añadas un coste en Shopify.",
     fr: "Le coût est connu pour {pct} % de vos produits. Les autres sont exclus des totaux jusqu'à ce que vous ajoutiez un coût dans Shopify.",

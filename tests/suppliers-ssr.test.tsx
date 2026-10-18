@@ -47,8 +47,8 @@ describe("Settings → Suppliers", () => {
     expect(html).toContain("10 per item · 200 per order · €1,500 minimum · cases of 6");
     expect(html).toContain("21 days in transit");
     // The supplier's own order cycle (2026-10-17); a supplier without one shows nothing extra.
-    expect(html).toContain("Order cycle: every 30 days");
-    expect((html.match(/Order cycle: every \d+ days/g) ?? []).length).toBe(1);
+    expect(html).toContain("Order enough for: 30 days");
+    expect((html.match(/Order enough for: \d+ days/g) ?? []).length).toBe(1);
     expect(html).toContain("Vendors: Acme");
     expect(html).toContain("Products picked: 3");
     expect(html).toContain("Email saved");

@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
@@ -79,7 +79,9 @@ export default function Settings() {
   const [form, setForm] = useState<SettingsForm>(initial);
   const [saved, setSaved] = useState<SettingsForm>(initial);
   // A non-default growth assumption, a budget or a channel left out keeps More options open, so it is never a hidden surprise.
-  const [more, setMore] = useState(initial.trendMode === "store" || !!initial.monthlyBudget || (initial.excludedChannels ?? []).length > 0);
+  // ?more=1: a "Change" link from an explanation (safety stock, order days) lands with the field showing.
+  const [params] = useSearchParams();
+  const [more, setMore] = useState(params.get("more") === "1" || initial.trendMode === "store" || !!initial.monthlyBudget || (initial.excludedChannels ?? []).length > 0);
   const saving = fetcher.state !== "idle";
   const result = fetcher.data;
   const errors = result && !result.ok ? (result.errors ?? {}) : {};
@@ -132,7 +134,7 @@ export default function Settings() {
           )}
           <Disclosure id="settings-more" title={t("More options")} open={more} onToggle={() => setMore((m) => !m)}>
             <s-stack direction="block" gap="base">
-              {numberField("cycleDays", t("Order cycle"), t("How often you place orders. Suggested quantities cover the lead time plus one cycle."))}
+              {numberField("cycleDays", t("Order enough for"), t("Days of stock each order should last after it arrives — usually how often you order. Suggested quantities cover the lead time plus these days. You can change it for a single order."))}
               {numberField("tooMuchDays", t("Overstock after"), t("A product is marked Overstock when its stock would last longer than this."))}
               {numberField("deadDays", t("Dead stock after"), t("A product is marked Dead stock when it hasn't sold for this long."))}
               <SelectField<SafetyLevel>

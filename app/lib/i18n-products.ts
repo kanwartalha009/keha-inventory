@@ -74,7 +74,6 @@ export const PRODUCTS_TR: Record<string, Tr> = {
   "Supplier lead time": { es: "Plazo del proveedor", fr: "Délai du fournisseur", de: "Lieferzeit des Lieferanten", it: "Tempi del fornitore", pt: "Prazo do fornecedor", nl: "Levertijd leverancier", pl: "Czas dostawy" },
   "{n} days (supplier)": { es: "{n} días (proveedor)", fr: "{n} jours (fournisseur)", de: "{n} Tage (Lieferant)", it: "{n} giorni (fornitore)", pt: "{n} dias (fornecedor)", nl: "{n} dagen (leverancier)", pl: "{n} dni (dostawca)" },
   "{n} days (store default)": { es: "{n} días (valor de la tienda)", fr: "{n} jours (valeur par défaut de la boutique)", de: "{n} Tage (Shop-Standard)", it: "{n} giorni (predefinito del negozio)", pt: "{n} dias (predefinição da loja)", nl: "{n} dagen (winkelstandaard)", pl: "{n} dni (domyślnie dla sklepu)" },
-  "Order cycle": { es: "Ciclo de pedidos", fr: "Cycle de commande", de: "Bestellzyklus", it: "Ciclo degli ordini", pt: "Ciclo de encomendas", nl: "Bestelcyclus", pl: "Cykl zamówień" },
   "{n} days": { es: "{n} días", fr: "{n} jours", de: "{n} Tage", it: "{n} giorni", pt: "{n} dias", nl: "{n} dagen", pl: "{n} dni" },
   "Safety stock": { es: "Stock de seguridad", fr: "Stock de sécurité", de: "Sicherheitsbestand", it: "Scorta di sicurezza", pt: "Stock de segurança", nl: "Veiligheidsvoorraad", pl: "Zapas bezpieczeństwa" },
   "{n} units": { es: "{n} unidades", fr: "{n} unités", de: "{n} Einheiten", it: "{n} unità", pt: "{n} unidades", nl: "{n} stuks", pl: "{n} szt." },

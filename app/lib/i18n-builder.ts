@@ -9,25 +9,6 @@ import type { Tr } from "./i18n";
 
 export const BUILDER_TR: Record<string, Tr> = {
   // ---- Settings → Suppliers: order cycle ----
-  "Order cycle: every {n} days": { es: "Ciclo de pedidos: cada {n} días", fr: "Cycle de commande : tous les {n} jours", de: "Bestellzyklus: alle {n} Tage", it: "Ciclo degli ordini: ogni {n} giorni", pt: "Ciclo de encomendas: a cada {n} dias", nl: "Bestelcyclus: elke {n} dagen", pl: "Cykl zamówień: co {n} dni" },
-  "How often you place an order with this supplier. Leave empty to use your store's order cycle ({n} days).": {
-    es: "Cada cuánto haces un pedido a este proveedor. Déjalo vacío para usar el ciclo de pedidos de tu tienda ({n} días).",
-    fr: "La fréquence à laquelle vous passez commande auprès de ce fournisseur. Laissez vide pour utiliser le cycle de commande de votre boutique ({n} jours).",
-    de: "Wie oft du bei diesem Lieferanten bestellst. Leer lassen, um den Bestellzyklus deines Shops zu verwenden ({n} Tage).",
-    it: "Ogni quanto fai un ordine a questo fornitore. Lascia vuoto per usare il ciclo degli ordini del negozio ({n} giorni).",
-    pt: "Com que frequência faz uma encomenda a este fornecedor. Deixe vazio para usar o ciclo de encomendas da sua loja ({n} dias).",
-    nl: "Hoe vaak je bij deze leverancier bestelt. Laat leeg om de bestelcyclus van je winkel te gebruiken ({n} dagen).",
-    pl: "Jak często składasz zamówienie u tego dostawcy. Zostaw puste, aby użyć cyklu zamówień sklepu ({n} dni).",
-  },
-  "How often you place an order with this supplier. Leave empty to use your store's order cycle.": {
-    es: "Cada cuánto haces un pedido a este proveedor. Déjalo vacío para usar el ciclo de pedidos de tu tienda.",
-    fr: "La fréquence à laquelle vous passez commande auprès de ce fournisseur. Laissez vide pour utiliser le cycle de commande de votre boutique.",
-    de: "Wie oft du bei diesem Lieferanten bestellst. Leer lassen, um den Bestellzyklus deines Shops zu verwenden.",
-    it: "Ogni quanto fai un ordine a questo fornitore. Lascia vuoto per usare il ciclo degli ordini del negozio.",
-    pt: "Com que frequência faz uma encomenda a este fornecedor. Deixe vazio para usar o ciclo de encomendas da sua loja.",
-    nl: "Hoe vaak je bij deze leverancier bestelt. Laat leeg om de bestelcyclus van je winkel te gebruiken.",
-    pl: "Jak często składasz zamówienie u tego dostawcy. Zostaw puste, aby użyć cyklu zamówień sklepu.",
-  },
 
   // ---- Entry points (Order now, Next 13 weeks) ----
   "Build purchase order": { es: "Preparar orden de compra", fr: "Préparer le bon de commande", de: "Bestellung zusammenstellen", it: "Prepara ordine d'acquisto", pt: "Preparar nota de encomenda", nl: "Inkooporder samenstellen", pl: "Przygotuj zamówienie zakupu" },

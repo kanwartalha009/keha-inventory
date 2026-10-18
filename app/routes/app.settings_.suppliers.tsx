@@ -354,7 +354,7 @@ function SupplierRow({
             <s-text color="subdued">{fill(plural(s.transitDays, t("1 day in transit"), t("{n} days in transit")), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}
           {s.orderCycleDays ? (
-            <s-text color="subdued">{fill(plural(s.orderCycleDays, t("Order cycle: every day"), t("Order cycle: every {n} days")), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
+            <s-text color="subdued">{fill(plural(s.orderCycleDays, t("Order enough for: 1 day"), t("Order enough for: {n} days")), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
           ) : null}
         </s-stack>
       </s-table-cell>
@@ -512,10 +512,10 @@ function SupplierEditor({
           <s-stack direction="block" gap="base">
             {numberField(
               "orderCycleDays",
-              t("Order cycle"),
+              t("Order enough for"),
               storeCycleDays
-                ? fill(t("How often you place an order with this supplier. Leave empty to use your store's order cycle ({n} days)."), { n: formatCount(storeCycleDays, locale) })
-                : t("How often you place an order with this supplier. Leave empty to use your store's order cycle."),
+                ? fill(t("Days of stock each order from this supplier should last after it arrives. Leave empty to use your store's setting ({n} days)."), { n: formatCount(storeCycleDays, locale) })
+                : t("Days of stock each order from this supplier should last after it arrives. Leave empty to use your store's setting."),
               t("days"),
             )}
             <SelectField<MinOrderScope>

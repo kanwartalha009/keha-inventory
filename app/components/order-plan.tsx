@@ -308,6 +308,7 @@ export function WhyPopover({
   days?: number;
 }) {
   const { t, locale } = useLocale();
+  const link = useLinkProps();
   const high = aboveLastYear(qty, lastYear);
   const sum = today ? whySum(whys, today, t, locale, days) : { summary: null, headings: [] as (string | null)[] };
   return (
@@ -332,6 +333,12 @@ export function WhyPopover({
             )}
             <s-text color="subdued">{lastYearLine(lastYear, t, locale)}</s-text>
             {high && <s-badge tone="warning">{t("More than 1.5× last year's sales in these weeks")}</s-badge>}
+            {/* S4: the settings behind these terms (safety stock and order days; lead time, case pack, minimums). */}
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-text color="subdued">{t("Change the numbers behind this:")}</s-text>
+              <s-link {...link("/app/settings?more=1")}>{t("Settings")}</s-link>
+              <s-link {...link("/app/settings/suppliers")}>{t("Suppliers")}</s-link>
+            </s-stack>
           </s-stack>
         </s-box>
       </s-popover>

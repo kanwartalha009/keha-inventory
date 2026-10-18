@@ -51,7 +51,7 @@ export function dashboardHelp(t: T, locale: string, d: { leadTimeDays: number; c
           lead: formatCount(d.leadTimeDays, locale),
           cycle: formatCount(d.cycleDays, locale),
         })
-      : fill(t("An order arrives after the lead time ({lead} days unless a supplier has its own) and covers your order cycle, plus safety stock for surprises."), {
+      : fill(t("An order arrives after the lead time ({lead} days unless a supplier has its own) and lasts the days set under Order enough for, plus safety stock for surprises."), {
           lead: formatCount(d.leadTimeDays, locale),
         }),
   ];

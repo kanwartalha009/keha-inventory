@@ -259,6 +259,8 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
   const lateBy = consistentlyLate(view.leadStats);
   const pay = builderPayments(view, totals.cost, today);
   const payText = paymentPhrases(pay.payments, view.terms, t, { money: (n) => formatPrice(n, view.storeCurrency, locale), day: (d) => formatDay(d, locale) }).join(" · ");
+  // S4: the lead time and order days come from the supplier when it has its own, else the store.
+  const settingHref = view.kind === "supplier" && view.supplierId ? `/app/settings/suppliers?edit=${encodeURIComponent(view.supplierId)}` : "/app/settings?more=1";
   const cycleLabel = fill(view.cycleSource === "supplier" ? plural(view.cycleDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(view.cycleDays, t("1 day (store default)"), t("{n} days (store default)")), { n: formatCount(view.cycleDays, locale) });
   const windowDays = daysBetween(today, view.cycleTo) + 1;
   const sections: { id: BuilderSection; title: string; sub: string }[] = [
@@ -347,6 +349,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
           <div className="keha-kv keha-kv--flush">
             <KvRow
               label={t("Lead time")}
+              change={settingHref}
               value={
                 <span className="keha-inline">
                   <span>{leadLabel}</span>
@@ -358,15 +361,9 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
               <KvRow label={t("Payment terms")} value={[termsText(view.terms, t), landedText(view.landedPct, t, locale)].filter(Boolean).join(" ")} />
             )}
             <KvRow
-              label={t("Order cycle")}
-              value={
-                <span className="keha-inline">
-                  <span>{view.coverDays !== null ? fill(t("{days} (chosen for this order)"), { days: fill(plural(view.coverDays, t("1 day"), t("{n} days")), { n: formatCount(view.coverDays, locale) }) }) : cycleLabel}</span>
-                  {view.kind === "supplier" && view.supplierId && (
-                    <s-link {...link(`/app/settings/suppliers?edit=${encodeURIComponent(view.supplierId)}`)}>{t("Change")}</s-link>
-                  )}
-                </span>
-              }
+              label={t("Order enough for")}
+              change={view.coverDays !== null ? null : settingHref}
+              value={view.coverDays !== null ? fill(t("{days} (chosen for this order)"), { days: fill(plural(view.coverDays, t("1 day"), t("{n} days")), { n: formatCount(view.coverDays, locale) }) }) : cycleLabel}
             />
           </div>
           <s-stack direction="block" gap="none">

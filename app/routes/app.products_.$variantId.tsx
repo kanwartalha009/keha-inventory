@@ -87,6 +87,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 /** The variant's own in-stock days (before any "Plan like"); null without a metric. */
+/** Settings with More options open (safety stock level, order days). */
+const SAFETY_SETTING = "/app/settings?more=1";
+
 function ownInStockDays(inputs: ForecastInputsView | null): number | null {
   if (!inputs) return null;
   return inputs.planLike ? inputs.planLike.ownDays : inputs.inStockDays;
@@ -348,6 +351,9 @@ function ForecastInputs({
   const num = (v: number | null, digits = 1) =>
     v === null ? "—" : new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v);
   const locked = planTag("forecast", t);
+  // S4: each setting behind these numbers is one click away (a supplier's own lead time and order
+  // days live on Suppliers; the store's on Settings, under More options).
+  const supplierOrStore = inputs?.leadTimeSource === "supplier" ? "/app/settings/suppliers" : SAFETY_SETTING;
   return (
     <FormCard title={t("How the forecast was built")}>
       {!inputs ? (
@@ -407,6 +413,7 @@ function ForecastInputs({
             />
             <KvRow
               label={t("Supplier lead time")}
+              change={forecast ? supplierOrStore : null}
               value={
                 !forecast
                   ? locked
@@ -415,10 +422,11 @@ function ForecastInputs({
                     : fill(inputs.leadTimeSource === "supplier" ? plural(inputs.leadTimeDays, t("1 day (supplier)"), t("{n} days (supplier)")) : plural(inputs.leadTimeDays, t("1 day (store default)"), t("{n} days (store default)")), { n: num(inputs.leadTimeDays, 0) })
               }
             />
-            <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(plural(inputs.cycleDays, t("1 day"), t("{n} days")), { n: num(inputs.cycleDays, 0) })} />
+            <KvRow label={t("Order enough for")} change={forecast ? supplierOrStore : null} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(plural(inputs.cycleDays, t("1 day"), t("{n} days")), { n: num(inputs.cycleDays, 0) })} />
             {/* One row each (live 2026-10-18: two rows were called "Safety stock" and the target was repeated). */}
             <KvRow
               label={t("In-stock target")}
+              change={forecast ? SAFETY_SETTING : null}
               value={
                 !forecast ? (
                   locked
@@ -435,6 +443,7 @@ function ForecastInputs({
             />
             <KvRow
               label={t("Safety stock")}
+              change={forecast ? SAFETY_SETTING : null}
               value={
                 !forecast ? (
                   locked

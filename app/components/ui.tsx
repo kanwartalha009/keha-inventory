@@ -787,13 +787,27 @@ export function FormGroup({ title, sub, children }: { title: string; sub?: strin
 }
 
 /** Label → value row (sidebar summaries). */
-export function KvRow({ label, value }: { label: string; value: ReactNode }) {
+/** A label/value row; `change` adds a "Change" link to the setting behind the value (S4). */
+export function KvRow({ label, value, change }: { label: string; value: ReactNode; change?: string | null }) {
   return (
     <div className="keha-kv__row">
       <s-text color="subdued">{label}</s-text>
-      <s-text fontWeight="medium">{value}</s-text>
+      {change ? (
+        <span className="keha-inline">
+          <s-text fontWeight="medium">{value}</s-text>
+          <ChangeLink to={change} />
+        </span>
+      ) : (
+        <s-text fontWeight="medium">{value}</s-text>
+      )}
     </div>
   );
+}
+
+function ChangeLink({ to }: { to: string }) {
+  const { t } = useLocale();
+  const link = useLinkProps();
+  return <s-link {...link(to)}>{t("Change")}</s-link>;
 }
 
 /** Checklist row: done/not-done icon, label, value. */
