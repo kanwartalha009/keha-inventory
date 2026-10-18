@@ -228,7 +228,7 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
         // Units that left the pool's stock: the SalesDaily view compute reads (demandWhere; never both
         // views), every channel — a channel left out of the forecast still takes stock.
         where: { shop, variantId: { in: ids }, ...demandWhere(demandScope(locations)), day: { gte: dayDate(from) } },
-        _sum: { sold: true, returned: true },
+        _sum: { sold: true },
       }),
     ]);
     const onHand = new Map<string, number>();
@@ -243,8 +243,6 @@ export async function autoReceiveOrders(shop: string, now: Date = new Date()): P
       baseline: new Map(baseRows.map((r) => [r.variantId, r._sum.endUnits ?? 0])),
       onHand,
       soldSince: new Map(sold.map((r) => [r.variantId, r._sum.sold ?? 0])),
-      // Restocked returns raise on-hand too: not a delivery (merchant audit 2026-10-18).
-      returnedSince: new Map(sold.map((r) => [r.variantId, r._sum.returned ?? 0])),
       used,
     });
     if (!decision.receive) continue;

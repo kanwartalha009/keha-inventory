@@ -211,12 +211,6 @@ export type AutoReceiveInput = {
   onHand: ReadonlyMap<string, number>;
   /** Units sold (online pool) since the window opened. */
   soldSince: ReadonlyMap<string, number>;
-  /**
-   * Units returned since the window opened (merchant audit 2026-10-18): a restocked return raises
-   * on-hand like a delivery, so it is taken out of the rise — only stock the order can explain counts.
-   * Absent = none.
-   */
-  returnedSince?: ReadonlyMap<string, number>;
   /** Stock rise per variant already credited to another order in this run (never count one delivery twice). */
   used?: ReadonlyMap<string, number>;
 };
@@ -259,8 +253,7 @@ export function autoReceiveDecision(input: AutoReceiveInput): AutoReceiveResult 
     const base = fromSend ? (l.baseOnHand ?? input.baseline.get(l.variantId)) : input.baseline.get(l.variantId);
     const now = input.onHand.get(l.variantId);
     if (base === undefined || now === undefined) return { receive: false, reason: "no_baseline", share: null };
-    // Received = stock now − stock then + sold since − returned since (a return back on the shelf isn't a delivery).
-    const rise = now - base + (input.soldSince.get(l.variantId) ?? 0) - Math.max(0, input.returnedSince?.get(l.variantId) ?? 0) - (credited.get(l.variantId) ?? 0);
+    const rise = now - base + (input.soldSince.get(l.variantId) ?? 0) - (credited.get(l.variantId) ?? 0);
     const got = Math.min(l.qty, Math.max(0, Math.floor(rise)));
     credited.set(l.variantId, (credited.get(l.variantId) ?? 0) + got);
     ordered += l.qty;

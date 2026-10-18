@@ -331,8 +331,6 @@ export type LandedFacts = {
   baseline: (variantId: string, sentDay: string) => number | undefined;
   /** Pool units sold from `sentDay` through yesterday. */
   soldSince: (variantId: string, sentDay: string) => number;
-  /** Pool units returned from `sentDay` through yesterday (a restocked return isn't a delivery); absent = none. */
-  returnedSince?: (variantId: string, sentDay: string) => number;
 };
 
 /**
@@ -342,8 +340,7 @@ export type LandedFacts = {
  * each sent / confirmed Keha line's `received` raised by the units estimated to have landed,
  * the way auto-receive measures it (lib/purchase-order-shared autoReceiveDecision):
  *   landed since send = on-hand now − on-hand at send (baseOnHand, else the pool's ending units
- *   the day before) + units sold since the send day − units returned since (a restocked return
- *   raises on-hand without any delivery — merchant audit 2026-10-18), capped at 0…open units.
+ *   the day before) + units sold since the send day, capped at 0…open units.
  * Several open lines of one variant share one rise in stock: the rise measured from the OLDEST
  * line's send is shared out oldest first, each line also capped by the rise since its own send
  * (so one delivery is never subtracted twice). Lines without a baseline (or a send day, or a
@@ -363,8 +360,7 @@ export function withLandedEstimate<P extends OpenPo>(pos: readonly P[], facts: L
       if (open <= 0 || now === undefined || base === undefined) continue;
       // Units the merchant already recorded as received (partial receiving, audit 2026-10-17) are
       // part of the rise since send: only the rest can be "landed but not recorded".
-      const returned = Math.max(0, facts.returnedSince?.(line.variantId, po.sentDay) ?? 0);
-      const rise = now - base + Math.max(0, facts.soldSince(line.variantId, po.sentDay)) - returned - (line.received ?? 0);
+      const rise = now - base + Math.max(0, facts.soldSince(line.variantId, po.sentDay)) - (line.received ?? 0);
       const list = byVariant.get(line.variantId) ?? [];
       list.push({ line, sentDay: po.sentDay, order, rise, open });
       byVariant.set(line.variantId, list);

@@ -1214,7 +1214,7 @@ async function writeActions(
 /**
  * The database facts behind withLandedEstimate for open Keha lines (online pool, as
  * auto-receive): on-hand now, the pool's ending units the day before each send day (lines
- * without baseOnHand) and units sold and returned from each send day through yesterday.
+ * without baseOnHand) and units sold from each send day through yesterday.
  */
 async function landedFacts(
   shop: string,
@@ -1246,23 +1246,21 @@ async function landedFacts(
       ? facts.salesDaily.groupBy({
           by: ["variantId", "day"],
           where: { shop, variantId: { in: ids }, ...demandFilter, day: { gte: dayDate(firstSent), lte: dayDate(yesterday) } },
-          _sum: { sold: true, returned: true },
+          _sum: { sold: true },
         })
       : Promise.resolve([]),
   ]);
   const base = new Map(baseG.map((g) => [`${g.variantId}|${dayKey(g.day)}`, num(g._sum.endUnits)]));
-  const soldByVariant = new Map<string, { day: string; sold: number; returned: number }[]>();
+  const soldByVariant = new Map<string, { day: string; sold: number }[]>();
   for (const g of soldG) {
     const list = soldByVariant.get(g.variantId) ?? [];
-    list.push({ day: dayKey(g.day), sold: num(g._sum.sold), returned: num(g._sum.returned) });
+    list.push({ day: dayKey(g.day), sold: num(g._sum.sold) });
     soldByVariant.set(g.variantId, list);
   }
   return {
     onHand,
     baseline: (v, sentDay) => base.get(`${v}|${addDays(sentDay, -1)}`),
     soldSince: (v, sentDay) => (soldByVariant.get(v) ?? []).reduce((a, r) => (r.day >= sentDay ? a + r.sold : a), 0),
-    // Restocked returns raise on-hand without a delivery (merchant audit 2026-10-18).
-    returnedSince: (v, sentDay) => (soldByVariant.get(v) ?? []).reduce((a, r) => (r.day >= sentDay ? a + r.returned : a), 0),
   };
 }
 

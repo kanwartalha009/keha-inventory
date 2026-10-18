@@ -153,6 +153,15 @@ describe("auto-receive (tightened, merchant audit 2026-10-17)", () => {
     expect(AUTO_RECEIVE_SHARE).toBe(0.9);
   });
 
+  it("restocked returns: sold is NET of returns, so a return back on the shelf is already cancelled out (final audit 2026-10-18)", () => {
+    // 100 on hand when the window opened; 80 sold, 20 returned and restocked → net sold 60.
+    const one: AutoReceiveInput = { ...base, lines: [{ variantId: "r", qty: 20 }], baseline: new Map([["r", 100]]), soldSince: new Map([["r", 60]]) };
+    // A 20-unit delivery landed: on-hand 100 − 80 + 20 + 20 = 60 → rise 60 − 100 + 60 = 20 → closes.
+    expect(autoReceiveDecision({ ...one, onHand: new Map([["r", 60]]) })).toMatchObject({ receive: true, received: { r: 20 } });
+    // No delivery: on-hand 100 − 80 + 20 = 40 → rise 0 → the returns alone never close the order.
+    expect(autoReceiveDecision({ ...one, onHand: new Map([["r", 40]]) })).toMatchObject({ receive: false, reason: "not_landed" });
+  });
+
   it("waits for the arrival window to open", () => {
     expect(autoReceiveDecision({ ...base, today: "2026-10-24" })).toMatchObject({ receive: false, reason: "not_due" });
     expect(autoReceiveDecision({ ...base, windowStart: null })).toMatchObject({ receive: false, reason: "not_due" });
