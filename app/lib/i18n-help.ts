@@ -244,7 +244,7 @@ export const HELP_TR: Record<string, Tr> = {
   "13 months of sales per day. Shaded days were out of stock: they never count as slow days.": {
     es: "13 meses de ventas al día. Los días sombreados no había stock: nunca cuentan como días lentos.",
     fr: "13 mois de ventes par jour. Les jours grisés étaient en rupture : ils ne comptent jamais comme des jours lents.",
-    de: "13 Monate Verkäufe pro Tag. Schattierte Tage waren ausverkauft: Sie zählen nie als schwache Tage.",
+    de: "13 Monate Verkäufe pro Tag. Schattierte Tage waren ausverkauft: sie zählen nie als schwache Tage.",
     it: "13 mesi di vendite al giorno. I giorni ombreggiati erano esauriti: non contano mai come giorni lenti.",
     pt: "13 meses de vendas por dia. Os dias sombreados estavam esgotados: nunca contam como dias fracos.",
     nl: "13 maanden verkopen per dag. Gearceerde dagen waren uitverkocht: die tellen nooit als trage dagen.",

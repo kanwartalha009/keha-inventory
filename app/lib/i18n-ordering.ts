@@ -357,7 +357,7 @@ export const ORDERING_TR: Record<string, Tr> = {
   "This variant is set to Don't reorder: it stays in your stock numbers but is never in an order.": {
     es: "Esta variante está marcada como No volver a pedir: sigue en tus cifras de stock, pero nunca entra en un pedido.",
     fr: "Cette variante est marquée Ne pas recommander : elle reste dans vos chiffres de stock mais n'est jamais dans une commande.",
-    de: "Diese Variante ist auf Nicht nachbestellen gesetzt: Sie bleibt in deinen Bestandszahlen, kommt aber nie in eine Bestellung.",
+    de: "Diese Variante ist auf Nicht nachbestellen gesetzt: sie bleibt in deinen Bestandszahlen, kommt aber nie in eine Bestellung.",
     it: "Questa variante è impostata su Non riordinare: resta nei tuoi numeri di stock ma non entra mai in un ordine.",
     pt: "Esta variante está marcada como Não voltar a encomendar: continua nos seus números de stock, mas nunca entra numa encomenda.",
     nl: "Deze variant staat op Niet nabestellen: hij blijft in je voorraadcijfers, maar komt nooit in een bestelling.",

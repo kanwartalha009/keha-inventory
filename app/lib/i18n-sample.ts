@@ -17,7 +17,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Switch to your store?": {
     es: "¿Cambiar a tu tienda?",
     fr: "Passer à votre boutique ?",
-    de: "Zu Ihrem Shop wechseln?",
+    de: "Zu deinem Shop wechseln?",
     it: "Passare al tuo negozio?",
     pt: "Mudar para a sua loja?",
     nl: "Naar je eigen winkel?",
@@ -26,7 +26,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "The sample data is deleted and every screen shows your own store again.": {
     es: "Los datos de ejemplo se eliminan y todas las pantallas vuelven a mostrar tu tienda.",
     fr: "Les données d'exemple sont supprimées et chaque écran affiche à nouveau votre boutique.",
-    de: "Die Beispieldaten werden gelöscht und alle Seiten zeigen wieder Ihren eigenen Shop.",
+    de: "Die Beispieldaten werden gelöscht und alle Seiten zeigen wieder deinen eigenen Shop.",
     it: "I dati di esempio vengono eliminati e ogni schermata torna a mostrare il tuo negozio.",
     pt: "Os dados de exemplo são eliminados e todos os ecrãs voltam a mostrar a sua loja.",
     nl: "De voorbeeldgegevens worden verwijderd en elk scherm toont weer je eigen winkel.",
@@ -35,7 +35,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "You're viewing sample data — nothing here is from your store.": {
     es: "Estás viendo datos de ejemplo: nada de esto es de tu tienda.",
     fr: "Vous consultez des données d'exemple : rien ici ne vient de votre boutique.",
-    de: "Sie sehen Beispieldaten – nichts hiervon stammt aus Ihrem Shop.",
+    de: "Du siehst Beispieldaten – nichts hiervon stammt aus deinem Shop.",
     it: "Stai guardando dati di esempio: niente qui proviene dal tuo negozio.",
     pt: "Está a ver dados de exemplo — nada aqui é da sua loja.",
     nl: "Je bekijkt voorbeeldgegevens — niets hiervan komt uit je winkel.",
@@ -44,7 +44,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "It's a simulated clothing store, so you can try every screen before your own data is ready. Actions that would change your store are switched off.": {
     es: "Es una tienda de ropa simulada para que pruebes todas las pantallas antes de que tus datos estén listos. Las acciones que cambiarían tu tienda están desactivadas.",
     fr: "C'est une boutique de vêtements simulée, pour essayer chaque écran avant que vos données soient prêtes. Les actions qui modifieraient votre boutique sont désactivées.",
-    de: "Es ist ein simulierter Modeshop, damit Sie jede Seite ausprobieren können, bevor Ihre Daten bereit sind. Aktionen, die Ihren Shop ändern würden, sind ausgeschaltet.",
+    de: "Es ist ein simulierter Modeshop, damit du jede Seite ausprobieren kannst, bevor deine Daten bereit sind. Aktionen, die deinen Shop ändern würden, sind ausgeschaltet.",
     it: "È un negozio di abbigliamento simulato, per provare ogni schermata prima che i tuoi dati siano pronti. Le azioni che modificherebbero il tuo negozio sono disattivate.",
     pt: "É uma loja de roupa simulada, para experimentar todos os ecrãs antes de os seus dados estarem prontos. As ações que alterariam a sua loja estão desligadas.",
     nl: "Het is een gesimuleerde kledingwinkel, zodat je elk scherm kunt proberen voordat je eigen gegevens klaar zijn. Acties die je winkel zouden wijzigen staan uit.",
@@ -53,7 +53,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Sample data shows every Growth feature, whatever your plan.": {
     es: "Los datos de ejemplo muestran todas las funciones de Growth, sea cual sea tu plan.",
     fr: "Les données d'exemple montrent toutes les fonctions Growth, quel que soit votre forfait.",
-    de: "Die Beispieldaten zeigen alle Growth-Funktionen, unabhängig von Ihrem Tarif.",
+    de: "Die Beispieldaten zeigen alle Growth-Funktionen, unabhängig von deinem Tarif.",
     it: "I dati di esempio mostrano tutte le funzioni Growth, qualunque sia il tuo piano.",
     pt: "Os dados de exemplo mostram todas as funções Growth, seja qual for o seu plano.",
     nl: "Voorbeeldgegevens tonen alle Growth-functies, welk abonnement je ook hebt.",
@@ -80,7 +80,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Your store is ready — your own order plan is waiting.": {
     es: "Tu tienda está lista: tu propio plan de pedidos te espera.",
     fr: "Votre boutique est prête : votre propre plan de commandes vous attend.",
-    de: "Ihr Shop ist bereit – Ihr eigener Bestellplan wartet.",
+    de: "Dein Shop ist bereit – dein eigener Bestellplan wartet.",
     it: "Il tuo negozio è pronto: il tuo piano ordini ti aspetta.",
     pt: "A sua loja está pronta — o seu plano de encomendas está à espera.",
     nl: "Je winkel is klaar — je eigen bestelplan staat klaar.",
@@ -98,7 +98,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Sample data couldn't be loaded. Please try again in a minute.": {
     es: "No se pudieron cargar los datos de ejemplo. Inténtalo de nuevo en un minuto.",
     fr: "Les données d'exemple n'ont pas pu être chargées. Réessayez dans une minute.",
-    de: "Die Beispieldaten konnten nicht geladen werden. Bitte versuchen Sie es in einer Minute erneut.",
+    de: "Die Beispieldaten konnten nicht geladen werden. Versuch es in einer Minute noch einmal.",
     it: "Non è stato possibile caricare i dati di esempio. Riprova tra un minuto.",
     pt: "Não foi possível carregar os dados de exemplo. Tente novamente dentro de um minuto.",
     nl: "De voorbeeldgegevens konden niet worden geladen. Probeer het over een minuut opnieuw.",
@@ -107,7 +107,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "While we read your store, try every screen on a simulated clothing store: 60 products, 14 months of sales, suppliers and purchase orders. Nothing is added to your Shopify store, and you can switch back at any time.": {
     es: "Mientras leemos tu tienda, prueba todas las pantallas con una tienda de ropa simulada: 60 productos, 14 meses de ventas, proveedores y órdenes de compra. No se añade nada a tu tienda de Shopify y puedes volver cuando quieras.",
     fr: "Pendant que nous lisons votre boutique, essayez chaque écran sur une boutique de vêtements simulée : 60 produits, 14 mois de ventes, des fournisseurs et des bons de commande. Rien n'est ajouté à votre boutique Shopify, et vous pouvez revenir à tout moment.",
-    de: "Während wir Ihren Shop einlesen, probieren Sie jede Seite mit einem simulierten Modeshop aus: 60 Produkte, 14 Monate Verkäufe, Lieferanten und Bestellungen. Ihrem Shopify-Shop wird nichts hinzugefügt, und Sie können jederzeit zurückwechseln.",
+    de: "Während wir deinen Shop einlesen, probier jede Seite mit einem simulierten Modeshop aus: 60 Produkte, 14 Monate Verkäufe, Lieferanten und Bestellungen. Deinem Shopify-Shop wird nichts hinzugefügt, und du kannst jederzeit zurückwechseln.",
     it: "Mentre leggiamo il tuo negozio, prova ogni schermata su un negozio di abbigliamento simulato: 60 prodotti, 14 mesi di vendite, fornitori e ordini d'acquisto. Non viene aggiunto nulla al tuo negozio Shopify e puoi tornare indietro in qualsiasi momento.",
     pt: "Enquanto lemos a sua loja, experimente todos os ecrãs numa loja de roupa simulada: 60 produtos, 14 meses de vendas, fornecedores e encomendas a fornecedores. Nada é adicionado à sua loja Shopify, e pode voltar quando quiser.",
     nl: "Terwijl we je winkel inlezen, probeer je elk scherm uit met een gesimuleerde kledingwinkel: 60 producten, 14 maanden verkoop, leveranciers en inkooporders. Er wordt niets aan je Shopify-winkel toegevoegd en je kunt altijd terug.",
@@ -134,7 +134,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "We'll load a simulated store so you can try the order plan, products and purchase orders. Your own data keeps loading in the background, and nothing changes in your Shopify store.": {
     es: "Cargaremos una tienda simulada para que pruebes el plan de pedidos, los productos y las órdenes de compra. Tus datos siguen cargándose en segundo plano y nada cambia en tu tienda de Shopify.",
     fr: "Nous chargeons une boutique simulée pour que vous essayiez le plan de commandes, les produits et les bons de commande. Vos données continuent de se charger en arrière-plan, et rien ne change dans votre boutique Shopify.",
-    de: "Wir laden einen simulierten Shop, damit Sie Bestellplan, Produkte und Bestellungen ausprobieren können. Ihre eigenen Daten werden im Hintergrund weiter geladen, und in Ihrem Shopify-Shop ändert sich nichts.",
+    de: "Wir laden einen simulierten Shop, damit du Bestellplan, Produkte und Bestellungen ausprobieren kannst. Deine eigenen Daten werden im Hintergrund weiter geladen, und in deinem Shopify-Shop ändert sich nichts.",
     it: "Caricheremo un negozio simulato per provare il piano ordini, i prodotti e gli ordini d'acquisto. I tuoi dati continuano a caricarsi in background e nel tuo negozio Shopify non cambia nulla.",
     pt: "Vamos carregar uma loja simulada para experimentar o plano de encomendas, os produtos e as encomendas a fornecedores. Os seus dados continuam a carregar em segundo plano e nada muda na sua loja Shopify.",
     nl: "We laden een gesimuleerde winkel zodat je het bestelplan, de producten en de inkooporders kunt proberen. Je eigen gegevens worden op de achtergrond verder geladen en er verandert niets in je Shopify-winkel.",
@@ -152,7 +152,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Not available in sample data — nothing here changes your store.": {
     es: "No disponible con datos de ejemplo: nada de esto cambia tu tienda.",
     fr: "Indisponible avec les données d'exemple : rien ici ne modifie votre boutique.",
-    de: "Mit Beispieldaten nicht verfügbar – hier ändert sich nichts in Ihrem Shop.",
+    de: "Mit Beispieldaten nicht verfügbar – hier ändert sich nichts in deinem Shop.",
     it: "Non disponibile con i dati di esempio: niente qui modifica il tuo negozio.",
     pt: "Indisponível com dados de exemplo — nada aqui altera a sua loja.",
     nl: "Niet beschikbaar met voorbeeldgegevens — hier verandert niets aan je winkel.",
@@ -161,7 +161,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Discounts are off in sample data — nothing is created in your store.": {
     es: "Los descuentos están desactivados con datos de ejemplo: no se crea nada en tu tienda.",
     fr: "Les remises sont désactivées avec les données d'exemple : rien n'est créé dans votre boutique.",
-    de: "Rabatte sind mit Beispieldaten ausgeschaltet – in Ihrem Shop wird nichts erstellt.",
+    de: "Rabatte sind mit Beispieldaten ausgeschaltet – in deinem Shop wird nichts erstellt.",
     it: "Gli sconti sono disattivati con i dati di esempio: nel tuo negozio non viene creato nulla.",
     pt: "Os descontos estão desligados com dados de exemplo — nada é criado na sua loja.",
     nl: "Kortingen staan uit met voorbeeldgegevens — er wordt niets in je winkel aangemaakt.",
@@ -170,12 +170,12 @@ export const SAMPLE_TR: Record<string, Tr> = {
   "Transfers are off in sample data — nothing is created in your store.": {
     es: "Las transferencias están desactivadas con datos de ejemplo: no se crea nada en tu tienda.",
     fr: "Les transferts sont désactivés avec les données d'exemple : rien n'est créé dans votre boutique.",
-    de: "Umlagerungen sind mit Beispieldaten ausgeschaltet – in Ihrem Shop wird nichts erstellt.",
+    de: "Umlagerungen sind mit Beispieldaten ausgeschaltet – in deinem Shop wird nichts erstellt.",
     it: "I trasferimenti sono disattivati con i dati di esempio: nel tuo negozio non viene creato nulla.",
     pt: "As transferências estão desligadas com dados de exemplo — nada é criado na sua loja.",
     nl: "Overboekingen staan uit met voorbeeldgegevens — er wordt niets in je winkel aangemaakt.",
     pl: "Przesunięcia są wyłączone na przykładowych danych — w Twoim sklepie nic nie zostanie utworzone.",
   },
   "Sample data: every step works on the sample orders, but nothing is emailed to a supplier.": { es: "Datos de ejemplo: todos los pasos funcionan con los pedidos de ejemplo, pero no se envía nada a ningún proveedor.", fr: "Données d'exemple : chaque étape fonctionne sur les commandes d'exemple, mais rien n'est envoyé à un fournisseur.", de: "Beispieldaten: Jeder Schritt funktioniert mit den Beispielbestellungen, aber nichts wird an einen Lieferanten gemailt.", it: "Dati di esempio: ogni passaggio funziona sugli ordini di esempio, ma nulla viene inviato via email a un fornitore.", pt: "Dados de exemplo: todos os passos funcionam nas encomendas de exemplo, mas nada é enviado por email a um fornecedor.", nl: "Voorbeeldgegevens: elke stap werkt op de voorbeeldbestellingen, maar er wordt niets naar een leverancier gemaild.", pl: "Przykładowe dane: każdy krok działa na przykładowych zamówieniach, ale nic nie jest wysyłane e-mailem do dostawcy." },
-  "Alerts, Slack and the weekly summary email always use your own store. Switch to your store to change them.": { es: "Las alertas, Slack y el email del resumen semanal siempre usan tu tienda. Cambia a tu tienda para modificarlos.", fr: "Les alertes, Slack et l'e-mail du résumé hebdomadaire utilisent toujours votre boutique. Passez à votre boutique pour les modifier.", de: "Benachrichtigungen, Slack und die E-Mail mit der Wochenübersicht nutzen immer Ihren eigenen Shop. Wechseln Sie zu Ihrem Shop, um sie zu ändern.", it: "Avvisi, Slack e l'email del riepilogo settimanale usano sempre il tuo negozio. Passa al tuo negozio per modificarli.", pt: "Os alertas, o Slack e o email do resumo semanal usam sempre a sua loja. Mude para a sua loja para os alterar.", nl: "Meldingen, Slack en de e-mail met het weekoverzicht gebruiken altijd je eigen winkel. Ga naar je winkel om ze te wijzigen.", pl: "Alerty, Slack i e-mail z podsumowaniem tygodnia zawsze dotyczą Twojego sklepu. Przełącz na swój sklep, aby je zmienić." },
+  "Alerts, Slack and the weekly summary email always use your own store. Switch to your store to change them.": { es: "Las alertas, Slack y el email del resumen semanal siempre usan tu tienda. Cambia a tu tienda para modificarlos.", fr: "Les alertes, Slack et l'e-mail du résumé hebdomadaire utilisent toujours votre boutique. Passez à votre boutique pour les modifier.", de: "Benachrichtigungen, Slack und die E-Mail mit der Wochenübersicht nutzen immer deinen eigenen Shop. Wechsle zu deinem Shop, um sie zu ändern.", it: "Avvisi, Slack e l'email del riepilogo settimanale usano sempre il tuo negozio. Passa al tuo negozio per modificarli.", pt: "Os alertas, o Slack e o email do resumo semanal usam sempre a sua loja. Mude para a sua loja para os alterar.", nl: "Meldingen, Slack en de e-mail met het weekoverzicht gebruiken altijd je eigen winkel. Ga naar je winkel om ze te wijzigen.", pl: "Alerty, Slack i e-mail z podsumowaniem tygodnia zawsze dotyczą Twojego sklepu. Przełącz na swój sklep, aby je zmienić." },
 };
