@@ -34,4 +34,22 @@ export const ACCURACY_TR: Record<string, Tr> = {
     nl: "Seizoenen: aan het leren — {n} van 13 maanden",
     pl: "Sezony: uczymy się — {n} z 13 miesięcy",
   },
+  "An open order is 1 day late: counted as arriving now, with {units} more safety while it is late.": {
+    es: "Un pedido abierto lleva 1 día de retraso: se cuenta como si llegara ya, con {units} más de seguridad mientras siga retrasado.",
+    fr: "Une commande en cours a 1 jour de retard : comptée comme arrivant maintenant, avec {units} de sécurité en plus tant qu'elle est en retard.",
+    de: "Eine offene Bestellung ist 1 Tag zu spät: Sie zählt als jetzt eingetroffen, mit {units} mehr Sicherheit, solange sie zu spät ist.",
+    it: "Un ordine aperto è in ritardo di 1 giorno: contato come in arrivo ora, con {units} di scorta in più finché è in ritardo.",
+    pt: "Uma encomenda em aberto está 1 dia atrasada: conta como a chegar agora, com mais {units} de segurança enquanto estiver atrasada.",
+    nl: "Een open bestelling is 1 dag te laat: telt alsof hij nu binnenkomt, met {units} extra veiligheid zolang hij te laat is.",
+    pl: "Otwarte zamówienie spóźnia się 1 dzień: liczone jak przychodzące teraz, z {units} szt. zapasu więcej, dopóki się spóźnia.",
+  },
+  "An open order is {n} days late: counted as arriving now, with {units} more safety while it is late.": {
+    es: "Un pedido abierto lleva {n} días de retraso: se cuenta como si llegara ya, con {units} más de seguridad mientras siga retrasado.",
+    fr: "Une commande en cours a {n} jours de retard : comptée comme arrivant maintenant, avec {units} de sécurité en plus tant qu'elle est en retard.",
+    de: "Eine offene Bestellung ist {n} Tage zu spät: Sie zählt als jetzt eingetroffen, mit {units} mehr Sicherheit, solange sie zu spät ist.",
+    it: "Un ordine aperto è in ritardo di {n} giorni: contato come in arrivo ora, con {units} di scorta in più finché è in ritardo.",
+    pt: "Uma encomenda em aberto está {n} dias atrasada: conta como a chegar agora, com mais {units} de segurança enquanto estiver atrasada.",
+    nl: "Een open bestelling is {n} dagen te laat: telt alsof hij nu binnenkomt, met {units} extra veiligheid zolang hij te laat is.",
+    pl: "Otwarte zamówienie spóźnia się {n} dni: liczone jak przychodzące teraz, z {units} szt. zapasu więcej, dopóki się spóźnia.",
+  },
 };

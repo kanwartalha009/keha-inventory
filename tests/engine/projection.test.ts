@@ -11,6 +11,12 @@ import {
   flatProjection,
   lostUnits,
 } from "../../app/lib/engine/projection-shared";
+import { computeVariant, latePurchaseOrders } from "../../app/lib/engine/index-shared";
+import { addDays } from "../../app/lib/engine/dates-shared";
+import { forwardInputFromMetric, planVariant } from "../../app/lib/engine/forward-plan-shared";
+import { whyLines } from "../../app/lib/order-plan-shared";
+import { translate } from "../../app/lib/i18n";
+import { ago, buildSeries, variantInput } from "./fixtures";
 
 const TODAY = "2026-10-16";
 
@@ -66,5 +72,34 @@ describe("arrivalsFrom", () => {
     expect([...a].sort((x, y) => x[0] - y[0])).toEqual([[0, 20], [4, 20], [14, 10]]);
     expect([...arrivalsFrom(TODAY, 10, [{ day: "2026-10-20", units: 20 }], 14)]).toEqual([[4, 10]]);
     expect([...arrivalsFrom(TODAY, 10, [], null)]).toEqual([[0, 10]]);
+  });
+});
+
+describe("late purchase orders (accuracy audit 2026-10-18)", () => {
+  const base = () => variantInput({ series: buildSeries({ days: 90, sold: (k) => (k % 2 ? 9 : 11) }), onHand: 30, incoming: 200, supplierLeadTimeDays: 30, cycleDays: 14, role: "B" });
+
+  it("an order past its day still lands today, but the plan says it is late and safety holds a week more of demand", () => {
+    const onTime = computeVariant({ ...base(), arrivals: [{ day: addDays(TODAY, 5), units: 200 }] })!;
+    expect(onTime.inputs.latePo).toBeUndefined();
+    const late = computeVariant({ ...base(), arrivals: [{ day: ago(12), units: 200 }] })!;
+    // Before: safety 0, order 140, nothing said.
+    expect(late.inputs.latePo).toEqual({ days: 12, units: 200, extra: 70 });
+    expect(late.safety).toBeCloseTo(70, 9);
+    expect(late.orderQty).toBe(210);
+    // A day late: one day of demand more.
+    expect(computeVariant({ ...base(), arrivals: [{ day: ago(1), units: 200 }] })!.inputs.latePo).toEqual({ days: 1, units: 200, extra: 10 });
+    expect(latePurchaseOrders(TODAY, [{ day: ago(3), units: 5 }, { day: ago(9), units: 7 }, { day: TODAY, units: 4 }])).toEqual({ days: 9, units: 12 });
+    expect(latePurchaseOrders(TODAY, [])).toBeNull();
+  });
+
+  it("Why this quantity says so (from the stored metric), translated", () => {
+    const r = computeVariant({ ...base(), arrivals: [{ day: ago(12), units: 200 }] })!;
+    const metric = { status: r.status, rate: r.rate, sigma: r.sigma, orderQty: r.orderQty, inputs: JSON.parse(JSON.stringify({ ...r.inputs, safety: r.safety })) };
+    const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: null, moq: null, notCounted: 0, days: 91 }));
+    const why = fwd.orders[0]!.why!;
+    expect(why.latePo).toEqual({ days: 12, extra: 70 });
+    expect(whyLines(why, (x) => x, "en")).toContain("An open order is 12 days late: counted as arriving now, with 70 more safety while it is late.");
+    expect(whyLines({ ...why, latePo: { days: 1, extra: 10 } }, (x) => x, "en")).toContain("An open order is 1 day late: counted as arriving now, with 10 more safety while it is late.");
+    expect(whyLines(why, (x) => translate("de", x), "de").join(" ")).toContain("12 Tage zu spät");
   });
 });

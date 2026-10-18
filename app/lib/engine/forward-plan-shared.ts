@@ -136,6 +136,8 @@ export interface ForwardVariantInput {
   planLike?: PlanLikeWhy | null;
   /** B5: a sustained level change — the pace is the level since then (inputs.levelShift). */
   levelShift?: LevelShiftWhy | null;
+  /** Accuracy audit 2026-10-18: an open order past its day (inputs.latePo): days late, extra safety. */
+  latePo?: { days: number; extra: number } | null;
   /** B4: what the safety stock covers (inputs.error). */
   safetyBasis?: SafetyBasisWhy | null;
 }
@@ -205,6 +207,8 @@ export interface OrderWhy {
   planLike?: PlanLikeWhy | null;
   /** The pace is the level since a sustained change (B5). */
   levelShift?: LevelShiftWhy | null;
+  /** An open order past its expected day (accuracy audit 2026-10-18). */
+  latePo?: { days: number; extra: number } | null;
   /** What the safety stock covers (B4). */
   safetyBasis?: SafetyBasisWhy | null;
   /** demand + safety − onHand − onOrder − missed. */
@@ -560,6 +564,7 @@ export class VariantProjection {
         recurringSpikes: this.input.recurringSpikes ?? null,
         planLike: this.input.planLike ?? null,
         levelShift: this.input.levelShift ?? null,
+        latePo: this.input.latePo ?? null,
         safetyBasis: this.input.safetyBasis ?? null,
         need,
         rounded: 0,
@@ -703,6 +708,13 @@ export function safetyBasisWhy(raw: unknown): SafetyBasisWhy | null {
   return finite(r.horizonDays) && finite(r.sigma) && finite(r.fill) ? { days: r.horizonDays, error: r.sigma, fill: r.fill } : null;
 }
 
+/** inputs.latePo (accuracy audit 2026-10-18) → days late and the extra safety; null when none. */
+export function latePoWhy(raw: unknown): { days: number; extra: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return finite(r.days) && r.days > 0 && finite(r.extra) ? { days: r.days, extra: r.extra } : null;
+}
+
 /** inputs.pace.from (data audit #2), or null. */
 function paceFromInputs(p: unknown): DayKey | null {
   const from = p && typeof p === "object" ? (p as Record<string, unknown>).from : null;
@@ -804,6 +816,7 @@ export function forwardInputFromMetric(
     recurringSpikes: recurringSpikesWhy(inputs.spikes),
     planLike: planLikeWhy(inputs.planLike),
     levelShift: levelShiftWhy(inputs.levelShift),
+    latePo: latePoWhy(inputs.latePo),
     safetyBasis: safetyBasisWhy(inputs.error),
   };
 }

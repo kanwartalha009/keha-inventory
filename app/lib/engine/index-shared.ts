@@ -236,6 +236,13 @@ export interface VariantInputs {
    * (safety = k × sigma). null with no advice or the old σ model (settings.safetyModel "sigma").
    */
   error: { horizonDays: number; model: number; sigma: number; ratio: number | null; prior: number; used: number; samples: number; windows: number; bias: number | null; fill: number; k: number; floor?: boolean } | null;
+  /**
+   * Accuracy audit 2026-10-18: open purchase orders already past their expected day. They still
+   * count as arriving today (the projection's rule), but the plan says so ("An open order is {n}
+   * days late") and the safety stock holds `extra` units more — the forecast for up to
+   * LATE_PO_EXTRA_DAYS more days of delay. null when no dated order is late.
+   */
+  latePo?: { days: number; units: number; extra: number } | null;
   /** B5: a confirmed sustained level change — the pace is the level since `day` (level-shift-shared). */
   levelShift: { day: DayKey; before: number; after: number; ratio: number; afterDays: number } | null;
   /**
@@ -324,6 +331,21 @@ function laterDay(a: DayKey | null, b: DayKey | null): DayKey | null {
   if (a === null) return b;
   if (b === null) return a;
   return a > b ? a : b;
+}
+
+/** A late purchase order: the safety stock covers up to this many more days of delay (accuracy audit 2026-10-18). */
+export const LATE_PO_EXTRA_DAYS = 7;
+
+/** Dated open orders past their day: the most days late and their units; null when none. */
+export function latePurchaseOrders(today: DayKey, arrivals: readonly { day: DayKey; units: number }[] | null | undefined): { days: number; units: number } | null {
+  let days = 0;
+  let units = 0;
+  for (const a of arrivals ?? []) {
+    if (!(typeof a.units === "number" && Number.isFinite(a.units) && a.units > 0) || !(a.day < today)) continue;
+    days = Math.max(days, daysBetween(toDayKey(a.day), today));
+    units += a.units;
+  }
+  return units > 0 ? { days, units } : null;
 }
 
 /** The order cycle's demand never counts fewer days than one weekly review (Order now, the Monday email). */
@@ -514,6 +536,11 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     safety = k * total;
     error = { horizonDays: P, model, sigma: total, ratio: backtest.ratio, prior, used: backtest.used, samples: backtest.samples, windows: backtest.windows, bias: backtest.bias, fill: fillTarget, k, ...(floor > kFill ? { floor: true } : {}) };
   }
+  // A late purchase order (accuracy audit 2026-10-18): it still lands "today" in the projection;
+  // the safety stock covers up to a week more of delay, and the plan says it is late.
+  const late = latePurchaseOrders(today, input.arrivals);
+  const latePo = late ? { ...late, extra: advice ? Math.max(0, fRate!) * Math.min(late.days, LATE_PO_EXTRA_DAYS) : 0 } : null;
+  if (advice && latePo) safety = safety! + latePo.extra;
   // In days of the FORECAST (the same daily demand days left is measured in).
   const sDays = advice ? safetyDaysOf(safety!, fRate!) : null;
 
@@ -672,6 +699,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       sigmaSeasonal: sigmaSeasonal && planLike === null,
       error,
       levelShift: shift && planLike === null ? { day: shift.day, before: shift.before, after: shift.after, ratio: shift.ratio, afterDays: shift.afterDays } : null,
+      ...(latePo ? { latePo } : {}),
       planLike,
       outSince: ranOutDay(index, today),
       lastSaleDay: lastSale,
