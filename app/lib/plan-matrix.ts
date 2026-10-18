@@ -59,7 +59,8 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     title: "Weekly actions",
     rows: [
       { label: "Ranked list of what to reorder, promote, fix and clear", values: { free: "Top 10", growth: "All", pro: "All" } },
-      { label: "Monday email", hint: "On by default, to the store owner.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
+      // Owner decision 2026-10-18 (no email provider): the summary reaches the inbox through Shopify Flow.
+      { label: "Monday summary by email", hint: "Through Shopify Flow, to the addresses you choose.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
       { label: "Missing sizes, weak product pages, high returns and falling best sellers", feature: "fixDetails", hint: "Free shows how many there are." },
       // Pricing audit 2026-10-17: without a preorder app this is the back-in-stock how-to — say that, no preorder promise.
       { label: "What to do while a best seller is sold out", hint: "Until its stock arrives: how to collect back-in-stock sign-ups on the product page.", feature: "bridge" },
@@ -85,7 +86,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     title: "Alerts and support",
     rows: [
       { label: "Slack messages", feature: "slack" },
-      { label: "Shopify Flow triggers", feature: "flowTriggers" },
+      { label: "Shopify Flow triggers for products", hint: "“Product needs reorder” and “Product went dead”. The Monday summary reaches Shopify Flow on every plan.", feature: "flowTriggers" },
       { label: "The app in your language", hint: "English, Spanish, French, German, Italian, Portuguese, Dutch and Polish.", values: ALL },
       { label: "Email support from the people who build the app", values: ALL },
     ],
@@ -103,7 +104,7 @@ export const PLAN_POINTS: Record<PlanCode, string[]> = {
     "Order plan preview (top 10)",
     "Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits",
     "Numbers refreshed weekly",
-    "Top 10 actions and a Monday email",
+    "Top 10 actions and a Monday email through Shopify Flow",
   ],
   growth: [
     "Full order plan by supplier, with purchase orders",

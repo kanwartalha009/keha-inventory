@@ -41,8 +41,9 @@ export default function Terms() {
         and gives the merchant stock advice: the money at stake, a weekly list
         of what to reorder, push, fix and clear, reorder plans with purchase
         orders, a confirmation link for suppliers, season plans, plans per
-        warehouse and store with draft stock transfers (Pro), and emails, Slack
-        messages and Shopify Flow events about stock. Features may be added, changed, or
+        warehouse and store with draft stock transfers (Pro), and Shopify Flow
+        events (which the merchant’s own Flow workflows can send as emails) and
+        Slack messages about stock. Features may be added, changed, or
         removed as the App evolves.
       </p>
 

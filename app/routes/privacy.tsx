@@ -6,13 +6,15 @@
  * Checked against the code for task 2.7 (2026-10-16); read_locales added 2026-10-17.
  * Every period comes from the module that enforces it (lib/legal.server LEGAL_FACTS), every
  * scope sentence from SCOPE_PURPOSES (held equal to shopify.app.toml by tests/legal.test.ts),
- * and the email provider from the API the app really sends through. Company and support email come from env (INVENTORY_LEGAL_NAME,
+ * and the email provider from the API the app really sends through — or none, when no provider
+ * is configured (owner decision 2026-10-18, the default: summaries go through Shopify Flow and
+ * purchase orders through the merchant's own email app). Company and support email come from env (INVENTORY_LEGAL_NAME,
  * INVENTORY_SUPPORT_EMAIL; falls back to support@keha.io).
  */
 import { useLoaderData } from "react-router";
 import { privacyData } from "../lib/legal.server";
 
-const UPDATED = "October 17, 2026";
+const UPDATED = "October 18, 2026";
 
 export const loader = () => privacyData();
 
@@ -58,9 +60,9 @@ export default function Privacy() {
         <strong>About the store, from Shopify:</strong> the store’s domain,
         currency, time zone and language; the App plan; and an access token
         received through Shopify’s standard authorization flow. The store’s
-        name, owner email and contact email are read from Shopify when an email
-        is sent or a purchase order is shown, and are not stored in our
-        database.
+        name, owner email and contact email are read from Shopify when a
+        summary or purchase order is prepared or shown, and are not stored in
+        our database.
       </p>
       <p>
         <strong>Store data, as totals:</strong> the product catalog (product
@@ -80,7 +82,7 @@ export default function Privacy() {
         orders created in the App; Season plan scenarios (dates and targets) and
         revenue goals per collection; each location’s role (warehouse, store)
         and whether it counts for online sales; the stock transfers created
-        from the App; the email addresses that should receive the Monday email;
+        from the App; {emailProvider ? "the email addresses that should receive the Monday email; " : ""}
         a Slack webhook address, if connected; and what the
         merchant does with each suggested action (done, snoozed, dismissed,
         discounts created).
@@ -116,11 +118,15 @@ export default function Privacy() {
         products, prices or stock levels.
       </p>
       <p>
-        On plans with Shopify Flow, the App sends two kinds of event to Shopify
-        Flow in your own store: “Product needs reorder” (product and variant
+        The App sends events to Shopify Flow in your own store. On every plan:
+        “Weekly order plan ready” (the Monday summary: what to order this week,
+        the money at stake, the top actions, with links into the App) and
+        “First order plan ready” (once, when your first plan is ready). On plans
+        with Shopify Flow triggers: “Product needs reorder” (product and variant
         IDs, days of stock left, order-by date, suggested quantity) and “Product
-        went dead” (product ID, cash stuck). Only workflows you build act on
-        them.
+        went dead” (product ID, cash stuck). Only workflows you turn on act on
+        them — for example Flow’s “Send internal email” action, which Shopify
+        sends to the addresses you type in Flow.
       </p>
       <p>
         Shopify Sidekick: when someone in your Shopify admin asks Sidekick a
@@ -133,18 +139,38 @@ export default function Privacy() {
 
       <h2>Emails and messages</h2>
       <ul>
-        <li>
-          <strong>To the store:</strong> the Monday email and instant stock
-          alerts go to the store owner email or the addresses the merchant
-          enters; every Monday email has an unsubscribe link. Answers to
-          Shopify’s customer data requests go to the store owner.
-        </li>
-        <li>
-          <strong>To suppliers:</strong> only when the merchant presses “Email
-          supplier”. The email carries the purchase order and its confirmation
-          link; it is sent from our address with the store’s name, and replies
-          go to the store’s contact email.
-        </li>
+        {emailProvider ? (
+          <li>
+            <strong>To the store:</strong> the Monday email and instant stock
+            alerts go to the store owner email or the addresses the merchant
+            enters; every Monday email has an unsubscribe link. Answers to
+            Shopify’s customer data requests go to the store owner.
+          </li>
+        ) : (
+          <li>
+            <strong>To the store:</strong> the App sends no email itself. The
+            Monday summary and stock alerts reach the merchant through Shopify
+            Flow (above) and, if connected, Slack. Shopify’s customer data
+            requests are answered in the App’s access log (the App holds no
+            data about the customer).
+          </li>
+        )}
+        {emailProvider ? (
+          <li>
+            <strong>To suppliers:</strong> only when the merchant presses “Email
+            supplier”. The email carries the purchase order and its confirmation
+            link; it is sent from our address with the store’s name, and replies
+            go to the store’s contact email. “Open in your email” instead
+            prepares the same message in the merchant’s own email app.
+          </li>
+        ) : (
+          <li>
+            <strong>To suppliers:</strong> the App emails no supplier. “Open in
+            your email” prepares the purchase order and its confirmation link as
+            a new message in the merchant’s own email app; the merchant sends it
+            from their own address.
+          </li>
+        )}
         <li>
           <strong>Slack:</strong> only when the merchant connects their own
           Slack webhook. The Monday summary and instant alerts (product names
@@ -160,7 +186,7 @@ export default function Privacy() {
         needs no login. It shows the store’s name, the order number, the
         supplier’s name, the order lines (product, variant, SKU, quantity and,
         unless the merchant hides prices, unit cost) and the expected date. The
-        supplier can pick a ship date and download the order as a PDF. The link
+        supplier can pick a ship date and download the order as a PDF or CSV. The link
         works only while the order is open, stops working {facts.confirmLinkDays}{" "}
         days after the order is sent, and is rate-limited.
       </p>
@@ -179,10 +205,12 @@ export default function Privacy() {
       <ul>
         <li>Shopify — the platform the App runs on.</li>
         <li>Railway — hosting and database for the App.</li>
-        <li>
-          {emailProvider} — sends the emails described above (to the store and,
-          when the merchant asks, to a supplier).
-        </li>
+        {emailProvider && (
+          <li>
+            {emailProvider} — sends the emails described above (to the store and,
+            when the merchant asks, to a supplier).
+          </li>
+        )}
         <li>Slack — only when the merchant connects their own Slack workspace.</li>
         <li>
           The Nova Apps platform (operated by us) — installation, plan and
@@ -206,7 +234,7 @@ export default function Privacy() {
           straight away.
         </li>
         <li>
-          A customer data request is answered to the store owner (the App holds
+          A customer data request is answered {emailProvider ? "to the store owner by email" : "in the access log"} (the App holds
           no data about the customer). A customer deletion request removes any
           copy of that request’s email address from our delivery records.
         </li>
@@ -231,7 +259,7 @@ export default function Privacy() {
         Data is transmitted over HTTPS and stored with access limited to the
         App’s backend. Slack webhook addresses and supplier email addresses are
         encrypted at rest (AES-256-GCM); supplier email addresses are decrypted
-        only to send an order.
+        only to prepare or send an order, and are shown only to the merchant.
       </p>
 
       <h2>Your rights</h2>

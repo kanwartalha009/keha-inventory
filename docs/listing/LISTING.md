@@ -66,7 +66,7 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 |---|---|
 | Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Order this week", Order plan → Order now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
 | Cash each week, next 13 weeks | Order plan → Next 13 weeks (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
-| Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx`, `supplier.confirm.$token.tsx` (Growth) |
+| Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx` ("Open in your email": a mailto in the supplier's language, `app/lib/po-mailto-shared.ts`; "Email supplier" only when an email provider is set), `supplier.confirm.$token*.tsx` (PDF and CSV download) (Growth) |
 | One purchase order per supplier per cycle (details text) | The supplier order builder, `app/routes/app.reorder_.build.tsx`, `app/lib/supplier-order-shared.ts`: everything due within the supplier's order cycle (Settings → Suppliers "Order every … days") in one draft, topped up to its minimums (Growth) |
 | Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
 | Monday to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
@@ -104,7 +104,11 @@ Shopify Flow
 ```
 
 Only the other apps Keha connects to: Slack (incoming webhook, Settings → Alerts) and Shopify Flow
-(two triggers, `extensions/keha-inventory-flow`). Shopify POS and Sidekick are not listed (listing
+(four triggers, `extensions/keha-inventory-flow`: "Weekly order plan ready" and "First order plan
+ready" on every plan — how merchants get Keha's summaries by email, with Flow's "Send internal
+email" action — and "Product needs reorder" / "Product went dead" on Growth). Keha has no email
+provider of its own (owner decision 2026-10-18): nothing in the listing says "we email you"; email
+is "through Shopify Flow" or, for purchase orders, the merchant's own email app. Shopify POS and Sidekick are not listed (listing
 audit 2026-10-18): POS stores are Shopify locations the app plans for (a feature, in the details and
 Structured features), and the Sidekick extension is part of the app, not an integration. No other
 Keha app is named anywhere in the listing (App Store requirement 4.4: don't reference your other apps).
@@ -123,10 +127,10 @@ Inventory → Inventory optimization, and tick nothing the table below doesn't b
 | Demand / sales forecasting per product, seasonality from 13 months of sales | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; product page "How the forecast was built" |
 | Sold-out days left out of the sales rate | `app/lib/engine/rate-shared.ts` |
 | Reorder suggestions: quantity and order-by date per product, by supplier | `app/lib/engine/forward-plan-shared.ts`, Order plan → Order now |
-| Purchase orders: create, PDF, CSV, email to the supplier | `app/routes/app.reorder_.$id*.tsx` |
+| Purchase orders: create, PDF, CSV, email to the supplier (from the merchant's own email app) | `app/routes/app.reorder_.$id*.tsx`, `app/lib/po-mailto-shared.ts` |
 | Supplier management: lead time, case packs, minimums, payment terms, order cycle | `app/routes/app.settings_.suppliers.tsx` |
 | Supplier confirms the ship date from a link (no login) | `app/routes/supplier.confirm.$token.tsx` |
-| Low-stock / stock-out alerts by email and Slack | `app/routes/app.settings_.alerts.tsx`, `app/services/monday.server.ts` |
+| Low-stock / stock-out alerts by email (through Shopify Flow) and Slack | `app/routes/app.settings_.alerts.tsx`, `app/services/alerts.server.ts`, `app/services/monday.server.ts`, `extensions/keha-inventory-flow` |
 | Cash-flow planning: cash needed per week for the next 13 weeks | `app/routes/app.reorder_.calendar.tsx`, `app/lib/cash-shared.ts` |
 | Dead-stock / overstock detection and clearance discounts (after a confirm) | `app/services/clearance.server.ts` |
 | Multi-location planning: each warehouse and POS store | `app/routes/app.settings_.locations.tsx`, location switcher |
@@ -178,7 +182,7 @@ keep).
 - Shipped — Order plan preview (top 10)
 - Shipped — Sales at risk, sales lost to sell-outs, cash stuck and sold-out page visits
 - Shipped — Numbers refreshed weekly
-- Shipped — Top 10 actions and a Monday email
+- Shipped — Top 10 actions and a Monday email through Shopify Flow
 
 ### Growth
 

@@ -12,6 +12,7 @@
 import { CONFIRM_LINK_DAYS } from "./purchase-order-shared";
 import { PII_LOG_RETENTION_DAYS } from "./pii-log-shared";
 import { RETENTION_MONTHS } from "./sync/store-time-shared";
+import { emailTransportConfigured } from "../services/email.server";
 
 export function legalContact(): { company: string; email: string } {
   const email = (process.env.INVENTORY_SUPPORT_EMAIL ?? "").trim();
@@ -76,7 +77,11 @@ export function emailProvider(apiUrl: string | undefined = process.env.INVENTORY
   return KNOWN_EMAIL_PROVIDERS.find(([re]) => re.test(host))?.[1] ?? host;
 }
 
-/** Everything the privacy page renders that comes from the server. */
+/**
+ * Everything the privacy page renders that comes from the server. `emailProvider` is null when no
+ * provider is configured (owner decision 2026-10-18, the default): the App then sends no email
+ * itself, so no email sub-processor is named.
+ */
 export function privacyData() {
-  return { ...legalContact(), emailProvider: emailProvider(), facts: LEGAL_FACTS, scopes: SCOPE_PURPOSES };
+  return { ...legalContact(), emailProvider: emailTransportConfigured() ? emailProvider() : null, facts: LEGAL_FACTS, scopes: SCOPE_PURPOSES };
 }

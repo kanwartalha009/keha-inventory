@@ -70,7 +70,14 @@ describe("/privacy", () => {
     expect(html).toContain("older than 25 months are deleted");
     expect(html).toContain("48 hours later");
     expect(html).toContain("kept for 90 days");
-    expect(html).toContain("Resend");
+    // No email provider (owner decision 2026-10-18, the default): no email sub-processor is named.
+    expect(html).not.toContain("Resend");
+    expect(html).toContain("the App sends no email itself");
+    expect(html).toContain("the App emails no supplier");
+    expect(html).toContain("Weekly order plan ready");
+    expect(html).toContain("First order plan ready");
+    expect(html).toContain("download the order as a PDF or CSV");
+    expect(html).toContain("answered in the access log");
     expect(html).toContain("Railway");
     expect(html).toContain("Product needs reorder");
     expect(html).toContain("Shopify Sidekick");
@@ -80,6 +87,18 @@ describe("/privacy", () => {
     expect(html).toContain("privacy@example.com");
     expect(html).toContain("Example Ltd");
     expect(html).not.toContain("rolled up");
+  });
+});
+
+describe("/privacy with an email provider configured", () => {
+  it("names the provider as a sub-processor and describes the emails it sends", async () => {
+    process.env.INVENTORY_EMAIL_API_KEY = "re_test";
+    process.env.INVENTORY_EMAIL_FROM = "Keha <mail@keha.test>";
+    const html = render("/privacy", Privacy, await privacyLoader());
+    expect(html).toContain("Resend — sends the emails described above");
+    expect(html).toContain("the Monday email and instant stock");
+    expect(html).toContain("presses “Email");
+    expect(html).not.toContain("the App sends no email itself");
   });
 });
 
