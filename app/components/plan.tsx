@@ -32,11 +32,11 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "supplierConfirm":
       return { title: t("Supplier confirmation"), body: t("Your supplier confirms the ship date through a link, with no login.") };
     case "bridge":
-      return { title: t("What to do while a best seller is sold out"), body: t("Until its stock arrives: how to collect back-in-stock sign-ups on the product page.") };
+      return { title: t("Stock gaps"), body: t("Until its stock arrives: how to collect back-in-stock sign-ups on the product page.") };
     case "clearance":
-      return { title: t("Clear dead stock"), body: t("Create a Shopify discount for products that don't sell, and see the cash it frees.") };
+      return { title: t("Dead stock clearance"), body: t("Create a Shopify discount for products that don't sell, and see the cash it frees.") };
     case "fixDetails":
-      return { title: t("Fix what's holding sales back"), body: t("Missing sizes, weak product pages, high returns and falling best sellers, product by product.") };
+      return { title: t("Product issues"), body: t("Missing sizes, weak product pages, high returns and falling best sellers, product by product.") };
     case "planner":
       return { title: t("Season planner"), body: t("Plan a season or a growth target: what to order, by when, and the cash you need each week.") };
     case "collectionGoals":

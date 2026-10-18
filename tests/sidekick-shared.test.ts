@@ -277,7 +277,7 @@ describe("other tools", () => {
       { kind: "clear", tab: "clear", productId: "gid://shopify/Product/2", productTitle: "Cap", variants: [], amount: 120, currency: "EUR", reasonText: "No sale for 120 days.", path: "/app?tab=clear" },
     ];
     const all = actionListResponse(rows, { kind: null, currency: "EUR", limited: 10 });
-    expect(all.results!.map((r) => r._meta.action)).toEqual(["Reorder", "Clear (discount slow or dead stock)"]);
+    expect(all.results!.map((r) => r._meta.action)).toEqual(["Reorder", "Clearance (discount overstock or dead stock)"]);
     expect(all.results![0]!._meta).toMatchObject({ variants: "S, M", money_at_stake: 300.46, why: "Runs out in 5 days.", url: "app://app/reorder?variants=1" });
     expect(all.note).toBe("Ranked by money at stake; the list covers the 10 largest actions.");
     const clear = actionListResponse(rows, { kind: "clear", currency: "EUR", limited: null });
@@ -291,7 +291,7 @@ describe("other tools", () => {
       { kind: "bridge", currency: "EUR", limited: null },
     );
     expect(soldOut.kind).toBe("sold_out");
-    expect(soldOut.results![0]!._meta.action).toBe("While sold out: collect back-in-stock sign-ups until stock arrives");
+    expect(soldOut.results![0]!._meta.action).toBe("Stock gap: collect back-in-stock sign-ups until stock arrives");
     expect(JSON.stringify({ ...soldOut, url: undefined, results: soldOut.results!.map((r) => ({ ...r._meta, url: undefined })) })).not.toMatch(/bridge/i);
   });
 

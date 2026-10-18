@@ -240,7 +240,7 @@ describe("Variant detail", () => {
     expect(html).toContain("17 units"); // safety = 1.65 × σ 2 × √(lead 14 + cycle 14) = 17.5 → 17
     expect(html).toContain("Based on: ");
     expect(html).toContain("Recent sales");
-    expect(html).toContain("Sold out");
+    expect(html).toContain("Out of stock");
     expect(html).toContain('href="/app/products"');
   });
 

@@ -223,7 +223,7 @@ describe("Home: this week's actions (task 2.3)", () => {
   it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
     const html = withActions("growth", actionList("growth"));
     expect(html).toContain("This week&#x27;s actions");
-    for (const tab of ["All (8)", "Reorder (1)", "Sold out (1)", "Promote (1)", "Fix (4)", "Clear (1)"]) expect(html).toContain(tab);
+    for (const tab of ["All (8)", "Reorder (1)", "Stock gaps (1)", "Promote (1)", "Product issues (4)", "Clearance (1)"]) expect(html).toContain(tab);
     expect(html).toContain("€8,200");
     expect(html).toContain("€3,400");
     // Ranked by € across groups: Clear (8,200) first, Reorder (3,400) next.
@@ -237,13 +237,13 @@ describe("Home: this week's actions (task 2.3)", () => {
     expect(html).not.toContain("Add to order plan");
     expect(html).toContain(`href="/app/reorder?variants=${encodeURIComponent("gid://shopify/ProductVariant/11,gid://shopify/ProductVariant/12")}"`);
     expect(html).toContain(">Collect back-in-stock sign-ups</s-button>");
-    expect(html).toContain("Show how");
+    expect(html).toContain("How to promote");
     expect(html).toContain("See why");
     expect(html).toContain('href="/app/products/41"');
-    expect(html).toContain("Restock sizes");
-    expect(html).toContain("Check the page");
+    expect(html).toContain("Reorder sizes");
+    expect(html).toContain("Review product page");
     expect(html).toContain('href="shopify://admin/products/6"');
-    expect(html).toContain("Check sizing / quality");
+    expect(html).toContain("Review sizing and quality");
     expect(html).toContain("Create discount");
     // The … menu.
     expect(count(html, "<s-menu")).toBe(8);
@@ -252,18 +252,18 @@ describe("Home: this week's actions (task 2.3)", () => {
     // Done is in every row's menu, first (the endpoint takes op "done").
     expect(count(html, ">Mark as done</s-button>")).toBe(8);
     expect(html).toMatch(/<s-menu[^>]*><s-button>Mark as done<\/s-button><s-button>Snooze 7 days<\/s-button>/);
-    expect(html).toContain(">Why<");
+    expect(html).toContain(">Why this action<");
     // Keha Preorder isn't installed: never named or linked (Shopify 2.2.6).
     expect(html).not.toContain("keha-preorder");
-    expect(html).not.toContain("Take preorders");
+    expect(html).not.toContain(">Take preorders<");
     // Nothing locked on Growth.
-    expect(html).not.toContain("Product details to fix:");
+    expect(html).not.toContain("Product issues:");
     expect(html).not.toContain("more actions worth");
   });
 
   it("Growth with Keha Preorder installed: the bridge opens its pre-filled form top-level", () => {
     const html = withActions("growth", actionList("growth", { preorderInstalled: true }));
-    expect(html).toContain("Take preorders for the gap");
+    expect(html).toContain(">Take preorders<");
     expect(html).toContain(
       'href="https://admin.shopify.com/store/acme/apps/keha-preorder/app/campaigns/new?variants=21%2C22&amp;trigger=stock&amp;ship=2026-11-02&amp;name=Bridge+Boots" target="_top"',
     );
@@ -274,12 +274,12 @@ describe("Home: this week's actions (task 2.3)", () => {
     const html = withActions("growth", actionList("growth"), "/app?tab=clear");
     expect(html).toContain("Clear Cardigan");
     expect(html).not.toContain("Reorder Tee");
-    expect(html).toContain('aria-selected="true" class="keha-tab keha-tab--active">Clear (1)');
-    expect(html).toContain("Clearances running");
+    expect(html).toContain('aria-selected="true" class="keha-tab keha-tab--active">Clearance (1)');
+    expect(html).toContain("Active clearance discounts");
     expect(html).toContain("Old Overcoat");
     expect(html).toContain("Discount code CLEAR-7Q3K");
     expect(html).toContain("Ends Nov 15, 2026");
-    expect(html).toContain("Cash freed so far: €1,200");
+    expect(html).toContain("Cash recovered so far: €1,200");
     expect(html).toContain("Valued at retail price");
   });
 
@@ -287,7 +287,7 @@ describe("Home: this week's actions (task 2.3)", () => {
     const fix = withActions("growth", actionList("growth"), "/app?tab=fix");
     expect(fix).toContain("Falling Fleece");
     expect(fix).not.toContain("Clear Cardigan");
-    expect(fix).not.toContain("Clearances running");
+    expect(fix).not.toContain("Active clearance discounts");
     const junk = withActions("growth", actionList("growth"), "/app?tab=nope");
     expect(junk).toContain("Clear Cardigan");
     expect(junk).toContain("Reorder Tee");
@@ -296,10 +296,10 @@ describe("Home: this week's actions (task 2.3)", () => {
   it("Free: top 10, Fix as a count, locked Bridge and Clear with an Upgrade link", () => {
     const html = withActions("free", actionList("free", { fillers: 12 }));
     expect(html).toContain("All (10)");
-    expect(html).toContain("Fix (4)");
+    expect(html).toContain("Product issues (4)");
     expect(count(html, 'role="listitem"')).toBe(10);
     // Fix rows are counted, not shown (and not sent: they aren't in the list).
-    expect(html).toContain("Product details to fix: 4");
+    expect(html).toContain("Product issues: 4");
     expect(html).toContain("Upgrade to see them");
     for (const title of ["Falling Fleece", "Sizes Sneaker", "Page Poncho", "Returns Romper"]) expect(html).not.toContain(title);
     // Bridge and Clear stay, locked: disabled button, plan badge, upgrade link.

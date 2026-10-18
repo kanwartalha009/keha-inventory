@@ -450,7 +450,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     actions,
     lockedFixes: locked
       ? {
-          text: fill(tr("Products holding sales back: {count}. See which ones on the Growth plan."), { count: locked.count }),
+          text: fill(tr("Product issues: {count}. See which ones on the Growth plan."), { count: locked.count }),
           link: locked.link,
           label: tr("See plans"),
         }

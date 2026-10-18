@@ -634,7 +634,7 @@ describe("composeMondayEmail — full", () => {
   it("Free: Fix rows become one count line with a plans button; they count as things to do", () => {
     const e = composeMondayEmail({ ...base, actions, lockedFixes: { count: 2, link: "https://x/plans" } });
     expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
-    expect(e.text).toContain("4. Products holding sales back: 2. See which ones on the Growth plan.");
+    expect(e.text).toContain("4. Product issues: 2. See which ones on the Growth plan.");
     expect(e.text).toContain("See plans: https://x/plans");
     expect(e.html).toContain('href="https://x/plans"');
     expect(composeMondayEmail({ ...base, lockedFixes: { count: 1, link: "https://x/plans" } }).subject).toBe("€4,601 at stake this week — 1 thing to do");
@@ -647,7 +647,7 @@ describe("composeMondayEmail — full", () => {
     );
     const de = composeMondayEmail({ ...base, locale: "de", actions, lockedFixes: { count: 1, link: "https://x/plans" } });
     expect(de.subject).toMatch(/— 4 Aufgaben$/);
-    expect(de.text).toContain("Produkte, die deinen Umsatz bremsen: 1.");
+    expect(de.text).toContain("Produktprobleme: 1.");
   });
 });
 
@@ -701,7 +701,7 @@ describe("runMondayEmails — full email", () => {
     expect(sent.subject).toMatch(/— 5 things to do$/);
     expect(sent.text).not.toContain("Product 2");
     expect(sent.text).not.toContain("fix.sizes");
-    expect(sent.text).toContain("5. Products holding sales back: 1. See which ones on the Growth plan.");
+    expect(sent.text).toContain("5. Product issues: 1. See which ones on the Growth plan.");
     expect(sent.text).toContain("See plans: https://admin.shopify.com/store/acme/apps/keha-inventory/app/plans");
     expect(sent.text).not.toContain("Last month we were within");
   });

@@ -283,7 +283,7 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
               </span>
               <span className="keha-legend">
                 <span className="keha-legend__swatch keha-legend__swatch--out" aria-hidden="true" />
-                <s-text color="subdued">{t("Sold out")}</s-text>
+                <s-text color="subdued">{t("Out of stock")}</s-text>
               </span>
             </s-stack>
           </>
@@ -775,7 +775,7 @@ function RecentSales({ recent }: { recent: ChartDay[] }) {
             <s-table-row key={d.day}>
               <s-table-cell>{formatDay(d.day, locale)}</s-table-cell>
               <s-table-cell>{formatCount(d.sold, locale)}</s-table-cell>
-              <s-table-cell>{d.out === null ? "—" : d.out ? t("Sold out") : t("In stock")}</s-table-cell>
+              <s-table-cell>{d.out === null ? "—" : d.out ? t("Out of stock") : t("In stock")}</s-table-cell>
             </s-table-row>
           ))}
         </s-table-body>

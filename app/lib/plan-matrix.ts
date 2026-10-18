@@ -63,7 +63,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
       { label: "Monday summary by email", hint: "Through Shopify Flow, to the addresses you choose.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
       { label: "Missing sizes, weak product pages, high returns and falling best sellers", feature: "fixDetails", hint: "Free shows how many there are." },
       // Pricing audit 2026-10-17: without a preorder app this is the back-in-stock how-to — say that, no preorder promise.
-      { label: "What to do while a best seller is sold out", hint: "Until its stock arrives: how to collect back-in-stock sign-ups on the product page.", feature: "bridge" },
+      { label: "Stock gaps", hint: "Until its stock arrives: how to collect back-in-stock sign-ups on the product page.", feature: "bridge" },
       { label: "Clear dead stock with a Shopify discount", feature: "clearance", hint: "Nothing changes in your store until you confirm." },
     ],
   },

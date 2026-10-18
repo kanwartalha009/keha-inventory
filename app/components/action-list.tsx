@@ -2,7 +2,7 @@
  * Home "This week's actions" (spec §5.1, §7.7, §4 J4 + J5): tabs, ranked rows
  * with one primary button each, the "…" menu (mark as done, snooze 7 days,
  * dismiss, why), the bridge / promote how-to dialogs, the Clear confirm dialog and the
- * "Clearances running" list. Data comes from lib/action-list-shared.ts; writes
+ * "Active clearance discounts" list. Data comes from lib/action-list-shared.ts; writes
  * go to POST /app/actions.
  */
 import { useEffect, useMemo, useState } from "react";
@@ -45,14 +45,14 @@ export function tabLabel(tab: ActionTab, t: T): string {
     case "reorder":
       return t("Reorder");
     case "bridge":
-      // Plain words for the merchant (plan wording "What to do while a best seller is sold out"); the kind id stays "bridge".
-      return t("Sold out");
+      // Plain words for the merchant (plan wording "Stock gaps"); the kind id stays "bridge".
+      return t("Stock gaps");
     case "push":
       return t("Promote");
     case "fix":
-      return t("Fix");
+      return t("Product issues");
     case "clear":
-      return t("Clear");
+      return t("Clearance");
   }
 }
 
@@ -168,7 +168,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
               <s-box padding="base" border="base" borderRadius="base">
                 <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
                   <s-stack direction="block" gap="small-100">
-                    <s-text type="strong">{fill(t("Product details to fix: {n}"), { n: formatCount(list.fixCount, locale) })}</s-text>
+                    <s-text type="strong">{fill(t("Product issues: {n}"), { n: formatCount(list.fixCount, locale) })}</s-text>
                     <s-text color="subdued">{t("Missing sizes, weak product pages, high returns and falling best sellers, product by product.")}</s-text>
                   </s-stack>
                   <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -260,7 +260,7 @@ function ActionRow({
             <s-button onClick={onDone}>{t("Mark as done")}</s-button>
             <s-button onClick={onSnooze}>{t("Snooze 7 days")}</s-button>
             <s-button onClick={onDismiss}>{t("Dismiss")}</s-button>
-            <s-button onClick={() => onOpen("why")}>{t("Why")}</s-button>
+            <s-button onClick={() => onOpen("why")}>{t("Why this action")}</s-button>
           </s-menu>
         </s-stack>
       </div>
@@ -278,27 +278,27 @@ function PrimaryButton({ row, onOpen }: { row: ActionRowView; onOpen: (type: Dia
     case "preorder":
       return (
         <s-button href={b.href} target="_top">
-          {t("Take preorders for the gap")}
+          {t("Take preorders")}
         </s-button>
       );
     case "signups":
       return <s-button onClick={() => onOpen("signups")}>{t("Collect back-in-stock sign-ups")}</s-button>;
     case "pushHow":
-      return <s-button onClick={() => onOpen("push")}>{t("Show how")}</s-button>;
+      return <s-button onClick={() => onOpen("push")}>{t("How to promote")}</s-button>;
     case "seeWhy":
       return <s-button {...link(b.href)}>{t("See why")}</s-button>;
     case "restockSizes":
-      return <s-button {...link(b.href)}>{t("Restock sizes")}</s-button>;
+      return <s-button {...link(b.href)}>{t("Reorder sizes")}</s-button>;
     case "checkPage":
       return (
         <s-button href={b.productUrl} target="_top">
-          {t("Check the page")}
+          {t("Review product page")}
         </s-button>
       );
     case "checkSizing":
       return (
         <s-button href={b.productUrl} target="_top">
-          {t("Check sizing / quality")}
+          {t("Review sizing and quality")}
         </s-button>
       );
     case "createDiscount":
@@ -488,7 +488,7 @@ export function ClearDialog({
           )}
           {result && !result.ok && result.error === "sample" && <SampleOffNote />}
           {result && !result.ok && result.error === "upgrade" && (
-            <s-banner tone="info" heading={t("Clear dead stock")}>
+            <s-banner tone="info" heading={t("Dead stock clearance")}>
               <s-paragraph>{planTag("clearance", t)}</s-paragraph>
             </s-banner>
           )}
@@ -552,7 +552,7 @@ function ClearancesRunning({ items }: { items: ClearanceView[] }) {
   const { t, locale } = useLocale();
   return (
     <s-stack direction="block" gap="small-200">
-      <s-heading>{t("Clearances running")}</s-heading>
+      <s-heading>{t("Active clearance discounts")}</s-heading>
       {items.map((c) => (
         <s-box key={c.id} padding="small-200" border="base" borderRadius="base">
           <s-stack direction="block" gap="small-100">
@@ -566,7 +566,7 @@ function ClearancesRunning({ items }: { items: ClearanceView[] }) {
               {c.endsOn ? fill(t("Ends {date}"), { date: formatDay(c.endsOn, locale) }) : t("No end date")}
             </s-text>
             <s-text>
-              {fill(t("Cash freed so far: {amount}"), { amount: formatAmount(c.cashFreed, c.currency, locale) })}
+              {fill(t("Cash recovered so far: {amount}"), { amount: formatAmount(c.cashFreed, c.currency, locale) })}
               {c.retail && c.cashFreed !== null ? ` · ${t("Valued at retail price")}` : ""}
             </s-text>
           </s-stack>

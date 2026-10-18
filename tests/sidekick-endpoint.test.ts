@@ -304,7 +304,7 @@ describe("tools on Growth", () => {
   it("get_action_list: every action, ranked, with the reason sentence; kind filter", async () => {
     const r = await body("get_action_list");
     expect(r.results).toHaveLength(14);
-    expect(r.results![0]!._meta).toMatchObject({ action: "Fix: missing sizes", money_at_stake: 500 });
+    expect(r.results![0]!._meta).toMatchObject({ action: "Product issue: missing sizes", money_at_stake: 500 });
     expect(r.results![1]!._meta).toMatchObject({
       action: "Reorder",
       why: "Runs out in 5 days; a new order takes 21 days to arrive. Order by 20 Oct.",
@@ -385,7 +385,7 @@ describe("plans", () => {
     }
     const actions = await body("get_action_list");
     expect(actions.results).toHaveLength(10);
-    expect(actions.results!.some((x) => String(x._meta.action).startsWith("Fix"))).toBe(false);
+    expect(actions.results!.some((x) => String(x._meta.action).startsWith("Product issue"))).toBe(false);
     expect(actions.note).toBe("Ranked by money at stake; the list covers the 10 largest actions.");
     expect((await body("get_money_at_stake")).refreshed).toBe("weekly");
     for (const tool of SIDEKICK_TOOLS) {

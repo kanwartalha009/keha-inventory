@@ -95,7 +95,7 @@ export function mergeVisibleActionRows<T extends Pick<ActionRowIn, "id" | "state
 export const TAB_PAGE_SIZE = 25;
 /** Variant names listed on a row before "+N more". */
 export const ROW_VARIANT_NAMES = 3;
-/** Clearances listed under "Clearances running". */
+/** Clearances listed under "Active clearance discounts". */
 export const CLEARANCE_LIST_LIMIT = 20;
 
 export function isActionKind(v: unknown): v is ActionKind {

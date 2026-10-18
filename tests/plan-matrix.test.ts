@@ -53,7 +53,7 @@ describe("the Free pitch says what Free shows (pricing audit 2026-10-17)", () =>
 describe("the sold-out best seller feature is sold as what it does (pricing audit 2026-10-17)", () => {
   it("no preorder promise and no internal word: without a preorder app it is the back-in-stock how-to", () => {
     const row = PLAN_MATRIX.flatMap((g) => g.rows).find((r) => r.feature === "bridge")!;
-    expect(row.label).toBe("What to do while a best seller is sold out");
+    expect(row.label).toBe("Stock gaps");
     expect(row.hint).toBe("Until its stock arrives: how to collect back-in-stock sign-ups on the product page.");
     const texts = [row.label, row.hint ?? "", ...Object.values(PLAN_POINTS).flat()];
     for (const t of texts) expect(t).not.toMatch(/preorder|bridge/i);

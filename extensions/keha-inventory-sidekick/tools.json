@@ -37,7 +37,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "get_action_list",
-    "description": "This week's stock actions, ranked by money at stake: reorder (order more stock), sold_out (a best seller is sold out: collect back-in-stock sign-ups until stock arrives), push (promote products with healthy stock), fix (missing sizes, weak product pages, high returns, falling sales) and clear (discount slow or dead stock). Each action has the product, the amount at stake in the store currency and the reason in one sentence. Use for 'what should I do this week' or 'which products need attention'.",
+    "description": "This week's stock actions, ranked by money at stake: reorder (order more stock), sold_out (stock gaps: back-in-stock sign-ups until a best seller is restocked), push (promote products with enough stock), fix (product issues: missing sizes, weak pages, returns, falling sales) and clear (clearance: discount overstock or dead stock). Each action has the product, the amount at stake in the store currency and the reason in one sentence. Use for 'what should I do this week' or 'which products need attention'.",
     "inputSchema": {
       "type": "object",
       "properties": {

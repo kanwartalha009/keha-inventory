@@ -11,8 +11,8 @@ import type { Tr } from "./i18n";
 export const ACTIONS_TR: Record<string, Tr> = {
   // ---- List, tabs and notices ----
   "This week's actions": { es: "Acciones de esta semana", fr: "Actions de la semaine", de: "Aufgaben dieser Woche", it: "Azioni di questa settimana", pt: "Ações desta semana", nl: "Acties van deze week", pl: "Działania na ten tydzień" },
-  "Fix": { es: "Corregir", fr: "Corriger", de: "Beheben", it: "Correggere", pt: "Corrigir", nl: "Oplossen", pl: "Popraw" },
-  "Clear": { es: "Liquidar", fr: "Écouler", de: "Abverkaufen", it: "Smaltire", pt: "Escoar", nl: "Opruimen", pl: "Wyprzedaj" },
+  "Product issues": { es: "Problemas de producto", fr: "Problèmes produit", de: "Produktprobleme", it: "Problemi dei prodotti", pt: "Problemas de produto", nl: "Productproblemen", pl: "Problemy z produktami" },
+  "Clearance": { es: "Liquidación", fr: "Déstockage", de: "Abverkauf", it: "Svendita", pt: "Liquidação", nl: "Opruiming", pl: "Wyprzedaż" },
   "Snoozed for 7 days.": { es: "Pospuesta 7 días.", fr: "Reportée de 7 jours.", de: "Für 7 Tage zurückgestellt.", it: "Rimandata di 7 giorni.", pt: "Adiada por 7 dias.", nl: "7 dagen uitgesteld.", pl: "Odłożone na 7 dni." },
   "Dismissed. It comes back if the amount doubles.": { es: "Descartada. Volverá si el importe se duplica.", fr: "Ignorée. Elle reviendra si le montant double.", de: "Verworfen. Sie kommt zurück, wenn sich der Betrag verdoppelt.", it: "Ignorata. Tornerà se l'importo raddoppia.", pt: "Dispensada. Volta se o valor duplicar.", nl: "Genegeerd. Hij komt terug als het bedrag verdubbelt.", pl: "Odrzucone. Wróci, jeśli kwota się podwoi." },
   "Undo": { es: "Deshacer", fr: "Annuler", de: "Rückgängig", it: "Annulla", pt: "Anular", nl: "Ongedaan maken", pl: "Cofnij" },
@@ -20,7 +20,7 @@ export const ACTIONS_TR: Record<string, Tr> = {
   "Nothing to do this week. We'll tell you when something needs you.": { es: "Nada que hacer esta semana. Te avisaremos cuando algo te necesite.", fr: "Rien à faire cette semaine. Nous vous préviendrons quand quelque chose demandera votre attention.", de: "Diese Woche gibt es nichts zu tun. Wir melden uns, wenn etwas dich braucht.", it: "Niente da fare questa settimana. Ti avviseremo quando qualcosa avrà bisogno di te.", pt: "Nada a fazer esta semana. Avisamos quando algo precisar de si.", nl: "Deze week niets te doen. We laten het je weten als er iets is.", pl: "W tym tygodniu nie ma nic do zrobienia. Damy znać, gdy coś będzie wymagać Twojej uwagi." },
   "Nothing in this group this week.": { es: "Nada en este grupo esta semana.", fr: "Rien dans ce groupe cette semaine.", de: "Diese Woche nichts in dieser Gruppe.", it: "Niente in questo gruppo questa settimana.", pt: "Nada neste grupo esta semana.", nl: "Deze week niets in deze groep.", pl: "W tej grupie w tym tygodniu nic nie ma." },
   "Show more ({n} left)": { es: "Mostrar más (quedan {n})", fr: "Afficher plus ({n} restantes)", de: "Mehr anzeigen (noch {n})", it: "Mostra altro (ne restano {n})", pt: "Mostrar mais (faltam {n})", nl: "Meer tonen (nog {n})", pl: "Pokaż więcej (zostało {n})" },
-  "Product details to fix: {n}": { es: "Detalles de producto por corregir: {n}", fr: "Détails produit à corriger : {n}", de: "Produktdetails zu beheben: {n}", it: "Dettagli prodotto da correggere: {n}", pt: "Detalhes de produto a corrigir: {n}", nl: "Productdetails om op te lossen: {n}", pl: "Szczegóły produktów do poprawy: {n}" },
+  "Product issues: {n}": { es: "Problemas de producto: {n}", fr: "Problèmes produit : {n}", de: "Produktprobleme: {n}", it: "Problemi dei prodotti: {n}", pt: "Problemas de produto: {n}", nl: "Productproblemen: {n}", pl: "Problemy z produktami: {n}" },
   "Upgrade to see them": { es: "Mejora tu plan para verlos", fr: "Changez de forfait pour les voir", de: "Upgrade, um sie zu sehen", it: "Passa a un piano superiore per vederli", pt: "Mude de plano para os ver", nl: "Upgrade om ze te zien", pl: "Zmień plan, aby je zobaczyć" },
 
   // ---- Row ----
@@ -29,13 +29,13 @@ export const ACTIONS_TR: Record<string, Tr> = {
   "Snooze 7 days": { es: "Posponer 7 días", fr: "Reporter de 7 jours", de: "7 Tage zurückstellen", it: "Rimanda di 7 giorni", pt: "Adiar 7 dias", nl: "7 dagen uitstellen", pl: "Odłóż na 7 dni" },
   "Dismiss": { es: "Descartar", fr: "Ignorer", de: "Verwerfen", it: "Ignora", pt: "Dispensar", nl: "Negeren", pl: "Odrzuć" },
   "Why": { es: "Por qué", fr: "Pourquoi", de: "Warum", it: "Perché", pt: "Porquê", nl: "Waarom", pl: "Dlaczego" },
-  "Take preorders for the gap": { es: "Acepta reservas hasta que llegue el stock", fr: "Prendre des précommandes en attendant le stock", de: "Vorbestellungen für die Lücke annehmen", it: "Accetta preordini fino all'arrivo dello stock", pt: "Aceitar pré-encomendas até chegar o stock", nl: "Neem pre-orders aan voor de tussenperiode", pl: "Przyjmuj zamówienia przedpremierowe do dostawy" },
+  "Take preorders": { es: "Aceptar reservas", fr: "Prendre des précommandes", de: "Vorbestellungen annehmen", it: "Accetta preordini", pt: "Aceitar pré-encomendas", nl: "Pre-orders aannemen", pl: "Przyjmuj przedsprzedaż" },
   "Collect back-in-stock sign-ups": { es: "Recoge avisos de reposición", fr: "Collecter des inscriptions « de retour en stock »", de: "Anmeldungen für „Wieder auf Lager“ sammeln", it: "Raccogli iscrizioni per il ritorno in stock", pt: "Recolher inscrições para quando voltar ao stock", nl: "Verzamel aanmeldingen voor 'weer op voorraad'", pl: "Zbieraj zapisy na powiadomienia o dostępności" },
-  "Show how": { es: "Mostrar cómo", fr: "Voir comment", de: "So geht's", it: "Mostra come", pt: "Mostrar como", nl: "Laat zien hoe", pl: "Pokaż jak" },
+  "How to promote": { es: "Cómo promocionarlo", fr: "Comment le promouvoir", de: "So bewirbst du es", it: "Come promuoverlo", pt: "Como promover", nl: "Zo promoot je het", pl: "Jak promować" },
   "See why": { es: "Ver por qué", fr: "Voir pourquoi", de: "Ursache ansehen", it: "Scopri perché", pt: "Ver porquê", nl: "Bekijk waarom", pl: "Zobacz dlaczego" },
-  "Restock sizes": { es: "Reponer tallas", fr: "Réassortir les tailles", de: "Größen nachbestellen", it: "Riassortisci le taglie", pt: "Repor tamanhos", nl: "Maten aanvullen", pl: "Uzupełnij rozmiary" },
-  "Check the page": { es: "Revisar la página", fr: "Vérifier la page", de: "Seite prüfen", it: "Controlla la pagina", pt: "Rever a página", nl: "Pagina controleren", pl: "Sprawdź stronę" },
-  "Check sizing / quality": { es: "Revisar tallaje / calidad", fr: "Vérifier tailles / qualité", de: "Größen / Qualität prüfen", it: "Controlla taglie / qualità", pt: "Rever tamanhos / qualidade", nl: "Maatvoering / kwaliteit controleren", pl: "Sprawdź rozmiary / jakość" },
+  "Reorder sizes": { es: "Volver a pedir tallas", fr: "Recommander les tailles", de: "Größen nachbestellen", it: "Riordina le taglie", pt: "Voltar a encomendar tamanhos", nl: "Maten nabestellen", pl: "Zamów ponownie rozmiary" },
+  "Review product page": { es: "Revisar la página del producto", fr: "Revoir la page produit", de: "Produktseite prüfen", it: "Rivedi la pagina prodotto", pt: "Rever a página do produto", nl: "Productpagina bekijken", pl: "Sprawdź stronę produktu" },
+  "Review sizing and quality": { es: "Revisar tallaje y calidad", fr: "Revoir tailles et qualité", de: "Größen und Qualität prüfen", it: "Rivedi taglie e qualità", pt: "Rever tamanhos e qualidade", nl: "Maatvoering en kwaliteit bekijken", pl: "Sprawdź rozmiary i jakość" },
   "Create discount": { es: "Crear descuento", fr: "Créer la remise", de: "Rabatt erstellen", it: "Crea sconto", pt: "Criar desconto", nl: "Korting aanmaken", pl: "Utwórz rabat" },
 
   // ---- Why ----
@@ -78,9 +78,9 @@ export const ACTIONS_TR: Record<string, Tr> = {
   "Please try again in a minute.": { es: "Vuelve a intentarlo en un minuto.", fr: "Veuillez réessayer dans une minute.", de: "Bitte versuch es in einer Minute erneut.", it: "Riprova tra un minuto.", pt: "Tente novamente daqui a um minuto.", nl: "Probeer het over een minuut opnieuw.", pl: "Spróbuj ponownie za minutę." },
 
   // ---- Clearances running ----
-  "Clearances running": { es: "Liquidaciones en curso", fr: "Déstockages en cours", de: "Laufende Abverkäufe", it: "Svendite in corso", pt: "Escoamentos em curso", nl: "Lopende opruimingen", pl: "Trwające wyprzedaże" },
+  "Active clearance discounts": { es: "Descuentos de liquidación activos", fr: "Remises de déstockage actives", de: "Aktive Abverkaufsrabatte", it: "Sconti di svendita attivi", pt: "Descontos de liquidação ativos", nl: "Actieve opruimingskortingen", pl: "Aktywne rabaty wyprzedażowe" },
   "Discount code {code}": { es: "Código de descuento {code}", fr: "Code de réduction {code}", de: "Rabattcode {code}", it: "Codice sconto {code}", pt: "Código de desconto {code}", nl: "Kortingscode {code}", pl: "Kod rabatowy {code}" },
   "Ends {date}": { es: "Termina el {date}", fr: "Se termine le {date}", de: "Endet am {date}", it: "Termina il {date}", pt: "Termina a {date}", nl: "Eindigt op {date}", pl: "Kończy się {date}" },
   "No end date": { es: "Sin fecha de fin", fr: "Sans date de fin", de: "Kein Enddatum", it: "Nessuna data di fine", pt: "Sem data de fim", nl: "Geen einddatum", pl: "Bez daty zakończenia" },
-  "Cash freed so far: {amount}": { es: "Dinero liberado hasta ahora: {amount}", fr: "Trésorerie libérée jusqu'ici : {amount}", de: "Bisher freigesetztes Kapital: {amount}", it: "Liquidità liberata finora: {amount}", pt: "Dinheiro libertado até agora: {amount}", nl: "Tot nu toe vrijgemaakt geld: {amount}", pl: "Dotąd uwolniona gotówka: {amount}" },
+  "Cash recovered so far: {amount}": { es: "Dinero recuperado hasta ahora: {amount}", fr: "Trésorerie récupérée jusqu'ici : {amount}", de: "Bisher zurückgewonnenes Kapital: {amount}", it: "Liquidità recuperata finora: {amount}", pt: "Dinheiro recuperado até agora: {amount}", nl: "Tot nu toe teruggewonnen geld: {amount}", pl: "Dotąd odzyskana gotówka: {amount}" },
 };

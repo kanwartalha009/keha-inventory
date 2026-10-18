@@ -534,13 +534,13 @@ export function productStockResponse(
 
 export const KIND_WORDS: Record<string, string> = {
   reorder: "Reorder",
-  bridge: "While sold out: collect back-in-stock sign-ups until stock arrives",
-  push: "Promote (products with healthy stock)",
-  fix_falling: "Fix: falling sales",
-  fix_sizes: "Fix: missing sizes",
-  fix_page: "Fix: product page",
-  fix_returns: "Fix: returns",
-  clear: "Clear (discount slow or dead stock)",
+  bridge: "Stock gap: collect back-in-stock sign-ups until stock arrives",
+  push: "Promote (products with enough stock)",
+  fix_falling: "Product issue: falling sales",
+  fix_sizes: "Product issue: missing sizes",
+  fix_page: "Product issue: product page",
+  fix_returns: "Product issue: returns",
+  clear: "Clearance (discount overstock or dead stock)",
 };
 
 export type ActionIn = {
