@@ -223,15 +223,7 @@ export const PO_TR: Record<string, Tr> = {
     nl: "{received} van {ordered} ontvangen · {remaining} nog onderweg",
     pl: "Przyjęto {received} z {ordered} · jeszcze {remaining} w drodze",
   },
-  "Sent orders can't be changed: your supplier already has them. If less arrives, receive what came and close the rest as short.": {
-    es: "Los pedidos enviados no se pueden cambiar: tu proveedor ya los tiene. Si llega menos, recibe lo que haya llegado y cierra el resto como faltante.",
-    fr: "Les commandes envoyées ne peuvent pas être modifiées : votre fournisseur les a déjà. S'il arrive moins, réceptionnez ce qui est arrivé et clôturez le reste comme manquant.",
-    de: "Gesendete Bestellungen lassen sich nicht ändern: dein Lieferant hat sie schon. Kommt weniger an, buche das Angekommene ein und schließe den Rest als Fehlmenge ab.",
-    it: "Gli ordini inviati non si possono modificare: il fornitore li ha già. Se arriva meno, ricevi ciò che è arrivato e chiudi il resto come mancante.",
-    pt: "As encomendas enviadas não podem ser alteradas: o fornecedor já as tem. Se chegar menos, receba o que chegou e feche o resto como em falta.",
-    nl: "Verzonden bestellingen kun je niet wijzigen: je leverancier heeft ze al. Komt er minder binnen, ontvang dan wat er kwam en sluit de rest af als tekort.",
-    pl: "Wysłanych zamówień nie można zmienić: dostawca już je ma. Jeśli dotrze mniej, przyjmij to, co przyszło, a resztę zamknij jako brak.",
-  },
+  "Ordered purchase orders can't be changed: your supplier already has them. If less arrives, receive what came and close the rest as short.": { es: "Las órdenes de compra pedidas no se pueden cambiar: tu proveedor ya las tiene. Si llega menos, recibe lo que haya llegado y cierra el resto como faltante.", fr: "Les bons de commande commandés ne peuvent pas être modifiés : votre fournisseur les a déjà. S'il arrive moins, réceptionnez ce qui est arrivé et clôturez le reste comme manquant.", de: "Bestellte Bestellungen lassen sich nicht ändern: dein Lieferant hat sie schon. Kommt weniger an, buche das Angekommene ein und schließe den Rest als Fehlmenge ab.", it: "Gli ordini d'acquisto già ordinati non si possono modificare: il fornitore li ha già. Se arriva meno, ricevi ciò che è arrivato e chiudi il resto come mancante.", pt: "As notas de encomenda já encomendadas não podem ser alteradas: o fornecedor já as tem. Se chegar menos, receba o que chegou e feche o resto como em falta.", nl: "Bestelde inkooporders kun je niet wijzigen: je leverancier heeft ze al. Komt er minder binnen, ontvang dan wat er kwam en sluit de rest af als tekort.", pl: "Zamówionych zamówień zakupu nie można zmienić: dostawca już je ma. Jeśli dotrze mniej, przyjmij to, co przyszło, a resztę zamknij jako brak." },
   "Closed with {n} units not delivered.": {
     es: "Cerrado con {n} unidades sin entregar.",
     fr: "Clôturée avec {n} unités non livrées.",
@@ -250,19 +242,11 @@ export const PO_TR: Record<string, Tr> = {
     nl: "Automatisch ontvangen op {date}: de voorraad van elke regel steeg nadat de aankomstperiode begon.",
     pl: "Przyjęto automatycznie {date}: stan każdej pozycji wzrósł po otwarciu okna dostawy.",
   },
-  "Received automatically on {date}: stock for every line rose after the arrival window opened. Not right? Re-open the order until {until}.": {
-    es: "Recibido automáticamente el {date}: el stock de cada línea subió después de abrirse el periodo de llegada. ¿No es correcto? Reabre el pedido hasta el {until}.",
-    fr: "Reçue automatiquement le {date} : le stock de chaque ligne a augmenté après l'ouverture de la période d'arrivée. Erreur ? Rouvrez la commande jusqu'au {until}.",
-    de: "Automatisch erhalten am {date}: Der Bestand jeder Position stieg, nachdem das Ankunftsfenster begonnen hatte. Stimmt nicht? Öffne die Bestellung bis {until} wieder.",
-    it: "Ricevuto automaticamente il {date}: lo stock di ogni riga è aumentato dopo l'apertura del periodo di arrivo. Non è corretto? Riapri l'ordine entro il {until}.",
-    pt: "Recebida automaticamente a {date}: o stock de cada linha subiu depois de abrir o período de chegada. Não está certo? Reabra a encomenda até {until}.",
-    nl: "Automatisch ontvangen op {date}: de voorraad van elke regel steeg nadat de aankomstperiode begon. Klopt dit niet? Heropen de bestelling tot {until}.",
-    pl: "Przyjęto automatycznie {date}: stan każdej pozycji wzrósł po otwarciu okna dostawy. Coś się nie zgadza? Otwórz zamówienie ponownie do {until}.",
-  },
+  "Received automatically on {date}: stock for every line rose after the arrival window opened. Not right? Reopen the order until {until}.": { es: "Recibido automáticamente el {date}: el stock de cada línea subió después de abrirse el periodo de llegada. ¿No es correcto? Reabre el pedido hasta el {until}.", fr: "Reçue automatiquement le {date} : le stock de chaque ligne a augmenté après l'ouverture de la période d'arrivée. Erreur ? Rouvrez la commande jusqu'au {until}.", de: "Automatisch erhalten am {date}: Der Bestand jeder Position stieg, nachdem das Ankunftsfenster begonnen hatte. Stimmt nicht? Öffne die Bestellung bis {until} wieder.", it: "Ricevuto automaticamente il {date}: lo stock di ogni riga è aumentato dopo l'apertura del periodo di arrivo. Non è corretto? Riapri l'ordine entro il {until}.", pt: "Recebida automaticamente a {date}: o stock de cada linha subiu depois de abrir o período de chegada. Não está certo? Reabra a encomenda até {until}.", nl: "Automatisch ontvangen op {date}: de voorraad van elke regel steeg nadat de aankomstperiode begon. Klopt dit niet? Heropen de bestelling tot {until}.", pl: "Przyjęto automatycznie {date}: stan każdej pozycji wzrósł po otwarciu okna dostawy. Coś się nie zgadza? Otwórz zamówienie ponownie do {until}." },
 
   // ---- Order page: re-open and cancel ----
-  "Re-open order": { es: "Reabrir pedido", fr: "Rouvrir la commande", de: "Bestellung wieder öffnen", it: "Riapri ordine", pt: "Reabrir encomenda", nl: "Bestelling heropenen", pl: "Otwórz ponownie" },
-  "Re-open {number}?": { es: "¿Reabrir {number}?", fr: "Rouvrir {number} ?", de: "{number} wieder öffnen?", it: "Riaprire {number}?", pt: "Reabrir {number}?", nl: "{number} heropenen?", pl: "Otworzyć ponownie {number}?" },
+  "Reopen order": { es: "Reabrir pedido", fr: "Rouvrir la commande", de: "Bestellung wieder öffnen", it: "Riapri ordine", pt: "Reabrir encomenda", nl: "Bestelling heropenen", pl: "Otwórz ponownie" },
+  "Reopen {number}?": { es: "¿Reabrir {number}?", fr: "Rouvrir {number} ?", de: "{number} wieder öffnen?", it: "Riaprire {number}?", pt: "Reabrir {number}?", nl: "{number} heropenen?", pl: "Otworzyć ponownie {number}?" },
   "The order goes back to {status} and its units count as on order again.": {
     es: "El pedido vuelve a {status} y sus unidades vuelven a contar como pedidas.",
     fr: "La commande repasse en {status} et ses unités comptent à nouveau comme en commande.",
@@ -281,38 +265,13 @@ export const PO_TR: Record<string, Tr> = {
     nl: "De bestelling gaat terug naar {status} en de stuks tellen weer als besteld. Ontvangen stuks gaan terug naar de stand van vóór het afsluiten.",
     pl: "Zamówienie wraca do stanu {status}, a jego sztuki znów liczą się jako zamówione. Przyjęte sztuki wracają do stanu sprzed zamknięcia.",
   },
-  "You can re-open this order until {until}.": {
-    es: "Puedes reabrir este pedido hasta el {until}.",
-    fr: "Vous pouvez rouvrir cette commande jusqu'au {until}.",
-    de: "Du kannst diese Bestellung bis {until} wieder öffnen.",
-    it: "Puoi riaprire questo ordine entro il {until}.",
-    pt: "Pode reabrir esta encomenda até {until}.",
-    nl: "Je kunt deze bestelling heropenen tot {until}.",
-    pl: "Możesz ponownie otworzyć to zamówienie do {until}.",
-  },
-  "The order closes and the supplier link stops working. Keha doesn't tell the supplier, so let them know yourself. You can re-open it within {days} days.": {
-    es: "El pedido se cierra y el enlace del proveedor deja de funcionar. Keha no avisa al proveedor, así que avísale tú. Puedes reabrirlo durante {days} días.",
-    fr: "La commande est clôturée et le lien fournisseur cesse de fonctionner. Keha ne prévient pas le fournisseur : informez-le vous-même. Vous pouvez la rouvrir pendant {days} jours.",
-    de: "Die Bestellung wird geschlossen und der Lieferantenlink funktioniert nicht mehr. Keha informiert den Lieferanten nicht, sag ihm also selbst Bescheid. Du kannst sie innerhalb von {days} Tagen wieder öffnen.",
-    it: "L'ordine si chiude e il link del fornitore smette di funzionare. Keha non avvisa il fornitore, quindi avvisalo tu. Puoi riaprirlo entro {days} giorni.",
-    pt: "A encomenda fecha e a ligação do fornecedor deixa de funcionar. A Keha não avisa o fornecedor, por isso avise-o. Pode reabri-la durante {days} dias.",
-    nl: "De bestelling wordt gesloten en de leverancierslink werkt niet meer. Keha laat het de leverancier niet weten, dus doe dat zelf. Je kunt hem binnen {days} dagen heropenen.",
-    pl: "Zamówienie zostanie zamknięte, a link dla dostawcy przestanie działać. Keha nie powiadamia dostawcy, więc daj mu znać sam. Możesz je ponownie otworzyć w ciągu {days} dni.",
-  },
+  "You can reopen this order until {until}.": { es: "Puedes reabrir este pedido hasta el {until}.", fr: "Vous pouvez rouvrir cette commande jusqu'au {until}.", de: "Du kannst diese Bestellung bis {until} wieder öffnen.", it: "Puoi riaprire questo ordine entro il {until}.", pt: "Pode reabrir esta encomenda até {until}.", nl: "Je kunt deze bestelling heropenen tot {until}.", pl: "Możesz ponownie otworzyć to zamówienie do {until}." },
+  "The order closes and the supplier confirmation link stops working. Keha doesn't tell the supplier, so let them know yourself. You can reopen it within {days} days.": { es: "El pedido se cierra y el enlace de confirmación del proveedor deja de funcionar. Keha no avisa al proveedor, así que avísale tú. Puedes reabrirlo durante {days} días.", fr: "La commande est clôturée et le lien de confirmation fournisseur cesse de fonctionner. Keha ne prévient pas le fournisseur : informez-le vous-même. Vous pouvez la rouvrir pendant {days} jours.", de: "Die Bestellung wird geschlossen und der Bestätigungslink für den Lieferanten funktioniert nicht mehr. Keha informiert den Lieferanten nicht, sag ihm also selbst Bescheid. Du kannst sie innerhalb von {days} Tagen wieder öffnen.", it: "L'ordine si chiude e il link di conferma per il fornitore smette di funzionare. Keha non avvisa il fornitore, quindi avvisalo tu. Puoi riaprirlo entro {days} giorni.", pt: "A encomenda fecha e a ligação de confirmação para o fornecedor deixa de funcionar. A Keha não avisa o fornecedor, por isso avise-o. Pode reabri-la durante {days} dias.", nl: "De bestelling wordt gesloten en de bevestigingslink voor de leverancier werkt niet meer. Keha laat het de leverancier niet weten, dus doe dat zelf. Je kunt hem binnen {days} dagen heropenen.", pl: "Zamówienie zostanie zamknięte, a link potwierdzenia dla dostawcy przestanie działać. Keha nie powiadamia dostawcy, więc daj mu znać sam. Możesz je ponownie otworzyć w ciągu {days} dni." },
 
   // ---- Open orders tab ----
-  "Ships": { es: "Envío", fr: "Expédition", de: "Versand", it: "Spedizione", pt: "Envio", nl: "Verzending", pl: "Wysyłka" },
   "Value": { es: "Valor", fr: "Valeur", de: "Wert", it: "Valore", pt: "Valor", nl: "Waarde", pl: "Wartość" },
   "Age (days)": { es: "Antigüedad (días)", fr: "Âge (jours)", de: "Alter (Tage)", it: "Età (giorni)", pt: "Idade (dias)", nl: "Leeftijd (dagen)", pl: "Wiek (dni)" },
-  "Days since the order was sent; drafts: since created": {
-    es: "Días desde que se envió el pedido; borradores: desde que se crearon",
-    fr: "Jours depuis l'envoi de la commande ; brouillons : depuis leur création",
-    de: "Tage seit dem Senden der Bestellung; Entwürfe: seit dem Anlegen",
-    it: "Giorni dall'invio dell'ordine; bozze: dalla creazione",
-    pt: "Dias desde que a encomenda foi enviada; rascunhos: desde que foram criados",
-    nl: "Dagen sinds de bestelling is verzonden; concepten: sinds het aanmaken",
-    pl: "Dni od wysłania zamówienia; szkice: od utworzenia",
-  },
+  "Days since it was ordered; drafts: since created": { es: "Días desde que se pidió; borradores: desde que se crearon", fr: "Jours depuis la commande ; brouillons : depuis leur création", de: "Tage seit der Bestellung; Entwürfe: seit dem Anlegen", it: "Giorni dall'ordine; bozze: dalla creazione", pt: "Dias desde que foi encomendada; rascunhos: desde que foram criados", nl: "Dagen sinds het bestellen; concepten: sinds het aanmaken", pl: "Dni od zamówienia; szkice: od utworzenia" },
   "Expected arrival: the ship date plus the supplier's transit days, else the lead time": {
     es: "Llegada prevista: la fecha de envío más los días de tránsito del proveedor; si no, el plazo de entrega",
     fr: "Arrivée prévue : la date d'expédition plus les jours de transit du fournisseur, sinon le délai de livraison",
@@ -363,4 +322,6 @@ export const PO_TR: Record<string, Tr> = {
   // ---- Supplier email (neutral labels) ----
   "Ship date: {date}": { es: "Fecha de envío: {date}", fr: "Date d'expédition : {date}", de: "Versanddatum: {date}", it: "Data di spedizione: {date}", pt: "Data de envio: {date}", nl: "Verzenddatum: {date}", pl: "Data wysyłki: {date}" },
   "Expected arrival: ~{date}": { es: "Llegada prevista: ~{date}", fr: "Arrivée prévue : ~{date}", de: "Erwartete Ankunft: ~{date}", it: "Arrivo previsto: ~{date}", pt: "Chegada prevista: ~{date}", nl: "Verwachte aankomst: ~{date}", pl: "Przewidywana dostawa: ~{date}" },
+  "Closed": { es: "Cerrado", fr: "Clôturée", de: "Abgeschlossen", it: "Chiuso", pt: "Fechada", nl: "Gesloten", pl: "Zamknięte" },
+  "Purchase order": { es: "Orden de compra", fr: "Bon de commande", de: "Bestellung", it: "Ordine d'acquisto", pt: "Nota de encomenda", nl: "Inkooporder", pl: "Zamówienie zakupu" },
 };

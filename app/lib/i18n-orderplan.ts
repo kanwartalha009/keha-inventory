@@ -197,8 +197,8 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   // ---- Order now ----
   "Showing {supplier} only.": { es: "Solo se muestra {supplier}.", fr: "Seul {supplier} est affiché.", de: "Nur {supplier} wird angezeigt.", it: "Viene mostrato solo {supplier}.", pt: "Só é mostrado {supplier}.", nl: "Alleen {supplier} wordt getoond.", pl: "Pokazano tylko: {supplier}." },
   "Show all suppliers": { es: "Ver todos los proveedores", fr: "Voir tous les fournisseurs", de: "Alle Lieferanten anzeigen", it: "Mostra tutti i fornitori", pt: "Ver todos os fornecedores", nl: "Alle leveranciers tonen", pl: "Pokaż wszystkich dostawców" },
-  "Open orders: {n}": { es: "Pedidos abiertos: {n}", fr: "Commandes en cours : {n}", de: "Offene Bestellungen: {n}", it: "Ordini aperti: {n}", pt: "Encomendas em aberto: {n}", nl: "Open bestellingen: {n}", pl: "Otwarte zamówienia: {n}" },
-  "See open orders": { es: "Ver pedidos abiertos", fr: "Voir les commandes en cours", de: "Offene Bestellungen ansehen", it: "Vedi ordini aperti", pt: "Ver encomendas em aberto", nl: "Open bestellingen bekijken", pl: "Zobacz otwarte zamówienia" },
+  "Purchase orders: {n}": { es: "Órdenes de compra: {n}", fr: "Bons de commande : {n}", de: "Bestellungen: {n}", it: "Ordini d'acquisto: {n}", pt: "Notas de encomenda: {n}", nl: "Inkooporders: {n}", pl: "Zamówienia zakupu: {n}" },
+  "See purchase orders": { es: "Ver órdenes de compra", fr: "Voir les bons de commande", de: "Bestellungen ansehen", it: "Vedi ordini d'acquisto", pt: "Ver notas de encomenda", nl: "Inkooporders bekijken", pl: "Zobacz zamówienia zakupu" },
 
   // ---- Next 13 weeks ----
   "Every order your forecast needs in the next 13 weeks: by week and supplier, with the cash each week needs.": {
@@ -221,7 +221,6 @@ export const ORDERPLAN_TR: Record<string, Tr> = {
   },
   "Week by week": { es: "Semana a semana", fr: "Semaine par semaine", de: "Woche für Woche", it: "Settimana per settimana", pt: "Semana a semana", nl: "Week voor week", pl: "Tydzień po tygodniu" },
   "Nothing to order": { es: "Nada que pedir", fr: "Rien à commander", de: "Nichts zu bestellen", it: "Niente da ordinare", pt: "Nada a encomendar", nl: "Niets te bestellen", pl: "Nic do zamówienia" },
-  "Arrives": { es: "Llega", fr: "Arrivée", de: "Ankunft", it: "Arrivo", pt: "Chegada", nl: "Aankomst", pl: "Dostawa" },
   "Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, the trend, stock now and stock on order with its dates.": {
     es: "Fecha límite: el último día para pedir y que la entrega llegue antes de que tu stock baje de su nivel de seguridad. Basado en las ventas diarias con stock, la temporada del año pasado, la tendencia, el stock actual y el stock pedido con sus fechas.",
     fr: "Date limite : le dernier jour pour commander afin que la livraison arrive avant que votre stock passe sous son niveau de sécurité. Basé sur les ventes par jour en stock, la saison de l'an dernier, la tendance, le stock actuel et le stock commandé avec ses dates.",

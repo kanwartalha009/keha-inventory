@@ -193,7 +193,7 @@ export default function VariantDetailPage() {
     >
       {!forecast && <UpgradeBanner feature="forecast" />}
 
-      <FormCard title={t("Stock")} sub={t("Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.")}>
+      <FormCard title={t("Stock")} sub={t("Stock included in purchase orders: every active location unless you left it out in Settings → Locations.")}>
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">
@@ -201,7 +201,7 @@ export default function VariantDetailPage() {
             <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
             {row.onOrder > 0 && (
               <KvRow
-                label={t("On order with Keha")}
+                label={t("On order (Keha)")}
                 value={
                   row.onOrderArrival
                     ? fill(t("{n} · arrives {date}"), { n: formatCount(row.onOrder, locale), date: formatDay(row.onOrderArrival, locale) })

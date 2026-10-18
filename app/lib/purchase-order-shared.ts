@@ -589,13 +589,13 @@ export function poStatusLabel(status: string, t: T): string {
     case "draft":
       return t("Draft");
     case "sent":
-      return t("Sent");
+      return t("Ordered");
     case "confirmed":
       return t("Confirmed");
     case "received":
       return t("Received");
     case "cancelled":
-      return t("Cancelled");
+      return t("Canceled");
     default:
       return "—";
   }
@@ -618,12 +618,17 @@ export function poStatusTone(status: string): "neutral" | "info" | "success" | "
   }
 }
 
-/** The status badge, with the derived "Partially received" for sent / confirmed orders with units in. */
+/**
+ * The status badge, with two derived labels (no status of their own): "Partially received" for an
+ * ordered / confirmed order with units in, and "Closed" for a received order closed by hand with
+ * units still missing (shortUnits > 0) — "Received" would say they came.
+ */
 export function poStatusBadge(
-  o: { status: string; lines: readonly Pick<PoLine, "qty" | "received">[] },
+  o: { status: string; lines: readonly Pick<PoLine, "qty" | "received" | "autoReceived">[] },
   t: T,
 ): { label: string; tone: ReturnType<typeof poStatusTone> } {
   if (partiallyReceived(o)) return { label: t("Partially received"), tone: "info" };
+  if (shortUnits(o) > 0) return { label: t("Closed"), tone: "neutral" };
   return { label: poStatusLabel(o.status, t), tone: poStatusTone(o.status) };
 }
 

@@ -135,7 +135,7 @@ describe("Order page · after deleting a draft", () => {
 describe("Order page · sent and later", () => {
   it("sent: read-only lines, Receive items, cancel wording that is true", () => {
     const h = html(order(sent));
-    expect(h).toContain("Sent orders can&#x27;t be changed: your supplier already has them.");
+    expect(h).toContain("Ordered purchase orders can&#x27;t be changed: your supplier already has them.");
     expect(h).not.toContain("<s-number-field label=\"Quantity for");
     expect(h).toContain("Receive items");
     expect(h).toContain("Cancel order");
@@ -172,8 +172,9 @@ describe("Order page · sent and later", () => {
       { reopenTo: "sent" },
     );
     expect(h).toContain("Received automatically on Oct 16, 2026");
-    expect(h).toContain("Re-open the order until Nov 15, 2026.");
-    expect(h).toContain("Re-open order");
+    expect(h).toContain("Reopen the order until Nov 15, 2026.");
+    expect(h).toContain(">Received</s-badge>");
+    expect(h).toContain("Reopen order");
   });
 
   it("closed short and cancelled (re-open within 30 days)", () => {
@@ -182,9 +183,12 @@ describe("Order page · sent and later", () => {
       { reopenTo: "sent" },
     );
     expect(short).toContain("Closed with 3 units not delivered.");
+    expect(short).toContain(">Closed</s-badge>");
+    expect(short).not.toContain(">Received</s-badge>");
     const cancelled = html(order({ ...sent, status: "cancelled", cancelledAt: "2026-10-10T00:00:00Z" }), { reopenTo: "sent" });
-    expect(cancelled).toContain("You can re-open this order until Nov 9, 2026.");
-    expect(cancelled).toContain("Re-open order");
+    expect(cancelled).toContain("You can reopen this order until Nov 9, 2026.");
+    expect(cancelled).toContain(">Canceled</s-badge>");
+    expect(cancelled).toContain("Reopen order");
     expect(cancelled).not.toContain("can&#x27;t be undone");
   });
 
@@ -238,7 +242,7 @@ describe("Open orders tab", () => {
       ],
     };
     const h = render("/app/reorder/orders", "orders", OpenOrdersPage, data);
-    for (const col of ["Supplier", "Order", "Status", "Ships", "Arrives", "Units", "Value", "Age (days)"]) expect(h).toContain(col);
+    for (const col of ["Supplier", "Purchase order", "Status", "Ship date", "Expected arrival", "Units", "Value", "Age (days)"]) expect(h).toContain(col);
     expect(h).toContain("Expected Oct 12, 2026 — not received");
     expect(h).toContain("Partially received");
     expect(h).toContain("10 / 24");

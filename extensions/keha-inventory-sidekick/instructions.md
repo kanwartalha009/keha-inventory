@@ -33,4 +33,4 @@ Common combinations:
 
 - For any reorder answer, give the order-by date next to each supplier or product.
 - Name products and suppliers as returned.
-- Each result has a `url` (an `app:` link) to the page in the app where the merchant can see the details: a supplier's `url` opens Order now with those lines, the order plan's `url` opens the 13-week calendar, and purchase orders open under Open orders. Purchase orders are created and sent from those pages, after the merchant reviews and confirms them; these tools don't create them.
+- Each result has a `url` (an `app:` link) to the page in the app where the merchant can see the details: a supplier's `url` opens Order now with those lines, the order plan's `url` opens the 13-week calendar, and purchase orders open under Purchase orders. Purchase orders are created and sent from those pages, after the merchant reviews and confirms them; these tools don't create them.

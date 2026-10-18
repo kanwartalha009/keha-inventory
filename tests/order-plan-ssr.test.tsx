@@ -43,7 +43,7 @@ describe("Next 13 weeks", () => {
     expect(html).toMatch(/Oct 12\s–\s18/); // this ISO week (Intl uses thin spaces)
     expect(html).toContain("Overdue");
     expect(html).toContain("Lisbon Linen");
-    expect(html).toContain("Create order");
+    expect(html).toContain("Create purchase order");
     // Create order → Order now with that supplier's orders of the week (resolved on the server).
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     // Each line: its real deadline and "Why this quantity" from the plan's own terms.

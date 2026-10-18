@@ -341,7 +341,7 @@ export function previewRows(data: Pick<OrderPlanData, "events" | "variants">, li
 
 /** The 90-day plan as CSV (headers in the admin language; unknown costs left empty, never 0). */
 export function planCsv(data: OrderPlanData, t: T): string {
-  const header = [t("Week of"), t("Order by"), t("Arrives"), t("Supplier"), t("Product"), t("Variant"), t("SKU"), t("Quantity"), t("Unit cost"), t("Line total"), t("Currency")];
+  const header = [t("Week of"), t("Order by"), t("Expected arrival"), t("Supplier"), t("Product"), t("Variant"), t("SKU"), t("Quantity"), t("Unit cost"), t("Line total"), t("Currency")];
   const rows = planWeeks(data).flatMap((w) =>
     w.suppliers.flatMap((s) =>
       s.events.map((e) => {

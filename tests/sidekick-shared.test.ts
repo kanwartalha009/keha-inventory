@@ -328,9 +328,9 @@ describe("other tools", () => {
     const ctx = { status: null, supplier: null, today: TODAY, storeCurrency: "EUR" };
     const all = purchaseOrdersResponse(rows, ctx);
     expect(all.results!.map((r) => [r.name, r._meta.status, r._meta.created_in])).toEqual([
-      ["PO-0001 — Acme", "Sent", "Keha"],
+      ["PO-0001 — Acme", "Ordered", "Keha"],
       ["#PO-7", "Ordered", "Shopify"],
-      ["PO-0002 — Pacific", "Draft (not sent yet)", "Keha"],
+      ["PO-0002 — Pacific", "Draft (not ordered yet)", "Keha"],
     ]);
     expect(all.results![1]!._meta).toMatchObject({ value: null, currency: "EUR", url: "app://app/reorder/po2" });
     expect(purchaseOrdersResponse(rows, { ...ctx, status: "draft" }).results).toHaveLength(1);

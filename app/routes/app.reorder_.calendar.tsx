@@ -8,9 +8,9 @@
  * cash, order-by range) that opens to its suppliers and lines. Each order sits on its own
  * order-by date (ordering audit 2026-10-17), with the supplier's minimums applied, so the first
  * week is Order now. Every line has "Why this quantity" and last year's sales in the same weeks.
- * "Create order" opens Order now with that supplier's orders of the week (a supplier + date
+ * "Create purchase order" opens Order now with that supplier's orders of the week (a supplier + date
  * range the Order now loader resolves — nothing is cut off) — the purchase order is only created
- * after the merchant confirms there. "Build supplier order" opens the supplier order builder for
+ * after the merchant confirms there. "Build purchase order" opens the supplier order builder for
  * that supplier-week (/app/reorder/build: the week's orders plus everything due within the
  * supplier's order cycle after it, in one purchase order). Unknown costs are "—" and counted, never 0. Free keeps the
  * tab bar and sees what the tab does, with its own plan in numbers.
@@ -237,7 +237,7 @@ function WeekRow({ week, paid, plan, initiallyOpen }: { week: PlanWeek; paid: Pa
               {[
                 fill(t("Paid this week: {amount}"), { amount: money(paid.total) }),
                 fill(t("orders of this week: {amount}"), { amount: money(week.cash) }),
-                paid.committed > 0 ? fill(t("{amount} on open orders"), { amount: money(paid.committed) }) : null,
+                paid.committed > 0 ? fill(t("{amount} on open purchase orders"), { amount: money(paid.committed) }) : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -295,10 +295,10 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
           </s-stack>
           <span className="keha-inline">
             <s-button variant="secondary" {...link(builderLink(s.supplierKey, { from: s.orderByFrom, to: s.orderByTo }))}>
-              {t("Build supplier order")}
+              {t("Build purchase order")}
             </s-button>
             <s-button variant="secondary" {...link(orderLink(s.events, s.supplierKey))}>
-              {t("Create order")}
+              {t("Create purchase order")}
             </s-button>
           </span>
         </div>
@@ -306,7 +306,7 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
             <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-by" label={t("Order by")} /></s-table-header>
-            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-arrives" label={t("Arrives")} /></s-table-header>
+            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-arrives" label={t("Expected arrival")} /></s-table-header>
             <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-qty" label={t("Quantity")} /></s-table-header>
             <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-cost" label={t("Cost")} /></s-table-header>
             <s-table-header><HeaderLabel id="keha-cal-why" label={t("Why")} hint={t("Why this quantity")} /></s-table-header>
@@ -390,7 +390,7 @@ function BudgetCard({ plan }: { plan: OrderPlanData }) {
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">{t("Month")}</s-table-header>
-          <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-out" label={t("Cash out")} hint={t("Paid in the month: orders to place and still due on open orders")} /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-out" label={t("Cash out")} hint={t("Paid in the month: orders to place and still due on open purchase orders")} /></s-table-header>
           <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-budget" label={t("Monthly budget")} /></s-table-header>
           <s-table-header listSlot="labeled"><HeaderLabel id="keha-bud-status" label={t("Status")} /></s-table-header>
           <s-table-header><HeaderLabel id="keha-bud-act" label={t("Actions")} /></s-table-header>
@@ -409,7 +409,7 @@ function BudgetCard({ plan }: { plan: OrderPlanData }) {
                 <s-table-cell>
                   <s-stack direction="block" gap="none">
                     <span>{money(m.total)}</span>
-                    {m.committed > 0 && <s-text color="subdued">{fill(t("{amount} on open orders"), { amount: money(m.committed) })}</s-text>}
+                    {m.committed > 0 && <s-text color="subdued">{fill(t("{amount} on open purchase orders"), { amount: money(m.committed) })}</s-text>}
                   </s-stack>
                 </s-table-cell>
                 <s-table-cell>{money(budget)}</s-table-cell>
@@ -479,7 +479,7 @@ function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
         <s-text color="subdued">
           {fit.fits
             ? fill(t("{month} would then be {amount}, within your budget."), { month, amount: money(fit.after) })
-            : fill(t("{month} would still be {amount}: what is due on open orders and orders that can't wait stay in it."), { month, amount: money(fit.after) })}
+            : fill(t("{month} would still be {amount}: what is due on open purchase orders and orders that can't wait stay in it."), { month, amount: money(fit.after) })}
         </s-text>
         <s-text color="subdued">{t("Lowest priority first: the least money at stake per day for the most days of stock left. Apply moves these orders in your plan; nothing changes in Shopify or for your suppliers, and you can undo it.")}</s-text>
         {failed && <s-text tone="critical">{t("This suggestion changed. Reload the page and try again.")}</s-text>}
@@ -545,7 +545,7 @@ function DeferralRow({ d, plan, money }: { d: Deferral; plan: OrderPlanData; mon
         <s-stack direction="block" gap="none">
           <s-text fontWeight="medium">{v?.productTitle ?? "—"}</s-text>
           {(variant || d.wholeOrder) && (
-            <s-text color="subdued">{[variant, d.wholeOrder ? t("with the rest of this supplier order") : null].filter(Boolean).join(" · ")}</s-text>
+            <s-text color="subdued">{[variant, d.wholeOrder ? t("with the rest of this purchase order") : null].filter(Boolean).join(" · ")}</s-text>
           )}
         </s-stack>
       </s-table-cell>

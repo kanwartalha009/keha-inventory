@@ -1,7 +1,7 @@
 /**
  * SSR: the supplier order builder (/app/reorder/build; consolidated supplier purchase order,
  * Kanwar 2026-10-17) on Growth and Free, in English and German, its loader and action plan
- * checks, and its entry points on Order now ("Build supplier order" on each supplier card, inside
+ * checks, and its entry points on Order now ("Build purchase order" on each supplier card, inside
  * "Can join this order" when there is one) and Next 13 weeks (per supplier-week).
  */
 import { describe, expect, it, vi } from "vitest";
@@ -65,7 +65,7 @@ describe("Supplier order builder (Growth)", () => {
     const html = page(growth(view()));
     expect(html).toContain('heading="Order from Acme Textiles"');
     expect(html).toMatch(/slot="breadcrumb-actions"[^>]*>Order now</);
-    expect(html).toMatch(/<s-button[^>]*slot="primary-action"[^>]*>Create draft order</);
+    expect(html).toMatch(/<s-button[^>]*slot="primary-action"[^>]*>Create purchase order</);
     expect(html).toContain("Due now");
     expect(html).toContain("Orders due in the next 7 days, overdue ones included.");
     expect(html).toContain("Due before your next order");
@@ -127,7 +127,7 @@ describe("Supplier order builder (Growth)", () => {
       </LocaleProvider>
     );
     const html = page(growth(view({ minOrderTotal: 200 })), German);
-    for (const k of ["Create draft order", "Due now", "Due before your next order", "Add products", "Minimum reached", "Order every", "This order"]) {
+    for (const k of ["Create purchase order", "Due now", "Due before your next order", "Add products", "Minimum reached", "Order every", "This order"]) {
       expect(translate("de", k), k).not.toBe(k);
       expect(html, k).toContain(esc(translate("de", k)));
     }
@@ -139,11 +139,11 @@ describe("Supplier order builder (Free): the teaching lock with the supplier's o
   it("what it does, the numbers, See plans — no lines", () => {
     const teaser = builderTeaser(view());
     const html = page({ enabled: false, teaser });
-    expect(html).toContain("Build supplier order · Growth plan");
+    expect(html).toContain("Build purchase order · Growth plan");
     expect(html).toContain(`Acme Textiles: 3 products to order in the next 30 days — ${teaser.units} units`);
     expect(html).toContain('href="/app/plans?upgrade=reorderPlan"');
     expect(html).not.toContain("Linen shirt");
-    expect(html).not.toContain("Create draft order");
+    expect(html).not.toContain("Create purchase order");
     const de = render(`/app/reorder/build?supplier=${KEY}`, "build", () => (
       <LocaleProvider defaultLocale="de">
         <Builder />
@@ -202,10 +202,10 @@ describe("entry points", () => {
 
   it("Order now: one 'Build supplier order' per supplier card — inside 'Can join this order' when it is there", () => {
     const html = render("/app/reorder", "reorder", Reorder, orderNow());
-    expect((html.match(/>Build supplier order</g) ?? []).length).toBe(2);
+    expect((html.match(/>Build purchase order</g) ?? []).length).toBe(2);
     expect(html).toContain('href="/app/reorder/build?supplier=supplier:s1"');
     expect(html).toContain('href="/app/reorder/build?supplier=vendor:beta"');
-    const join = html.slice(html.indexOf("Can join this order"));
+    const join = html.slice(html.indexOf("Due before next order"));
     expect(join.indexOf('href="/app/reorder/build?supplier=supplier:s1"')).toBeGreaterThan(-1);
     expect(join.indexOf('href="/app/reorder/build?supplier=supplier:s1"')).toBeLessThan(join.indexOf("</s-box>"));
   });
@@ -213,6 +213,6 @@ describe("entry points", () => {
   it("Next 13 weeks: each supplier-week opens the builder for that week", () => {
     const html = render("/app/reorder/calendar", "cal", OrderCalendar, { enabled: true, plan: orderPlanFixture() });
     expect(html).toMatch(/href="\/app\/reorder\/build\?supplier=supplier:s1&amp;from=\d{4}-\d{2}-\d{2}&amp;to=\d{4}-\d{2}-\d{2}"/);
-    expect(html).toContain("Build supplier order");
+    expect(html).toContain("Build purchase order");
   });
 });

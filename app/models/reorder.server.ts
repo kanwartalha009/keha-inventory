@@ -18,7 +18,7 @@
  *    ones linked to Shopify purchase orders).
  *  - Keha orders live only in our database (Shopify has no API to create a
  *    purchase order), so they are never in StockNow.incoming. They are shown
- *    separately as "On order with Keha", never added to Shopify's number.
+ *    separately as "On order (Keha)", never added to Shopify's number.
  *  - Purchase orders read from Shopify are listed under Open orders only;
  *    their units are not added anywhere (Shopify already counts them).
  */
@@ -141,7 +141,7 @@ export async function supplierTransit(shop: string): Promise<Map<string, number 
  * Units on open Keha orders per variant (ordered − received) and the earliest
  * arrival (confirmed ship date + the supplier's transit days, else the lead-time
  * estimate). `statuses`: draft/sent/confirmed for the order plan; sent/confirmed
- * for Products ("On order with Keha"). Drafts older than DRAFT_EXPIRY_DAYS (at `opts.now`,
+ * for Products ("On order (Keha)"). Drafts older than DRAFT_EXPIRY_DAYS (at `opts.now`,
  * default now) no longer count. The rule itself: supplier-shared onOrderByVariant.
  */
 export async function kehaOnOrder(
@@ -443,7 +443,7 @@ export async function insertWithNumber(
 export type CreateOrderResult = { ok: true; id: string; number: string } | { ok: false; error: "gone" | "empty" };
 
 /**
- * "Create order" for one supplier group (a Draft). The group and its lines
+ * "Create purchase order" for one supplier group (a Draft). The group and its lines
  * are re-read here; the browser only sends quantities, and only for
  * variants of that group.
  */
@@ -480,7 +480,7 @@ export async function shipToChoices(shop: string): Promise<ShipToLocation[]> {
 }
 
 /**
- * Purchase-order lines for these variants and quantities (Order now's "Create order", the supplier
+ * Purchase-order lines for these variants and quantities (Order now's "Create purchase order", the supplier
  * order builder): titles and SKU as snapshots, valued in the store currency from Shopify's cost
  * (audit 2026-10-17) — the order page, PDF, CSV, email and supplier page convert to the
  * supplier's currency when it has an exchange rate; a cost in another currency is unknown.

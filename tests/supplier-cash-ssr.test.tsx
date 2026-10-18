@@ -55,9 +55,9 @@ describe("Next 13 weeks with payment terms", () => {
     expect(s.committed).toBe(900);
     expect(html).toContain("Cash needed, next 13 weeks: €");
     expect(html).toContain("Orders to place");
-    expect(html).toContain("Still due on open orders");
+    expect(html).toContain("Still due on open purchase orders");
     expect(html).toContain("keha-chart__bar--committed");
-    expect(html).toMatch(/€[\d,]+ for orders to place · €900 still due on open orders/);
+    expect(html).toMatch(/€[\d,]+ for orders to place · €900 still due on open purchase orders/);
     expect(html).toMatch(/Includes €[\d,]+ freight &amp; duty\./);
     expect(html).toContain("30% deposit, 70% at shipment + 10% freight &amp; duty");
     expect(html).toMatch(/\+ €[\d,]+ freight &amp; duty/);

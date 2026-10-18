@@ -337,12 +337,12 @@ function OrderView({ data }: { data: OrderPageView }) {
       : canCompose
         ? button(openCompose, t("Open in your email"), true, false, dirty)
         : can("sent")
-          ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), true, false, dirty)
+          ? button({ kind: "transition", to: "sent" }, t("Mark as ordered"), true, false, dirty)
           : undefined
     : canReceive
       ? button(openReceive, t("Receive items"), true)
       : reopenTo
-        ? button({ kind: "reopen", to: reopenTo }, t("Re-open order"), true)
+        ? button({ kind: "reopen", to: reopenTo }, t("Reopen order"), true)
         : undefined;
   const secondary = [
     keha && features.poExport ? (
@@ -355,7 +355,7 @@ function OrderView({ data }: { data: OrderPageView }) {
     keha && features.poExport ? (
       <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />
     ) : null,
-    draft && (canEmail || canCompose) && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as sent"), false, false, dirty) : null,
+    draft && (canEmail || canCompose) && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as ordered"), false, false, dirty) : null,
     // With a provider the app's own send stays first; "Open in your email" is the second way.
     canCompose && (canEmail || !draft) ? button(openCompose, t("Open in your email"), false, false, dirty) : null,
     !draft && canEmail ? button({ kind: "email" }, t("Email again")) : null,
@@ -371,7 +371,7 @@ function OrderView({ data }: { data: OrderPageView }) {
         title: fill(t("Email {number} to {supplier}?"), { number: order.number, supplier: supplierName }),
         message:
           order.status === "draft"
-            ? t("The supplier gets the order and a link to confirm the ship date. The order is marked as sent.")
+            ? t("The supplier gets the order and a link to confirm the ship date. The order is marked as ordered.")
             : t("The supplier gets the order and the link to confirm the ship date again."),
         label: t("Send email"),
         destructive: false,
@@ -385,22 +385,22 @@ function OrderView({ data }: { data: OrderPageView }) {
       };
     if (p.kind === "reopen")
       return {
-        title: fill(t("Re-open {number}?"), { number: order.number }),
+        title: fill(t("Reopen {number}?"), { number: order.number }),
         message:
           order.status === "received"
             ? fill(t("The order goes back to {status} and its units count as on order again. Received units go back to what they were before it closed."), {
                 status: poStatusLabel(p.to, t),
               })
             : fill(t("The order goes back to {status} and its units count as on order again."), { status: poStatusLabel(p.to, t) }),
-        label: t("Re-open order"),
+        label: t("Reopen order"),
         destructive: false,
       };
     switch (p.to) {
       case "sent":
         return {
-          title: fill(t("Mark {number} as sent?"), { number: order.number }),
-          message: t("Do this when you have sent the order yourself, for example as a PDF. The supplier link starts working and the expected arrival is set from the lead time."),
-          label: t("Mark as sent"),
+          title: fill(t("Mark {number} as ordered?"), { number: order.number }),
+          message: t("Do this when you have sent the order yourself, for example as a PDF. The supplier confirmation link starts working and the expected arrival is set from the lead time."),
+          label: t("Mark as ordered"),
           destructive: false,
         };
       case "confirmed":
@@ -413,7 +413,7 @@ function OrderView({ data }: { data: OrderPageView }) {
       default:
         return {
           title: fill(t("Cancel {number}?"), { number: order.number }),
-          message: fill(t("The order closes and the supplier link stops working. Keha doesn't tell the supplier, so let them know yourself. You can re-open it within {days} days."), {
+          message: fill(t("The order closes and the supplier confirmation link stops working. Keha doesn't tell the supplier, so let them know yourself. You can reopen it within {days} days."), {
             days: REOPEN_DAYS,
           }),
           label: t("Cancel order"),
@@ -458,18 +458,18 @@ function OrderView({ data }: { data: OrderPageView }) {
   return (
     <AppPage
       heading={order.number}
-      breadcrumb={{ label: t("Open orders"), to: "/app/reorder/orders" }}
+      breadcrumb={{ label: t("Purchase orders"), to: "/app/reorder/orders" }}
       meta={
         <s-stack direction="inline" gap="small-200">
           <s-badge tone={badge.tone}>{badge.label}</s-badge>
-          {!keha && <s-badge tone="neutral">{t("From Shopify")}</s-badge>}
+          {!keha && <s-badge tone="neutral">{t("Shopify PO")}</s-badge>}
         </s-stack>
       }
       intro={supplierName}
       primaryAction={primary}
       secondaryActions={secondary}
     >
-      <SampleOffNote>{t("In sample data you can draft orders, but nothing is emailed, sent or received.")}</SampleOffNote>
+      <SampleOffNote>{t("In sample data you can create purchase orders, but nothing is emailed, sent or received.")}</SampleOffNote>
       {!keha && (
         <s-banner tone="info">{t("This order comes from Shopify. Change it in Shopify; we read it again every night.")}</s-banner>
       )}
@@ -494,7 +494,7 @@ function OrderView({ data }: { data: OrderPageView }) {
         <s-banner tone="info">
           {fill(
             reopenTo
-              ? t("Received automatically on {date}: stock for every line rose after the arrival window opened. Not right? Re-open the order until {until}.")
+              ? t("Received automatically on {date}: stock for every line rose after the arrival window opened. Not right? Reopen the order until {until}.")
               : t("Received automatically on {date}: stock for every line rose after the arrival window opened."),
             { date: formatDay(order.receivedAt?.slice(0, 10) ?? null, locale), until: reopenUntil(order.receivedAt) },
           )}
@@ -504,7 +504,7 @@ function OrderView({ data }: { data: OrderPageView }) {
         <s-banner tone="info">{fill(plural(short, t("Closed with 1 unit not delivered."), t("Closed with {n} units not delivered.")), { n: formatCount(short, locale) })}</s-banner>
       )}
       {keha && order.status === "cancelled" && reopenTo && (
-        <s-banner tone="info">{fill(t("You can re-open this order until {until}."), { until: reopenUntil(order.cancelledAt) })}</s-banner>
+        <s-banner tone="info">{fill(t("You can reopen this order until {until}."), { until: reopenUntil(order.cancelledAt) })}</s-banner>
       )}
       {mins?.total && (
         <s-banner tone="warning">
@@ -544,10 +544,10 @@ function OrderView({ data }: { data: OrderPageView }) {
         <div className="keha-kv keha-kv--flush">
           <KvRow label={t("Supplier")} value={supplierName} />
           <KvRow label={t("Created")} value={formatDay(order.createdAt.slice(0, 10), locale)} />
-          <KvRow label={t("Sent")} value={formatDay(order.sentAt?.slice(0, 10) ?? null, locale)} />
+          <KvRow label={t("Ordered")} value={formatDay(order.sentAt?.slice(0, 10) ?? null, locale)} />
           <KvRow label={t("Delivery")} value={delivery} />
           {order.receivedAt && <KvRow label={t("Received")} value={formatDay(order.receivedAt.slice(0, 10), locale)} />}
-          {order.cancelledAt && <KvRow label={t("Cancelled")} value={formatDay(order.cancelledAt.slice(0, 10), locale)} />}
+          {order.cancelledAt && <KvRow label={t("Canceled")} value={formatDay(order.cancelledAt.slice(0, 10), locale)} />}
           {keha && !draft && <KvRow label={t("Ship to")} value={data.shipTo?.choices.find((c) => c.id === data.shipTo?.current)?.name ?? "—"} />}
           {keha && !draft && order.note && <KvRow label={t("Note to the supplier")} value={order.note} />}
         </div>
@@ -560,7 +560,7 @@ function OrderView({ data }: { data: OrderPageView }) {
 
       {keha && link && (
         <FormCard
-          title={t("Supplier link")}
+          title={t("Supplier confirmation link")}
           sub={fill(
             hidePrices
               ? t("Your supplier sees only this order, without prices, and picks the ship date. No login. Works until {date}.")
@@ -569,7 +569,7 @@ function OrderView({ data }: { data: OrderPageView }) {
           )}
         >
           <s-stack direction="block" gap="base">
-            <s-text-field label={t("Supplier link")} labelAccessibilityVisibility="exclusive" value={link} readOnly />
+            <s-text-field label={t("Supplier confirmation link")} labelAccessibilityVisibility="exclusive" value={link} readOnly />
             <s-stack direction="inline" gap="small" alignItems="center">
               <s-button icon="clipboard" onClick={copyLink}>
                 {t("Copy link")}
@@ -587,7 +587,7 @@ function OrderView({ data }: { data: OrderPageView }) {
           draft
             ? t("Change quantities or remove lines, then save.")
             : keha && (order.status === "sent" || order.status === "confirmed")
-              ? t("Sent orders can't be changed: your supplier already has them. If less arrives, receive what came and close the rest as short.")
+              ? t("Ordered purchase orders can't be changed: your supplier already has them. If less arrives, receive what came and close the rest as short.")
               : undefined
         }
       >
@@ -802,7 +802,7 @@ function OrderView({ data }: { data: OrderPageView }) {
 
 /**
  * "Open in your email": what the email says (to, subject, message), then a link that opens it in
- * the merchant's email app. A draft is never marked sent here — after opening, "Mark as sent"
+ * the merchant's email app. A draft is never marked sent here — after opening, "Mark as ordered"
  * leads to the usual confirm. "Copy message" is for webmail without a mailto handler.
  */
 export function ComposeModal(props: {
@@ -848,7 +848,7 @@ export function ComposeModal(props: {
       primaryAction={
         markSent ? (
           <s-button variant="primary" onClick={props.onMarkSent}>
-            {t("Mark as sent")}
+            {t("Mark as ordered")}
           </s-button>
         ) : (
           openButton(true)
@@ -870,10 +870,10 @@ export function ComposeModal(props: {
             {t("This opens a new email in your own email app, from your own address, so the supplier replies straight to you.")}
           </s-paragraph>
           {markSent && (
-            <s-banner tone="info">{t("Did you send it? Mark the order as sent so it counts as ordered and the supplier link starts working.")}</s-banner>
+            <s-banner tone="info">{t("Did you send it? Mark it as ordered so its units count as on order and the supplier confirmation link starts working.")}</s-banner>
           )}
           {!markSent && ready.draft && ready.hasLink && (
-            <s-text color="subdued">{t("The supplier link in the email starts working when you mark the order as sent.")}</s-text>
+            <s-text color="subdued">{t("The supplier confirmation link in the email starts working when you mark the order as ordered.")}</s-text>
           )}
           {!ready.hasLink && <s-text color="subdued">{t("Download the PDF and attach it to the email.")}</s-text>}
           {m.moreLines > 0 && (
@@ -929,7 +929,7 @@ function orderError(code: string, t: (s: string) => string): string {
     case "invalid":
       return t("Use a whole number, 0 or more.");
     case "sample":
-      return t("In sample data you can draft orders, but nothing is emailed, sent or received.");
+      return t("In sample data you can create purchase orders, but nothing is emailed, sent or received.");
     default:
       return t("This order doesn't exist any more.");
   }

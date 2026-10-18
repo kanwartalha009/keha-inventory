@@ -5,7 +5,7 @@
  * One supplier's order for its whole order cycle, from the same forward plan as Order now, Next
  * 13 weeks, the Dashboard and Sidekick (models/order-plan.server computeOrderPlan): its lines due
  * now (or in a Next 13 weeks week), its lines due before its next order, and any of its products
- * the merchant adds. "Create draft order" saves ONE Keha draft with every line; "Add to PO-00xx"
+ * the merchant adds. "Create purchase order" saves ONE Keha draft with every line; "Add to PO-00xx"
  * adds the lines to the supplier's fresh draft instead. Either way the draft counts as ordered
  * while it is under 14 days old (supplier-shared poCountsAsOrdered), so its lines leave Order
  * now, Next 13 weeks, Products and Sidekick — every unit counted once. Nothing is sent to the
@@ -231,7 +231,7 @@ export type SupplierOrderResult =
   | { ok: true; id: string; number: string; added?: boolean }
   | { ok: false; error: "gone" | "empty" | "notFound" | "notAllowed" | "changed" | "invalid" | "nothing" };
 
-/** "Create draft order": ONE Keha draft for the supplier with every line (quantities re-checked here). */
+/** "Create purchase order": ONE Keha draft for the supplier with every line (quantities re-checked here). */
 export async function createSupplierDraft(
   shop: string,
   key: string,

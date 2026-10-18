@@ -133,20 +133,20 @@ describe("order page · Open in your email modal", () => {
     expect(h).toContain('target="_blank"');
     expect(h).toContain("from your own address, so the supplier replies straight to you");
     expect(h).toContain("4 lines are left out to keep the email short. The supplier sees every line at the order link.");
-    expect(h).toContain("The supplier link in the email starts working when you mark the order as sent.");
+    expect(h).toContain("The supplier confirmation link in the email starts working when you mark the order as ordered.");
     expect(h).toContain("Copy message");
     // Never marks sent by itself: Mark as sent only after the email was opened.
-    expect(h).not.toContain("Mark as sent");
+    expect(h).not.toContain("Mark as ordered");
   });
 
   it("after opening a draft's email: Mark as sent (it leads to the usual confirm)", () => {
     const h = modal(result(), true);
-    expect(h).toContain("Mark as sent");
+    expect(h).toContain("Mark as ordered");
     expect(h).toContain("Did you send it?");
   });
 
   it("a sent order: no Mark as sent; no saved email: says where to save one; while building: a wait line", () => {
-    expect(modal(result({ draft: false }), true)).not.toContain("Mark as sent");
+    expect(modal(result({ draft: false }), true)).not.toContain("Mark as ordered");
     const noTo = modal(result({ mailto: { ...MAILTO, to: "" } }));
     expect(noTo).toContain("No email saved for this supplier.");
     expect(modal(undefined, false, true)).toContain("Preparing the email…");

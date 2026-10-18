@@ -26,7 +26,7 @@ export function orderPlanTabLabel(id: OrderPlanTabId, t: T): string {
     case "season":
       return t("Season plan");
     case "orders":
-      return t("Open orders");
+      return t("Purchase orders");
   }
 }
 

@@ -82,6 +82,11 @@ describe("partial receiving", () => {
     expect(r.close).toBe(true);
     expect(shortUnits({ status: "received", lines: r.lines })).toBe(20);
     expect(lineRemaining(r.lines[0]!)).toBe(20);
+    // Closed with units missing reads "Closed", not "Received" (derived, the status stays received).
+    expect(poStatusBadge({ status: "received", lines: r.lines }, t)).toEqual({ label: "Closed", tone: "neutral" });
+    const full = applyReceipt(lines, [100, 50], false);
+    if (!full.ok) throw new Error("expected ok");
+    expect(poStatusBadge({ status: "received", lines: full.lines }, t)).toEqual({ label: "Received", tone: "success" });
     // Close without receiving anything more (the supplier won't ship the rest).
     expect(applyReceipt(lines, [0, 0], true)).toMatchObject({ ok: true, close: true });
   });

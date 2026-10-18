@@ -112,7 +112,7 @@ export const STORES_TR: Record<string, Tr> = {
   },
 
   // ---- Location switcher (Products, Reorder) ----
-  "Stock counted in supplier orders": { es: "Stock que cuenta para los pedidos a proveedores", fr: "Stock pris en compte pour les commandes fournisseurs", de: "Bestand für Lieferantenbestellungen", it: "Stock conteggiato negli ordini ai fornitori", pt: "Stock contado nas encomendas a fornecedores", nl: "Voorraad voor leveranciersbestellingen", pl: "Stan liczony w zamówieniach u dostawców" },
+  "Stock included in purchase orders": { es: "Stock incluido en las órdenes de compra", fr: "Stock inclus dans les bons de commande", de: "In Bestellungen einbezogener Bestand", it: "Stock incluso negli ordini d'acquisto", pt: "Stock incluído nas notas de encomenda", nl: "Voorraad meegenomen in inkooporders", pl: "Stan uwzględniany w zamówieniach zakupu" },
   "Set up warehouses and stores": {
     es: "Configura almacenes y tiendas físicas",
     fr: "Configurer les entrepôts et les magasins",

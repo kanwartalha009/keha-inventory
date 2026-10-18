@@ -2,7 +2,7 @@
  * Settings → Locations (/app/settings/locations), spec §5.5.
  *
  * Every active location with:
- *  - "Counts in supplier orders" — an include / leave-out toggle on EVERY plan (audit
+ *  - "Included in purchase orders" — an include / leave-out toggle on EVERY plan (audit
  *    2026-10-17: supplier orders count every active location, POS stores included, so which
  *    stock counts is correctness, not a Pro feature). It writes the Location.onlinePool
  *    override (locations-shared onlinePoolForInclude); the rule is compute-shared
@@ -96,7 +96,7 @@ export default function LocationsSettings() {
       <FormCard
         flush
         title={t("Locations")}
-        sub={t("Choose which locations count in supplier orders. POS stores count too, unless you leave them out.")}
+        sub={t("Choose which locations are included in purchase orders. POS stores are included too, unless you leave them out.")}
       >
         {data.locations.length === 0 ? (
           <EmptyState heading={t("No active locations yet")} body={t("Your locations appear here once your store is read.")} />
@@ -104,7 +104,7 @@ export default function LocationsSettings() {
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">{t("Location")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Counts in supplier orders")}</s-table-header>
+              <s-table-header listSlot="labeled">{t("Included in purchase orders")}</s-table-header>
               <s-table-header listSlot="labeled">
                 <HeaderLabel
                   id="keha-locations-role"
@@ -129,9 +129,9 @@ export default function LocationsSettings() {
                     </s-table-cell>
                     <s-table-cell>
                       <s-checkbox
-                        label={t("Counts in supplier orders")}
+                        label={t("Included in purchase orders")}
                         labelAccessibilityVisibility="exclusive"
-                        accessibilityLabel={fill(t("Does {location} count in supplier orders?"), { location: l.name })}
+                        accessibilityLabel={fill(t("Is {location} included in purchase orders?"), { location: l.name })}
                         checked={flag(row.include)}
                         onChange={(e) => set(l.id, { include: isChecked(e) })}
                       />
@@ -158,11 +158,11 @@ export default function LocationsSettings() {
         <s-stack direction="block" gap="small">
           <s-paragraph color="subdued">
             {counting.length
-              ? fill(t("Counted in supplier orders now: {list}."), { list: counting.join(", ") })
-              : t("No location counts in supplier orders yet.")}
+              ? fill(t("Included in purchase orders now: {list}."), { list: counting.join(", ") })
+              : t("No location is included in purchase orders yet.")}
           </s-paragraph>
           <s-paragraph color="subdued">
-            {t("Supplier orders, sales per day and days left are worked out from the stock in every location that counts.")}
+            {t("Purchase orders, daily sales and days of stock are worked out from the stock in every included location.")}
           </s-paragraph>
           <s-paragraph color="subdued">
             {t("Warehouses and stores get their own plan: switch between them on Products and Order plan.")}

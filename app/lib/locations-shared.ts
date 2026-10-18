@@ -3,7 +3,7 @@
  *
  *  - Role per location: warehouse | store | other. Shopify can't tell us reliably which
  *    locations are POS stores, so every location starts as "other" and the merchant sets it.
- *  - "Counts in supplier orders" (Location.onlinePool override): one include / leave-out
+ *  - "Included in purchase orders" (Location.onlinePool override): one include / leave-out
  *    toggle per active location, on EVERY plan (audit 2026-10-17: which stock counts is
  *    correctness, not a Pro feature). The rule itself lives in compute-shared
  *    (countsForOnline); the toggle only writes the override (see onlinePoolForInclude).
@@ -143,7 +143,7 @@ export function locationsErrorText(error: LocationsFormError, t: T): string {
     case "unknown":
       return t("A location changed in Shopify. Reload the page and try again.");
     case "emptyPool":
-      return t("At least one location must count in supplier orders.");
+      return t("At least one location must be included in purchase orders.");
     case "rolesLocked":
       return t("Warehouse and store roles are on the Pro plan.");
   }

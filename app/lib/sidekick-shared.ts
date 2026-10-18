@@ -619,8 +619,8 @@ export function moneyResponse(m: MoneyIn, today: string): SidekickResponse {
 // ── Purchase orders ─────────────────────────────────────────────────────────
 
 export const PO_STATUS_WORDS: Record<string, string> = {
-  draft: "Draft (not sent yet)",
-  sent: "Sent",
+  draft: "Draft (not ordered yet)",
+  sent: "Ordered",
   confirmed: "Confirmed by the supplier",
 };
 

@@ -13,7 +13,7 @@
  * Quantities are editable; units, cost (store currency, and the supplier's with an exchange rate)
  * and the supplier's minimums (per style, units, money) update live, with what is missing and a
  * one-click top-up (the forward plan's own top-up functions). Each planned line keeps "Why this
- * quantity" and its order-by date. "Create draft order" (confirm with units and cost) saves ONE
+ * quantity" and its order-by date. "Create purchase order" (confirm with units and cost) saves ONE
  * Keha draft with every selected line and opens it; with a fresh draft for the supplier, "Add to
  * PO-00xx" adds the lines to it instead. Nothing is sent until the merchant emails the order or
  * marks it sent. The draft counts as ordered (under 14 days), so its lines leave Order now and
@@ -126,7 +126,7 @@ export default function SupplierOrderBuilder() {
   }
   if (!data.view) {
     return (
-      <AppPage heading={t("Build supplier order")} breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}>
+      <AppPage heading={t("Build purchase order")} breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}>
         <s-section>
           <EmptyState body={t("This supplier doesn't exist any more. Reload the page.")} />
         </s-section>
@@ -142,7 +142,7 @@ function BuilderLock({ teaser }: { teaser: BuilderTeaser | null }) {
   const link = useLinkProps();
   return (
     <s-section>
-      <s-empty-state heading={`${t("Build supplier order")} · ${planTag("reorderPlan", t)}`}>
+      <s-empty-state heading={`${t("Build purchase order")} · ${planTag("reorderPlan", t)}`}>
         <s-paragraph slot="subheading">
           {t("Pick a supplier and get one purchase order with everything due before your next order to it, topped up to its minimums.")}
         </s-paragraph>
@@ -259,7 +259,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
       title: t("Due before your next order"),
       sub: fill(t("Due by {date}. Order them now and send one order instead of several."), { date: formatDay(view.cycleTo, locale) }),
     },
-    { id: "added", title: t("Added by you"), sub: t("Products you added to this order.") },
+    { id: "added", title: t("Added manually"), sub: t("Products you added to this order.") },
   ];
   const planned = lines.filter((l) => l.section !== "added").length;
   const minimumsText = [
@@ -273,10 +273,10 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
       heading={fill(t("Order from {supplier}"), { supplier: title })}
       breadcrumb={{ label: t("Order now"), to: "/app/reorder" }}
       meta={view.kind === "vendor" ? <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge> : undefined}
-      intro={t("One purchase order for everything this supplier needs until your next order. Change quantities or add products, then create the draft. Nothing is sent until you email it or mark it as sent.")}
+      intro={t("One purchase order for everything this supplier needs until your next order. Change quantities or add products, then create the draft. Nothing is sent until you email it or mark it as ordered.")}
       primaryAction={
         <s-button variant="primary" disabled={flag(totals.units === 0 || busy)} loading={flag(busy)} onClick={() => setConfirm("create")}>
-          {t("Create draft order")}
+          {t("Create purchase order")}
         </s-button>
       }
       secondaryActions={
@@ -475,14 +475,14 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
       <ConfirmModal
         open={confirm === "create"}
         destructive={false}
-        title={fill(t("Create a draft order for {supplier}?"), { supplier: title })}
+        title={fill(t("Create a purchase order for {supplier}?"), { supplier: title })}
         message={[
-          fill(t("{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as sent."), { n: formatCount(totals.units, locale), cost: costText }),
+          fill(t("{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as ordered."), { n: formatCount(totals.units, locale), cost: costText }),
           totals.missingCost > 0 ? fill(plural(totals.missingCost, t("1 line without a cost price is not in this total."), t("{n} lines without a cost price are not in this total.")), { n: formatCount(totals.missingCost, locale) }) : null,
         ]
           .filter(Boolean)
           .join(" ")}
-        confirmLabel={t("Create draft order")}
+        confirmLabel={t("Create purchase order")}
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
           setConfirm(null);

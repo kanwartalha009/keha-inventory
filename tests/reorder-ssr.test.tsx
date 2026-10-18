@@ -83,10 +83,10 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toMatch(/Cost: €[\d.,]+/);
     expect(html).toContain("1 line without a cost price");
     expect(html).not.toContain("1 lines");
-    expect(html).toContain("Create order");
+    expect(html).toContain("Create purchase order");
     // The open orders list moved to its own tab (no duplicate): a count and a link stay.
     expect(html).not.toContain("PO-0001");
-    expect(html).toContain("Open orders: 2");
+    expect(html).toContain("Purchase orders: 2");
     expect(html).toContain('href="/app/reorder/orders"');
     for (const h of ["Stock now", "Incoming", "Days of stock left", "Quantity", "Unit cost", "Line total"]) expect(html).toContain(h);
     // DESIGN-RULES: short header with the long form in a tooltip; number columns right-aligned.
@@ -98,7 +98,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), belowMinimum: [{ supplierKey: "supplier:s1", supplier: "Acme Textiles", productTitle: "Lido swimsuit", units: 12, styleMin: 240 }] });
     expect(html).toContain("Below the supplier&#x27;s minimum — wait for the next season or add to a larger order");
     expect(html).toContain("Lido swimsuit: needs 12 of a minimum of 240 per style");
-    expect(html).toContain('<s-link href="/app/reorder/build?supplier=supplier:s1">Build supplier order</s-link>');
+    expect(html).toContain('<s-link href="/app/reorder/build?supplier=supplier:s1">Build purchase order</s-link>');
     expect(render("/app/reorder", "reorder", Reorder, reorderData())).not.toContain("Below the supplier");
   });
 
@@ -134,14 +134,14 @@ describe("Reorder page (Order plan · Order now)", () => {
     const acme = d.groups.find((g) => g.key === "supplier:s1")!;
     expect(acme.joinable.map((l) => [l.productTitle, l.orderBy, l.suggested])).toEqual([["Wool sock", "2026-10-24", 18]]);
     const html = render("/app/reorder", "reorder", Reorder, d);
-    expect(html).toContain("Can join this order (1)");
+    expect(html).toContain("Due before next order (1)");
     expect(html).toContain('aria-expanded="false"');
   });
 
   it("Create order's confirm shows units AND cost; the line menu: Don't reorder this product, with its own confirm", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData());
-    expect(html).toMatch(/Create a draft order for Acme Textiles\?/);
-    expect(html).toMatch(/\d+ units, €[\d.,]+\. Nothing is sent to the supplier until you email the order or mark it as sent\./);
+    expect(html).toMatch(/Create a purchase order for Acme Textiles\?/);
+    expect(html).toMatch(/\d+ units, €[\d.,]+\. Nothing is sent to the supplier until you email the order or mark it as ordered\./);
     expect(html).toContain("1 line without a cost price is not in this total.");
     expect(html).toContain("It stays in your stock numbers");
     expect(html).toContain("Don&#x27;t reorder this product");
@@ -177,7 +177,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Nothing to order today");
     expect(html).toContain("Next order: Acme Textiles by Oct 24, 2026.");
     expect(html).toContain('href="/app/reorder/calendar"');
-    expect(html).not.toContain("Open orders: ");
+    expect(html).not.toContain("Purchase orders: ");
     expect(render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], next: null })).toContain("No orders needed in the next 13 weeks.");
   });
 
@@ -206,7 +206,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     // Lines that exist anyway (a Season plan link) stay, under a banner that says the plan isn't ready.
     const lines = render("/app/reorder", "reorder", Reorder, { ...reorderData(), readiness: { ready: false, state: "noSales", readyOn: null } });
     expect(lines).toMatch(/<s-banner tone="info" heading="Your order plan isn&#x27;t ready yet"><s-text>Your first order plan needs 14 days of sales.<\/s-text>/);
-    expect(lines).toContain("Create order");
+    expect(lines).toContain("Create purchase order");
     // Free: the same, instead of "No orders needed".
     const free = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview: [], readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } });
     expect(free).toContain("Your first order plan needs 14 days of sales — expected on Oct 31, 2026.");
@@ -255,7 +255,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Your plan has 23 more products to order from 4 suppliers — €5,120 over the next 13 weeks.");
     expect(html).toContain('href="/app/plans?upgrade=reorderPlan"');
     // Read only: no quantities to edit, no purchase order, no CSV.
-    expect(html).not.toContain("Create order");
+    expect(html).not.toContain("Create purchase order");
     expect(html).not.toContain("<s-number-field");
     expect(html).not.toContain("Download CSV");
   });
@@ -297,15 +297,15 @@ describe("Open orders tab", () => {
       { id: "po2", number: "#PO7", source: "shopify", status: "sent", partial: false, supplierName: "Zeta", units: 10, remaining: 10, cost: null, currency: "EUR", ships: null, arrival: null, ageDays: 15, stale: false, overdue: false },
     ];
     const html = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders } satisfies OpenOrdersPageData);
-    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Open orders</);
+    expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Purchase orders</);
     expect(html).toContain("PO-0001");
-    expect(html).toContain("From Shopify");
+    expect(html).toContain("Shopify PO");
     expect(html).toContain('href="/app/reorder/po2"');
     expect(html).toContain("Expected arrival");
   });
 
   it("empty, and Free (the tab teaches)", () => {
-    expect(render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders: [] })).toContain("No open orders.");
+    expect(render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: true, orders: [] })).toContain("No open purchase orders.");
     const free = render("/app/reorder/orders", "orders", OpenOrdersPage, { enabled: false, orders: [] });
     expect(free).toContain("Purchase orders · Growth plan");
     expect(free).toContain("keha-tabs");
@@ -374,14 +374,14 @@ describe("Order page", () => {
     expect(html).toContain("Email supplier");
     expect(html).toContain("Open in your email");
     expect(html.indexOf("Email supplier")).toBeLessThan(html.indexOf("Open in your email"));
-    expect(html).toContain("Mark as sent");
+    expect(html).toContain("Mark as ordered");
     expect(html).toContain("Download PDF");
     expect(html).toContain("Download CSV");
     expect(html).toContain("Delete draft");
     expect(html).not.toContain("Cancel order");
     expect(html).toContain("Units: 18");
     expect(html).toContain("Cost: €36.00");
-    expect(html).not.toContain("Supplier link");
+    expect(html).not.toContain("Supplier confirmation link");
   });
 
   it("draft without an email provider: Open in your email is the primary action, never Email supplier", () => {
@@ -389,7 +389,7 @@ describe("Order page", () => {
     expect(html).not.toContain("Email supplier");
     expect(html).not.toContain("Email again");
     expect(html).toMatch(/variant="primary"[^>]*>Open in your email/);
-    expect(html).toContain("Mark as sent");
+    expect(html).toContain("Mark as ordered");
     // Also when the supplier has no saved email: the merchant types it in their email app.
     const noEmail = render("/app/reorder/po1", "order", OrderPage, pageData(order({ supplier: { ...order().supplier!, hasEmail: false } })));
     expect(noEmail).toContain("Open in your email");
@@ -421,7 +421,7 @@ describe("Order page", () => {
         emailProvider: true,
       }),
     );
-    expect(html).toContain("Supplier link");
+    expect(html).toContain("Supplier confirmation link");
     expect(html).toContain("https://inventory.keha.io/supplier/confirm/abc");
     expect(html).toContain("without prices");
     expect(html).toContain("Receive items");
@@ -443,7 +443,7 @@ describe("Order page", () => {
 
   it("Shopify orders are read-only", () => {
     const html = render("/app/reorder/po2", "order", OrderPage, pageData(order({ id: "po2", source: "shopify", status: "sent", number: "#PO7" })));
-    expect(html).toContain("From Shopify");
+    expect(html).toContain("Shopify PO");
     expect(html).toContain("This order comes from Shopify.");
     expect(html).not.toContain("Cancel order");
     expect(html).not.toContain("Download PDF");

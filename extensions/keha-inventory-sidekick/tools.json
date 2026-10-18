@@ -61,7 +61,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "get_purchase_orders",
-    "description": "Open purchase orders: drafts, sent and confirmed orders made in Keha, and Shopify purchase orders that are ordered but not received. Each has the order number, supplier, status, expected arrival date, units and value. Use for 'which purchase orders are still open' and 'when does my order from <supplier> arrive'.",
+    "description": "Open purchase orders: drafts, ordered and confirmed purchase orders made in Keha, and Shopify purchase orders that are ordered but not received. Each has the order number, supplier, status, expected arrival date, units and value. Use for 'which purchase orders are still open' and 'when does my order from <supplier> arrive'.",
     "inputSchema": {
       "type": "object",
       "properties": {

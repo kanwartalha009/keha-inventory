@@ -51,7 +51,7 @@ export function CashStrip({ cash, currency, compact }: { cash: PaidWeek[]; curre
         {bars.map((b, i) => {
           const w = cash[i]!;
           const low = w.total > 0 ? (b.height * w.committed) / w.total : 0;
-          const tip = `${formatWeekRange(b.week.weekStart, locale)}: ${money(w.total > 0 ? w.total : null)}${w.committed > 0 ? ` · ${fill(t("{amount} on open orders"), { amount: money(w.committed) })}` : ""}`;
+          const tip = `${formatWeekRange(b.week.weekStart, locale)}: ${money(w.total > 0 ? w.total : null)}${w.committed > 0 ? ` · ${fill(t("{amount} on open purchase orders"), { amount: money(w.committed) })}` : ""}`;
           return (
             <g key={b.week.weekStart}>
               {b.height > 0 && (
@@ -83,7 +83,7 @@ export function CashStrip({ cash, currency, compact }: { cash: PaidWeek[]; curre
           </span>
           <span className="keha-legend">
             <span className="keha-legend__swatch keha-legend__swatch--committed" />
-            <s-text color="subdued">{t("Still due on open orders")}</s-text>
+            <s-text color="subdued">{t("Still due on open purchase orders")}</s-text>
           </span>
         </s-stack>
       )}
@@ -99,7 +99,7 @@ export function CashBreakdown({ summary, currency }: { summary: CashSummary; cur
   const { t, locale } = useLocale();
   const money = (v: number) => formatAmount(v, currency, locale);
   const lines = [
-    summary.committed > 0 ? fill(t("{toPlan} for orders to place · {committed} still due on open orders"), { toPlan: money(summary.toPlan), committed: money(summary.committed) }) : null,
+    summary.committed > 0 ? fill(t("{toPlan} for orders to place · {committed} still due on open purchase orders"), { toPlan: money(summary.toPlan), committed: money(summary.committed) }) : null,
     summary.landed > 0 ? fill(t("Includes {amount} freight & duty."), { amount: money(summary.landed) }) : null,
     summary.later > 0 ? fill(t("{amount} more is paid after these 13 weeks (balances and freight of the later orders)."), { amount: money(summary.later) }) : null,
   ].filter((x): x is string => !!x);
@@ -277,7 +277,7 @@ export function StaleDrafts({ n }: { n: number | null | undefined }) {
             ? t("1 old draft (more than 14 days, never sent) is no longer counted as ordered.")
             : fill(t("{n} old drafts (more than 14 days, never sent) are no longer counted as ordered."), { n: formatCount(n, locale) })}
         </s-text>
-        <s-link {...link("/app/reorder/orders")}>{t("See open orders")}</s-link>
+        <s-link {...link("/app/reorder/orders")}>{t("See purchase orders")}</s-link>
       </s-stack>
     </s-banner>
   );

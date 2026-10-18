@@ -1,4 +1,4 @@
-/** Shopify purchase orders → PurchaseOrder rows (spec §6.3, §5.3 "From Shopify"). */
+/** Shopify purchase orders → PurchaseOrder rows (spec §6.3, §5.3 "Shopify PO"). */
 import { describe, expect, it } from "vitest";
 import {
   PO_LINE_PAGE_SIZE,

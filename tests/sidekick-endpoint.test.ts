@@ -332,7 +332,7 @@ describe("tools on Growth", () => {
   it("get_purchase_orders: open Keha and Shopify orders of this store only, soonest first", async () => {
     const r = await body("get_purchase_orders");
     expect(r.results!.map((x) => [x.name, x._meta.status, x._meta.expected_arrival])).toEqual([
-      ["PO-0001 — Acme Textiles", "Sent", "2026-11-01"],
+      ["PO-0001 — Acme Textiles", "Ordered", "2026-11-01"],
       ["#PO-7", "Ordered", null],
     ]);
     expect(r.results![0]!._meta).toMatchObject({ units: 20, value: 200, currency: "EUR", url: "app://app/reorder/po1" });

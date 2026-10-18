@@ -1,7 +1,7 @@
 /**
  * Order plan · Open orders (/app/reorder/orders; Kanwar 2026-10-17) — moved here from the
  * Reorder screen: Keha drafts, sent and confirmed orders and the purchase orders read from
- * Shopify ("From Shopify") that are ordered but not received, each linking to its order page
+ * Shopify ("Shopify PO") that are ordered but not received, each linking to its order page
  * (/app/reorder/:id).
  *
  * Merchant audit 2026-10-17: columns supplier, number, status, ships, arrives (ship date +
@@ -65,20 +65,20 @@ export function OpenOrders({ orders }: { orders: OpenOrderListRow[] }) {
           )}
         </s-banner>
       )}
-      <FormCard flush title={t("Open orders")}>
+      <FormCard flush title={t("Purchase orders")}>
         {orders.length === 0 ? (
-          <EmptyState body={t("No open orders. Orders you create here, and purchase orders in Shopify, show up here.")} />
+          <EmptyState body={t("No open purchase orders. Purchase orders you create in Keha, and those in Shopify, show up here.")} />
         ) : (
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="labeled">{t("Supplier")}</s-table-header>
-              <s-table-header listSlot="primary">{t("Order")}</s-table-header>
+              <s-table-header listSlot="primary">{t("Purchase order")}</s-table-header>
               <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
               <s-table-header listSlot="labeled">
-                <HeaderLabel id="keha-oo-ships" label={t("Ships")} hint={t("Ship date confirmed by the supplier")} />
+                <HeaderLabel id="keha-oo-ships" label={t("Ship date")} hint={t("Ship date confirmed by the supplier")} />
               </s-table-header>
               <s-table-header listSlot="labeled">
-                <HeaderLabel id="keha-oo-arrival" label={t("Arrives")} hint={t("Expected arrival: the ship date plus the supplier's transit days, else the lead time")} />
+                <HeaderLabel id="keha-oo-arrival" label={t("Expected arrival")} hint={t("Expected arrival: the ship date plus the supplier's transit days, else the lead time")} />
               </s-table-header>
               <s-table-header listSlot="labeled" format="numeric">
                 <HeaderLabel id="keha-oo-units" label={t("Units")} hint={t("Units still to come of the units ordered")} />
@@ -87,7 +87,7 @@ export function OpenOrders({ orders }: { orders: OpenOrderListRow[] }) {
                 {t("Value")}
               </s-table-header>
               <s-table-header listSlot="labeled" format="numeric">
-                <HeaderLabel id="keha-oo-age" label={t("Age (days)")} hint={t("Days since the order was sent; drafts: since created")} />
+                <HeaderLabel id="keha-oo-age" label={t("Age (days)")} hint={t("Days since it was ordered; drafts: since created")} />
               </s-table-header>
             </s-table-header-row>
             <s-table-body>
@@ -99,7 +99,7 @@ export function OpenOrders({ orders }: { orders: OpenOrderListRow[] }) {
                       <s-link {...link(`/app/reorder/${o.id}`)}>{o.number}</s-link>
                       {o.source === "shopify" && (
                         <span className="keha-nowrap">
-                          <s-badge tone="neutral">{t("From Shopify")}</s-badge>
+                          <s-badge tone="neutral">{t("Shopify PO")}</s-badge>
                         </span>
                       )}
                     </s-stack>

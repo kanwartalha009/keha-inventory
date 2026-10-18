@@ -240,15 +240,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     pl: "{n} modeli jest poniżej minimum {supplier} wynoszącego {min} szt. na model.",
   },
   "{product}: subtotal": { es: "{product}: total parcial", fr: "{product} : sous-total", de: "{product}: Zwischensumme", it: "{product}: subtotale", pt: "{product}: total parcial", nl: "{product}: subtotaal", pl: "{product}: suma częściowa" },
-  "{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as sent.": {
-    es: "{n} unidades, {cost}. No se envía nada al proveedor hasta que le mandes el pedido por email o lo marques como enviado.",
-    fr: "{n} unités, {cost}. Rien n'est envoyé au fournisseur tant que vous n'envoyez pas la commande par e-mail ou ne la marquez pas comme envoyée.",
-    de: "{n} Stück, {cost}. An den Lieferanten geht nichts, bis du die Bestellung per E-Mail schickst oder als gesendet markierst.",
-    it: "{n} pezzi, {cost}. Al fornitore non viene inviato nulla finché non invii l'ordine via email o lo segni come inviato.",
-    pt: "{n} unidades, {cost}. Nada é enviado ao fornecedor até enviar a encomenda por email ou marcá-la como enviada.",
-    nl: "{n} stuks, {cost}. Er gaat niets naar de leverancier tot je de bestelling mailt of als verzonden markeert.",
-    pl: "{n} szt., {cost}. Nic nie trafia do dostawcy, dopóki nie wyślesz zamówienia e-mailem lub nie oznaczysz go jako wysłane.",
-  },
+  "{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as ordered.": { es: "{n} unidades, {cost}. No se envía nada al proveedor hasta que le mandes el pedido por email o lo marques como pedido.", fr: "{n} unités, {cost}. Rien n'est envoyé au fournisseur tant que vous n'envoyez pas la commande par e-mail ou ne la marquez pas comme commandée.", de: "{n} Stück, {cost}. An den Lieferanten geht nichts, bis du die Bestellung per E-Mail schickst oder als bestellt markierst.", it: "{n} pezzi, {cost}. Al fornitore non viene inviato nulla finché non invii l'ordine via email o lo segni come ordinato.", pt: "{n} unidades, {cost}. Nada é enviado ao fornecedor até enviar a encomenda por email ou marcá-la como encomendada.", nl: "{n} stuks, {cost}. Er gaat niets naar de leverancier tot je de bestelling mailt of als besteld markeert.", pl: "{n} szt., {cost}. Nic nie trafia do dostawcy, dopóki nie wyślesz zamówienia e-mailem lub nie oznaczysz go jako zamówione." },
   "{n} lines without a cost price are not in this total.": {
     es: "{n} líneas sin precio de coste no están en este total.",
     fr: "{n} lignes sans prix de revient ne sont pas dans ce total.",
@@ -258,7 +250,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     nl: "{n} regels zonder kostprijs zitten niet in dit totaal.",
     pl: "{n} pozycji bez ceny zakupu nie wlicza się do tej sumy.",
   },
-  "Can join this order ({n})": { es: "Pueden ir en este pedido ({n})", fr: "Peuvent rejoindre cette commande ({n})", de: "Können mitbestellt werden ({n})", it: "Possono entrare in questo ordine ({n})", pt: "Podem juntar-se a esta encomenda ({n})", nl: "Kunnen mee in deze bestelling ({n})", pl: "Mogą dołączyć do tego zamówienia ({n})" },
+  "Due before next order ({n})": { es: "Vencen antes del próximo pedido ({n})", fr: "Avant la prochaine commande ({n})", de: "Fällig vor der nächsten Bestellung ({n})", it: "In scadenza prima del prossimo ordine ({n})", pt: "Vencem antes da próxima encomenda ({n})", nl: "Nodig vóór de volgende bestelling ({n})", pl: "Termin przed następnym zamówieniem ({n})" },
   "Due before this supplier's next order — add them to send one order instead of two.": {
     es: "Vencen antes del próximo pedido a este proveedor: añádelos para enviar un pedido en lugar de dos.",
     fr: "À commander avant la prochaine commande à ce fournisseur — ajoutez-les pour envoyer une commande au lieu de deux.",
@@ -269,7 +261,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     pl: "Termin przed kolejnym zamówieniem u tego dostawcy — dodaj je, aby wysłać jedno zamówienie zamiast dwóch.",
   },
   "Add to this order": { es: "Añadir a este pedido", fr: "Ajouter à cette commande", de: "Zu dieser Bestellung", it: "Aggiungi a questo ordine", pt: "Adicionar a esta encomenda", nl: "Aan deze bestelling toevoegen", pl: "Dodaj do tego zamówienia" },
-  "Add to order": { es: "Añadir al pedido", fr: "Ajouter à la commande", de: "Zur Bestellung", it: "Aggiungi all'ordine", pt: "Adicionar à encomenda", nl: "Aan bestelling toevoegen", pl: "Dodaj do zamówienia" },
+  "Add to purchase order": { es: "Añadir a la orden de compra", fr: "Ajouter au bon de commande", de: "Zur Bestellung hinzufügen", it: "Aggiungi all'ordine d'acquisto", pt: "Adicionar à nota de encomenda", nl: "Aan inkooporder toevoegen", pl: "Dodaj do zamówienia zakupu" },
   "Actions": { es: "Acciones", fr: "Actions", de: "Aktionen", it: "Azioni", pt: "Ações", nl: "Acties", pl: "Akcje" },
 
   // ---- Old drafts, Don't reorder ----
@@ -396,15 +388,7 @@ export const ORDERING_TR: Record<string, Tr> = {
   },
 
   // ---- Product detail ----
-  "Stock counted in supplier orders: every active location unless you left it out in Settings → Locations.": {
-    es: "Stock que cuenta para los pedidos a proveedores: todas las ubicaciones activas, salvo las que hayas excluido en Ajustes → Ubicaciones.",
-    fr: "Stock pris en compte pour les commandes fournisseurs : tous les emplacements actifs, sauf ceux exclus dans Paramètres → Emplacements.",
-    de: "Bestand, der in Lieferantenbestellungen zählt: alle aktiven Standorte, außer denen, die du unter Einstellungen → Standorte ausgenommen hast.",
-    it: "Stock conteggiato negli ordini ai fornitori: tutte le sedi attive, tranne quelle escluse in Impostazioni → Sedi.",
-    pt: "Stock contado nas encomendas a fornecedores: todas as localizações ativas, exceto as que excluiu em Definições → Localizações.",
-    nl: "Voorraad die meetelt voor bestellingen bij leveranciers: alle actieve locaties, behalve de locaties die je hebt uitgesloten bij Instellingen → Locaties.",
-    pl: "Stan liczony w zamówieniach u dostawców: wszystkie aktywne lokalizacje, oprócz wyłączonych w Ustawienia → Lokalizacje.",
-  },
+  "Stock included in purchase orders: every active location unless you left it out in Settings → Locations.": { es: "Stock incluido en las órdenes de compra: todas las ubicaciones activas, salvo las que hayas excluido en Ajustes → Ubicaciones.", fr: "Stock inclus dans les bons de commande : tous les emplacements actifs, sauf ceux exclus dans Paramètres → Emplacements.", de: "In Bestellungen einbezogener Bestand: alle aktiven Standorte, außer denen, die du unter Einstellungen → Standorte ausgenommen hast.", it: "Stock incluso negli ordini d'acquisto: tutte le sedi attive, tranne quelle escluse in Impostazioni → Sedi.", pt: "Stock incluído nas notas de encomenda: todas as localizações ativas, exceto as que excluiu em Definições → Localizações.", nl: "Voorraad meegenomen in inkooporders: alle actieve locaties, behalve de locaties die je hebt uitgesloten bij Instellingen → Locaties.", pl: "Stan uwzględniany w zamówieniach zakupu: wszystkie aktywne lokalizacje, oprócz wyłączonych w Ustawienia → Lokalizacje." },
   "Not applied (growth assumption off)": {
     es: "No se aplica (hipótesis de crecimiento desactivada)",
     fr: "Non appliquée (hypothèse de croissance désactivée)",

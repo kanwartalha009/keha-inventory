@@ -703,7 +703,7 @@ function OrderList({ result, scenarioId }: { result: ScenarioResult; scenarioId?
               <s-text color="subdued">
                 {fill(plural(result.order.lines, t("1 product to order, {units} units."), t("{n} products to order, {units} units.")), { n: formatCount(result.order.lines, locale), units: formatCount(result.order.units, locale) })}
               </s-text>
-              <s-button {...link(reorderLink(all, scenarioId ? { scenarioId } : undefined))}>{t("Add to order")}</s-button>
+              <s-button {...link(reorderLink(all, scenarioId ? { scenarioId } : undefined))}>{t("Add to purchase order")}</s-button>
             </s-stack>
             <HowWeGotThis
               id="keha-plan-order"
@@ -740,7 +740,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.late && <s-badge tone="critical">{t("Late — order now")}</s-badge>}
           </s-stack>
-          <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), scenarioId ? { scenarioId, groupKey: group.key } : undefined))}>{t("Add to order")}</s-link>
+          <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), scenarioId ? { scenarioId, groupKey: group.key } : undefined))}>{t("Add to purchase order")}</s-link>
         </s-stack>
         <s-text color="subdued">
           {`${t("Lead time")}: ${lead} · ${t("Order by")}: ${formatDay(group.orderBy, locale)} · ${fill(t("Units: {n}"), { n: formatCount(group.units, locale) })} · ${fill(t("Cost: {amount}"), {

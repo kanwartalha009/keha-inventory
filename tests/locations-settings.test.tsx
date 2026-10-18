@@ -1,5 +1,5 @@
 /**
- * Settings → Locations: the include toggle ("Counts in supplier orders") on every plan, roles
+ * Settings → Locations: the include toggle ("Included in purchase orders") on every plan, roles
  * on Pro (a role change below Pro: 403 upgrade JSON), this shop's locations only,
  * validation (bad values, foreign locations, nothing counted), and SSR of the tab.
  */
@@ -142,13 +142,13 @@ describe("Settings → Locations SSR", () => {
     expect(html).toContain("Barcelona");
     expect(html).toContain("Fulfils online orders in Shopify");
     expect(html).toContain("Doesn&#x27;t fulfil online orders in Shopify");
-    for (const s of ["Role", "Counts in supplier orders", "Warehouse", "Store", "Other"]) expect(html).toContain(s);
-    expect(html).toMatch(/<s-checkbox[^>]*accessibilityLabel="Does Main warehouse count in supplier orders\?"[^>]*checked=/);
+    for (const s of ["Role", "Included in purchase orders", "Warehouse", "Store", "Other"]) expect(html).toContain(s);
+    expect(html).toMatch(/<s-checkbox[^>]*accessibilityLabel="Is Main warehouse included in purchase orders\?"[^>]*checked=/);
     expect(html).not.toMatch(/<s-checkbox[^>]*Barcelona[^>]*checked=/);
     expect(html).not.toContain("disabled");
     expect(html).not.toContain("See plans");
     expectSettingsAnatomy(html, { cards: ["Locations", "How this is used"], saveBar: "keha-settings-locations" });
-    expect(html).toContain("Counted in supplier orders now: Main warehouse.");
+    expect(html).toContain("Included in purchase orders now: Main warehouse.");
     expect(html).not.toContain("Free and Growth plan all your stock as one pool.");
     // The nav says "Order plan" (2026-10-17): no screen called "Reorder" any more.
     expect(html).toContain("switch between them on Products and Order plan.");
@@ -157,7 +157,7 @@ describe("Settings → Locations SSR", () => {
   it("Growth: the include toggle is editable (save bar), the role is locked with the plan name", () => {
     const html = render({ locations: rows, enabled: false });
     expect(html).not.toContain("Free and Growth plan all your stock as one pool.");
-    expect(html).toContain("POS stores count too, unless you leave them out.");
+    expect(html).toContain("POS stores are included too, unless you leave them out.");
     expect(html).toContain("Pro plan"); // lock badge on the Role column
     expect(html).toContain("See plans");
     // Only the role selects are disabled; the checkboxes are not.

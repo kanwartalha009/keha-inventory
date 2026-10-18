@@ -184,11 +184,11 @@ export default function Settings() {
                     onChange={(kept) => set("excludedChannels", channels.map((c) => c.name).filter((n) => !kept.includes(n)))}
                   />
                   <s-text color="subdued">
-                    {t("Untick a channel whose stock you order separately, for example wholesale ordered to order. Its sales stop counting as demand for supplier orders. Every channel counts by default.")}
+                    {t("Untick a channel whose stock you order separately, for example wholesale ordered to order. Its sales stop counting as demand for purchase orders. Every channel counts by default.")}
                   </s-text>
                   {loaded.locationLeftOut && excluded.length > 0 && (
                     <s-banner tone="warning">
-                      {t("A location is left out of supplier orders (Settings → Locations), so the forecast uses sales by location. Shopify reports sales by location or by channel, not both, so the channels unticked here aren't applied while a location is left out.")}
+                      {t("A location is left out of purchase orders (Settings → Locations), so the forecast uses sales by location. Shopify reports sales by location or by channel, not both, so the channels unticked here aren't applied while a location is left out.")}
                     </s-banner>
                   )}
                 </s-stack>

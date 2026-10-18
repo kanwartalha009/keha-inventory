@@ -176,15 +176,7 @@ export const SAMPLE_TR: Record<string, Tr> = {
     nl: "Overboekingen staan uit met voorbeeldgegevens — er wordt niets in je winkel aangemaakt.",
     pl: "Przesunięcia są wyłączone na przykładowych danych — w Twoim sklepie nic nie zostanie utworzone.",
   },
-  "In sample data you can draft orders, but nothing is emailed, sent or received.": {
-    es: "Con datos de ejemplo puedes preparar borradores de pedidos, pero no se envía, manda ni recibe nada.",
-    fr: "Avec les données d'exemple, vous pouvez préparer des commandes en brouillon, mais rien n'est envoyé par e-mail, expédié ni reçu.",
-    de: "Mit Beispieldaten können Sie Bestellentwürfe anlegen, aber nichts wird gemailt, gesendet oder empfangen.",
-    it: "Con i dati di esempio puoi preparare bozze di ordini, ma nulla viene inviato per email, spedito o ricevuto.",
-    pt: "Com dados de exemplo pode preparar rascunhos de encomendas, mas nada é enviado por email, enviado ou recebido.",
-    nl: "Met voorbeeldgegevens kun je conceptorders maken, maar er wordt niets gemaild, verzonden of ontvangen.",
-    pl: "Na przykładowych danych możesz tworzyć szkice zamówień, ale nic nie jest wysyłane e-mailem, wysyłane ani przyjmowane.",
-  },
+  "In sample data you can create purchase orders, but nothing is emailed, sent or received.": { es: "Con datos de ejemplo puedes crear órdenes de compra, pero no se envía, manda ni recibe nada.", fr: "Avec les données d'exemple, vous pouvez créer des bons de commande, mais rien n'est envoyé par e-mail, expédié ni reçu.", de: "Mit Beispieldaten können Sie Bestellungen anlegen, aber nichts wird gemailt, gesendet oder empfangen.", it: "Con i dati di esempio puoi creare ordini d'acquisto, ma nulla viene inviato per email, spedito o ricevuto.", pt: "Com dados de exemplo pode criar notas de encomenda, mas nada é enviado por email, enviado ou recebido.", nl: "Met voorbeeldgegevens kun je inkooporders maken, maar er wordt niets gemaild, verzonden of ontvangen.", pl: "Na przykładowych danych możesz tworzyć zamówienia zakupu, ale nic nie jest wysyłane e-mailem, wysyłane ani przyjmowane." },
   "Alerts, Slack and the Monday email always use your own store. Switch to your store to change them.": {
     es: "Las alertas, Slack y el correo del lunes siempre usan tu tienda. Cambia a tu tienda para modificarlos.",
     fr: "Les alertes, Slack et l'e-mail du lundi utilisent toujours votre boutique. Passez à votre boutique pour les modifier.",

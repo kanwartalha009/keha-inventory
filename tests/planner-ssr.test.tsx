@@ -123,7 +123,7 @@ describe("Planner page", () => {
     const html = render("/app/reorder/season", data());
     // One of the Order plan tabs (Kanwar 2026-10-17): the tab bar, Season plan selected.
     expect(html).toContain('heading="Order plan"');
-    for (const tab of ["Order now", "Next 13 weeks", "Season plan", "Open orders"]) expect(html).toContain(tab);
+    for (const tab of ["Order now", "Next 13 weeks", "Season plan", "Purchase orders"]) expect(html).toContain(tab);
     expect(html).toMatch(/aria-selected="true" class="keha-tab keha-tab--active">Season plan</);
     expect(html).toContain("Based on the last 90 days only; we don&#x27;t have last year&#x27;s sales yet.");
     expect(html).toContain("Black Friday 2026");
@@ -150,7 +150,7 @@ describe("Planner page", () => {
     expect(html).toContain("1 line without a cost price is not in the cash totals.");
     // Add to order: the saved scenario's quantities, read by Order now on the server (no 250-line cap).
     expect(html).toContain('href="/app/reorder?scenario=sc1"');
-    expect(html).toContain("Add to order");
+    expect(html).toContain("Add to purchase order");
     expect(html).toContain("60 days (supplier)");
     // Demand per collection: overlap note, titles, store total; last year without data → "—".
     expect(html).toContain("collection totals overlap");

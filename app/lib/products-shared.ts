@@ -149,7 +149,7 @@ export type ProductRow = {
   /**
    * Units on sent / confirmed Keha orders (task 2.2). Keha orders never reach
    * Shopify, so this is never part of `incoming` (Shopify's own number): shown
-   * beside it as "On order with Keha", never added to it. 0 = none.
+   * beside it as "On order (Keha)", never added to it. 0 = none.
    */
   onOrder: number;
   /** Earliest expected arrival of those orders, "YYYY-MM-DD". */

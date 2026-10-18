@@ -9,15 +9,15 @@
  * supplier (unassigned products by vendor), lines by product then size, each with its real
  * deadline ("Due 27 Oct", "Overdue since 12 Oct"), "Why this quantity" and last year's sales in
  * the same weeks. Under each supplier, "Can join this order": its lines due before its next
- * order, and "Build supplier order" — the supplier order builder (/app/reorder/build: one
+ * order, and "Build purchase order" — the supplier order builder (/app/reorder/build: one
  * purchase order with everything due within the supplier's order cycle, topped up to its
- * minimums, products added by hand; one button per supplier card). "Create order" (with a
+ * minimums, products added by hand; one button per supplier card). "Create purchase order" (with a
  * confirm showing units and cost) saves a Draft for one group and opens it (/app/reorder/:id) —
  * nothing is sent until the merchant emails it or marks it sent.
  *
  * Links: `?supplier=<key>&from=&to=` (Dashboard, Next 13 weeks: that supplier's planned orders in
  * the range, resolved here — never truncated), `?scenario=<id>&group=<key>` (Season plan: its
- * planned quantities, resolved here), `?variants=gid,…` (an action's "Add to order", at most 250
+ * planned quantities, resolved here), `?variants=gid,…` (an action's "Add to purchase order", at most 250
  * — highlights those lines). `?supplier=<key>` alone shows that supplier only.
  *
  * "Don't reorder this product" (line menu, with a confirm): the product leaves every order; it
@@ -105,7 +105,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
     };
   }
   const url = new URL(request.url);
-  // `?variants=id,id` (an action's "Add to order") or `id:qty,…` (older links).
+  // `?variants=id,id` (an action's "Add to purchase order") or `id:qty,…` (older links).
   const { ids: selected, planned: fromUrl } = parseVariantsWithQty(url.searchParams.get("variants"));
   const scenario = url.searchParams.get("scenario");
   const fromScenario = scenario ? await scenarioPlanned(shop, scenario, url.searchParams.get("group")) : null;
@@ -300,7 +300,7 @@ export default function Reorder() {
               <span key={`${b.supplierKey}|${b.productTitle}`} className="keha-inline">
                 <s-text>{fill(t("{product}: needs {n} of a minimum of {min} per style"), { product: b.productTitle, n: formatCount(b.units, locale), min: formatCount(b.styleMin, locale) })}</s-text>
                 {!location && (
-                  <s-link {...link(builderLink(b.supplierKey))}>{t("Build supplier order")}</s-link>
+                  <s-link {...link(builderLink(b.supplierKey))}>{t("Build purchase order")}</s-link>
                 )}
               </span>
             ))}
@@ -356,8 +356,8 @@ export default function Reorder() {
       {data.showTransfers !== false && <TransfersSection view={data.transfers} />}
       {data.openOrders.length > 0 && (
         <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-text color="subdued">{fill(t("Open orders: {n}"), { n: formatCount(data.openOrders.length, locale) })}</s-text>
-          <s-link {...link("/app/reorder/orders")}>{t("See open orders")}</s-link>
+          <s-text color="subdued">{fill(t("Purchase orders: {n}"), { n: formatCount(data.openOrders.length, locale) })}</s-text>
+          <s-link {...link("/app/reorder/orders")}>{t("See purchase orders")}</s-link>
         </s-stack>
       )}
     </AppPage>
@@ -550,11 +550,11 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             {/* The supplier order builder (online plan): here when there is no "Can join this order" list to carry it. */}
             {!location && joinable.length === 0 && (
               <s-button variant="secondary" {...link(builderLink(group.key))}>
-                {t("Build supplier order")}
+                {t("Build purchase order")}
               </s-button>
             )}
             <s-button variant="primary" disabled={flag(totals.units === 0)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
-              {t("Create order")}
+              {t("Create purchase order")}
             </s-button>
           </span>
         </s-stack>
@@ -562,9 +562,9 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
       <ConfirmModal
         open={confirm}
         destructive={false}
-        title={fill(t("Create a draft order for {supplier}?"), { supplier: title })}
+        title={fill(t("Create a purchase order for {supplier}?"), { supplier: title })}
         message={[
-          fill(t("{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as sent."), {
+          fill(t("{n} units, {cost}. Nothing is sent to the supplier until you email the order or mark it as ordered."), {
             n: formatCount(totals.units, locale),
             cost: costText,
           }),
@@ -573,7 +573,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
         ]
           .filter(Boolean)
           .join(" ")}
-        confirmLabel={t("Create order")}
+        confirmLabel={t("Create purchase order")}
         onCancel={() => setConfirm(false)}
         onConfirm={() => {
           setConfirm(false);
@@ -613,14 +613,14 @@ function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine
         <div className="keha-row-between">
           <button type="button" className="keha-disclosure keha-disclosure--grow" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
             <s-stack direction="block" gap="none">
-              <s-text fontWeight="medium">{fill(t("Can join this order ({n})"), { n: formatCount(lines.length, locale) })}</s-text>
+              <s-text fontWeight="medium">{fill(t("Due before next order ({n})"), { n: formatCount(lines.length, locale) })}</s-text>
               <s-text color="subdued">{t("Due before this supplier's next order — add them to send one order instead of two.")}</s-text>
             </s-stack>
             <s-icon type={open ? "chevron-up" : "chevron-down"} />
           </button>
           {builder && (
             <s-button variant="secondary" {...link(builderLink(group.key))}>
-              {t("Build supplier order")}
+              {t("Build purchase order")}
             </s-button>
           )}
         </div>

@@ -99,7 +99,7 @@ export function LocationSwitcher({
         labelHidden
         value={current ? locationNumericId(current.id) : POOL_VALUE}
         options={[
-          { value: POOL_VALUE, label: t("Stock counted in supplier orders") },
+          { value: POOL_VALUE, label: t("Stock included in purchase orders") },
           ...locations.map((l) => ({ value: locationNumericId(l.id), label: `${l.name} · ${roleLabel(l.role, t)}` })),
         ]}
         onChange={pick}

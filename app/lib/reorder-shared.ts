@@ -79,9 +79,9 @@ export type ReorderLine = {
   why: OrderWhy[];
   /** Units sold in the same weeks last year; null unknown. */
   lastYear: number | null;
-  /** Asked for through ?variants= (an action's "Add to order"). */
+  /** Asked for through ?variants= (an action's "Add to purchase order"). */
   selected: boolean;
-  /** Asked for by the Season plan's "Add to order" with its planned quantity. */
+  /** Asked for by the Season plan's "Add to purchase order" with its planned quantity. */
   fromPlanner: boolean;
   /** The planner's quantity for this line; null when not from the planner. */
   planned: number | null;
@@ -224,7 +224,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
   const firstEvent = new Map<string, PlanEvent>();
   for (const e of plan.events) if (!firstEvent.has(e.variantId)) firstEvent.set(e.variantId, e);
   const extra = new Map((input.extraVariants ?? []).map((v) => [v.id, v]));
-  // Asked-for variants (an action's "Add to order", the Season plan's quantities).
+  // Asked-for variants (an action's "Add to purchase order", the Season plan's quantities).
   const asked = new Set([...selected, ...planned.keys()]);
   const keyOfExtra = (v: ReorderVariantIn) => {
     const s = supplierFor(v, input.suppliers ?? []);
@@ -485,7 +485,7 @@ const VARIANT_ENTRY = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{1,20})(?::(\d{
 
 /**
  * `?variants=` → variant gids (at most 250) and planned quantities. Entries are a gid or a
- * numeric id (an action's "Add to order"), optionally `:qty` (whole units 1…1,000,000); anything
+ * numeric id (an action's "Add to purchase order"), optionally `:qty` (whole units 1…1,000,000); anything
  * else is ignored. Large orders don't travel in the URL: orderLink (a supplier + date range) and
  * the Season plan's `?scenario=` are resolved on the server.
  */
