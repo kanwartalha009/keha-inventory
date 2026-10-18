@@ -76,7 +76,10 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
 **Steps (Growth plan, store with history).**
 
 1. Install the app and pick **Growth** on Shopify's plan page. You land on the **Dashboard**.
-   The app menu is **Dashboard · Order plan · Products · Settings · Plans & billing**.
+   The app menu is **Dashboard · Order plan · Products · Settings · Plans & billing**. Every page
+   has a **How it works** button in its title bar: a panel that explains the page in plain words,
+   with the store's own numbers where they exist (lead time, order days, a real line of Due now
+   worked through) and links to the settings behind them.
 2. The Dashboard says "First sync in progress" and shows **Setting up your order plan**: one row
    per stage (products, stock history, sales history, store visits, building your plan) with the
    months read, the time left (worked out from how fast the store is being read), what to do
@@ -84,7 +87,12 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    appears here when it's ready" (with Shopify Flow, **First order plan ready** fires then). The newest 90 days are read first; the
    numbers appear when they are in, labelled "Based on the last 90 days so far" until the older
    months are read, and the header then shows the real update time.
-3. **Dashboard → Due this week** (first on the page): each supplier with orders due in the
+3. **Dashboard → This week in 30 seconds** (top of the page): up to three plain sentences (what to
+   order this week and the cash, sold-out products shoppers still look for, stock that doesn't
+   move and the cash it ties up) and one tile each — **Order**, **Sold out**, **Not selling**,
+   **Product pages** — that opens the matching list (Due now, or the matching tab of This week's
+   actions; **Not selling** is the Clearance tab with **Create discounts**).
+   **Dashboard → Due this week** (below it): each supplier with orders due in the
    next 7 days (overdue ones included) — products, units, cash and order-by date — with
    **Review order**, which opens Due now for that supplier at the planned quantities. Below it,
    the cash needed for the next 13 weeks with **See the next 13 weeks**.
@@ -98,14 +106,18 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    without this confirm.
 7. **Products:** the table (one row per variant; filters; **Export CSV**). Click a row: the
    product page shows 13 months of sales with out-of-stock days shaded and "How the forecast was
-   built".
+   built" (lead time, order days, in-stock target and safety stock each with a **Change** link to
+   the setting). On Due now, the info button on a line (**Why this quantity**) shows the sum and
+   links to Settings and Suppliers. A line that still has stock but falls below safety stock before
+   a new order could arrive says **Below safety stock · runs out <date>**; **Overdue** means it runs
+   out before the order can arrive.
 8. **Settings → Suppliers:** add a supplier with an email address you can read and assign it
    by vendor. Lead time is the total from placing the order to stock arriving; **Transit time**
    is the part from ship date to arrival (sea or air freight). Under **More options**: the
    minimum per item applies to each size/color or to each product (split across sizes by
    sales), a minimum order value in the supplier's currency, and — when that currency differs
-   from the store's — the exchange rate. **Order every … days** is how often you order from
-   this supplier (empty = the store's order cycle); order quantities cover the lead time plus it.
+   from the store's — the exchange rate. **Order enough for** is the days of stock each order from
+   this supplier lasts after it arrives (empty = the store's setting); order quantities cover the lead time plus it.
    Also under **More options**: **Payment terms** (pay everything when ordering, or a **Deposit**
    with the rest at shipment, on arrival or some days after arrival) and **Freight & duty** (a % of
    the goods cost, paid on arrival). Once orders from this supplier are received, its row shows how
@@ -128,11 +140,15 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    it never shows freight & duty. A draft not sent
    within 14 days stops counting as ordered (a banner says so).
 10. **Due now → Build purchase order** (on a supplier's card, inside "Due before next order" when
-    it is there): one purchase order for that supplier's whole order cycle — **Due now** and
+    it is there): one purchase order for everything that supplier needs until the next order — **Due now** and
     **Due before your next order** (each line with its own order-by date and "Why this quantity"),
     every line selected and editable; **Add products** adds any other product of that supplier.
     Units, cost and the supplier's minimums update as you type ("Add 24 units to reach … minimum",
-    **Top up to the minimum**). **Create purchase order** → confirm: one draft with every line (nothing
+    **Top up to the minimum**). **Order enough for** (in **This order**) changes the days this one order
+    covers — Plan default, 30 to 180 days, or **Custom…** (7–365) — and every quantity is worked out
+    again; the order keeps the choice ("Ordered for 150 days" on the purchase order) and the default
+    stays as it is. The same picker is on each supplier's card in **Due now**. **Lead time** and
+    **Order enough for** have a **Change** link to the setting behind them. **Create purchase order** → confirm: one draft with every line (nothing
     is sent). Back on Due now and Order calendar those lines are no longer due. Open the builder
     again: it offers **Add to PO-00xx** for that draft instead of a second one. With payment terms or
     freight & duty set for the supplier, **This order** shows them, the cost "+ freight & duty", and
@@ -153,11 +169,14 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
     in the app **Order plan → Purchase orders** shows the ship date and the arrival (ship date + the
     supplier's transit time), sorted by arrival, and **Products** shows "On order (Keha)".
     On the order, **Receive items** records a delivery per line ("Received 8 of 20 · 12 still to
-    come"; only the rest counts as on order), or closes the rest as short. A received or
+    come"; only the rest counts as on order), or closes the rest as short. **Close order** (on any
+    ordered or confirmed order) ends it when nothing more will come: nothing is received, the
+    rest stops counting as on order, and an order closed with nothing delivered is left out of the
+    supplier's measured lead time. A received, closed or
     canceled order can be reopened within 30 days (**Reopen order**). An order whose stock
     landed is received automatically (and says so, with the date).
 13. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
-    **More options**: Order cycle, Overstock after, Dead stock after, **Safety stock** (Low /
+    **More options**: Order enough for, Overstock after, Dead stock after, **Safety stock** (Low /
     Standard / High), **Year-over-year growth** (off and recommended by default, or add the store's
     year-over-year growth) and an optional **Monthly purchasing budget**. **Settings → Alerts:** the
     **Weekly summary** card ("Get it by email with Shopify Flow", **Open Shopify Flow**), instant
