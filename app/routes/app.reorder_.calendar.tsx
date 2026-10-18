@@ -33,6 +33,7 @@ import { flag } from "../components/wc";
 import type { HoldBatch } from "../lib/deferral-shared";
 import { readiness } from "../models/dashboard.server";
 import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
+import { calendarHelp } from "../components/help";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { AboveLastYearBadge, CantPlan, CashBreakdown, CashStrip, DueLabel, StaleDrafts, TabLock, WhyPopover, useNotReadyText } from "../components/order-plan";
 import { DownloadButton } from "../components/download-button";
@@ -109,6 +110,7 @@ export default function OrderCalendar() {
   return (
     <AppPage
       heading={t("Order plan")}
+      help={calendarHelp(t)}
       intro={t("Every order your forecast needs in the next 13 weeks: by week and supplier, with the cash each week needs.")}
       secondaryActions={
         data.enabled && data.plan.events.length > 0

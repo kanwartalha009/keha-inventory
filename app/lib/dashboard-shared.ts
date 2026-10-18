@@ -121,6 +121,8 @@ export type HomeData = {
   setup: {
     leadTimeDone: boolean;
     leadTimeDays: number;
+    /** Days of stock after arrival each order covers (Settings → Defaults); absent in older fixtures. */
+    cycleDays?: number;
     /** null = no tracked variants read yet. */
     costPercent: number | null;
     costsDone: boolean;
@@ -297,6 +299,7 @@ export function buildHome(raw: HomeRaw, plan: PlanCode, now: Date): HomeData {
     setup: {
       leadTimeDone,
       leadTimeDays: settings.leadTimeDays,
+      cycleDays: settings.cycleDays,
       costPercent: pct,
       costsDone,
       mondayEnabled,

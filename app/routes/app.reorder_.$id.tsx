@@ -49,6 +49,7 @@ import { defaultShipTo, type ShipToLocation } from "../lib/po-document-shared";
 import { emailSupplier, supplierMailtoFor, type EmailSupplierResult, type MailtoResult } from "../services/po-email.server";
 import { emailTransportConfigured } from "../services/email.server";
 import { AppPage, FormCard, FormSaveBar, KvRow, sameValues } from "../components/ui";
+import { purchaseOrdersHelp } from "../components/help";
 import { LockedPage } from "../components/plan";
 import { SampleOffNote, useSample } from "../components/sample";
 import ConfirmModal from "../components/ConfirmModal";
@@ -486,6 +487,7 @@ function OrderView({ data }: { data: OrderPageView }) {
   return (
     <AppPage
       heading={order.number}
+      help={keha ? purchaseOrdersHelp(t) : null}
       breadcrumb={{ label: t("Purchase orders"), to: "/app/reorder/orders" }}
       meta={
         <s-stack direction="inline" gap="small-200">

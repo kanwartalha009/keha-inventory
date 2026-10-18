@@ -71,6 +71,7 @@ import {
 import { formatPrice } from "../lib/purchase-order-shared";
 import { readCoverDays } from "../lib/engine/forward-plan-shared";
 import { CoverDaysPicker } from "../components/cover-days";
+import { dueNowExample, dueNowHelp } from "../components/help";
 import { builderLink } from "../lib/supplier-order-shared";
 import { locationNumericId, parseLocationParam, resolveScope, type PlanningLocation } from "../lib/locations-shared";
 import { METRIC_SCOPE } from "../lib/products-shared";
@@ -248,9 +249,12 @@ export default function Reorder() {
   }
   const filter = data.supplierFilter;
   const notReady = data.readiness && !data.readiness.ready ? data.readiness : null;
+  // "How it works" with a real line of this store as the example.
+  const example = dueNowExample(data.groups);
   return (
     <AppPage
       heading={t("Order plan")}
+      help={dueNowHelp(t, locale, example)}
       intro={
         location
           ? fill(t("What {location} needs to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums."), {

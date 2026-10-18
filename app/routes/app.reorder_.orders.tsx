@@ -18,6 +18,7 @@ import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { openOrderList } from "../models/reorder.server";
 import { AppPage, EmptyState, FormCard, HeaderLabel } from "../components/ui";
+import { purchaseOrdersHelp } from "../components/help";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { TabLock } from "../components/order-plan";
 import { useLinkProps } from "../components/wc";
@@ -42,7 +43,7 @@ export default function OpenOrdersPage() {
   const { t } = useLocale();
   const data = useLoaderData<typeof loader>() as OpenOrdersPageData;
   return (
-    <AppPage heading={t("Order plan")} intro={t("Orders you created here and purchase orders in Shopify that haven't arrived yet.")}>
+    <AppPage heading={t("Order plan")} help={purchaseOrdersHelp(t)} intro={t("Orders you created here and purchase orders in Shopify that haven't arrived yet.")}>
       <OrderPlanTabs current="orders" />
       {data.enabled ? <OpenOrders orders={data.orders} /> : <TabLock feature="poExport" />}
     </AppPage>

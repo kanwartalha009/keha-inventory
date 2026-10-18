@@ -49,6 +49,7 @@ import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
 import { BriefingCard } from "../components/briefing";
+import { dashboardHelp } from "../components/help";
 import { buildBriefing, type Briefing } from "../lib/briefing-shared";
 import { SampleOfferCard } from "../components/sample";
 import { offerSample } from "../lib/sample-mode-shared";
@@ -149,7 +150,16 @@ export default function Home() {
   const ready = data.state === "ready";
 
   return (
-    <AppPage heading={t("Dashboard")} intro={updated}>
+    <AppPage
+      heading={t("Dashboard")}
+      intro={updated}
+      help={dashboardHelp(t, locale, {
+        leadTimeDays: data.setup.leadTimeDays,
+        cycleDays: data.setup.cycleDays ?? null,
+        costPercent: data.setup.costPercent,
+        supplierCount: data.setup.supplierCount,
+      })}
+    >
       {data.reviewAsk && <ReviewAsk />}
       {data.dataLate && <s-banner tone="warning">{t("Data is late — no action needed, we're retrying.")}</s-banner>}
 

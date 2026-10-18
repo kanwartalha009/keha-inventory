@@ -23,6 +23,7 @@ import { getEntitlements } from "../app/services/entitlements.server";
 import { featureMap } from "../app/lib/plan-shared";
 import SupplierConfirm, { type ConfirmPageData } from "../app/routes/supplier.confirm.$token";
 import { buildOrderNow } from "../app/lib/reorder-shared";
+import { dueNowExample, dueNowHelp } from "../app/components/help";
 import { orderNowFixture } from "./order-plan-fixtures";
 import { renderPoPdf, pdfSafe } from "../app/services/po-pdf.server";
 import type { OrderDetail } from "../app/models/reorder.server";
@@ -132,6 +133,18 @@ describe("Reorder page (Order plan · Order now)", () => {
     const html = render(`/app/reorder?cover=${encodeURIComponent(g.key)}~180`, "reorder", Reorder, chosen);
     expect(html).toMatch(/<s-select[^>]*value="180"/);
     expect(html).toContain(`days=180`);
+  });
+
+  it("How it works: a button on the page; the panel explains Due now with a real line of this store", () => {
+    const data = reorderData({ minOrderTotal: null });
+    const html = render("/app/reorder", "reorder", Reorder, data);
+    expect(html).toContain(">How it works</s-button>");
+    expect(html).toContain('<s-modal heading="How it works" size="large">');
+    const c = dueNowHelp((s) => s, "en", dueNowExample(data.groups));
+    const text = c.sections.flatMap((s) => s.paragraphs).join("\n");
+    // Canvas tote: 28 + safety 10 − 10 on hand − 0 on order − 4 it can't sell while out = 24 (the sum adds up).
+    expect(text).toContain("Example from your store — Canvas tote: it sells 1 a day. Over the next 28 days that is 28. Add safety stock 10, take away 10 on hand, 0 on order and 4 it can't sell while out of stock before the order arrives, and you need 24: ordered as 24.");
+    expect(c.links.map((l) => l.to)).toContain("/app/settings/suppliers");
   });
 
   it("Why this quantity: the plan's own terms, and last year's same weeks", () => {
@@ -392,7 +405,7 @@ describe("Order page", () => {
     expect(html).toContain("Download PDF");
     expect(html).toContain("Download CSV");
     expect(html).toContain("Delete draft");
-    expect(html).not.toContain("Cancel order");
+    expect(html).not.toContain(">Cancel order</s-button>");
     expect(html).toContain("Units: 18");
     expect(html).toContain("Cost: €36.00");
     expect(html).not.toContain("Supplier confirmation link");
@@ -459,7 +472,7 @@ describe("Order page", () => {
     const html = render("/app/reorder/po2", "order", OrderPage, pageData(order({ id: "po2", source: "shopify", status: "sent", number: "#PO7" })));
     expect(html).toContain("Shopify PO");
     expect(html).toContain("This order comes from Shopify.");
-    expect(html).not.toContain("Cancel order");
+    expect(html).not.toContain(">Cancel order</s-button>");
     expect(html).not.toContain("Download PDF");
   });
 });

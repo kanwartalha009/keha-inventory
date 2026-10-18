@@ -6,7 +6,8 @@
  */
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { SaveBar } from "@shopify/app-bridge-react";
-import { useLinkProps } from "./wc";
+import { Modal, useLinkProps } from "./wc";
+import { HelpBody, type HelpContent } from "./help";
 import { UpgradeFromQuery } from "./plan";
 import { SampleBanner } from "./sample";
 import { useLocale } from "../lib/i18n";
@@ -454,6 +455,7 @@ export function AppPage({
   secondaryActions,
   breadcrumb,
   size = "base",
+  help,
   children,
 }: {
   heading: string;
@@ -464,11 +466,25 @@ export function AppPage({
   secondaryActions?: ReactNode[];
   breadcrumb?: { label: string; to: string };
   size?: "small" | "base" | "large";
+  /** "How it works" (components/help): a button in the title bar opening this page's explanation. */
+  help?: HelpContent | null;
   children: ReactNode;
 }) {
   const link = useLinkProps();
+  const { t } = useLocale();
+  const [helpOpen, setHelpOpen] = useState(false);
   const slotted = (el: ReactNode, slot: string, key?: number) =>
     isValidElement(el) ? cloneElement(el as ReactElement<{ slot?: string; key?: number }>, { slot, key }) : null;
+  const actions = [
+    ...(secondaryActions ?? []),
+    ...(help
+      ? [
+          <s-button key="help" icon="question-circle" onClick={() => setHelpOpen(true)}>
+            {t("How it works")}
+          </s-button>,
+        ]
+      : []),
+  ];
   return (
     <s-page heading={heading} inlineSize={size}>
       {breadcrumb && (
@@ -477,7 +493,7 @@ export function AppPage({
         </s-link>
       )}
       {slotted(primaryAction, "primary-action")}
-      {(secondaryActions ?? []).map((a, i) => slotted(a, "secondary-actions", i))}
+      {actions.map((a, i) => slotted(a, "secondary-actions", i))}
       <div className="keha-stack">
         {(intro || meta) && (
           <div className="keha-page-intro">
@@ -490,6 +506,12 @@ export function AppPage({
         <UpgradeFromQuery />
         {children}
       </div>
+      {help && (
+        <Modal open={helpOpen} onClose={() => setHelpOpen(false)} heading={t("How it works")} size="large">
+          {/* Rendered only while open: the explanation names sections a page may not show yet. */}
+          {helpOpen && <HelpBody content={help} />}
+        </Modal>
+      )}
     </s-page>
   );
 }

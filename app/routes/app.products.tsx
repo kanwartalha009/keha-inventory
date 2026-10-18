@@ -23,6 +23,7 @@ import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, DaysLeft, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
+import { productsHelp } from "../components/help";
 import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { UpgradeBanner, planName, planTag } from "../components/plan";
 import { requiredPlan } from "../lib/plan-shared";
@@ -161,6 +162,7 @@ export default function Products() {
   return (
     <AppPage
       heading={t("Products")}
+      help={productsHelp(t)}
       intro={
         location
           ? location.role === "warehouse" && location.inPool
