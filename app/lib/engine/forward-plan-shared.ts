@@ -130,6 +130,8 @@ export interface ForwardVariantInput {
   paceFrom?: DayKey | null;
   /** R4: unusual days capped in the pace (inputs.spikes): how many, and the largest. */
   spikes?: SpikesWhy | null;
+  /** Accuracy audit 2026-10-18: recurring high days added back to the pace, units a day (inputs.spikes.recurring). */
+  recurringSpikes?: number | null;
   /** R4: the style is planned like another product / its product type (inputs.planLike). */
   planLike?: PlanLikeWhy | null;
   /** B5: a sustained level change — the pace is the level since then (inputs.levelShift). */
@@ -197,6 +199,8 @@ export interface OrderWhy {
   paceFrom?: DayKey | null;
   /** Unusual days capped in the pace (R4). */
   spikes?: SpikesWhy | null;
+  /** Recurring high days counted over the year, units a day (accuracy audit 2026-10-18). */
+  recurringSpikes?: number | null;
   /** Planned like another product / its product type (R4). */
   planLike?: PlanLikeWhy | null;
   /** The pace is the level since a sustained change (B5). */
@@ -553,6 +557,7 @@ export class VariantProjection {
         sellsWhenOut: this.sellsWhenOut,
         paceFrom: this.input.paceFrom ?? null,
         spikes: this.input.spikes ?? null,
+        recurringSpikes: this.input.recurringSpikes ?? null,
         planLike: this.input.planLike ?? null,
         levelShift: this.input.levelShift ?? null,
         safetyBasis: this.input.safetyBasis ?? null,
@@ -667,6 +672,13 @@ export function spikesWhy(raw: unknown): SpikesWhy | null {
   if (!best) return null;
   const count = finite(r.count) && r.count >= days.length ? r.count : days.length;
   return { ...best, count };
+}
+
+/** inputs.spikes.recurring.perDay (accuracy audit 2026-10-18) → units a day; null when none. */
+export function recurringSpikesWhy(raw: unknown): number | null {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>).recurring : null;
+  const v = r && typeof r === "object" ? (r as Record<string, unknown>).perDay : null;
+  return finite(v) && v > 0 ? v : null;
 }
 
 /** inputs.planLike (R4) → the Why's reference; null when not planned like another. */
@@ -789,6 +801,7 @@ export function forwardInputFromMetric(
     sellsWhenOut: inputs.sellsWhenOut === true,
     paceFrom: paceFromInputs(inputs.pace),
     spikes: spikesWhy(inputs.spikes),
+    recurringSpikes: recurringSpikesWhy(inputs.spikes),
     planLike: planLikeWhy(inputs.planLike),
     levelShift: levelShiftWhy(inputs.levelShift),
     safetyBasis: safetyBasisWhy(inputs.error),

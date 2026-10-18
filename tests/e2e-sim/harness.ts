@@ -35,7 +35,7 @@ import { state } from "./mocks";
 import { facts } from "../../app/services/facts-store.server";
 import { POOL_LOCATION_SELECT, demandScope, demandWhere } from "../../app/lib/compute-shared";
 import { SEASON } from "../../app/lib/engine/season-shared";
-import { SPIKE_CAP, SPIKE_SHARE, robustCap } from "../../app/lib/engine/outliers-shared";
+import { SPIKE_CAP, SPIKE_RECURRING, robustCap, spikeBursts } from "../../app/lib/engine/outliers-shared";
 import { PACE_LOOKBACK_DAYS } from "../../app/lib/engine/rate-shared";
 import { readSettings } from "../../app/lib/settings-shared";
 import { dayDate } from "../../app/lib/sync/facts-shared";
@@ -401,9 +401,7 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
     // R4 (forecast quality): the day a variant ran out (it ended at 0 but sold, the day before
     // ended with stock) is PARTIAL — counted at least at the window's full-day pace; one-off
     // spikes are capped at median + 4 × max(1.4826 × MAD, √mean) of the 90 most recent in-stock
-    // full days of the 14 months compute reads — raised to the highest day outside the top 1 % of
-    // those 14 months' in-stock days when more days than that are above it (recurring high days
-    // are demand, not one-offs: forecast quality 2026-10-17).
+    // full days of the 14 months compute reads; recurring high days are added back below.
     const firstOlder = Math.max(v.firstStock, D - PACE_LOOKBACK_DAYS);
     const day = (d: number) => {
       const x = raw(d);
@@ -412,20 +410,49 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
       return { sold: x.sold, out: x.ended && !(x.sold > 0), partial };
     };
     const capValues: number[] = [];
-    const allValues: number[] = [];
+    const allValues: { d: number; sold: number }[] = [];
     for (let d = D - 1; d >= firstOlder; d--) {
       const x = day(d);
       if (x.out || x.partial || !(x.sold >= 0)) continue;
       if (capValues.length < SPIKE_CAP.windowDays) capValues.push(x.sold);
-      allValues.push(x.sold);
+      allValues.push({ d, sold: x.sold });
     }
-    const robust = (inputsOf(v.id).spikes as { off?: boolean } | undefined)?.off ? null : robustCap(capValues);
-    let cap = robust;
-    if (robust !== null) {
-      const allowed = Math.max(1, Math.floor(SPIKE_SHARE * allValues.length));
-      if (allValues.filter((x) => x > robust + 1e-9).length > allowed) cap = Math.max(robust, [...allValues].sort((a, b) => b - a)[allowed]!);
+    const cap = (inputsOf(v.id).spikes as { off?: boolean } | undefined)?.off ? null : robustCap(capValues);
+    // Spikes (accuracy audit 2026-10-18): bursts of high days of ≤ 7 days are capped (a longer run
+    // is a season or a new level); recurring (≥ 3 days in ≥ 3 calendar months of the 14 months),
+    // their units above the cap and their own weeks' level over the last year's in-stock days are
+    // added back to the pace.
+    let recurring = 0;
+    let capDays = new Set<number>();
+    if (cap !== null) {
+      const high: number[] = [];
+      for (let d = D - 1; d >= firstOlder; d--) {
+        const x = day(d);
+        if (!x.out && x.sold > cap + 1e-9) high.push(d);
+      }
+      // A recurring burst adds back only what is above its own weeks' level (the localDays before and after it).
+      const side = (from: number, to: number) => {
+        const xs: number[] = [];
+        for (let j = Math.max(firstOlder, from); j <= Math.min(D - 1, to); j++) {
+          const y = day(j);
+          if (!y.out && !y.partial && y.sold >= 0) xs.push(y.sold);
+        }
+        return robustCap(xs) ?? -Infinity;
+      };
+      const ownLevel = (b: number[]) => Math.max(side(b[0]! - SPIKE_RECURRING.localDays, b[0]! - 1), side(b[b.length - 1]! + 1, b[b.length - 1]! + SPIKE_RECURRING.localDays));
+      const short = spikeBursts(high).filter((b) => b[b.length - 1]! - b[0]! + 1 <= SPIKE_RECURRING.maxBurstDays);
+      capDays = new Set(short.flat());
+      const months = new Set(short.map((b) => simDay(store, b[0]!).slice(0, 7)));
+      const lastYear = allValues.filter((x) => x.d >= D - SPIKE_RECURRING.averageDays).length;
+      if (capDays.size >= SPIKE_RECURRING.minDays && months.size >= SPIKE_RECURRING.minMonths && lastYear)
+        recurring =
+          short.reduce((a, b) => {
+            if (b[b.length - 1]! < D - SPIKE_RECURRING.averageDays) return a;
+            const floor = Math.max(cap, ownLevel(b));
+            return a + b.filter((d) => d >= D - SPIKE_RECURRING.averageDays).reduce((x, d) => x + Math.max(0, day(d).sold - floor), 0);
+          }, 0) / lastYear;
     }
-    const capped = (n: number) => (cap !== null && n > cap ? cap : n);
+    const capped = (d: number, n: number) => (cap !== null && capDays.has(d) && n > cap ? cap : n);
     let num = 0;
     let den = 0;
     let naiveNum = 0;
@@ -440,15 +467,15 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
       for (let d = Math.max(D - w.days, v.firstStock); d < D; d++) {
         const x = day(d);
         data++;
-        soldAll += capped(x.sold);
+        soldAll += capped(d, x.sold);
         if (x.out) {
           if (w.days === 90) soldOutDays++;
         } else {
           inStock++;
-          if (x.partial) partials.push(capped(x.sold));
+          if (x.partial) partials.push(capped(d, x.sold));
           else {
             full++;
-            soldIn += capped(x.sold);
+            soldIn += capped(d, x.sold);
           }
         }
       }
@@ -462,7 +489,7 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
     }
     if (!den) continue;
     paced++;
-    expect(m.rate, `${v.id} pace`).toBeCloseTo(num / den, 6);
+    expect(m.rate, `${v.id} pace`).toBeCloseTo(num / den + recurring, 6);
     expect(m.rate + 1e-9, `${v.id} pace vs naive`).toBeGreaterThanOrEqual(naiveNum / den);
     if (soldOutDays > 0 && m.rate > naiveNum / den + 1e-9) excluded++;
   }

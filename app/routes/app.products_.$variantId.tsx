@@ -629,6 +629,9 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
             {t("A day far above this product's usual sales, for example one large wholesale order, counts as a busy normal day, so one order doesn't raise every future order.")}
           </s-text>
           <s-text>{capText}</s-text>
+          {!choice.noCap && spikes?.recurringPerDay ? (
+            <s-text>{fill(t("High days that come back (promotions, repeat orders) count as {units} a day over the year."), { units: nf(spikes.recurringPerDay, 1) })}</s-text>
+          ) : null}
           {(choice.noCap || (spikes?.count ?? 0) > 0) && (
             <s-stack direction="inline" gap="small-200">
               <s-button disabled={flag(saving)} onClick={() => submit({ intent: "noCap", value: !choice.noCap })}>

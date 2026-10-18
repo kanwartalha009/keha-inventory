@@ -447,7 +447,14 @@ function readLevelShift(raw: unknown): { day: string; ratio: number } | null {
   return typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && ratio !== null ? { day: r.day, ratio } : null;
 }
 
-export type SpikesView = { cap: number | null; count: number; off: boolean; days: { day: string; sold: number; cap: number }[] };
+export type SpikesView = {
+  cap: number | null;
+  count: number;
+  off: boolean;
+  days: { day: string; sold: number; cap: number }[];
+  /** Recurring high days added back to the pace, units a day (accuracy audit 2026-10-18); null when none. */
+  recurringPerDay?: number | null;
+};
 export type PlanLikeView = { kind: "product" | "productType"; name: string; pct: number; ownDays: number; weight: number };
 
 function readSpikes(raw: unknown): SpikesView | null {
@@ -459,7 +466,8 @@ function readSpikes(raw: unknown): SpikesView | null {
         .map((d) => ({ day: typeof d.day === "string" ? d.day : "", sold: n(d.sold) ?? 0, cap: n(d.cap) ?? 0 }))
         .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.day))
     : [];
-  return { cap: n(r.cap), count: Math.max(days.length, n(r.count) ?? 0), off: r.off === true, days };
+  const rec = r.recurring && typeof r.recurring === "object" ? n((r.recurring as Record<string, unknown>).perDay) : null;
+  return { cap: n(r.cap), count: Math.max(days.length, n(r.count) ?? 0), off: r.off === true, days, recurringPerDay: rec !== null && rec > 0 ? rec : null };
 }
 
 function readPlanLike(raw: unknown): PlanLikeView | null {

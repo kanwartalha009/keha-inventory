@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { computeVariant } from "../../app/lib/engine/index-shared";
-import { SPIKE_CAP, applyCap, cappedSince, robustCap, spikeCap } from "../../app/lib/engine/outliers-shared";
+import { SPIKE_CAP, applyCap, cappedSince, robustCap, spikeBursts, spikeCap } from "../../app/lib/engine/outliers-shared";
 import { PLAN_LIKE_DAYS, ownWeight } from "../../app/lib/engine/new-style-shared";
 import { indexSeries, sigmaDaily, windowStats } from "../../app/lib/engine/rate-shared";
 import { dailyLevels } from "../../app/lib/engine/season-shared";
@@ -46,44 +46,103 @@ describe("robustCap / spikeCap (outliers-shared)", () => {
     expect(capped.get([...index.entries()].find(([, x]) => x.day === ago(20))![0])!.sold).toBe(r.cap);
     // The real rows are untouched.
     expect(series.find((x) => x.day === ago(20))!.sold).toBe(300);
-    expect(spikeCap(index, TODAY, { off: true })).toEqual({ cap: null, capped: [] });
+    expect(spikeCap(index, TODAY, { off: true })).toEqual({ cap: null, capped: [], days: new Set(), recurring: null });
     expect(cappedSince(r.capped, TODAY, 10)).toEqual([]);
     expect(cappedSince(r.capped, TODAY, 30)).toHaveLength(1);
   });
 });
 
-describe("one-off, not recurring (B6, forecast quality 2026-10-17)", () => {
-  it("recurring high days are demand: with 6 promo days in 300 only the top 1 % (3 days) is lowered", () => {
-    // 300 days at 9 / 11 and a 40-unit promotion day every 50 days (6 days, 2 %).
+describe("one-off or recurring (accuracy audit 2026-10-18)", () => {
+  const split = (all: ReturnType<typeof buildSeries>) => ({ series: all.filter((r) => r.day >= ago(90)), history: all.filter((r) => r.day < ago(90)) });
+
+  it("two 300-unit wholesale days on a 2-a-day product with 150 days of history are capped (before: pace 11.8, order 606)", () => {
+    const all = buildSeries({ days: 150, sold: (k) => (k === 10 || k === 40 ? 300 : 2) });
+    const r = computeVariant(variantInput({ ...split(all), onHand: 20, role: "A" }))!;
+    // Before (top 1 % rule: 1 day allowed in 150, 2 above → the cap rose to 300): 11.84 a day, order 606.
+    expect(r.inputs.spikes.count).toBe(2);
+    expect(r.inputs.spikes.recurring).toBeUndefined();
+    expect(r.rate!).toBeCloseTo(2.39, 2);
+    expect(r.orderQty).toBe(42);
+  });
+
+  it("five 300-unit orders a year: the order no longer swings with how many fall in the last 90 days (before: 602 vs 431)", () => {
+    const orderFor = (ks: number[]) => {
+      const all = buildSeries({ days: 427, sold: (k) => (ks.includes(k) ? 300 : 2) });
+      return computeVariant(variantInput({ ...split(all), onHand: 20, role: "A" }))!;
+    };
+    const two = orderFor([10, 80, 153, 226, 299, 372]); // two inside the 90 days
+    const none = orderFor([50, 123, 196, 269, 342, 415]); // one inside the 90 days
+    for (const r of [two, none]) {
+      // ≈ 5 × 298 ÷ 365 a day added back, the high days themselves capped in the windows.
+      // Each order's units above its own weeks' level (a 2-a-day product: ≈ 292 of 300).
+      expect(r.inputs.spikes.recurring!.perDay).toBeGreaterThan((5 * 285) / 365);
+      expect(r.inputs.spikes.recurring!.perDay).toBeLessThan((5 * 300) / 365);
+      expect(r.inputs.spikes.recurring).toMatchObject({ days: 6, months: 6, inStockDays: 365 });
+    }
+    expect(two.orderQty).toBe(93);
+    expect(none.orderQty).toBe(90);
+    // The forward plan's Why carries the yearly average from the stored metric.
+    const metric = { status: two.status, rate: two.rate, sigma: two.sigma, orderQty: two.orderQty, inputs: JSON.parse(JSON.stringify({ ...two.inputs, safety: two.safety })) };
+    const fwd = planVariant(forwardInputFromMetric(metric, { today: TODAY, pack: null, moq: null, notCounted: 0, days: 91 }));
+    expect(fwd.orders[0]!.why!.recurringSpikes).toBeCloseTo(two.inputs.spikes.recurring!.perDay, 9);
+  });
+
+  it("promotion days every 50 days are recurring: capped in the windows, their units above the cap added back over the year", () => {
     const series = buildSeries({ days: 300, sold: (k) => (k % 50 === 7 ? 40 : steady(k)) });
     const index = indexSeries(series, TODAY);
     const robust = robustCap(Array.from({ length: 90 }, (_, i) => series[i]!.sold))!;
     const r = spikeCap(index, TODAY);
-    expect(robust).toBeLessThan(40);
-    // 6 days above the robust cap > the 3 allowed (1 % of 300): the cap rises to the 4th highest day = 40.
-    expect(r.cap).toBe(40);
-    expect(r.capped).toEqual([]);
+    expect(r.cap).toBeCloseTo(robust, 9);
+    expect(r.capped.map((c) => c.sold)).toEqual([40, 40, 40, 40, 40, 40]);
+    // Each promotion's units above its own weeks' level (here the same robust cap as today's).
+    expect(r.recurring!.perDay).toBeCloseTo((6 * (40 - robust)) / 300, 1);
+    expect(r.recurring).toMatchObject({ days: 6, inStockDays: 300 });
   });
 
-  it("a single wholesale day in 300 is still capped at the robust cap", () => {
-    const series = buildSeries({ days: 300, sold: (k) => (k === 20 ? 300 : steady(k)) });
-    const r = spikeCap(indexSeries(series, TODAY), TODAY);
-    expect(r.cap).toBeCloseTo(robustCap(series.slice(0, 90).map((x) => x.sold))!, 9);
-    expect(r.capped.map((c) => c.sold)).toEqual([300]);
+  it("a single wholesale day, or high days in only two months, are one-offs", () => {
+    const one = spikeCap(indexSeries(buildSeries({ days: 300, sold: (k) => (k === 20 ? 300 : steady(k)) }), TODAY), TODAY);
+    const wholesale = buildSeries({ days: 300, sold: (k) => (k === 20 ? 300 : steady(k)) });
+    expect(one.cap).toBeCloseTo(robustCap(wholesale.slice(0, 90).map((x) => x.sold))!, 9);
+    expect(one.capped.map((c) => c.sold)).toEqual([300]);
+    expect(one.recurring).toBeNull();
+    // Four high days, two in each of two months: still one-offs.
+    const two = spikeCap(indexSeries(buildSeries({ days: 300, sold: (k) => ([20, 25, 140, 145].includes(k) ? 60 : steady(k)) }), TODAY), TODAY);
+    expect(two.capped).toHaveLength(4);
+    expect(two.recurring).toBeNull();
+  });
+
+  it("a long run of high days (a season, a new level) is neither capped nor recurring: only bursts of ≤ 7 days are spikes", () => {
+    // 20 strong days in a row in three different stretches (Black Friday into December): seasons.
+    const peak = (k: number) => (k >= 100 && k < 120) || (k >= 200 && k < 220) || (k >= 280 && k < 300);
+    const r = spikeCap(indexSeries(buildSeries({ days: 300, sold: (k) => (peak(k) ? 40 : k === 30 ? 60 : steady(k)) }), TODAY), TODAY);
+    expect(r.capped.map((c) => c.day)).toEqual([ago(30)]);
+    expect(r.recurring).toBeNull();
+    const rows = applyCap(indexSeries(buildSeries({ days: 300, sold: (k) => (peak(k) ? 40 : k === 30 ? 60 : steady(k)) }), TODAY), r.cap, r.days);
+    expect([...rows.values()].filter((x) => x.sold === 40)).toHaveLength(60);
+    expect(spikeBursts([1, 2, 4, 9, 10])).toEqual([[1, 2, 4], [9, 10]]);
+  });
+
+  it("last winter's season adds nothing back: a recurring burst counts only what is above its own weeks", () => {
+    // Coats: ~30 a day (noisy, with dips) from 200 to 330 days ago, 3 a day now. Against the summer
+    // cap the winter's short runs between dips are "recurring spikes"; against their own weeks they
+    // are not high, so nothing is added to the pace (without the own-level floor: 5.3 a day).
+    const winter = (k: number) => k >= 200 && k <= 330;
+    const sold = (k: number) => (winter(k) ? (k % 9 < 3 ? 8 : 30 + (k % 5)) : k % 2 ? 2 : 4);
+    const r = spikeCap(indexSeries(buildSeries({ days: 427, sold }), TODAY), TODAY);
+    expect(r.cap!).toBeLessThan(15);
+    expect(r.recurring).toMatchObject({ months: 5, perDay: 0 });
   });
 
   it("computeVariant reads the older months (history) for the rule: the promotions keep their units in the pace", () => {
     const sold = (k: number) => (k % 50 === 7 ? 40 : steady(k));
     const all = buildSeries({ days: 300, sold });
-    const recent = all.filter((r) => r.day >= ago(90));
-    const older = all.filter((r) => r.day < ago(90));
-    const only90 = computeVariant(variantInput({ series: recent }))!;
-    const withHistory = computeVariant(variantInput({ series: recent, history: older }))!;
-    // 2 promotion days inside the 90 (k = 7, 57): with 90 days only, 2 > 1 allowed → raised as well;
-    // the history shows 6 in 300 (> 3): recurring, uncapped.
-    expect(withHistory.inputs.spikes.count).toBe(0);
-    expect(withHistory.rate!).toBeGreaterThan(10);
-    expect(only90.rate).not.toBeNull();
+    const only90 = computeVariant(variantInput({ series: all.filter((r) => r.day >= ago(90)) }))!;
+    const withHistory = computeVariant(variantInput(split(all)))!;
+    // 2 promotion days inside the 90 (k = 7, 57): with 90 days only they are one-offs (2 days).
+    expect(only90.inputs.spikes.recurring).toBeUndefined();
+    // The history shows 6 in 6 months: recurring, the year's average added back.
+    expect(withHistory.inputs.spikes.recurring!.days).toBe(6);
+    expect(withHistory.rate!).toBeCloseTo(only90.rate! + withHistory.inputs.spikes.recurring!.perDay, 9);
   });
 });
 
@@ -220,6 +279,9 @@ describe("Why this quantity (R4 lines)", () => {
       "Based on the median Jackets product at 100 % until this product has 28 days in stock (now 0).",
     );
     expect(whyLines({ ...why, spikes: { count: 1, day: "2026-03-14", sold: 300, cap: 22 } }, (x) => translate("de", x), "de").join(" ")).toContain("1 ungewöhnlicher Tag begrenzt");
+    // Recurring high days (accuracy audit 2026-10-18): the yearly average added back to the pace.
+    expect(whyLines({ ...why, recurringSpikes: 3.92 }, t, "en")).toContain("High days that come back (promotions, repeat orders) count as 3.9 a day over the year.");
+    expect(whyLines({ ...why, recurringSpikes: 3.92 }, (x) => translate("de", x), "de").join(" ")).toContain("zählen als 3,9 pro Tag");
   });
 });
 

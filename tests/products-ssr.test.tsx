@@ -430,6 +430,10 @@ describe("Forecast choices (R4): Don't cap and Plan like", () => {
     expect(html).toContain("<s-heading>Forecast choices</s-heading>");
     expect(html).toContain("2 unusual days capped (largest Sep 14: 300 units, counted as 9)");
     expect(html).toContain("Don&#x27;t cap this product");
+    expect(html).not.toContain("High days that come back");
+    // Recurring high days (accuracy audit 2026-10-18): the yearly average added back is said.
+    const rec = renderDetail({ ...d, inputs: { ...d.inputs!, spikes: { ...spikes, recurringPerDay: 3.92 } }, choice: { noCap: false, like: null, offer: null } });
+    expect(rec).toContain("High days that come back (promotions, repeat orders) count as 3.9 a day over the year.");
     const none = renderDetail({ ...d, choice: { noCap: false, like: null, offer: null } });
     expect(none).toContain("No unusual days in the last 90 days.");
     expect(none).not.toContain("Don&#x27;t cap this product");

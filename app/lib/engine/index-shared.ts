@@ -28,7 +28,7 @@ import {
   type SeriesIndex,
 } from "./rate-shared";
 import { variantStatus } from "./status-shared";
-import { applyCap, cappedSince, spikeCap, type CappedDay } from "./outliers-shared";
+import { applyCap, cappedSince, spikeCap, type CappedDay, type RecurringSpikes } from "./outliers-shared";
 import { levelShift, type LevelShift } from "./level-shift-shared";
 import { errorRatio, fillSafetyFactor, normalCdf, paceVarianceFactor, structuralSigma, type ErrorRatio, type ErrorSample } from "./error-shared";
 import { PLAN_LIKE_DAYS, ownWeight, type PlanLikeInput } from "./new-style-shared";
@@ -219,7 +219,7 @@ export interface VariantInputs {
    * days, or off), the days above it in the days the pace read (newest first, at most 10; `count`
    * all of them) and whether capping is off for this product ("Don't cap").
    */
-  spikes: { cap: number | null; days: CappedDay[]; count: number; off: boolean };
+  spikes: { cap: number | null; days: CappedDay[]; count: number; off: boolean; recurring?: RecurringSpikes };
   /** σ was measured on de-seasonalised demand and scaled by the seasonal index (levels given). */
   sigmaSeasonal: boolean;
   /**
@@ -334,7 +334,7 @@ export function pastErrors(
   P: number,
   settings: EngineSettings,
   capOff: boolean,
-  capNow: number | null,
+  capNow: { cap: number | null; days: ReadonlySet<number> },
   origins: readonly { day: DayKey; multiplier: number }[],
   levels?: ReadonlyMap<DayKey, number> | null,
 ): ErrorSample[] {
@@ -345,7 +345,7 @@ export function pastErrors(
     const oi = dayIndex(o.day);
     if (oi + p > t || !(o.multiplier >= 0) || !Number.isFinite(o.multiplier)) continue;
     const sp = spikeCap(hist, o.day, { k: settings.spikeCapK, off: capOff });
-    const capped = applyCap(hist, sp.cap);
+    const capped = applyCap(hist, sp.cap, sp.days);
     const r = salesRate(capped, o.day, settings);
     let rate: number | null = null;
     let sigma: number | null = null;
@@ -370,7 +370,7 @@ export function pastErrors(
     for (let i = oi; i < oi + p; i++) {
       const row = hist.get(i);
       if (!row || soldOutDay(row)) continue;
-      const sold = capNow !== null && row.sold > capNow ? capNow : row.sold;
+      const sold = capNow.cap !== null && capNow.days.has(i) && row.sold > capNow.cap ? capNow.cap : row.sold;
       actual += row.partial ? Math.max(sold, daily) : sold;
       n++;
     }
@@ -418,20 +418,24 @@ export function computeVariant(input: VariantInput): VariantResult | null {
   // R4: one-off spikes are capped before the pace and σ are measured (outliers-shared).
   const capOff = input.noCap === true || !(settings.spikeCapK > 0);
   const spikes = spikeCap(hist, today, { k: settings.spikeCapK, off: capOff });
-  const capped = applyCap(index, spikes.cap);
+  const capped = applyCap(index, spikes.cap, spikes.days);
 
   // §7.2 rate and σ.
   const r = salesRate(capped, today, settings);
   // Data audit #2: out of stock most of the window → the pace of the most recent in-stock days,
   // older history included (up to 14 months), before "can't be planned yet".
   let pace: ReturnType<typeof inStockPace> = null;
-  if (!r.enoughData && input.olderSeries?.length) pace = inStockPace(applyCap(all, spikes.cap), today, settings);
+  if (!r.enoughData && input.olderSeries?.length) pace = inStockPace(applyCap(all, spikes.cap, spikes.days), today, settings);
   // B5: a sustained change in the sales level (went viral, died) → the level since the change.
   const shift: LevelShift | null =
     !pace && r.rate !== null && r.enoughData && settings.levelShiftZ > 0 && input.levels && input.levels.size
       ? levelShift(capped, today, settings.rateWindows, input.levels, { z: settings.levelShiftZ })
       : null;
-  const ownRate = pace ? pace.rate : shift ? shift.rate : r.rate;
+  // Recurring high days (outliers-shared SPIKE_RECURRING): capped in the windows, their units
+  // above the cap averaged over the last year added back.
+  const recurring = spikes.recurring;
+  const baseRate = pace ? pace.rate : shift ? shift.rate : r.rate;
+  const ownRate = baseRate === null ? null : baseRate + (recurring?.perDay ?? 0);
   // σ on de-seasonalised demand, scaled to the protection period's season (R4); else the raw σ.
   // Used only when it explains part of the variation (de-seasonalised σ below the raw σ): a style
   // whose own sales don't follow its group's shape — a new collection filling up, a group whose
@@ -486,7 +490,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
     const prior = typeof input.errorPrior === "number" && Number.isFinite(input.errorPrior) && input.errorPrior > 0 ? input.errorPrior : 1;
     const backtest: ErrorRatio = planLike || !input.errorOrigins?.length
       ? errorRatio([], P, prior)
-      : errorRatio(pastErrors(hist, today, P, settings, capOff, spikes.cap, input.errorOrigins), P, prior);
+      : errorRatio(pastErrors(hist, today, P, settings, capOff, spikes, input.errorOrigins), P, prior);
     const sigmaP = model * backtest.used;
     const total = Math.sqrt(sigmaP * sigmaP + (leadSigma !== null ? daily * daily * leadSigma * leadSigma : 0));
     const fillTarget = normalCdf(z);
@@ -648,7 +652,7 @@ export function computeVariant(input: VariantInput): VariantResult | null {
       orderNeed,
       sellsWhenOut,
       pace: pace ? { from: pace.from, inStockDays: pace.inStockDays } : null,
-      spikes: { cap: spikes.cap, days: spikeDays.slice(0, 10), count: spikeDays.length, off: capOff && input.noCap === true },
+      spikes: { cap: spikes.cap, days: spikeDays.slice(0, 10), count: spikeDays.length, off: capOff && input.noCap === true, ...(recurring ? { recurring } : {}) },
       sigmaSeasonal: sigmaSeasonal && planLike === null,
       error,
       levelShift: shift && planLike === null ? { day: shift.day, before: shift.before, after: shift.after, ratio: shift.ratio, afterDays: shift.afterDays } : null,
