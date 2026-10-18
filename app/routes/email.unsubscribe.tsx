@@ -88,13 +88,13 @@ export default function EmailUnsubscribe() {
       {data.state === "confirm" ? (
         <>
           <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>
-            {data.kind === "alerts" ? tr("Stop the instant stock alerts?") : tr("Stop the Monday email?")}
+            {data.kind === "alerts" ? tr("Stop the instant stock alerts?") : tr("Stop the weekly summary email?")}
           </h1>
           <p>
             {fill(
               data.kind === "alerts"
                 ? tr("{store} will stop getting instant stock alerts, by email and in Slack. You can turn them back on any time in the app's Settings.")
-                : tr("{store} will stop getting the weekly money summary. You can turn it back on any time in the app's Settings."),
+                : tr("{store} will stop getting the weekly summary email. You can turn it back on any time in the app's Settings."),
               { store: data.shop },
             )}
           </p>
@@ -124,7 +124,7 @@ export default function EmailUnsubscribe() {
             {fill(
               data.kind === "alerts"
                 ? tr("{store} won't get instant stock alerts any more. You can turn them back on any time in the app's Settings.")
-                : tr("{store} won't get the Monday email any more. You can turn it back on any time in the app's Settings."),
+                : tr("{store} won't get the weekly summary email any more. You can turn it back on any time in the app's Settings."),
               { store: data.shop },
             )}
           </p>
@@ -132,7 +132,7 @@ export default function EmailUnsubscribe() {
       ) : (
         <>
           <h1 style={{ fontSize: 22, margin: "8px 0 12px" }}>{tr("This link isn't valid any more")}</h1>
-          <p>{tr("Open the app and turn off the Monday email in Settings instead.")}</p>
+          <p>{tr("Open the app and turn off the weekly summary email in Settings instead.")}</p>
         </>
       )}
     </main>

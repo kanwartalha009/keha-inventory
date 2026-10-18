@@ -140,8 +140,8 @@ describe("Settings → Locations SSR", () => {
     const html = render({ locations: rows, enabled: true });
     expect(html).toContain("Main warehouse");
     expect(html).toContain("Barcelona");
-    expect(html).toContain("Fulfils online orders in Shopify");
-    expect(html).toContain("Doesn&#x27;t fulfil online orders in Shopify");
+    expect(html).toContain("Fulfills online orders in Shopify");
+    expect(html).toContain("Doesn&#x27;t fulfill online orders in Shopify");
     for (const s of ["Role", "Included in purchase orders", "Warehouse", "Store", "Other"]) expect(html).toContain(s);
     expect(html).toMatch(/<s-checkbox[^>]*accessibilityLabel="Is Main warehouse included in purchase orders\?"[^>]*checked=/);
     expect(html).not.toMatch(/<s-checkbox[^>]*Barcelona[^>]*checked=/);

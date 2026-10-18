@@ -127,7 +127,7 @@ describe("Supplier order builder (Growth)", () => {
       </LocaleProvider>
     );
     const html = page(growth(view({ minOrderTotal: 200 })), German);
-    for (const k of ["Create purchase order", "Due now", "Due before your next order", "Add products", "Minimum reached", "Order every", "This order"]) {
+    for (const k of ["Create purchase order", "Due now", "Due before your next order", "Add products", "Minimum reached", "Order cycle", "This order"]) {
       expect(translate("de", k), k).not.toBe(k);
       expect(html, k).toContain(esc(translate("de", k)));
     }

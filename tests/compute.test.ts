@@ -438,7 +438,7 @@ describe("computeShop — seasonality, trend, suppliers, safety level", () => {
     expect(raw).toBeGreaterThan(1.7);
     // The share of last year's change kept: (index − 1) ÷ (raw − 1).
     expect((inputs.season as { seasonalWeight: number }).seasonalWeight).toBeCloseTo((inputs.seasonal - 1) / (raw - 1), 3);
-    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: the growth assumption is off" });
+    expect(inputs.season).toMatchObject({ level: "store", seasonalApplied: true, seasonalYears: 1, horizonDays: 28, trendApplied: false, trendReason: "off", trendNote: "Not applied: year-over-year growth is off" });
     // Store units now (A 2 + draft 3 + B + sparse) vs last year ≈ 2/day → clamped at 2: measured, not applied.
     expect((inputs.season as { trendMeasured: number }).trendMeasured).toBe(2);
     expect(inputs.trend).toBe(1);

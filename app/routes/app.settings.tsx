@@ -127,7 +127,7 @@ export default function Settings() {
         <s-stack direction="block" gap="base">
           {numberField(
             "leadTimeDays",
-            t("How long do your suppliers take?"),
+            t("Default lead time"),
             t("Days from placing an order to the stock arriving. Used for every product until you add suppliers."),
           )}
           <Disclosure id="settings-more" title={t("More options")} open={more} onToggle={() => setMore((m) => !m)}>
@@ -136,23 +136,23 @@ export default function Settings() {
               {numberField("tooMuchDays", t("Overstock after"), t("A product is marked Overstock when its stock would last longer than this."))}
               {numberField("deadDays", t("Dead stock after"), t("A product is marked Dead stock when it hasn't sold for this long."))}
               <SelectField<SafetyLevel>
-                label={t("Safety level")}
+                label={t("Safety stock")}
                 value={form.safetyLevel as SafetyLevel}
                 options={[
-                  { value: "lean", label: t("Lean") },
-                  { value: "balanced", label: t("Balanced") },
-                  { value: "safe", label: t("Safe") },
+                  { value: "lean", label: t("Low") },
+                  { value: "balanced", label: t("Standard") },
+                  { value: "safe", label: t("High") },
                 ]}
                 onChange={(v) => set("safetyLevel", v)}
-                details={t("Extra stock for surprises in demand: Safe runs out less often but ties up more cash, Lean the opposite.")}
+                details={t("Extra stock for surprises in demand: High runs out less often but ties up more cash, Low the opposite.")}
               />
               <ChoiceListField<TrendMode>
-                label={t("Growth assumption")}
+                label={t("Year-over-year growth")}
                 choices={[
                   { value: "off", label: t("Off (recommended)"), helpText: t("Use today's sales pace and season.") },
                   {
                     value: "store",
-                    label: t("Add the store's year-on-year growth"),
+                    label: t("Add the store's year-over-year growth"),
                     helpText: t("Today's sales pace already includes recent growth, so adding it again usually orders too much."),
                   },
                 ]}
@@ -160,7 +160,7 @@ export default function Settings() {
                 onChange={(v) => v[0] && set("trendMode", v[0])}
               />
               <s-number-field
-                label={t("Monthly budget for stock")}
+                label={t("Monthly purchasing budget")}
                 details={t("Optional. The Order calendar compares each month's supplier payments with it and suggests which orders could wait. Leave empty for no budget.")}
                 value={form.monthlyBudget ?? ""}
                 suffix={currency}

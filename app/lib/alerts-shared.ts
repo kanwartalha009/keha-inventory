@@ -166,16 +166,16 @@ export function alertLine(
   const tr = (key: string) => translate(locale, key);
   if (a.kind === "sell_out") {
     return {
-      title: fill(tr("Just sold out: {product}"), { product: a.title }),
+      title: fill(tr("Out of stock: {product}"), { product: a.title }),
       detail: fill(tr("Visits to this product last week: {sessions}."), { sessions: countText(a.sessions, numberLocale) }),
       link,
     };
   }
   const leadOnly = fill(tr("New stock takes {lead} days."), { lead: a.leadTimeDays });
-  if (a.daysLeft <= 0) return { title: fill(tr("Best seller sold out: {product}"), { product: a.title }), detail: leadOnly, link };
-  if (!showDays) return { title: fill(tr("Best seller running out: {product}"), { product: a.title }), detail: leadOnly, link };
+  if (a.daysLeft <= 0) return { title: fill(tr("Best seller out of stock: {product}"), { product: a.title }), detail: leadOnly, link };
+  if (!showDays) return { title: fill(tr("Best seller low on stock: {product}"), { product: a.title }), detail: leadOnly, link };
   return {
-    title: fill(tr("Best seller running out: {product}"), { product: a.title }),
+    title: fill(tr("Best seller low on stock: {product}"), { product: a.title }),
     detail: fill(tr("Days of stock: {days}. New stock takes {lead} days."), {
       days: daysText(a.daysLeft, numberLocale),
       lead: a.leadTimeDays,

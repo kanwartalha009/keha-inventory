@@ -224,15 +224,7 @@ export const MERCHANT_TR: Record<string, Tr> = {
     nl: "1 dag onderweg",
     pl: "1 dzień w transporcie",
   },
-  "Order every day": {
-    es: "Pedido cada día",
-    fr: "Commande tous les jours",
-    de: "Bestellung jeden Tag",
-    it: "Ordine ogni giorno",
-    pt: "Encomenda todos os dias",
-    nl: "Bestelling elke dag",
-    pl: "Zamówienie codziennie",
-  },
+  "Order cycle: every day": { es: "Ciclo de pedidos: cada día", fr: "Cycle de commande : tous les jours", de: "Bestellzyklus: jeden Tag", it: "Ciclo degli ordini: ogni giorno", pt: "Ciclo de encomendas: todos os dias", nl: "Bestelcyclus: elke dag", pl: "Cykl zamówień: codziennie" },
   "1 line without a cost price is not in this total.": {
     es: "1 línea sin precio de coste no está en este total.",
     fr: "1 ligne sans prix de revient n'est pas dans ce total.",

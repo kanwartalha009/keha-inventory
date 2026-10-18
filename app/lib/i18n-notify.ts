@@ -206,15 +206,7 @@ export const NOTIFY_TR: Record<string, Tr> = {
   // ---- Settings → Alerts and the setup guide without an email provider (Shopify Flow) ----
   // Flow's trigger names stay in English (that is how Flow lists them); the action is named in English
   // with a short description, since Flow translates its own action names.
-  "Monday summary": {
-    es: "Resumen del lunes",
-    fr: "Récapitulatif du lundi",
-    de: "Montagsübersicht",
-    it: "Riepilogo del lunedì",
-    pt: "Resumo de segunda-feira",
-    nl: "Maandagoverzicht",
-    pl: "Poniedziałkowe podsumowanie",
-  },
+  "Weekly summary": { es: "Resumen semanal", fr: "Résumé hebdomadaire", de: "Wochenübersicht", it: "Riepilogo settimanale", pt: "Resumo semanal", nl: "Weekoverzicht", pl: "Podsumowanie tygodnia" },
   "Open Shopify Flow": {
     es: "Abrir Shopify Flow",
     fr: "Ouvrir Shopify Flow",
@@ -298,15 +290,7 @@ export const NOTIFY_TR: Record<string, Tr> = {
   },
 
   // ---- Plans page (plan-matrix): what the plans include without an email provider ----
-  "Monday summary by email": {
-    es: "Resumen del lunes por email",
-    fr: "Récapitulatif du lundi par e-mail",
-    de: "Montagsübersicht per E-Mail",
-    it: "Riepilogo del lunedì via email",
-    pt: "Resumo de segunda-feira por email",
-    nl: "Maandagoverzicht per e-mail",
-    pl: "Poniedziałkowe podsumowanie e-mailem",
-  },
+  "Weekly summary by email": { es: "Resumen semanal por email", fr: "Résumé hebdomadaire par e-mail", de: "Wochenübersicht per E-Mail", it: "Riepilogo settimanale via email", pt: "Resumo semanal por email", nl: "Weekoverzicht per e-mail", pl: "Podsumowanie tygodnia e-mailem" },
   "Through Shopify Flow, to the addresses you choose.": {
     es: "A través de Shopify Flow, a las direcciones que elijas.",
     fr: "Via Shopify Flow, aux adresses de votre choix.",

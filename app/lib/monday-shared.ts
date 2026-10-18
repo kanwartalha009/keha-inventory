@@ -422,7 +422,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   }));
   const locked = input.lockedFixes && input.lockedFixes.count > 0 ? input.lockedFixes : null;
   const count = actions.length + (locked?.count ?? 0);
-  const todo = count === 0 ? null : count === 1 ? tr("1 thing to do") : fill(tr("{count} things to do"), { count });
+  const todo = count === 0 ? null : count === 1 ? tr("1 action") : fill(tr("{count} actions"), { count });
   const orders = input.orders ?? null;
   // With order data the subject leads with the job and the money moves to the preheader.
   const orderSubject = orders ? mondayOrderSubject(orders, tr, numLocale) : null;
@@ -442,11 +442,11 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
     subject,
     preheader,
     orders: orders ? orderBlock(orders, tr, numLocale, money) : null,
-    heading: fill(tr("Your Monday summary for {store}"), { store: storeName }),
+    heading: fill(tr("Weekly stock summary for {store}"), { store: storeName }),
     atStake,
     rows,
     refreshNote: input.refresh === "weekly" ? tr("Refreshed weekly on Free") : null,
-    topHeading: tr("Top things to do this week"),
+    topHeading: tr("This week's actions"),
     actions,
     lockedFixes: locked
       ? {
@@ -456,7 +456,7 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
         }
       : null,
     accuracy,
-    openLabel: tr("Open Keha"),
+    openLabel: tr("Open in Keha"),
     openAction: tr("Open"),
     footer: fill(tr("You get this email every Monday because Keha Inventory Planner is installed on {store}."), {
       store: storeName,

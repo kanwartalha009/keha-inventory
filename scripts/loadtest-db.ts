@@ -247,7 +247,7 @@ SELECT 'loadtest-' || s.num || '.myshopify.com', d::date, 10, 250 FROM lt_shop s
     windows: [{ days: 28, weight: 0.5, inStockDays: 28, rate: 2.0772089182493803, used: true }, { days: 56, weight: 0.3, inStockDays: 56, rate: 2.059454995871181, used: true }, { days: 90, weight: 0.2, inStockDays: 88, rate: 2.0381502890173384, used: true }],
     seasonal: 1.0759460695946261, trend: 1, plan: 1, leadTimeDays: 30, leadTimeSource: "supplier", cycleDays: 14, z: 1.65, onHand: 85, incoming: 24, caseQty: 6, minOrder: 10, orderNeed: null,
     sellsWhenOut: false, pace: null, outSince: null, lastSaleDay: YESTERDAY, dataSinceDay: null, offSeason: false, noReorder: false, productCreatedDay: "2024-08-01", price: 23, priceSource: "input", cost: 9, costSource: "input",
-    season: { level: "store", collectionId: null, productType: null, seasonalApplied: true, seasonalReason: "ok", seasonalYears: 1, seasonalWeight: 0.5, horizonDays: 44, trendApplied: false, trendReason: "off", trendMeasured: 0.8592501536570376, trendMode: "off", trendNote: "Not applied: the growth assumption is off", label: null },
+    season: { level: "store", collectionId: null, productType: null, seasonalApplied: true, seasonalReason: "ok", seasonalYears: 1, seasonalWeight: 0.5, horizonDays: 44, trendApplied: false, trendReason: "off", trendMeasured: 0.8592501536570376, trendMode: "off", trendNote: "Not applied: year-over-year growth is off", label: null },
     safetyLevel: "balanced", serviceLevel: 0.95, supplierId: "sup1", kehaOnOrder: 0, kehaOrders: [], safety: 6.388917300982472, seasonCurve: [1.02, 1.05, 1.1, 1.2, 1.31, 1.25, 1.1, 1.0, 0.95, 0.9, 0.92, 0.97, 1.01], arrivals: [], today: YESTERDAY,
   }).replace(/'/g, "''");
   step(

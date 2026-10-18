@@ -44,7 +44,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "accuracy":
       return { title: t("Forecast accuracy"), body: t("Every month, see how close our forecasts were to what you actually sold.") };
     case "slack":
-      return { title: t("Slack"), body: t("Get the Monday summary and urgent alerts in Slack.") };
+      return { title: t("Slack"), body: t("Get the weekly summary and urgent alerts in Slack.") };
     case "flowTriggers":
       return { title: t("Shopify Flow"), body: t("Start your own Flow automations when a product needs reordering or goes dead.") };
     case "csvExport":

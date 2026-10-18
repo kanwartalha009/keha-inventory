@@ -390,7 +390,7 @@ function BudgetCard({ plan }: { plan: OrderPlanData }) {
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">{t("Month")}</s-table-header>
-          <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-out" label={t("Cash out")} hint={t("Paid in the month: orders to place and still due on open purchase orders")} /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-out" label={t("Supplier payments")} hint={t("Paid in the month: orders to place and still due on open purchase orders")} /></s-table-header>
           <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-bud-budget" label={t("Monthly budget")} /></s-table-header>
           <s-table-header listSlot="labeled"><HeaderLabel id="keha-bud-status" label={t("Status")} /></s-table-header>
           <s-table-header><HeaderLabel id="keha-bud-act" label={t("Actions")} /></s-table-header>
@@ -466,7 +466,7 @@ function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
               <s-table-header listSlot="primary">{t("Product")}</s-table-header>
               <s-table-header listSlot="labeled">{t("Supplier")}</s-table-header>
               <s-table-header listSlot="labeled"><HeaderLabel id={`keha-fit-move-${fit.month}`} label={t("Order by")} hint={t("Planned date → suggested date")} /></s-table-header>
-              <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id={`keha-fit-amt-${fit.month}`} label={t("Cash moved")} /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id={`keha-fit-amt-${fit.month}`} label={t("Payments moved")} /></s-table-header>
               <s-table-header listSlot="labeled"><HeaderLabel id={`keha-fit-risk-${fit.month}`} label={t("Risk")} /></s-table-header>
             </s-table-header-row>
             <s-table-body>

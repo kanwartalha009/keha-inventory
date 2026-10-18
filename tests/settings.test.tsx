@@ -82,19 +82,19 @@ describe("Settings page", () => {
     const data = { form: settingsToForm(DEFAULT_SETTINGS) };
     const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
     const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
-    expect(html).toContain("How long do your suppliers take?");
-    expect(html).not.toContain("Send the Monday email");
+    expect(html).toContain("Default lead time");
+    expect(html).not.toContain("Send the weekly summary email");
     expect(html).toContain("More options");
     expect(html).toContain("App language");
     expect(html).toMatch(/<s-number-field[^>]*value="14"/);
-    expect(html).not.toContain("Growth assumption"); // in More options, collapsed while it is off
+    expect(html).not.toContain("Year-over-year growth"); // in More options, collapsed while it is off
   });
 
   it("a store that turned the growth assumption on sees it (More options open), with the honest note", () => {
     const data = { form: settingsToForm({ ...DEFAULT_SETTINGS, trendMode: "store" }) };
     const Stub = createRoutesStub([{ id: "settings", path: "/app/settings", Component: Settings, loader: () => data }]);
     const html = renderToString(<Stub initialEntries={["/app/settings"]} hydrationData={{ loaderData: { settings: data } }} />);
-    expect(html).toContain("Growth assumption");
+    expect(html).toContain("Year-over-year growth");
     expect(html).toContain("Off (recommended)");
     expect(html).toContain("Use today&#x27;s sales pace and season.");
     expect(html).toMatch(/<s-choice value="store" selected=/);

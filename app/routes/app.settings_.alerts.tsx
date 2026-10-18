@@ -157,7 +157,7 @@ export default function AlertsSettings() {
   const slackMessage = (code: string) => {
     switch (slackErrorGroup(code)) {
       case "link":
-        return t("Slack no longer accepts this webhook link. Create a new incoming webhook in Slack and connect it again.");
+        return t("Slack no longer accepts this webhook URL. Create a new incoming webhook in Slack and connect it again.");
       case "channel":
         return t("Slack can't post to the channel this link belongs to. It may have been deleted or archived. Create a webhook for another channel.");
       case "unreadable":
@@ -177,7 +177,7 @@ export default function AlertsSettings() {
         onDiscard={() => setForm(saved)}
       />
       <SettingsTabs current="alerts" />
-      <SampleOffNote>{t("Alerts, Slack and the Monday email always use your own store. Switch to your store to change them.")}</SampleOffNote>
+      <SampleOffNote>{t("Alerts, Slack and the weekly summary email always use your own store. Switch to your store to change them.")}</SampleOffNote>
       {result?.ok && result.intent === "save" && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result?.ok && result.intent === "test" && (
         <s-banner tone="success">{t("Test message sent. Check your Slack channel.")}</s-banner>
@@ -192,10 +192,10 @@ export default function AlertsSettings() {
       )}
 
       {emailProvider ? (
-        <FormCard title={t("Monday email")} sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}>
+        <FormCard title={t("Weekly summary email")} sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}>
           <s-stack direction="block" gap="base">
             <s-checkbox
-              label={t("Send the Monday email")}
+              label={t("Send the weekly summary email")}
               checked={flag(form.mondayEnabled)}
               onChange={(e) => set("mondayEnabled", isChecked(e))}
             />
@@ -210,7 +210,7 @@ export default function AlertsSettings() {
         </FormCard>
       ) : (
         <FormCard
-          title={t("Monday summary")}
+          title={t("Weekly summary")}
           sub={t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week.")}
           action={
             <s-button href={SHOPIFY_FLOW_ADMIN} target="_top">
@@ -251,7 +251,7 @@ export default function AlertsSettings() {
       </FormCard>
 
       {/* Below Growth the Upgrade banner says what Slack does; no second copy of it as the description. */}
-      <FormCard title={t("Slack")} sub={canSlack ? t("Get the Monday summary and urgent alerts in Slack.") : undefined}>
+      <FormCard title={t("Slack")} sub={canSlack ? t("Get the weekly summary and urgent alerts in Slack.") : undefined}>
         <s-stack direction="block" gap="base">
           {!canSlack && <UpgradeBanner feature="slack" />}
           {slack.connected && slack.error && (
@@ -275,7 +275,7 @@ export default function AlertsSettings() {
             </s-stack>
           ) : (
             <s-text-field
-              label={t("Slack webhook link")}
+              label={t("Slack webhook URL")}
               details={t("In Slack, add an incoming webhook for the channel you want, then paste its link here and save. We store it encrypted.")}
               placeholder="https://hooks.slack.com/services/…"
               value={form.slackWebhook}
@@ -285,7 +285,7 @@ export default function AlertsSettings() {
             />
           )}
           <s-checkbox
-            label={t("Send the Monday summary to Slack")}
+            label={t("Send the weekly summary to Slack")}
             details={canSlack ? t("The same numbers and top actions as the email, shorter.") : planTag("slack", t)}
             checked={flag(form.slackMonday)}
             disabled={flag(!canSlack)}

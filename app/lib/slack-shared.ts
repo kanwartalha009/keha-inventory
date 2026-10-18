@@ -67,7 +67,7 @@ export function buildSlackTest(locale: Locale, storeName: string): SlackMessage 
   const tr = (key: string) => translate(locale, key);
   return {
     text: slackEscape(
-      fill(tr("Keha Inventory Planner is connected for {store}. The Monday summary and urgent stock alerts will appear here."), {
+      fill(tr("Keha Inventory Planner is connected for {store}. The weekly summary and urgent stock alerts will appear here."), {
         store: storeName,
       }),
     ),

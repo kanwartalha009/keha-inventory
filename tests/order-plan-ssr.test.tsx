@@ -161,7 +161,7 @@ describe("order-plan-shared", () => {
     ]);
     expect(whyLines({ ...why, day: 9, growth: 1.25, pack: null, moq: null, topUp: 0 }, t, "en")).toEqual([
       "Forecast for the 28 days from this order: 56 (sales per day 2, season ×1.2) + safety 10 − stock expected then 5 − on order 3 = 58",
-      "Growth assumption ×1.25 included in the forecast.",
+      "Year-over-year growth ×1.25 included in the forecast.",
       "→ rounded to 60",
     ]);
     expect(whyLines(why, (x) => translate("de", x), "de")[0]).toContain("Prognose für die nächsten 28 Tage");

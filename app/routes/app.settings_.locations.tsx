@@ -123,7 +123,7 @@ export default function LocationsSettings() {
                       <s-stack direction="block" gap="none">
                         <s-text fontWeight="medium">{l.name}</s-text>
                         <s-text color="subdued">
-                          {l.online ? t("Fulfils online orders in Shopify") : t("Doesn't fulfil online orders in Shopify")}
+                          {l.online ? t("Fulfills online orders in Shopify") : t("Doesn't fulfill online orders in Shopify")}
                         </s-text>
                       </s-stack>
                     </s-table-cell>

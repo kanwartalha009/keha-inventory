@@ -79,10 +79,10 @@ export default function Privacy() {
         <strong>What the merchant enters in the App:</strong> settings (lead
         times, thresholds, safety level); suppliers (name, email address, lead
         time, minimum orders, case packs, the vendors they supply); purchase
-        orders created in the App; Season plan scenarios (dates and targets) and
+        orders created in the App; Season planner scenarios (dates and targets) and
         revenue goals per collection; each location’s role (warehouse, store)
         and whether it counts for online sales; the stock transfers created
-        from the App; {emailProvider ? "the email addresses that should receive the Monday email; " : ""}
+        from the App; {emailProvider ? "the email addresses that should receive the weekly summary email; " : ""}
         a Slack webhook address, if connected; and what the
         merchant does with each suggested action (done, snoozed, dismissed,
         discounts created).
@@ -119,7 +119,7 @@ export default function Privacy() {
       </p>
       <p>
         The App sends events to Shopify Flow in your own store. On every plan:
-        “Weekly order plan ready” (the Monday summary: what to order this week,
+        “Weekly order plan ready” (the weekly summary: what to order this week,
         the money at stake, the top actions, with links into the App) and
         “First order plan ready” (once, when your first plan is ready). On plans
         with Shopify Flow triggers: “Product needs reorder” (product and variant
@@ -141,15 +141,15 @@ export default function Privacy() {
       <ul>
         {emailProvider ? (
           <li>
-            <strong>To the store:</strong> the Monday email and instant stock
+            <strong>To the store:</strong> the weekly summary email and instant stock
             alerts go to the store owner email or the addresses the merchant
-            enters; every Monday email has an unsubscribe link. Answers to
+            enters; every weekly summary email has an unsubscribe link. Answers to
             Shopify’s customer data requests go to the store owner.
           </li>
         ) : (
           <li>
             <strong>To the store:</strong> the App sends no email itself. The
-            Monday summary and stock alerts reach the merchant through Shopify
+            weekly summary and stock alerts reach the merchant through Shopify
             Flow (above) and, if connected, Slack. Shopify’s customer data
             requests are answered in the App’s access log (the App holds no
             data about the customer).
@@ -173,7 +173,7 @@ export default function Privacy() {
         )}
         <li>
           <strong>Slack:</strong> only when the merchant connects their own
-          Slack webhook. The Monday summary and instant alerts (product names
+          Slack webhook. The weekly summary and instant alerts (product names
           and the amounts at stake) are posted there. The merchant can
           disconnect at any time.
         </li>

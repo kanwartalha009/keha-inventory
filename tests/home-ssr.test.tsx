@@ -182,7 +182,7 @@ describe("Home", () => {
     raw.emailProvider = false;
     raw.shop!.settings = { mondayEmail: { enabled: false, recipients: [] } };
     const html = home(raw);
-    expect(html).toContain("Monday summary");
+    expect(html).toContain("Weekly summary");
     expect(html).toContain("Get it by email with Shopify Flow: “Weekly order plan ready”.");
     expect(html).toContain("How it works");
     expect(html).not.toContain("Every Monday at 08:00 to");

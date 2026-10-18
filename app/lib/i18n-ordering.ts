@@ -54,15 +54,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     nl: "Verkopen per dag op basis van de dagen met voorraad sinds {month}.",
     pl: "Sprzedaż dziennie na podstawie dni ze stanem od {month}.",
   },
-  "Growth assumption ×{growth} included in the forecast.": {
-    es: "Incluye la hipótesis de crecimiento ×{growth}.",
-    fr: "L'hypothèse de croissance ×{growth} est incluse dans la prévision.",
-    de: "Die Wachstumsannahme ×{growth} ist in der Prognose enthalten.",
-    it: "L'ipotesi di crescita ×{growth} è inclusa nella previsione.",
-    pt: "A hipótese de crescimento ×{growth} está incluída na previsão.",
-    nl: "De groeiaanname ×{growth} zit in de prognose.",
-    pl: "Prognoza uwzględnia założenie wzrostu ×{growth}.",
-  },
+  "Year-over-year growth ×{growth} included in the forecast.": { es: "La previsión incluye el crecimiento interanual ×{growth}.", fr: "La croissance sur un an ×{growth} est incluse dans la prévision.", de: "Das Wachstum zum Vorjahr ×{growth} ist in der Prognose enthalten.", it: "La crescita anno su anno ×{growth} è inclusa nella previsione.", pt: "O crescimento homólogo ×{growth} está incluído na previsão.", nl: "De groei ten opzichte van vorig jaar ×{growth} zit in de prognose.", pl: "Prognoza uwzględnia wzrost rok do roku ×{growth}." },
   "→ rounded to {qty} (case pack {pack} / minimum {moq})": {
     es: "→ redondeado a {qty} (caja de {pack} / mínimo {moq})",
     fr: "→ arrondi à {qty} (carton de {pack} / minimum {moq})",
@@ -341,15 +333,7 @@ export const ORDERING_TR: Record<string, Tr> = {
 
   // ---- Product detail ----
   "Stock included in purchase orders: every active location unless you left it out in Settings → Locations.": { es: "Stock incluido en las órdenes de compra: todas las ubicaciones activas, salvo las que hayas excluido en Ajustes → Ubicaciones.", fr: "Stock inclus dans les bons de commande : tous les emplacements actifs, sauf ceux exclus dans Paramètres → Emplacements.", de: "In Bestellungen einbezogener Bestand: alle aktiven Standorte, außer denen, die du unter Einstellungen → Standorte ausgenommen hast.", it: "Stock incluso negli ordini d'acquisto: tutte le sedi attive, tranne quelle escluse in Impostazioni → Sedi.", pt: "Stock incluído nas notas de encomenda: todas as localizações ativas, exceto as que excluiu em Definições → Localizações.", nl: "Voorraad meegenomen in inkooporders: alle actieve locaties, behalve de locaties die je hebt uitgesloten bij Instellingen → Locaties.", pl: "Stan uwzględniany w zamówieniach zakupu: wszystkie aktywne lokalizacje, oprócz wyłączonych w Ustawienia → Lokalizacje." },
-  "Not applied (growth assumption off)": {
-    es: "No se aplica (hipótesis de crecimiento desactivada)",
-    fr: "Non appliquée (hypothèse de croissance désactivée)",
-    de: "Nicht angewendet (Wachstumsannahme aus)",
-    it: "Non applicata (ipotesi di crescita disattivata)",
-    pt: "Não aplicada (hipótese de crescimento desligada)",
-    nl: "Niet toegepast (groeiaanname uit)",
-    pl: "Nie stosowane (założenie wzrostu wyłączone)",
-  },
+  "Not applied (year-over-year growth off)": { es: "No se aplica (crecimiento interanual desactivado)", fr: "Non appliquée (croissance sur un an désactivée)", de: "Nicht angewendet (Wachstum zum Vorjahr aus)", it: "Non applicata (crescita anno su anno disattivata)", pt: "Não aplicada (crescimento homólogo desligado)", nl: "Niet toegepast (groei ten opzichte van vorig jaar uit)", pl: "Nie stosowane (wzrost rok do roku wyłączony)" },
   "No change from last year": { es: "Sin cambios respecto al año pasado", fr: "Pas de changement par rapport à l'an dernier", de: "Keine Veränderung zum Vorjahr", it: "Nessuna variazione rispetto all'anno scorso", pt: "Sem alteração face ao ano passado", nl: "Geen verandering ten opzichte van vorig jaar", pl: "Bez zmian względem zeszłego roku" },
   "Ordering": { es: "Pedidos", fr: "Commandes", de: "Bestellen", it: "Ordini", pt: "Encomendas", nl: "Bestellen", pl: "Zamawianie" },
   "Leave a product out of every order, or set its own case size.": {

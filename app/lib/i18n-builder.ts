@@ -9,8 +9,7 @@ import type { Tr } from "./i18n";
 
 export const BUILDER_TR: Record<string, Tr> = {
   // ---- Settings → Suppliers: order cycle ----
-  "Order every": { es: "Pedir cada", fr: "Commander tous les", de: "Bestellen alle", it: "Ordina ogni", pt: "Encomendar a cada", nl: "Bestellen elke", pl: "Zamawiaj co" },
-  "Order every {n} days": { es: "Pedido cada {n} días", fr: "Commande tous les {n} jours", de: "Bestellung alle {n} Tage", it: "Ordine ogni {n} giorni", pt: "Encomenda a cada {n} dias", nl: "Bestelling elke {n} dagen", pl: "Zamówienie co {n} dni" },
+  "Order cycle: every {n} days": { es: "Ciclo de pedidos: cada {n} días", fr: "Cycle de commande : tous les {n} jours", de: "Bestellzyklus: alle {n} Tage", it: "Ciclo degli ordini: ogni {n} giorni", pt: "Ciclo de encomendas: a cada {n} dias", nl: "Bestelcyclus: elke {n} dagen", pl: "Cykl zamówień: co {n} dni" },
   "How often you place an order with this supplier. Leave empty to use your store's order cycle ({n} days).": {
     es: "Cada cuánto haces un pedido a este proveedor. Déjalo vacío para usar el ciclo de pedidos de tu tienda ({n} días).",
     fr: "La fréquence à laquelle vous passez commande auprès de ce fournisseur. Laissez vide pour utiliser le cycle de commande de votre boutique ({n} jours).",

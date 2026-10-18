@@ -97,17 +97,8 @@ export const REASONS_TR: Record<string, Tr> = {
   },
 
   // ---- Settings → Defaults: safety level (spec §5.5) ----
-  "Safety level": { es: "Nivel de seguridad", fr: "Niveau de sécurité", de: "Sicherheitsniveau", it: "Livello di sicurezza", pt: "Nível de segurança", nl: "Veiligheidsniveau", pl: "Poziom bezpieczeństwa" },
-  Lean: { es: "Ajustado", fr: "Serré", de: "Knapp", it: "Snello", pt: "Enxuto", nl: "Krap", pl: "Oszczędny" },
-  Balanced: { es: "Equilibrado", fr: "Équilibré", de: "Ausgewogen", it: "Equilibrato", pt: "Equilibrado", nl: "Gebalanceerd", pl: "Zrównoważony" },
-  Safe: { es: "Seguro", fr: "Prudent", de: "Sicher", it: "Prudente", pt: "Seguro", nl: "Veilig", pl: "Bezpieczny" },
-  "Extra stock for surprises in demand: Safe runs out less often but ties up more cash, Lean the opposite.": {
-    es: "Stock extra para imprevistos de demanda: Seguro se agota menos pero inmoviliza más dinero; Ajustado, lo contrario.",
-    fr: "Stock supplémentaire pour les imprévus de demande : Prudent tombe moins en rupture mais immobilise plus de trésorerie, Serré l'inverse.",
-    de: "Zusatzbestand für Nachfragespitzen: Sicher ist seltener ausverkauft, bindet aber mehr Geld, Knapp umgekehrt.",
-    it: "Scorta extra per gli imprevisti della domanda: Prudente si esaurisce meno ma immobilizza più liquidità, Snello il contrario.",
-    pt: "Stock extra para imprevistos na procura: Seguro esgota menos mas prende mais dinheiro, Enxuto o contrário.",
-    nl: "Extra voorraad voor onverwachte vraag: Veilig is minder vaak uitverkocht maar legt meer geld vast, Krap omgekeerd.",
-    pl: "Dodatkowy zapas na niespodziewany popyt: Bezpieczny rzadziej się kończy, ale zamraża więcej gotówki, Oszczędny odwrotnie.",
-  },
+  "Low": { es: "Bajo", fr: "Faible", de: "Niedrig", it: "Basso", pt: "Baixo", nl: "Laag", pl: "Niski" },
+  "Standard": { es: "Estándar", fr: "Moyen", de: "Mittel", it: "Medio", pt: "Padrão", nl: "Standaard", pl: "Standardowy" },
+  "High": { es: "Alto", fr: "Élevé", de: "Hoch", it: "Alto", pt: "Alto", nl: "Hoog", pl: "Wysoki" },
+  "Extra stock for surprises in demand: High runs out less often but ties up more cash, Low the opposite.": { es: "Stock extra para imprevistos de demanda: Alto se agota menos pero inmoviliza más dinero; Bajo, lo contrario.", fr: "Stock supplémentaire pour les imprévus de demande : Élevé tombe moins en rupture mais immobilise plus de trésorerie, Faible l'inverse.", de: "Zusatzbestand für Nachfragespitzen: Hoch ist seltener nicht vorrätig, bindet aber mehr Kapital, Niedrig umgekehrt.", it: "Scorta extra per gli imprevisti della domanda: Alto si esaurisce meno ma immobilizza più liquidità, Basso il contrario.", pt: "Stock extra para imprevistos na procura: Alto esgota menos mas prende mais dinheiro, Baixo o contrário.", nl: "Extra voorraad voor onverwachte vraag: Hoog is minder vaak niet op voorraad maar legt meer geld vast, Laag omgekeerd.", pl: "Dodatkowy zapas na niespodziewany popyt: Wysoki rzadziej się kończy, ale zamraża więcej gotówki, Niski odwrotnie." },
 };

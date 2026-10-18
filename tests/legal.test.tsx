@@ -83,7 +83,7 @@ describe("/privacy", () => {
     expect(html).toContain("Shopify Sidekick");
     expect(html).toContain("it collects nothing new and changes nothing in");
     expect(html).toContain("Transfers are created as drafts");
-    expect(html).toContain("Season plan scenarios");
+    expect(html).toContain("Season planner scenarios");
     expect(html).toContain("privacy@example.com");
     expect(html).toContain("Example Ltd");
     expect(html).not.toContain("rolled up");
@@ -96,7 +96,7 @@ describe("/privacy with an email provider configured", () => {
     process.env.INVENTORY_EMAIL_FROM = "Keha <mail@keha.test>";
     const html = render("/privacy", Privacy, await privacyLoader());
     expect(html).toContain("Resend — sends the emails described above");
-    expect(html).toContain("the Monday email and instant stock");
+    expect(html).toContain("the weekly summary email and instant stock");
     expect(html).toContain("presses “Email");
     expect(html).not.toContain("the App sends no email itself");
   });

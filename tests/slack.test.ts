@@ -82,7 +82,7 @@ describe("message helpers", () => {
   });
   it("test message is translated and escaped", () => {
     expect(buildSlackTest("de", "A&B").text).toBe(
-      "Keha Inventory Planner ist für A&amp;B verbunden. Die Montagsübersicht und dringende Bestandswarnungen erscheinen hier.",
+      "Keha Inventory Planner ist für A&amp;B verbunden. Die Wochenübersicht und dringende Bestandswarnungen erscheinen hier.",
     );
   });
 });

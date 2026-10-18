@@ -161,11 +161,11 @@ describe("Settings → Defaults: monthly budget", () => {
   it("More options opens by itself with a budget, and shows it with the store currency", () => {
     const form = settingsToForm({ ...DEFAULT_SETTINGS, monthlyBudget: 5000 });
     const html = render("/app/settings", "settings", Settings, { form, currency: "EUR" });
-    expect(html).toContain("Monthly budget for stock");
+    expect(html).toContain("Monthly purchasing budget");
     expect(html).toContain('value="5000"');
     expect(html).toContain('suffix="EUR"');
     const none = render("/app/settings", "settings", Settings, { form: settingsToForm(DEFAULT_SETTINGS), currency: "EUR" });
-    expect(none).not.toContain("Monthly budget for stock"); // collapsed
+    expect(none).not.toContain("Monthly purchasing budget"); // collapsed
   });
 });
 

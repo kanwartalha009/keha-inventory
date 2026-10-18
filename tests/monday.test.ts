@@ -215,15 +215,15 @@ describe("composeMondayEmail", () => {
     const e = composeMondayEmail(base);
     // Headline = Sales at risk + Cash stuck (1200 + 3400.5), not the past-period cards.
     expect(e.subject).toBe("€4,601 at stake this week");
-    expect(e.text).toContain("Your Monday summary for Acme Shoes");
+    expect(e.text).toContain("Weekly stock summary for Acme Shoes");
     expect(e.text).toContain("Sales at risk (next 28 days): €1,200 (+€200 vs last week)");
     expect(e.text).toMatch(/^Lost sales \(last 90 days\): —$/m); // null → "—", no change
     expect(e.text).toContain("Cash tied up: €3,401 (Same as last week)");
     expect(e.text).toMatch(/^Out-of-stock page visits \(last 30 days\): €50$/m); // before null → no change
-    expect(e.text).toContain(`Open Keha: ${base.links.app}`);
+    expect(e.text).toContain(`Open in Keha: ${base.links.app}`);
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
     expect(e.text).not.toContain("Refreshed weekly");
-    expect(e.text).not.toContain("things to do");
+    expect(e.text).not.toMatch(/\b\d+ actions?\b/);
     expect(e.text).not.toMatch(/\b0 vs last week/);
     expect(e.html).toContain('<html lang="en">');
     expect(e.html).toContain(`href="${base.links.app}"`);
@@ -236,13 +236,13 @@ describe("composeMondayEmail", () => {
     const e = composeMondayEmail({ ...base, locale: "es", numberLocale: "es-ES", refresh: "weekly" });
     const eur = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
     expect(e.subject).toBe(`${eur(4601)} en juego esta semana`);
-    expect(e.text).toContain("Tu resumen del lunes para Acme Shoes");
+    expect(e.text).toContain("Resumen semanal de stock de Acme Shoes");
     expect(e.text).toContain(`Ventas en riesgo (próximos 28 días): ${eur(1200)} (`);
     expect(e.text).toContain("respecto a la semana pasada");
     expect(e.text).toContain("Dinero inmovilizado");
     expect(e.text).toContain("Igual que la semana pasada");
     expect(e.text).toContain("Se actualiza cada semana en el plan Gratis");
-    expect(e.text).toContain("Abrir Keha:");
+    expect(e.text).toContain("Abrir en Keha:");
     expect(e.text).toContain("Darse de baja:");
     expect(e.html).toContain('<html lang="es">');
     expect(e.html).not.toContain("Sales at risk");
@@ -285,19 +285,19 @@ describe("composeMondayEmail", () => {
     expect(e.html).not.toContain("<b>");
   });
 
-  it("later phases: actions add '— 5 things to do' and the top 5; accuracy adds its line", () => {
+  it("later phases: actions add '— 5 actions' and the top 5; accuracy adds its line", () => {
     const actions = Array.from({ length: 7 }, (_, i) => ({ title: `Reorder item ${i + 1}`, reason: "Runs out in 9 days", amount: 100 * (i + 1), link: `https://x/${i + 1}` }));
     const e = composeMondayEmail({ ...base, actions, accuracyPct: 7.4 });
-    expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
-    expect(e.text).toContain("Top things to do this week");
+    expect(e.subject).toBe("€4,601 at stake this week — 5 actions");
+    expect(e.text).toContain("This week's actions");
     expect(e.text).toContain("5. Reorder item 5 (€500)");
     expect(e.text).not.toContain("Reorder item 6");
     expect(e.text).toContain("Last month we were within 7% on your store total.");
     expect(e.html).toContain('href="https://x/5"');
-    expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,601 at stake this week — 1 thing to do");
+    expect(composeMondayEmail({ ...base, actions: actions.slice(0, 1) }).subject).toBe("€4,601 at stake this week — 1 action");
     const pastOnly = { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 };
-    expect(composeMondayEmail({ ...base, now: pastOnly, actions: actions.slice(0, 1) }).subject).toBe("Your stock this week — 1 thing to do");
-    expect(composeMondayEmail({ ...base, locale: "es", actions }).subject).toMatch(/— 5 cosas por hacer$/);
+    expect(composeMondayEmail({ ...base, now: pastOnly, actions: actions.slice(0, 1) }).subject).toBe("Your stock this week — 1 action");
+    expect(composeMondayEmail({ ...base, locale: "es", actions }).subject).toMatch(/— 5 acciones$/);
   });
 });
 
@@ -344,7 +344,7 @@ describe("runMondayEmails without an email provider: Shopify Flow 'Weekly order 
     expect([shop, handle, period]).toEqual([S, "weekly-order-plan-ready", "2026-W43"]);
     expect(Object.keys(payload).sort()).toEqual(["Cash due this week", "Order plan link", "Orders due this week", "Subject", "Summary text"]);
     expect(payload.Subject).toMatch(/at stake this week/);
-    expect(payload["Summary text"]).toContain("Your Monday summary for Acme Shoes");
+    expect(payload["Summary text"]).toContain("Weekly stock summary for Acme Shoes");
     expect(payload["Summary text"]).toContain("Cash tied up: —");
     // The Flow text has no email footer or unsubscribe link (the merchant's workflow controls it).
     expect(payload["Summary text"]).not.toContain("unsubscribe");
@@ -407,7 +407,7 @@ describe("runMondayEmails", () => {
     const sent = sendEmail.mock.calls[0][0] as { to: string; subject: string; text: string; html: string };
     expect(sent.to).toBe("owner@acme.test");
     expect(sent.subject).toMatch(/en juego esta semana$/);
-    expect(sent.text).toContain("Tu resumen del lunes para Acme Shoes");
+    expect(sent.text).toContain("Resumen semanal de stock de Acme Shoes");
     // vs the 11 Oct row (7 days back), not the 17 Oct one.
     const plus500 = new Intl.NumberFormat("es", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0, signDisplay: "exceptZero" }).format(500);
     expect(sent.text).toContain(`(${plus500} respecto a la semana pasada)`);
@@ -633,11 +633,11 @@ describe("composeMondayEmail — full", () => {
 
   it("Free: Fix rows become one count line with a plans button; they count as things to do", () => {
     const e = composeMondayEmail({ ...base, actions, lockedFixes: { count: 2, link: "https://x/plans" } });
-    expect(e.subject).toBe("€4,601 at stake this week — 5 things to do");
+    expect(e.subject).toBe("€4,601 at stake this week — 5 actions");
     expect(e.text).toContain("4. Product issues: 2. See which ones on the Growth plan.");
     expect(e.text).toContain("See plans: https://x/plans");
     expect(e.html).toContain('href="https://x/plans"');
-    expect(composeMondayEmail({ ...base, lockedFixes: { count: 1, link: "https://x/plans" } }).subject).toBe("€4,601 at stake this week — 1 thing to do");
+    expect(composeMondayEmail({ ...base, lockedFixes: { count: 1, link: "https://x/plans" } }).subject).toBe("€4,601 at stake this week — 1 action");
   });
 
   it("no accuracy line without a number; translated with one", () => {
@@ -676,7 +676,7 @@ describe("runMondayEmails — full email", () => {
     seedActions();
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string; html: string };
-    expect(sent.subject).toMatch(/at stake this week — 5 things to do$/);
+    expect(sent.subject).toMatch(/at stake this week — 5 actions$/);
     expect(sent.text).toContain("1. Product 1 (€900)");
     expect(sent.text).toContain("   Runs out in 9 days");
     expect(sent.text).toContain("2. Product 2 (€800)");
@@ -698,7 +698,7 @@ describe("runMondayEmails — full email", () => {
     seedActions();
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
-    expect(sent.subject).toMatch(/— 5 things to do$/);
+    expect(sent.subject).toMatch(/— 5 actions$/);
     expect(sent.text).not.toContain("Product 2");
     expect(sent.text).not.toContain("fix.sizes");
     expect(sent.text).toContain("5. Product issues: 1. See which ones on the Growth plan.");
@@ -712,7 +712,7 @@ describe("runMondayEmails — full email", () => {
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string };
     expect(sent.subject).toMatch(/at stake this week$/);
-    expect(sent.text).not.toContain("Top things to do");
+    expect(sent.text).not.toContain("This week's actions");
   });
 
   const slackSettings = (over: Row = {}) => ({
@@ -787,7 +787,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
   it("orders due: '{n} orders due this week · first by {day}', money in the preheader, the block before the money", () => {
     const e = composeMondayEmail({ ...base, orders: plan(), actions });
     expect(e.subject).toBe("2 orders due this week · first by Wed, Oct 21");
-    expect(e.html).toContain(">€4,601 at stake · 1 thing to do</div>");
+    expect(e.html).toContain(">€4,601 at stake · 1 action</div>");
     expect(e.html.indexOf("Due this week")).toBeLessThan(e.html.indexOf("Sales at risk"));
     expect(e.text.indexOf("Due this week")).toBeLessThan(e.text.indexOf("€4,601 at stake this week"));
     expect(e.text).toContain("- Acme Textiles · 120 units · €1,830 · Due Wed, Oct 21");
@@ -840,7 +840,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
   it("store not ready (2026-10-17 click-through): the block says why and when; the subject is the money one, never 'Nothing to order'", () => {
     const orders: MondayOrders = { kind: "notReady", today: "2026-10-19", readiness: { ready: false, state: "noSales", readyOn: "2026-10-31" } };
     const e = composeMondayEmail({ ...base, orders, actions });
-    expect(e.subject).toBe("€4,601 at stake this week — 1 thing to do");
+    expect(e.subject).toBe("€4,601 at stake this week — 1 action");
     expect(e.text).toContain("Due this week");
     expect(e.text).toContain("Your order plan isn't ready yet. Your first order plan needs 14 days of sales — expected on Oct 31.");
     expect(e.text).not.toContain("Nothing to order");
@@ -1004,7 +1004,7 @@ describe("email unsubscribe route", () => {
     expect(data).toEqual({ state: "confirm", locale: "es", shop: S, token: t, kind: "monday" });
     expect((tables.shop[0].settings as Row).mondayEmail).toEqual({ enabled: true, recipients: ["ops@acme.test"] });
     const html = renderPage(data);
-    expect(html).toContain("¿Dejar de recibir el email del lunes?");
+    expect(html).toContain("¿Dejar de recibir el email del resumen semanal?");
     expect(html).toContain("Darse de baja");
     expect(html).toContain('method="post"');
     expect(html).toContain(`value="${t}"`);

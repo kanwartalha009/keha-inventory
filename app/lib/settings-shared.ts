@@ -163,7 +163,7 @@ export const SETTINGS_ERRORS = {
   range: "Enter a whole number from {min} to {max}.",
   emails: "Check the email addresses.",
   tooMany: "Up to 10 addresses.",
-  slackUrl: "Paste a Slack incoming webhook link. It starts with https://hooks.slack.com/services/",
+  slackUrl: "Paste a Slack incoming webhook URL. It starts with https://hooks.slack.com/services/",
   budget: "Enter an amount like 5000 or 4999.99, or leave it empty.",
   /** No valid APP_ENCRYPTION_KEY in production: secrets are never stored unencrypted (lib/crypto.server). */
   secretStorage: "Secure storage isn't set up for this app yet, so this can't be saved. Contact Keha support.",

@@ -256,16 +256,16 @@ describe("Alerts tab", () => {
 
   it("not connected (Growth): Monday email, instant alerts, the link field; at most 8 fields", () => {
     const html = render(base);
-    expect(html).toContain("Send the Monday email");
+    expect(html).toContain("Send the weekly summary email");
     expect(html).toContain("Send to");
     expect(html).toContain("Send instant alerts");
-    expect(html).toContain("Slack webhook link");
-    expect(html).toContain("Send the Monday summary to Slack");
+    expect(html).toContain("Slack webhook URL");
+    expect(html).toContain("Send the weekly summary to Slack");
     expect(html).not.toContain("Disconnect");
     expect(html).toContain("keha-tab--active");
     const fields = (html.match(/<s-(?:checkbox|text-field|number-field|select)\b/g) ?? []).length;
     expect(fields).toBeLessThanOrEqual(8);
-    expectSettingsAnatomy(html, { cards: ["Monday email", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
+    expectSettingsAnatomy(html, { cards: ["Weekly summary email", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
     // The long instant-alert text is split: one sentence as the card description, the rest as the checkbox details.
     expect(html).toContain("When a best seller will run out before new stock can arrive, or a busy product sells out.</s-paragraph>");
     expect(html).toContain('details="By email to the addresses above, and to Slack when it&#x27;s connected. At most once per product per week."');
@@ -276,14 +276,14 @@ describe("Alerts tab", () => {
     expect(html).toContain("Connected");
     expect(html).toContain("Send a test message");
     expect(html).toContain("Disconnect");
-    expect(html).not.toContain("Slack webhook link");
+    expect(html).not.toContain("Slack webhook URL");
     expect(html).not.toContain("hooks.slack.com/services/T");
   });
 
   it("a link Slack stopped accepting: kept, with the error explained", () => {
     const html = render({ ...base, slack: { connected: true, error: { code: "invalid_token", at: "2026-10-16T00:00:00Z" } } });
     expect(html).toContain("Slack stopped accepting our messages");
-    expect(html).toContain("Slack no longer accepts this webhook link");
+    expect(html).toContain("Slack no longer accepts this webhook URL");
     expect(html).toContain("Not working");
     expect(render({ ...base, slack: { connected: true, error: { code: "channel_not_found", at: "x" } } })).toContain(
       "Slack can&#x27;t post to the channel this link belongs to",
@@ -292,9 +292,9 @@ describe("Alerts tab", () => {
 
   it("Free: Slack is shown with what it does and an Upgrade button, its fields disabled", () => {
     const html = render({ ...base, canSlack: false });
-    expect(html).toContain("Get the Monday summary and urgent alerts in Slack.");
+    expect(html).toContain("Get the weekly summary and urgent alerts in Slack.");
     expect(html).toContain("See plans");
-    expect(html).toMatch(/<s-text-field[^>]*label="Slack webhook link"[^>]*disabled/);
+    expect(html).toMatch(/<s-text-field[^>]*label="Slack webhook URL"[^>]*disabled/);
     expect(html).toContain("Growth plan");
   });
 });
@@ -304,16 +304,16 @@ describe("Alerts tab without an email provider (owner decision 2026-10-18)", () 
 
   it("no Monday email switch or recipients that can't work; the Monday summary by email with Shopify Flow instead", () => {
     const html = render(base);
-    expect(html).not.toContain("Send the Monday email");
+    expect(html).not.toContain("Send the weekly summary email");
     expect(html).not.toContain('label="Send to"');
     expect(html).not.toContain("By email to the addresses above");
-    expect(html).toContain("Monday summary");
+    expect(html).toContain("Weekly summary");
     expect(html).toContain("Get it by email with Shopify Flow");
     expect(html).toContain("“Weekly order plan ready”");
     expect(html).toContain("“Send internal email”");
     expect(html).toContain("“First order plan ready”");
     expect(html).toMatch(/<s-button[^>]*href="shopify:\/\/admin\/apps\/flow"[^>]*target="_top"[^>]*>Open Shopify Flow/);
-    expectSettingsAnatomy(html, { cards: ["Monday summary", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
+    expectSettingsAnatomy(html, { cards: ["Weekly summary", "Instant alerts", "Slack"], saveBar: "keha-settings-alerts" });
   });
 
   it("instant alerts: Slack as before; by email through 'Product needs reorder' on Growth, a plan tag below it", () => {
@@ -321,7 +321,7 @@ describe("Alerts tab without an email provider (owner decision 2026-10-18)", () 
     expect(html).toContain("Send instant alerts");
     expect(html).toContain('details="To Slack when it&#x27;s connected. At most once per product per week."');
     expect(html).toContain("add the “Send internal email” action to the “Product needs reorder” trigger");
-    expect(html).toContain("Slack webhook link");
+    expect(html).toContain("Slack webhook URL");
     const free = render({ ...base, canFlow: false, canSlack: false });
     expect(free).toContain("By email with Shopify Flow, on the “Product needs reorder” trigger · Growth plan");
   });

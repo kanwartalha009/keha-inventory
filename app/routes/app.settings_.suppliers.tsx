@@ -217,9 +217,9 @@ export default function SuppliersSettings() {
             <s-table-header-row>
               <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
               <s-table-header listSlot="labeled" format="numeric">{t("Lead time")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Minimum orders")}</s-table-header>
-              <s-table-header listSlot="labeled">{t("Assigned by")}</s-table-header>
-              <s-table-header>{t("Manage")}</s-table-header>
+              <s-table-header listSlot="labeled">{t("Order minimums")}</s-table-header>
+              <s-table-header listSlot="labeled">{t("Products from")}</s-table-header>
+              <s-table-header>{t("Actions")}</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {data.suppliers.map((s) => (
@@ -354,7 +354,7 @@ function SupplierRow({
             <s-text color="subdued">{fill(plural(s.transitDays, t("1 day in transit"), t("{n} days in transit")), { n: formatCount(s.transitDays, locale) })}</s-text>
           ) : null}
           {s.orderCycleDays ? (
-            <s-text color="subdued">{fill(plural(s.orderCycleDays, t("Order every day"), t("Order every {n} days")), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
+            <s-text color="subdued">{fill(plural(s.orderCycleDays, t("Order cycle: every day"), t("Order cycle: every {n} days")), { n: formatCount(s.orderCycleDays, locale) })}</s-text>
           ) : null}
         </s-stack>
       </s-table-cell>
@@ -494,7 +494,7 @@ function SupplierEditor({
           t("days"),
         )}
         {numberField("minOrder", t("Minimum per item"), t("The fewest units the supplier takes of one variant. Leave empty for none."))}
-        {numberField("minOrderTotal", t("Minimum order total"), t("The fewest units for the whole order. Suggested orders are topped up to reach it."))}
+        {numberField("minOrderTotal", t("Minimum order (units)"), t("The fewest units for the whole order. Suggested orders are topped up to reach it."))}
         {numberField("casePack", t("Case pack"), t("Units per case. Quantities are rounded up to whole cases. A product's own case size wins."))}
         {vendorChoices.length > 0 ? (
           <ChoiceListField
@@ -512,7 +512,7 @@ function SupplierEditor({
           <s-stack direction="block" gap="base">
             {numberField(
               "orderCycleDays",
-              t("Order every"),
+              t("Order cycle"),
               storeCycleDays
                 ? fill(t("How often you place an order with this supplier. Leave empty to use your store's order cycle ({n} days)."), { n: formatCount(storeCycleDays, locale) })
                 : t("How often you place an order with this supplier. Leave empty to use your store's order cycle."),
@@ -522,13 +522,13 @@ function SupplierEditor({
               label={t("Minimum per item applies to")}
               value={form.minOrderScope}
               options={[
-                { value: "variant", label: t("Each size/colour") },
+                { value: "variant", label: t("Each size/color") },
                 { value: "product", label: t("Each product (split across sizes by sales)") },
               ]}
               onChange={(v) => set("minOrderScope", v)}
             />
             <s-number-field
-              label={t("Minimum order value")}
+              label={t("Minimum order (value)")}
               details={fill(t("The smallest order this supplier accepts, in {currency}. Leave empty for none."), {
                 currency: supplierCurrency,
               })}

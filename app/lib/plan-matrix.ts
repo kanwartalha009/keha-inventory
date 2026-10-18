@@ -60,7 +60,7 @@ export const PLAN_MATRIX: MatrixGroup[] = [
     rows: [
       { label: "Ranked list of what to reorder, promote, fix and clear", values: { free: "Top 10", growth: "All", pro: "All" } },
       // Owner decision 2026-10-18 (no email provider): the summary reaches the inbox through Shopify Flow.
-      { label: "Monday summary by email", hint: "Through Shopify Flow, to the addresses you choose.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
+      { label: "Weekly summary by email", hint: "Through Shopify Flow, to the addresses you choose.", values: { free: "Top 10", growth: "Full", pro: "Full" } },
       { label: "Missing sizes, weak product pages, high returns and falling best sellers", feature: "fixDetails", hint: "Free shows how many there are." },
       // Pricing audit 2026-10-17: without a preorder app this is the back-in-stock how-to — say that, no preorder promise.
       { label: "Stock gaps", hint: "Until its stock arrives: how to collect back-in-stock sign-ups on the product page.", feature: "bridge" },

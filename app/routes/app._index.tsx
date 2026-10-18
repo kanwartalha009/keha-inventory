@@ -580,7 +580,7 @@ function SetupGuide({ data }: { data: HomeData }) {
           // No email provider: the summary reaches the inbox through Shopify Flow (Settings → Alerts explains it).
           <SetupStep
             done
-            title={t("Monday summary")}
+            title={t("Weekly summary")}
             sub={t("Get it by email with Shopify Flow: “Weekly order plan ready”.")}
             action={
               <s-button variant="secondary" {...link("/app/settings/alerts")}>
@@ -591,7 +591,7 @@ function SetupGuide({ data }: { data: HomeData }) {
         ) : (
           <SetupStep
             done={s.mondayEnabled}
-            title={t("Monday email")}
+            title={t("Weekly summary email")}
             sub={
               s.mondayEnabled
                 ? fill(t("Every Monday at 08:00 to {to}"), { to })

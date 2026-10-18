@@ -47,8 +47,8 @@ describe("Settings → Suppliers", () => {
     expect(html).toContain("10 per item · 200 per order · €1,500 minimum · cases of 6");
     expect(html).toContain("21 days in transit");
     // The supplier's own order cycle (2026-10-17); a supplier without one shows nothing extra.
-    expect(html).toContain("Order every 30 days");
-    expect((html.match(/Order every \d+ days/g) ?? []).length).toBe(1);
+    expect(html).toContain("Order cycle: every 30 days");
+    expect((html.match(/Order cycle: every \d+ days/g) ?? []).length).toBe(1);
     expect(html).toContain("Vendors: Acme");
     expect(html).toContain("Products picked: 3");
     expect(html).toContain("Email saved");
@@ -65,14 +65,14 @@ describe("Settings → Suppliers", () => {
       suppliers({ editing: { id: null, form: newSupplierForm(14, "EUR") } }),
     );
     expect(html).toContain("New supplier");
-    for (const f of ["Supplier name", "Supplier email", "Lead time", "Transit time", "Minimum per item", "Minimum order total", "Case pack", "Products from these vendors"]) {
+    for (const f of ["Supplier name", "Supplier email", "Lead time", "Transit time", "Minimum per item", "Minimum order (units)", "Case pack", "Products from these vendors"]) {
       expect(html).toContain(f);
     }
     expect(html).toContain("More options");
     expect(html).toContain("Total days from placing the order to stock arriving.");
     expect(html).toContain("Days from ship date to arrival — sea or air freight.");
     expect(html).not.toContain("Hide prices from the supplier"); // collapsed
-    expect(html).not.toContain("Minimum order value"); // collapsed
+    expect(html).not.toContain("Minimum order (value)"); // collapsed
     expect(html).not.toContain("How often you place an order with this supplier"); // collapsed (More options)
     const visible = (html.match(/<s-(text|email|number)-field/g) ?? []).length + (html.match(/<s-choice-list/g) ?? []).length;
     expect(visible).toBeLessThanOrEqual(8);

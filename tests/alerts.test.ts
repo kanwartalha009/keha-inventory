@@ -111,9 +111,9 @@ describe("instant alerts", () => {
     expect(email.kind).toBe("alert");
     expect(email.periodKey).toBe("2026-10-16T10");
     expect(email.subject).toBe("2 alertas urgentes de stock");
-    expect(email.text).toContain("Recién agotado: Cap");
+    expect(email.text).toContain("Sin stock: Cap");
     expect(email.text).toContain("Visitas a este producto la semana pasada: 70.");
-    expect(email.text).toContain("Producto estrella a punto de agotarse: Tote");
+    expect(email.text).toContain("Producto estrella con stock bajo: Tote");
     expect(email.text).toContain("Días de stock: 5. El stock nuevo tarda 14 días.");
     expect(email.text).toContain("https://admin.shopify.com/store/acme/apps/keha-inventory/app/products/2");
     expect(email.text).toContain("https://admin.shopify.com/store/acme/apps/keha-inventory/app/settings/alerts");
@@ -150,7 +150,7 @@ describe("instant alerts", () => {
   it("sold out = nothing available to sell: on hand that is all committed to orders counts as out", async () => {
     Object.assign(db.tables.stockNow[1], { onHand: 6, available: 0 });
     await runAlertsForShop(shopRow(), NOW);
-    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall)[1].text).toContain("Recién agotado: Cap");
+    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall)[1].text).toContain("Sin stock: Cap");
     Object.assign(db.tables.stockNow[1], { onHand: 0, available: 2 });
     db.tables.alertLog = [];
     sendOwnerEmailOnce.mockClear();
@@ -168,7 +168,7 @@ describe("instant alerts", () => {
     for (const m of db.tables.variantMetric) m.computedAt = new Date(later.getTime() - HOUR);
     expect(await runAlertsForShop(shopRow(), later)).toMatchObject({ instant: "sent" });
     const [, email] = sendOwnerEmailOnce.mock.calls[1] as EmailCall;
-    expect(email.subject).toBe("Producto estrella a punto de agotarse: Tote");
+    expect(email.subject).toBe("Producto estrella con stock bajo: Tote");
   });
 
   it("goes to the Monday recipients when set", async () => {
@@ -193,7 +193,7 @@ describe("instant alerts", () => {
     expect(deliverSlack).toHaveBeenCalledTimes(1);
     const [, , message] = deliverSlack.mock.calls[0] as [string, unknown, { text: string }];
     expect(message.text).toContain("*Alertas urgentes de stock para Acme Shoes*");
-    expect(message.text).toContain("|Recién agotado: Cap>");
+    expect(message.text).toContain("|Sin stock: Cap>");
     expect(db.tables.alertLog.filter((r) => r.channel === "slack")).toHaveLength(2);
 
     // Slack failed last time for a product → only Slack retries it.
@@ -217,7 +217,7 @@ describe("instant alerts", () => {
     expect(sendOwnerEmailOnce).toHaveBeenCalled();
     // Free has no forecast: the best-seller alert goes out without the days-left figure.
     const text = (sendOwnerEmailOnce.mock.calls.at(-1) as EmailCall)[1].text;
-    expect(text).toContain("Producto estrella a punto de agotarse: Tote");
+    expect(text).toContain("Producto estrella con stock bajo: Tote");
     expect(text).not.toContain("Días de stock restantes");
     expect(text).toContain("El stock nuevo tarda 14 días.");
   });
@@ -236,13 +236,13 @@ describe("instant alerts", () => {
     for (const m of db.tables.variantMetric) m.computedAt = new Date(NOW.getTime() - 37 * HOUR);
     await runAlertsForShop(shopRow(), NOW);
     const [, email] = sendOwnerEmailOnce.mock.calls[0] as EmailCall;
-    expect(email.subject).toBe("Recién agotado: Cap");
+    expect(email.subject).toBe("Sin stock: Cap");
   });
 
   it("no sell-out alert when it was already out yesterday, or the page is quiet", async () => {
     db.tables.stockDaily[0] = { ...db.tables.stockDaily[0], endUnits: 0, outOfStock: true };
     await runAlertsForShop(shopRow(), NOW);
-    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall)[1].subject).toBe("Producto estrella a punto de agotarse: Tote");
+    expect((sendOwnerEmailOnce.mock.calls[0] as EmailCall)[1].subject).toBe("Producto estrella con stock bajo: Tote");
 
     seed();
     sendOwnerEmailOnce.mockClear();

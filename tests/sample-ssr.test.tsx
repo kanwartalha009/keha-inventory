@@ -193,7 +193,7 @@ describe("store-changing actions are off on sample data, with a note", () => {
     const data: AlertsLoaderData = { form: alertsToForm(DEFAULT_SETTINGS), slack: { connected: true, error: null }, canSlack: true };
     for (const locale of ["en", "de"] as const) {
       const html = render(AlertsSettings, data, { sample: ON, locale, path: "/app/settings/alerts" });
-      expect(has(html, locale, "Alerts, Slack and the Monday email always use your own store. Switch to your store to change them.")).toBe(true);
+      expect(has(html, locale, "Alerts, Slack and the weekly summary email always use your own store. Switch to your store to change them.")).toBe(true);
       expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Send a test message")}`));
       expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Disconnect")}`));
     }

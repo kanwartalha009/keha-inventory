@@ -8,15 +8,7 @@
 import type { Tr } from "./i18n";
 
 export const FORECAST_TR: Record<string, Tr> = {
-  "Not applied: the growth assumption is off": {
-    es: "No aplicado: la previsión de crecimiento está desactivada",
-    fr: "Non appliqué : l'hypothèse de croissance est désactivée",
-    de: "Nicht angewendet: Die Wachstumsannahme ist aus",
-    it: "Non applicato: l'ipotesi di crescita è disattivata",
-    pt: "Não aplicado: o pressuposto de crescimento está desligado",
-    nl: "Niet toegepast: de groeiaanname staat uit",
-    pl: "Nie zastosowano: założenie wzrostu jest wyłączone",
-  },
+  "Not applied: year-over-year growth is off": { es: "No aplicado: el crecimiento interanual está desactivado", fr: "Non appliqué : la croissance sur un an est désactivée", de: "Nicht angewendet: Wachstum zum Vorjahr ist aus", it: "Non applicato: la crescita anno su anno è disattivata", pt: "Não aplicado: o crescimento homólogo está desligado", nl: "Niet toegepast: groei ten opzichte van vorig jaar staat uit", pl: "Nie zastosowano: wzrost rok do roku jest wyłączony" },
   "Off season: it sold in these weeks last year": {
     es: "Fuera de temporada: se vendió en estas semanas el año pasado",
     fr: "Hors saison : il s'est vendu à cette période l'an dernier",
@@ -34,7 +26,7 @@ export const FORECAST_TR: Record<string, Tr> = {
  */
 export function forecastNotes(t: (key: string) => string) {
   return {
-    trendNotApplied: t("Not applied: the growth assumption is off"),
+    trendNotApplied: t("Not applied: year-over-year growth is off"),
     offSeason: t("Off season: it sold in these weeks last year"),
     refreshedWeekly: t("Refreshed weekly on Free"),
   };

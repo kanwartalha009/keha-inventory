@@ -45,7 +45,7 @@ export function composePlanReadyEmail(input: PlanReadyEmailInput): PlanReadyEmai
   const next = tr("Open it to see what to order this week, from which supplier and by when.");
   const gaps = input.gaps ? tr("A few months couldn't be read; your plan uses the others.") : null;
   const cta = tr("Open your order plan");
-  const footer = fill(tr("You get this one-time email because the Monday email is on for {store}."), { store: input.storeName });
+  const footer = fill(tr("You get this one-time email because the weekly summary email is on for {store}."), { store: input.storeName });
   const unsubscribe = tr("Unsubscribe");
 
   const text = [heading, "", body, next, ...(gaps ? ["", gaps] : []), "", `${cta}: ${input.links.app}`, "", "—", footer, `${unsubscribe}: ${input.links.unsubscribe}`].join("\n");

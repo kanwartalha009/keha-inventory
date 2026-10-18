@@ -318,7 +318,7 @@ export type TrendReason = "ok" | "off" | "low_coverage" | "no_last_year_sales";
 export type TrendMode = "off" | "store";
 
 /** Shown next to a measured trend that is not applied (growth assumption off). English key. */
-export const TREND_NOT_APPLIED = "Not applied: the growth assumption is off";
+export const TREND_NOT_APPLIED = "Not applied: year-over-year growth is off";
 
 export interface TrendResult {
   /** The multiplier to apply: the clamped trend in "store" mode when computable, else 1. */

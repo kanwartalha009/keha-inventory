@@ -344,7 +344,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
               <KvRow label={t("Payment terms")} value={[termsText(view.terms, t), landedText(view.landedPct, t, locale)].filter(Boolean).join(" ")} />
             )}
             <KvRow
-              label={t("Order every")}
+              label={t("Order cycle")}
               value={
                 <span className="keha-inline">
                   <span>{cycleLabel}</span>

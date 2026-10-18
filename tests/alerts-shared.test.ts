@@ -124,25 +124,25 @@ describe("wording", () => {
 
   it("English and translated lines", () => {
     expect(alertLine("en", low, "https://l")).toEqual({
-      title: "Best seller running out: Tote",
+      title: "Best seller low on stock: Tote",
       detail: "Days of stock: 3.5. New stock takes 14 days.",
       link: "https://l",
     });
-    expect(alertLine("en", out, "https://l").title).toBe("Best seller sold out: Tote");
+    expect(alertLine("en", out, "https://l").title).toBe("Best seller out of stock: Tote");
     expect(alertLine("en", out, "https://l").detail).toBe("New stock takes 14 days.");
-    expect(alertLine("en", sell, "https://l")).toMatchObject({ title: "Just sold out: Cap", detail: "Visits to this product last week: 64." });
+    expect(alertLine("en", sell, "https://l")).toMatchObject({ title: "Out of stock: Cap", detail: "Visits to this product last week: 64." });
     expect(alertLine("es", low, "https://l", "es-ES").detail).toBe("Días de stock: 3,5. El stock nuevo tarda 14 días.");
-    expect(alertLine("de", sell, "https://l").title).toBe("Gerade ausverkauft: Cap");
+    expect(alertLine("de", sell, "https://l").title).toBe("Nicht vorrätig: Cap");
   });
 
   it("without the forecast (Free) the days-left figure is left out, the alert stays", () => {
-    expect(alertLine("en", low, "https://l", "en", false)).toEqual({ title: "Best seller running out: Tote", detail: "New stock takes 14 days.", link: "https://l" });
-    expect(alertLine("en", out, "https://l", "en", false).title).toBe("Best seller sold out: Tote");
+    expect(alertLine("en", low, "https://l", "en", false)).toEqual({ title: "Best seller low on stock: Tote", detail: "New stock takes 14 days.", link: "https://l" });
+    expect(alertLine("en", out, "https://l", "en", false).title).toBe("Best seller out of stock: Tote");
   });
 
   it("subject: the alert itself, or a count; footer links to the Alerts settings", () => {
     const one = alertMessage("en", "Acme", [alertLine("en", sell, "https://l")], "https://settings");
-    expect(one.subject).toBe("Just sold out: Cap");
+    expect(one.subject).toBe("Out of stock: Cap");
     const two = alertMessage("fr", "Acme", [alertLine("fr", sell, "https://a"), alertLine("fr", low, "https://b")], "https://settings");
     expect(two.subject).toBe("2 alertes de stock urgentes");
     expect(two.heading).toBe("Alertes de stock urgentes pour Acme");
@@ -151,7 +151,7 @@ describe("wording", () => {
   it("email: text and escaped HTML with a button per product", () => {
     const msg = alertMessage("en", `A&B <shop>`, [alertLine("en", { ...sell, title: "<b>Cap</b>" }, "https://x/1")], "https://settings");
     const e = composeAlertEmail("en", msg);
-    expect(e.text).toContain("Just sold out: <b>Cap</b>");
+    expect(e.text).toContain("Out of stock: <b>Cap</b>");
     expect(e.text).toContain("Open in Keha: https://x/1");
     expect(e.text).toContain("Change alert settings: https://settings");
     expect(e.html).toContain("&lt;b&gt;Cap&lt;/b&gt;");
@@ -163,7 +163,7 @@ describe("wording", () => {
   it("Slack: heading and linked lines, escaped", () => {
     const msg = alertMessage("en", "Acme", [alertLine("en", { ...sell, title: "Cap & Co" }, "https://x/1")], "https://settings");
     expect(buildSlackAlerts(msg).text).toBe(
-      "*Urgent stock alerts for Acme*\n• <https://x/1|Just sold out: Cap &amp; Co>\n    Visits to this product last week: 64.\n\n<https://settings|Change alert settings>",
+      "*Urgent stock alerts for Acme*\n• <https://x/1|Out of stock: Cap &amp; Co>\n    Visits to this product last week: 64.\n\n<https://settings|Change alert settings>",
     );
   });
 });

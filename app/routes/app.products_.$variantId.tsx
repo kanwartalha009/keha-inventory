@@ -399,7 +399,7 @@ function ForecastInputs({
               label={t("Trend")}
               value={
                 trendMode === "off"
-                  ? t("Not applied (growth assumption off)")
+                  ? t("Not applied (year-over-year growth off)")
                   : isNeutralMultiplier(inputs.trend)
                     ? t("No change from last year")
                     : `× ${num(inputs.trend, 2)}`
@@ -417,7 +417,7 @@ function ForecastInputs({
             />
             <KvRow label={t("Order cycle")} value={!forecast ? locked : inputs.cycleDays === null ? "—" : fill(plural(inputs.cycleDays, t("1 day"), t("{n} days")), { n: num(inputs.cycleDays, 0) })} />
             <KvRow
-              label={t("Safety level")}
+              label={t("Safety stock")}
               value={
                 !forecast ? (
                   locked
