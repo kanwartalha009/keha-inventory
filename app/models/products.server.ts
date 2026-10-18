@@ -14,7 +14,7 @@
  * lists the variants that have a metric there (the ones the location carries).
  * The variant detail page stays on the online stock pool.
  *
- * "To order" and the order-by date come from the forward plan (models/order-plan.server, the
+ * "Suggested qty" and the order-by date come from the forward plan (models/order-plan.server, the
  * same function as Order now and the Dashboard; ordering audit 2026-10-17): the variant's next
  * planned order — after open Keha orders and the supplier's minimums — and its real order-by
  * date. Sorted by that date by default (forecast on), with a supplier filter. A variant marked
@@ -159,7 +159,7 @@ export async function planView(shop: string, scope: string = METRIC_SCOPE, now: 
 }
 
 /**
- * "To order" and "Order by" from the forward plan, one rule with Order now (M4, variantLine):
+ * "Suggested qty" and "Order by" from the forward plan, one rule with Order now (M4, variantLine):
  * the variant's orders due in the next 7 days added together at the earliest date (overdue: the
  * date that passed; null when already out with no known run-out day, M3), else its next planned
  * order. Without a planned order in the 13 weeks: nothing to order ("—") and the plan's date.

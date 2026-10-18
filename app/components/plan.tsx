@@ -20,7 +20,7 @@ export function featureCopy(feature: Feature, t: T): { title: string; body: stri
     case "fullActionList":
       return { title: t("Every action, every week"), body: t("See the whole ranked list of what to reorder, promote, fix and clear, not just the top 10.") };
     case "forecast":
-      return { title: t("Days of stock left"), body: t("See how many days each variant will last and how many to order.") };
+      return { title: t("Days of stock"), body: t("See how many days each variant will last and how many to order.") };
     case "reorderPlan":
       return { title: t("Order plan"), body: t("Know what to order from each supplier, how much, and by which date.") };
     case "orderCalendar":

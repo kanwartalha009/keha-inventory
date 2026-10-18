@@ -150,13 +150,13 @@ export function PreviewTable({ rows, readiness }: { rows: PreviewRow[]; readines
         <s-table-header-row>
           <s-table-header listSlot="primary">{t("Product")}</s-table-header>
           <s-table-header listSlot="labeled" format="numeric">
-            <HeaderLabel id="keha-prev-left" label={t("Days left")} hint={t("Days of stock left")} />
+            <HeaderLabel id="keha-prev-left" label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} />
           </s-table-header>
           <s-table-header listSlot="labeled">
             <HeaderLabel id="keha-prev-by" label={t("Order by")} />
           </s-table-header>
           <s-table-header listSlot="labeled" format="numeric">
-            <HeaderLabel id="keha-prev-qty" label={t("To order")} hint={t("Suggested qty")} />
+            <HeaderLabel id="keha-prev-qty" label={t("Suggested qty")} />
           </s-table-header>
         </s-table-header-row>
         <s-table-body>

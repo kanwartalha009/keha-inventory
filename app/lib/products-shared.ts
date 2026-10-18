@@ -296,10 +296,10 @@ export function productsCsv(rows: readonly ProductRow[], t: T, forecast: boolean
     t("SKU"),
     t("Vendor"),
     t("Status"),
-    t("Stock now"),
+    t("On hand"),
     t("Incoming"),
     t("Sales per day while in stock"),
-    t("Days of stock left"),
+    t("Days of stock"),
     t("Order by"),
     t("Suggested qty"),
   ];

@@ -760,7 +760,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
             <s-table-header listSlot="primary"><HeaderLabel id="keha-ph-product" label={t("Product")} /></s-table-header>
             <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-expected-sales" label={t("Expected sales")} /></s-table-header>
             <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-stock-at-start" label={t("Stock at start")} /></s-table-header>
-            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-to-order" label={t("To order")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-to-order" label={t("Suggested qty")} /></s-table-header>
             <s-table-header listSlot="secondary"><HeaderLabel id="keha-ph-order-by" label={t("Order by")} /></s-table-header>
             <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-ph-line-total" label={t("Line total")} /></s-table-header>
           </s-table-header-row>

@@ -217,9 +217,9 @@ describe("composeMondayEmail", () => {
     expect(e.subject).toBe("€4,601 at stake this week");
     expect(e.text).toContain("Your Monday summary for Acme Shoes");
     expect(e.text).toContain("Sales at risk (next 28 days): €1,200 (+€200 vs last week)");
-    expect(e.text).toMatch(/^Sales lost to sell-outs \(last 90 days\): —$/m); // null → "—", no change
-    expect(e.text).toContain("Cash stuck: €3,401 (Same as last week)");
-    expect(e.text).toMatch(/^Sold-out page visits \(last 30 days\): €50$/m); // before null → no change
+    expect(e.text).toMatch(/^Lost sales \(last 90 days\): —$/m); // null → "—", no change
+    expect(e.text).toContain("Cash tied up: €3,401 (Same as last week)");
+    expect(e.text).toMatch(/^Out-of-stock page visits \(last 30 days\): €50$/m); // before null → no change
     expect(e.text).toContain(`Open Keha: ${base.links.app}`);
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
     expect(e.text).not.toContain("Refreshed weekly");
@@ -268,8 +268,8 @@ describe("composeMondayEmail", () => {
   it("headline counts only the forward-looking money; past cards stay in the body", () => {
     const e = composeMondayEmail({ ...base, now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } });
     expect(e.subject).toBe("Your stock this week");
-    expect(e.text).toContain("Sales lost to sell-outs (last 90 days): €900");
-    expect(e.text).toContain("Sold-out page visits (last 30 days): €80");
+    expect(e.text).toContain("Lost sales (last 90 days): €900");
+    expect(e.text).toContain("Out-of-stock page visits (last 30 days): €80");
     expect(e.html).toContain(">Your stock this week</h1>");
     expect(composeMondayEmail({ ...base, locale: "es", now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } }).subject).toBe(
       "Tu stock esta semana",
@@ -345,7 +345,7 @@ describe("runMondayEmails without an email provider: Shopify Flow 'Weekly order 
     expect(Object.keys(payload).sort()).toEqual(["Cash due this week", "Order plan link", "Orders due this week", "Subject", "Summary text"]);
     expect(payload.Subject).toMatch(/at stake this week/);
     expect(payload["Summary text"]).toContain("Your Monday summary for Acme Shoes");
-    expect(payload["Summary text"]).toContain("Cash stuck: —");
+    expect(payload["Summary text"]).toContain("Cash tied up: —");
     // The Flow text has no email footer or unsubscribe link (the merchant's workflow controls it).
     expect(payload["Summary text"]).not.toContain("unsubscribe");
     expect(payload["Summary text"]).not.toContain("You get this email");

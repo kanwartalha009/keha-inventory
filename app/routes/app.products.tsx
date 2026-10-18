@@ -5,7 +5,7 @@
  * the Growth `forecast` feature: on Free they stay visible but locked and empty
  * (plan locks teach, they don't hide). CSV export is Growth (`csvExport`).
  *
- * "To order" and "Order by" come from the forward plan — the same orders as
+ * "Suggested qty" and "Order by" come from the forward plan — the same orders as
  * Order now (ordering audit 2026-10-17) — and the table is sorted by order-by
  * date by default (forecast on). Row action: "Don't reorder" (with a confirm;
  * our database only): the variant or product leaves every order and shows
@@ -126,7 +126,7 @@ export default function Products() {
   const [params, setParams] = useSearchParams();
   const navigation = useNavigation();
   const { rows, info, total, filters, options, forecast, location } = data;
-  // What "Stock now" / "Incoming" cover: the stock counted in supplier orders, or the one location shown.
+  // What "On hand" / "Incoming" cover: the stock counted in supplier orders, or the one location shown.
   const stockScope = location
     ? fill(t("Stock at {location} only."), { location: location.name })
     : t("Stock included in purchase orders: every active location unless you left it out in Settings → Locations.");
@@ -269,22 +269,22 @@ export default function Products() {
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
             <s-table-header listSlot="secondary">{t("Status")}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-pool-stock" label={t("Stock now")} hint={stockScope} />
+              <HeaderLabel id="keha-pool-stock" label={t("On hand")} hint={stockScope} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
               <HeaderLabel id="keha-pool-incoming" label={t("Incoming")} hint={stockScope} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-rate" label={t("Sales/day")} hint={t("Sales per day while in stock")} />
+              <HeaderLabel id="keha-col-rate" label={t("Daily sales")} hint={t("Sales per day while in stock")} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-left" label={t("Days left")} hint={t("Days of stock left")} badge={lockBadge} />
+              <HeaderLabel id="keha-col-left" label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} badge={lockBadge} />
             </s-table-header>
             <s-table-header listSlot="labeled">
               <HeaderLabel id="keha-col-by" label={t("Order by")} badge={lockBadge} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-qty" label={t("To order")} hint={t("The next planned order (the same as Due now)")} badge={lockBadge} />
+              <HeaderLabel id="keha-col-qty" label={t("Suggested qty")} hint={t("The next planned order (the same as Due now)")} badge={lockBadge} />
             </s-table-header>
             <s-table-header>
               <HeaderLabel id="keha-col-act" label={t("Actions")} />

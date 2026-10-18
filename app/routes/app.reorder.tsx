@@ -464,10 +464,10 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             <s-table-header listSlot="labeled">
               <HeaderLabel id={`keha-due-${group.key}`} label={t("Order by")} />
             </s-table-header>
-            <s-table-header listSlot="labeled" format="numeric">{t("Stock now")}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{t("On hand")}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">{t("Incoming")}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id={`keha-left-${group.key}`} label={t("Days left")} hint={t("Days of stock left")} />
+              <HeaderLabel id={`keha-left-${group.key}`} label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} />
             </s-table-header>
             <s-table-header>{t("Quantity")}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">{t("Unit cost")}</s-table-header>

@@ -4,7 +4,7 @@
  * (engine/forward-plan-shared planStore). Database only, no Shopify calls.
  *
  * ONE function behind the Dashboard ("Due this week"), Order now, Next 13 weeks, Products
- * ("To order", order-by date), Sidekick and the Monday email: every order is placed on its
+ * ("Suggested qty", order-by date), Sidekick and the Monday email: every order is placed on its
  * order-by date, with the supplier's minimums (per line, per style, per order in units and in
  * money) applied per batch — so the Dashboard's cash is Order now's cash.
  *

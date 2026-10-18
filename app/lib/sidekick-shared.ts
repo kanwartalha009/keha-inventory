@@ -583,9 +583,9 @@ export function actionListResponse(
 /** The card titles as Home shows them (lib/dashboard-shared moneyCardTitle, English). */
 export const MONEY_TITLES: Record<MoneyCardKey, string> = {
   atRisk: "Sales at risk (next 28 days)",
-  lost90: "Sales lost to sell-outs (last 90 days)",
-  cashStuck: "Cash stuck (too much stock and dead stock)",
-  soldOutTraffic: "Sold-out page visits (last 30 days)",
+  lost90: "Lost sales (last 90 days)",
+  cashStuck: "Cash tied up (overstock and dead stock)",
+  soldOutTraffic: "Out-of-stock page visits (last 30 days)",
 };
 
 export type MoneyIn = {

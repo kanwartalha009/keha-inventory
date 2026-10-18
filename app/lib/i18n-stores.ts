@@ -64,15 +64,7 @@ export const STORES_TR: Record<string, Tr> = {
     nl: "Locaties opgeslagen. Je cijfers worden bijgewerkt na de volgende nachtelijke verversing.",
     pl: "Lokalizacje zapisane. Twoje liczby zaktualizują się po najbliższym nocnym odświeżeniu.",
   },
-  "On Pro you choose which locations are warehouses and stores, see each store's own sales and days left, and move stock from your warehouse to your stores.": {
-    es: "En Pro eliges qué ubicaciones son almacenes y tiendas físicas, ves las ventas y los días que quedan de cada tienda, y mueves stock del almacén a tus tiendas.",
-    fr: "Avec Pro, vous choisissez quels emplacements sont des entrepôts et des magasins, vous voyez les ventes et les jours restants de chaque magasin et vous déplacez du stock de l'entrepôt vers vos magasins.",
-    de: "Mit Pro legst du fest, welche Standorte Lager und Filialen sind, siehst die Verkäufe und verbleibenden Tage jeder Filiale und verschiebst Bestand vom Lager in deine Filialen.",
-    it: "Con Pro scegli quali sedi sono magazzini e negozi, vedi vendite e giorni rimasti di ogni negozio e sposti stock dal magazzino ai tuoi negozi.",
-    pt: "No Pro escolhe que localizações são armazéns e lojas físicas, vê as vendas e os dias restantes de cada loja e move stock do armazém para as suas lojas.",
-    nl: "Met Pro kies je welke locaties magazijnen en winkels zijn, zie je de verkopen en resterende dagen per winkel en verplaats je voorraad van je magazijn naar je winkels.",
-    pl: "W Pro wybierasz, które lokalizacje są magazynami, a które sklepami stacjonarnymi, widzisz sprzedaż i pozostałe dni każdego sklepu i przenosisz zapasy z magazynu do sklepów.",
-  },
+  "On Pro you choose which locations are warehouses and stores, see each store's own sales and days of stock, and move stock from your warehouse to your stores.": { es: "En Pro eliges qué ubicaciones son almacenes y tiendas físicas, ves las ventas y los días de stock de cada tienda, y mueves stock del almacén a tus tiendas.", fr: "Avec Pro, vous choisissez quels emplacements sont des entrepôts et des magasins, vous voyez les ventes et les jours de stock de chaque magasin et vous déplacez du stock de l'entrepôt vers vos magasins.", de: "Mit Pro legst du fest, welche Standorte Lager und Filialen sind, siehst die Verkäufe und die Reichweite jeder Filiale und verschiebst Bestand vom Lager in deine Filialen.", it: "Con Pro scegli quali sedi sono magazzini e negozi, vedi vendite e giorni di copertura di ogni negozio e sposti stock dal magazzino ai tuoi negozi.", pt: "No Pro escolhe que localizações são armazéns e lojas físicas, vê as vendas e os dias de stock de cada loja e move stock do armazém para as suas lojas.", nl: "Met Pro kies je welke locaties magazijnen en winkels zijn, zie je de verkopen en dagen voorraad per winkel en verplaats je voorraad van je magazijn naar je winkels.", pl: "W Pro wybierasz, które lokalizacje są magazynami, a które sklepami stacjonarnymi, widzisz sprzedaż i dni zapasu każdego sklepu i przenosisz zapasy z magazynu do sklepów." },
   "No active locations yet": {
     es: "Todavía no hay ubicaciones activas",
     fr: "Aucun emplacement actif pour l'instant",

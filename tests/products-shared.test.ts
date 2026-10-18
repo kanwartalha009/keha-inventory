@@ -181,7 +181,7 @@ describe("CSV", () => {
       toProductRow({ ...variant, id: "gid://shopify/ProductVariant/7", variantTitle: "Default Title", productTitle: "=cmd" }, { ...metric, status: "too_much", neverRunsOut: true, daysLeft: null }, null, true),
     ];
     const lines = productsCsv(rows, id, true).replace("﻿", "").trim().split("\r\n");
-    expect(lines[0]).toBe("Product,Variant,SKU,Vendor,Status,Stock now,Incoming,Sales per day while in stock,Days of stock left,Order by,Suggested qty");
+    expect(lines[0]).toBe("Product,Variant,SKU,Vendor,Status,On hand,Incoming,Sales per day while in stock,Days of stock,Order by,Suggested qty");
     expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Low stock,12,0,2.3,9,2026-10-20,30");
     expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Overstock,,,2.3,—,2026-10-20,30");
     const free = productsCsv([toProductRow(variant, metric, null, false)], id, false).trim().split("\r\n");

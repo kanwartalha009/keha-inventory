@@ -50,7 +50,7 @@ describe("Order calendar", () => {
     // A1: the shirt is short by more than one lead time — "Overdue" with the day it runs out.
     expect(html).toContain("Overdue · runs out Oct 18");
     expect(html).toContain("Due Oct 17");
-    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (sold out before it arrives) 23 = 38");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (out of stock before it arrives) 23 = 38");
     // Unknown costs are counted, never 0.
     expect(html).toMatch(/\d+ lines without a cost price are not in the cash totals\./);
     expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
@@ -167,17 +167,17 @@ describe("order-plan-shared", () => {
     expect(whyLines(why, (x) => translate("de", x), "de")[0]).toContain("Prognose für die nächsten 28 Tage");
   });
 
-  it("Why this quantity: sales the order can't cover (sold out before it arrives) are taken out; Sells when out of stock when it applies", () => {
+  it("Why this quantity: sales the order can't cover (out of stock before it arrives) are taken out; Sells when out of stock when it applies", () => {
     const t = (x: string) => x;
     const lost = { day: 0, days: 74, demand: 740, rate: 10, season: 1, growth: 1, safety: 50, onHand: 0, onOrder: 0, missed: 600, sellsWhenOut: false, need: 190, rounded: 190, pack: null, moq: null, topUp: 0 };
     expect(whyLines(lost, t, "en")).toEqual([
-      "Forecast for the next 74 days: 740 (sales per day 10, season ×1) + safety 50 − on hand 0 − on order 0 − sales it can't cover (sold out before it arrives) 600 = 190",
+      "Forecast for the next 74 days: 740 (sales per day 10, season ×1) + safety 50 − on hand 0 − on order 0 − sales it can't cover (out of stock before it arrives) 600 = 190",
       "→ rounded to 190",
     ]);
     const owed = { ...lost, missed: 0, sellsWhenOut: true, need: 790, rounded: 790 };
     expect(whyLines(owed, t, "en")).toEqual([
       "Forecast for the next 74 days: 740 (sales per day 10, season ×1) + safety 50 − on hand 0 − on order 0 = 790",
-      "Sells when out of stock: what it sells while sold out is owed, so it is ordered back.",
+      "Sells when out of stock: what it sells while out of stock is owed, so it is ordered back.",
       "→ rounded to 790",
     ]);
     expect(whyLines(lost, (x) => translate("fr", x), "fr")[0]).toContain("ventes qu'elle ne peut pas couvrir (rupture avant son arrivée) 600");
@@ -283,11 +283,11 @@ describe("loaders: the plan gates on the server too", () => {
 describe("Next 13 weeks footnote names the trend only when the growth assumption is on (2026-10-17)", () => {
   it("off (default): sales pace, last year's season, stock and stock on order — no trend", () => {
     const html = render({ enabled: true, plan: orderPlanFixture() });
-    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, stock now and stock on order with its dates.");
+    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, stock on hand and stock on order with its dates.");
     expect(html).not.toContain("the trend");
   });
   it("store: the trend is named", () => {
     const html = render({ enabled: true, plan: { ...orderPlanFixture(), trendMode: "store" } });
-    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, the trend, stock now and stock on order with its dates.");
+    expect(html).toContain("Based on sales per day while in stock, last year&#x27;s season, the trend, stock on hand and stock on order with its dates.");
   });
 });

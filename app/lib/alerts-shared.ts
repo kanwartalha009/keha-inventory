@@ -176,7 +176,7 @@ export function alertLine(
   if (!showDays) return { title: fill(tr("Best seller running out: {product}"), { product: a.title }), detail: leadOnly, link };
   return {
     title: fill(tr("Best seller running out: {product}"), { product: a.title }),
-    detail: fill(tr("Days of stock left: {days}. New stock takes {lead} days."), {
+    detail: fill(tr("Days of stock: {days}. New stock takes {lead} days."), {
       days: daysText(a.daysLeft, numberLocale),
       lead: a.leadTimeDays,
     }),

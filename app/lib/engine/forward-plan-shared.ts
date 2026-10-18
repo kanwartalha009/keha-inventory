@@ -1371,7 +1371,7 @@ export function ordersDue(events: readonly Pick<PlanEvent, "orderBy" | "overdue"
 }
 
 /**
- * M4: one variant's orders as ONE line — Order now's line and Products' "To order": its orders
+ * M4: one variant's orders as ONE line — Order now's line and Products' "Suggested qty": its orders
  * due in the next 7 days added together, at ordersDue's date (the earliest; overdue: the one that
  * passed); without one in the 7 days, its next planned order. `events`: that variant's, any order.
  */

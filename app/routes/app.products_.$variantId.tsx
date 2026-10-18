@@ -5,7 +5,7 @@
  * with an aria-label and a month table as its text fallback), how the
  * forecast was built (VariantMetric.inputs) and the last 14 days of sales.
  *
- * Ordering (audit 2026-10-17): "Order by" and "To order" are the forward plan's (the same as
+ * Ordering (audit 2026-10-17): "Order by" and "Suggested qty" are the forward plan's (the same as
  * Order now). "Don't reorder" for the whole product or this variant, and the product's own case
  * size (written to every variant; it wins over the supplier's case pack) — each confirmed, our
  * database only.
@@ -197,7 +197,7 @@ export default function VariantDetailPage() {
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
           <div className="keha-kv keha-kv--flush keha-grow">
-            <KvRow label={t("Stock now")} value={formatCount(row.onHand, locale)} />
+            <KvRow label={t("On hand")} value={formatCount(row.onHand, locale)} />
             <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
             {row.onOrder > 0 && (
               <KvRow
@@ -211,7 +211,7 @@ export default function VariantDetailPage() {
             )}
             <KvRow label={t("Sales per day while in stock")} value={formatRate(row.rate, locale)} />
             <KvRow
-              label={t("Days of stock left")}
+              label={t("Days of stock")}
               value={
                 !forecast ? locked : <DaysLeft id="keha-detail-left" daysLeft={row.daysLeft} neverRunsOut={row.neverRunsOut} />
               }
@@ -227,7 +227,7 @@ export default function VariantDetailPage() {
               }
             />
             <KvRow
-              label={t("To order")}
+              label={t("Suggested qty")}
               value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(row.orderQty, locale)}
             />
           </div>
@@ -252,7 +252,7 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
   const max = Math.max(1, ...series.map((d) => d.sold ?? 0));
   const outDays = series.filter((d) => d.out).length;
   const hasData = series.some((d) => d.sold !== null || d.out !== null);
-  const label = fill(t("Units sold per day over the last 13 months. Sold-out days are shaded: {n}."), {
+  const label = fill(t("Units sold per day over the last 13 months. Out-of-stock days are shaded: {n}."), {
     n: formatCount(outDays, locale),
   });
   return (
@@ -294,7 +294,7 @@ function SalesChart({ series, months }: { series: ChartDay[]; months: MonthTotal
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Month")}</s-table-header>
             <s-table-header format="numeric">{t("Units sold")}</s-table-header>
-            <s-table-header format="numeric">{t("Sold-out days")}</s-table-header>
+            <s-table-header format="numeric">{t("Out-of-stock days")}</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {months.map((m) => (
@@ -356,10 +356,10 @@ function ForecastInputs({
         <s-stack direction="block" gap="base">
           <s-table>
             <s-table-header-row>
-              <s-table-header listSlot="primary">{t("Window")}</s-table-header>
+              <s-table-header listSlot="primary">{t("Period")}</s-table-header>
               <s-table-header format="numeric">{t("Days in stock")}</s-table-header>
               <s-table-header format="numeric">
-                <HeaderLabel id="keha-window-rate" label={t("Sales/day")} hint={t("Sales per day while in stock")} />
+                <HeaderLabel id="keha-window-rate" label={t("Daily sales")} hint={t("Sales per day while in stock")} />
               </s-table-header>
               <s-table-header format="numeric">{t("Weight")}</s-table-header>
             </s-table-header-row>
@@ -452,7 +452,7 @@ function ForecastInputs({
             />
             {forecast && inputs.error && (
               <>
-                <KvRow label={t("Fill target")} value={`${num(inputs.error.fill * 100, 0)} %`} />
+                <KvRow label={t("In-stock target")} value={`${num(inputs.error.fill * 100, 0)} %`} />
                 <KvRow
                   label={fill(t("Forecast error over {n} days"), { n: num(inputs.error.horizonDays, 0) })}
                   value={
@@ -540,7 +540,7 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
           }}
         />
         <s-number-field
-          label={t("Case size")}
+          label={t("Case pack")}
           details={t("Units per case for this product, used for all its variants. It wins over the supplier's case pack. Leave empty to use the supplier's.")}
           value={caseQty}
           min={1}
@@ -699,7 +699,7 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
                     <s-table-header-row>
                       <s-table-header listSlot="primary">{t("Product")}</s-table-header>
                       <s-table-header listSlot="labeled" format="numeric">
-                        <HeaderLabel id="keha-like-rate" label={t("Sales/day")} hint={t("Sales per day while in stock")} />
+                        <HeaderLabel id="keha-like-rate" label={t("Daily sales")} hint={t("Sales per day while in stock")} />
                       </s-table-header>
                       <s-table-header>
                         <HeaderLabel id="keha-like-act" label={t("Actions")} />

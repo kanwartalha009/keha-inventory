@@ -1,6 +1,6 @@
 /**
  * One overdue supplier order, one order-by date everywhere (M2), never one made up from a backlog
- * (M3), and Products' "To order" = Order now's line (M4): the reviewer's cross-screen fixture —
+ * (M3), and Products' "Suggested qty" = Order now's line (M4): the reviewer's cross-screen fixture —
  * a fast seller with two orders in the 7 days, an oversold variant (−200 available) and a slow
  * overdue one, all from one vendor.
  */

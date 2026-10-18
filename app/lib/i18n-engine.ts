@@ -27,24 +27,8 @@ export const ENGINE_TR: Record<string, Tr> = {
     pl: "Sprzedaż spadła {date}; liczy się nowy poziom.",
   },
   // ---- Safety stock from the forecast's own error ----
-  "Safety {safety}: the forecast's own error over {n} days (± {error}) for a {pct} % fill target.": {
-    es: "Seguridad {safety}: el propio error de la previsión en {n} días (± {error}) para un objetivo de servicio del {pct} %.",
-    fr: "Sécurité {safety} : l'erreur propre de la prévision sur {n} jours (± {error}) pour un taux de service visé de {pct} %.",
-    de: "Sicherheit {safety}: der eigene Fehler der Prognose über {n} Tage (± {error}) für {pct} % Lieferquote.",
-    it: "Sicurezza {safety}: l'errore della previsione stessa su {n} giorni (± {error}) per un obiettivo di servizio del {pct} %.",
-    pt: "Segurança {safety}: o próprio erro da previsão em {n} dias (± {error}) para um objetivo de serviço de {pct} %.",
-    nl: "Veiligheid {safety}: de eigen fout van de prognose over {n} dagen (± {error}) voor {pct} % leverbaarheid.",
-    pl: "Zapas bezpieczeństwa {safety}: własny błąd prognozy w {n} dni (± {error}) przy celu obsługi {pct} %.",
-  },
-  "Fill target": {
-    es: "Objetivo de servicio",
-    fr: "Taux de service visé",
-    de: "Ziel-Lieferquote",
-    it: "Obiettivo di servizio",
-    pt: "Objetivo de serviço",
-    nl: "Doel leverbaarheid",
-    pl: "Cel obsługi",
-  },
+  "Safety {safety}: the forecast's own error over {n} days (± {error}) for a {pct} % in-stock target.": { es: "Seguridad {safety}: el propio error de la previsión en {n} días (± {error}) para un objetivo de disponibilidad del {pct} %.", fr: "Sécurité {safety} : l'erreur propre de la prévision sur {n} jours (± {error}) pour un objectif de disponibilité de {pct} %.", de: "Sicherheit {safety}: der eigene Fehler der Prognose über {n} Tage (± {error}) für {pct} % Verfügbarkeitsziel.", it: "Sicurezza {safety}: l'errore della previsione stessa su {n} giorni (± {error}) per un obiettivo di disponibilità del {pct} %.", pt: "Segurança {safety}: o próprio erro da previsão em {n} dias (± {error}) para uma meta de disponibilidade de {pct} %.", nl: "Veiligheid {safety}: de eigen fout van de prognose over {n} dagen (± {error}) voor een beschikbaarheidsdoel van {pct} %.", pl: "Zapas bezpieczeństwa {safety}: własny błąd prognozy w {n} dni (± {error}) przy celu dostępności {pct} %." },
+  "In-stock target": { es: "Objetivo de disponibilidad", fr: "Objectif de disponibilité", de: "Verfügbarkeitsziel", it: "Obiettivo di disponibilità", pt: "Meta de disponibilidade", nl: "Beschikbaarheidsdoel", pl: "Cel dostępności" },
   "Forecast error over {n} days": {
     es: "Error de la previsión en {n} días",
     fr: "Erreur de prévision sur {n} jours",

@@ -392,13 +392,13 @@ function SignupsDialog({ row, onClose }: { row: ActionRowView | null; onClose: (
     >
       {row && (
         <s-stack direction="block" gap="small-200">
-          <s-paragraph>{t("Shoppers who find this product sold out can leave their email, so the sale isn't lost while you wait for stock.")}</s-paragraph>
+          <s-paragraph>{t("Shoppers who find this product out of stock can leave their email, so the sale isn't lost while you wait for stock.")}</s-paragraph>
           <s-ordered-list>
             <s-list-item>
-              {t("Turn on a back-in-stock or sold-out sign-up form on the product page. Many themes have one under Online Store › Themes › Customize.")}
+              {t("Turn on a back-in-stock sign-up form on the product page. Many themes have one under Online Store › Themes › Customize.")}
             </s-list-item>
             <s-list-item>{t("Add the expected arrival date to the product description, so shoppers know when to come back.")}</s-list-item>
-            <s-list-item>{t("Open the product page while it is sold out and check that the form shows.")}</s-list-item>
+            <s-list-item>{t("Open the product page while it is out of stock and check that the form shows.")}</s-list-item>
           </s-ordered-list>
           {b?.arrival && <s-text color="subdued">{fill(t("Expected arrival: {date}"), { date: formatDay(b.arrival, locale) })}</s-text>}
         </s-stack>

@@ -321,9 +321,9 @@ describe("tools on Growth", () => {
     const cards = r.cards as { name: string; amount: number | null; how_we_got_this: string | null }[];
     expect(cards.map((c) => [c.name, c.amount])).toEqual([
       ["Sales at risk (next 28 days)", 1234.5],
-      ["Sales lost to sell-outs (last 90 days)", null],
-      ["Cash stuck (too much stock and dead stock)", 800],
-      ["Sold-out page visits (last 30 days)", 42],
+      ["Lost sales (last 90 days)", null],
+      ["Cash tied up (overstock and dead stock)", 800],
+      ["Out-of-stock page visits (last 30 days)", 42],
     ]);
     expect(cards[0]!.how_we_got_this).toContain("Based on: sales per day while in stock");
     expect(r.dead_stock).toMatchObject({ amount: 250, units: 50, variants: 1, valued_at: "cost" });

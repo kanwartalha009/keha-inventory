@@ -147,7 +147,7 @@ describe("Why dialog facts", () => {
       { label: "Period", value: "Next 28 days" },
       { label: "Period", value: "Last 90 days" },
       { label: "Valued at", value: "Retail price" },
-      { label: "Units to order", value: "—" },
+      { label: "Suggested qty", value: "—" },
       // an unknown key is never shown
     ]);
   });

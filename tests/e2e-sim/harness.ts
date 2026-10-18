@@ -232,7 +232,7 @@ export async function checkInvariants(loaded: Loaded, s: Screens): Promise<Recor
     const line = variantLine(evs, today)!;
     const row = productRows.get(id);
     expect(row, `Products row for ${id}`).toBeTruthy();
-    // Products' "To order" is Order now's line (M4).
+    // Products' "Suggested qty" is Order now's line (M4).
     expect([row!.orderQty, row!.orderBy, row!.overdue], `Products ${id}`).toEqual([line.qty, line.orderBy, line.overdue]);
     const ol = orderNowLines.get(id);
     if (evs.some((e) => e.orderBy <= addDays(today, 6))) {

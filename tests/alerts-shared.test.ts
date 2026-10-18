@@ -125,13 +125,13 @@ describe("wording", () => {
   it("English and translated lines", () => {
     expect(alertLine("en", low, "https://l")).toEqual({
       title: "Best seller running out: Tote",
-      detail: "Days of stock left: 3.5. New stock takes 14 days.",
+      detail: "Days of stock: 3.5. New stock takes 14 days.",
       link: "https://l",
     });
     expect(alertLine("en", out, "https://l").title).toBe("Best seller sold out: Tote");
     expect(alertLine("en", out, "https://l").detail).toBe("New stock takes 14 days.");
     expect(alertLine("en", sell, "https://l")).toMatchObject({ title: "Just sold out: Cap", detail: "Visits to this product last week: 64." });
-    expect(alertLine("es", low, "https://l", "es-ES").detail).toBe("Días de stock restantes: 3,5. El stock nuevo tarda 14 días.");
+    expect(alertLine("es", low, "https://l", "es-ES").detail).toBe("Días de stock: 3,5. El stock nuevo tarda 14 días.");
     expect(alertLine("de", sell, "https://l").title).toBe("Gerade ausverkauft: Cap");
   });
 

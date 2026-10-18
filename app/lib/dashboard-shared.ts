@@ -449,11 +449,11 @@ export function moneyCardTitle(key: MoneyCardKey, t: T): string {
     case "atRisk":
       return t("Sales at risk (next 28 days)");
     case "lost90":
-      return t("Sales lost to sell-outs (last 90 days)");
+      return t("Lost sales (last 90 days)");
     case "cashStuck":
-      return t("Cash stuck");
+      return t("Cash tied up");
     case "soldOutTraffic":
-      return t("Sold-out page visits (last 30 days)");
+      return t("Out-of-stock page visits (last 30 days)");
   }
 }
 
@@ -498,17 +498,17 @@ export function basisLines(key: MoneyCardKey, basis: MoneyBasisJson | null, t: T
       if (b.skippedNoPrice) add(t("Skipped, no price: {n}"), { n: f.count(b.skippedNoPrice) });
       if (b.incomingAssumedWithin28) lines.push(t("Assumes stock on order arrives within 28 days"));
       lines.push(...retail);
-      add(t("Based on: sales per day while in stock, stock now and stock on order, {range}"), { range });
+      add(t("Based on: sales per day while in stock, stock on hand and stock on order, {range}"), { range });
       break;
     }
     case "lost90": {
       const b = basis.lost90;
       add(t("Variants counted: {n}"), { n: f.count(b.variantsCounted) });
-      add(t("Sold-out days: {n}"), { n: f.count(b.outOfStockDays) });
+      add(t("Out-of-stock days: {n}"), { n: f.count(b.outOfStockDays) });
       if (b.skippedNoRate) add(t("Skipped, no sales rate yet: {n}"), { n: f.count(b.skippedNoRate) });
       if (b.skippedNoPrice) add(t("Skipped, no price: {n}"), { n: f.count(b.skippedNoPrice) });
       lines.push(...retail);
-      add(t("Based on: sold-out days × sales per day while in stock × price, {range}"), { range });
+      add(t("Based on: out-of-stock days × sales per day while in stock × price, {range}"), { range });
       break;
     }
     case "cashStuck": {
@@ -530,11 +530,11 @@ export function basisLines(key: MoneyCardKey, basis: MoneyBasisJson | null, t: T
     case "soldOutTraffic": {
       const b = basis.soldOutTraffic;
       add(t("Products with visit data: {n}"), { n: f.count(b.productsWithData) });
-      add(t("Products sold out: {n}"), { n: f.count(b.productsSoldOut) });
-      add(t("Visits to sold-out pages: {n}"), { n: f.count(b.soldOutSessions) });
+      add(t("Products out of stock: {n}"), { n: f.count(b.productsSoldOut) });
+      add(t("Visits to out-of-stock pages: {n}"), { n: f.count(b.soldOutSessions) });
       add(t("Store conversion rate: {rate}"), { rate: f.percent(b.conversionRate) });
       add(t("Average order value: {aov}"), { aov: f.money(b.aov) });
-      add(t("Based on: sold-out page visits × conversion rate × average order value, {range}"), { range });
+      add(t("Based on: out-of-stock page visits × conversion rate × average order value, {range}"), { range });
       break;
     }
   }

@@ -311,7 +311,7 @@ describe("other tools", () => {
     );
     expect(r.cards).toEqual([
       { name: "Sales at risk (next 28 days)", amount: 1234.57, how_we_got_this: "Based on: x" },
-      { name: "Sales lost to sell-outs (last 90 days)", amount: null, how_we_got_this: null },
+      { name: "Lost sales (last 90 days)", amount: null, how_we_got_this: null },
     ]);
     expect(r.dead_stock).toMatchObject({ amount: 900, units: 50, variants: 3, valued_at: "cost, or retail price where a variant has no cost" });
     expect(String((r.dead_stock as { how_we_got_this: string }).how_we_got_this)).toContain("90 days");

@@ -51,14 +51,14 @@ export const ACTION_REASONS: Record<string, string> = {
   // {rate} units per day (1 decimal); {pct} {conv} {median} percentages; {gap} {out} {total} {units} counts.
   reorder_low: "Runs out in {days} days; a new order takes {lead} days to arrive. Order by {date}.",
   reorder_now: "Runs out in {days} days; a new order takes {lead} days to arrive. Order now.",
-  reorder_out: "Sold out. It sells {rate} a day while in stock.",
+  reorder_out: "Out of stock. It sells {rate} a day while in stock.",
   bridge_gap: "Runs out {gap} days before new stock arrives on {date}.",
-  bridge_out: "Sold out for about {gap} more days, until new stock arrives on {date}.",
+  bridge_out: "Out of stock for about {gap} more days, until new stock arrives on {date}.",
   push_up: "Sales are up {pct}% on last year and it has enough stock. Feature it to sell more.",
   push_steady: "One of your best sellers, with enough stock. Feature it to sell more.",
   push_converts: "{conv}% of visitors buy it (store median {median}%), but it is overstocked. Send it more traffic.",
   fix_falling: "Sales are down {pct}% on the same weeks last year, when it was one of your top 20 products.",
-  fix_sizes: "{out} of {total} variants are sold out while the product still sells.",
+  fix_sizes: "{out} of {total} variants are out of stock while the product still sells.",
   fix_page: "{conv}% of visitors who land on this page buy, against {median}% for products at a similar price.",
   fix_returns: "{pct}% of units sold come back, against {median}% across your store.",
   clear_dead: "No sale for {days} days; {units} units are sitting in stock.",
@@ -70,7 +70,7 @@ export const ACTION_REASONS: Record<string, string> = {
   "reorder_now.today": "Runs out today; a new order takes {lead} days to arrive. Order now.",
   "reorder_now.one": "Runs out in 1 day; a new order takes {lead} days to arrive. Order now.",
   "bridge_gap.one": "Runs out 1 day before new stock arrives on {date}.",
-  "bridge_out.one": "Sold out for about 1 more day, until new stock arrives on {date}.",
+  "bridge_out.one": "Out of stock for about 1 more day, until new stock arrives on {date}.",
 };
 
 /** Which param a reason's singular form depends on. */

@@ -94,10 +94,10 @@ describe("Products page", () => {
     expect(html).toContain('href="/app/products/1"');
     expect(html).toContain("Page 2 of 3 · Variants: 120");
     // Short headers that never wrap; the long form is each header's tooltip.
-    for (const h of ["Stock now", "Incoming", "Sales/day", "Days left", "Order by", "To order"]) {
+    for (const h of ["On hand", "Incoming", "Daily sales", "Days of stock", "Order by", "Suggested qty"]) {
       expect(html).toContain(h);
     }
-    for (const h of ["Sales per day while in stock", "Days of stock left", "The next planned order (the same as Due now)"]) {
+    for (const h of ["Sales per day while in stock", "Days of stock", "The next planned order (the same as Due now)"]) {
       expect(html).toContain(`<s-tooltip id="keha-col-`);
       expect(html).toContain(h);
     }
@@ -108,7 +108,7 @@ describe("Products page", () => {
     expect(html).toContain('placeholder="Product, variant or SKU"');
     // Stock now / Incoming say which locations they cover.
     expect(html).toContain("Stock included in purchase orders: every active location unless you left it out in Settings → Locations.");
-    expect(html).toContain('<s-text interestFor="keha-pool-stock">Stock now</s-text><s-tooltip id="keha-pool-stock">');
+    expect(html).toContain('<s-text interestFor="keha-pool-stock">On hand</s-text><s-tooltip id="keha-pool-stock">');
     // Numbers are right-aligned: numeric columns use the Polaris numeric format.
     expect(count(html, 'format="numeric"')).toBe(5);
   });
@@ -131,7 +131,7 @@ describe("Products page", () => {
     expect(count(html, 'icon="lock"')).toBeGreaterThanOrEqual(4); // 3 headers + CSV button
     // Headers carry a compact lock badge with the plan name, on the header's own line.
     expect(count(html, '<s-badge icon="lock" tone="info">Growth</s-badge>')).toBe(3);
-    expect(html).toMatch(/<span class="keha-th">.*?Days left.*?<s-badge icon="lock"/);
+    expect(html).toMatch(/<span class="keha-th">.*?Days of stock.*?<s-badge icon="lock"/);
     expect(html).not.toContain("∞");
     expect(html).not.toContain("Oct 20, 2026");
     expect(html).not.toMatch(/<s-table-cell>30<\/s-table-cell>/);
@@ -228,7 +228,7 @@ describe("Variant detail", () => {
   it("chart with an aria-label and a month table fallback, forecast inputs, recent sales", () => {
     const html = renderDetail(detail(true));
     expect(html).toContain('role="img"');
-    expect(html).toContain("Units sold per day over the last 13 months. Sold-out days are shaded: 1.");
+    expect(html).toContain("Units sold per day over the last 13 months. Out-of-stock days are shaded: 1.");
     expect(count(html, 'class="keha-chart__out"')).toBe(1);
     expect(count(html, 'class="keha-chart__bar"')).toBe(2);
     expect(html).toContain("Month");
@@ -259,7 +259,7 @@ describe("Variant detail", () => {
     expect(html).not.toMatch(/<s-section heading=/);
     expect(count(html, 'format="numeric"')).toBe(6);
     // The long rate header is short in the table, long in its tooltip.
-    expect(html).toContain('<s-text interestFor="keha-window-rate">Sales/day</s-text><s-tooltip id="keha-window-rate">Sales per day while in stock</s-tooltip>');
+    expect(html).toContain('<s-text interestFor="keha-window-rate">Daily sales</s-text><s-tooltip id="keha-window-rate">Sales per day while in stock</s-tooltip>');
   });
 
   it("plain words (audit): Safety level, the growth assumption, stock counted in supplier orders", () => {
@@ -283,7 +283,7 @@ describe("Variant detail", () => {
     expect(html).toContain("<s-heading>Ordering</s-heading>");
     expect(html).toContain("Don&#x27;t reorder this product");
     expect(html).toContain("Don&#x27;t reorder this variant");
-    expect(html).toContain('label="Case size"');
+    expect(html).toContain('label="Case pack"');
     expect(html).toContain('value="12"');
     const off = renderDetail({ ...detail(true), noReorder: true, productNoReorder: true, row: { ...detail(true).row, noReorder: true, orderQty: null } });
     expect(off).toContain("This product is set to Don&#x27;t reorder");
@@ -505,13 +505,13 @@ describe("How the forecast was built: safety from the forecast's own error, a le
     const base = detail(true);
     const inputs = { ...base.inputs!, error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: 1.7, samples: 13 }, levelShift: { day: "2026-09-01", ratio: 2.4 } };
     const html = renderDetail({ ...base, inputs });
-    expect(html).toContain("Fill target");
+    expect(html).toContain("In-stock target");
     expect(html).toContain("95 %");
     expect(html).toContain("Forecast error over 42 days");
     expect(html).toContain("± 18 units");
     expect(html).toContain("last 13 weeks: 1.7× the expected error");
     expect(html).toContain("Sales stepped up on");
-    expect(renderDetail(base)).not.toContain("Fill target");
+    expect(renderDetail(base)).not.toContain("In-stock target");
     expect(readForecastInputs({ error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 } }, 1)!.error).toEqual({ horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 });
     expect(readForecastInputs({}, 1)!.error).toBeNull();
   });

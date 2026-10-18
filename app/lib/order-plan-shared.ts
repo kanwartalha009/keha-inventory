@@ -467,8 +467,8 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
     fill(
       missed
         ? first
-          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}")
-          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − sales it can't cover (sold out before it arrives) {missed} = {need}")
+          ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} − sales it can't cover (out of stock before it arrives) {missed} = {need}")
+          : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} − sales it can't cover (out of stock before it arrives) {missed} = {need}")
         : first
           ? t("Forecast for the next {n} days: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − on hand {onHand} − on order {onOrder} = {need}")
           : t("Forecast for the {n} days from this order: {demand} (sales per day {rate}, season ×{season}) + safety {safety} − stock expected then {onHand} − on order {onOrder} = {need}"),
@@ -478,14 +478,14 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   // B4: what the safety stock covers.
   if (why.safetyBasis && why.safety > 0)
     out.push(
-      fill(t("Safety {safety}: the forecast's own error over {n} days (± {error}) for a {pct} % fill target."), {
+      fill(t("Safety {safety}: the forecast's own error over {n} days (± {error}) for a {pct} % in-stock target."), {
         safety: nf(why.safety, locale, 0),
         n: nf(why.safetyBasis.days, locale, 0),
         error: nf(why.safetyBasis.error, locale, 0),
         pct: nf(why.safetyBasis.fill * 100, locale, 0),
       }),
     );
-  if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while sold out is owed, so it is ordered back."));
+  if (why.sellsWhenOut) out.push(t("Sells when out of stock: what it sells while out of stock is owed, so it is ordered back."));
   // Data audit #2: out of stock most of the last 90 days — the pace comes from older in-stock days.
   if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));
   // R4: one-off spikes capped in the pace; a new style planned like another product.
@@ -589,6 +589,6 @@ export function lockTeaser(data: Pick<OrderPlanData, "events" | "variants">, lim
  */
 export function orderByFootnote(trendMode: TrendMode | undefined, t: T): string {
   return trendMode === "store"
-    ? t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, the trend, stock now and stock on order with its dates.")
-    : t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety level. Based on sales per day while in stock, last year's season, stock now and stock on order with its dates.");
+    ? t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety stock. Based on sales per day while in stock, last year's season, the trend, stock on hand and stock on order with its dates.")
+    : t("Order-by date: the last day to order so the delivery arrives before your stock drops below its safety stock. Based on sales per day while in stock, last year's season, stock on hand and stock on order with its dates.");
 }

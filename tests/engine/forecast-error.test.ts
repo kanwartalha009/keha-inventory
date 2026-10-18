@@ -131,8 +131,8 @@ describe("computeVariant: safety from the forecast's own error", () => {
     const why = planVariant(input).orders[0]!.why!;
     expect(why.safetyBasis).toEqual({ days: 28, error: r.inputs.error!.sigma, fill: r.inputs.error!.fill });
     const line = whyLines(why, (x) => x, "en").find((l) => l.startsWith("Safety "))!;
-    expect(line).toBe(`Safety ${Math.round(r.safety!)}: the forecast's own error over 28 days (± ${Math.round(r.inputs.error!.sigma)}) for a 95 % fill target.`);
-    expect(whyLines(why, (x) => translate("de", x), "de").some((l) => l.includes("Lieferquote"))).toBe(true);
+    expect(line).toBe(`Safety ${Math.round(r.safety!)}: the forecast's own error over 28 days (± ${Math.round(r.inputs.error!.sigma)}) for a 95 % in-stock target.`);
+    expect(whyLines(why, (x) => translate("de", x), "de").some((l) => l.includes("Verfügbarkeitsziel"))).toBe(true);
   });
 });
 

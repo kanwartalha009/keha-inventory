@@ -141,7 +141,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">{fill(t("Stock at {location}"), { location: group.destinationName })}</s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id={`keha-tleft-${group.key}`} label={t("Days left")} hint={t("Days of stock left")} />
+              <HeaderLabel id={`keha-tleft-${group.key}`} label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">{fill(t("Spare at {location}"), { location: group.originName })}</s-table-header>
             <s-table-header>{t("Quantity")}</s-table-header>

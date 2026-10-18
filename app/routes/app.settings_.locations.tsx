@@ -173,7 +173,7 @@ export default function LocationsSettings() {
           {!data.enabled && (
             <s-stack direction="inline" gap="small" alignItems="center">
               <s-paragraph color="subdued">
-                {t("On Pro you choose which locations are warehouses and stores, see each store's own sales and days left, and move stock from your warehouse to your stores.")}
+                {t("On Pro you choose which locations are warehouses and stores, see each store's own sales and days of stock, and move stock from your warehouse to your stores.")}
               </s-paragraph>
               <s-button variant="secondary" {...link("/app/plans?upgrade=locations")}>
                 {t("See plans")}

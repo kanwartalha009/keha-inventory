@@ -19,7 +19,7 @@ export type FoundVariant = ProductRow & { productId: string };
 /**
  * Tracked, non-bundle variants matching every word (in the product title, the
  * variant title or the SKU, any case): "blue hoodie" finds "Hoodie / Blue".
- * Returns at most `take` rows and the number of matches. "To order" and the
+ * Returns at most `take` rows and the number of matches. "Suggested qty" and the
  * order-by date are the forward plan's (the same as Order now and Products);
  * a variant marked "Don't reorder" has none.
  */

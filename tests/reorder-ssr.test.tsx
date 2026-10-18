@@ -88,9 +88,9 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).not.toContain("PO-0001");
     expect(html).toContain("Purchase orders: 2");
     expect(html).toContain('href="/app/reorder/orders"');
-    for (const h of ["Stock now", "Incoming", "Days of stock left", "Quantity", "Unit cost", "Line total"]) expect(html).toContain(h);
+    for (const h of ["On hand", "Incoming", "Days of stock", "Quantity", "Unit cost", "Line total"]) expect(html).toContain(h);
     // DESIGN-RULES: short header with the long form in a tooltip; number columns right-aligned.
-    expect(html).toMatch(/<s-text interestFor="keha-left-[^"]+">Days left<\/s-text><s-tooltip id="keha-left-[^"]+">Days of stock left<\/s-tooltip>/);
+    expect(html).toMatch(/<s-text interestFor="keha-left-[^"]+">Days of stock<\/s-text><s-tooltip id="keha-left-[^"]+">How many days the stock lasts at the forecast sales<\/s-tooltip>/);
     expect((html.match(/format="numeric"/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
@@ -124,7 +124,7 @@ describe("Reorder page (Order plan · Order now)", () => {
   it("Why this quantity: the plan's own terms, and last year's same weeks", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData({ minOrderTotal: null }));
     expect(html).toContain("Why this quantity");
-    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (sold out before it arrives) 23 = 38");
+    expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (out of stock before it arrives) 23 = 38");
     expect(html).toContain("→ rounded to 42 (case pack 6)");
     expect(html).toContain("Forecast for the 28 days from this order:");
     expect(html).toContain("Sold in the same weeks last year: — (no history yet)");

@@ -114,7 +114,7 @@ describe("instant alerts", () => {
     expect(email.text).toContain("Recién agotado: Cap");
     expect(email.text).toContain("Visitas a este producto la semana pasada: 70.");
     expect(email.text).toContain("Producto estrella a punto de agotarse: Tote");
-    expect(email.text).toContain("Días de stock restantes: 5. El stock nuevo tarda 14 días.");
+    expect(email.text).toContain("Días de stock: 5. El stock nuevo tarda 14 días.");
     expect(email.text).toContain("https://admin.shopify.com/store/acme/apps/keha-inventory/app/products/2");
     expect(email.text).toContain("https://admin.shopify.com/store/acme/apps/keha-inventory/app/settings/alerts");
     expect(email.text).not.toContain("Scarf");

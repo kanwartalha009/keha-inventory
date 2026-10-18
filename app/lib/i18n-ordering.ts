@@ -44,15 +44,7 @@ export const ORDERING_TR: Record<string, Tr> = {
     nl: "Prognose voor de {n} dagen vanaf deze bestelling: {demand} (verkopen per dag {rate}, seizoen ×{season}) + veiligheid {safety} − dan verwachte voorraad {onHand} − besteld {onOrder} = {need}",
     pl: "Prognoza na {n} dni od tego zamówienia: {demand} (sprzedaż dziennie {rate}, sezon ×{season}) + zapas {safety} − przewidywany wtedy stan {onHand} − zamówione {onOrder} = {need}",
   },
-  "Sells when out of stock: what it sells while sold out is owed, so it is ordered back.": {
-    es: "Se vende sin stock: lo que se vende agotado está pendiente, así que se vuelve a pedir.",
-    fr: "Se vend en rupture de stock : ce qui est vendu en rupture est dû, donc recommandé.",
-    de: "Verkauft auch ohne Bestand: Was ohne Bestand verkauft wird, ist offen und wird mitbestellt.",
-    it: "Si vende anche senza stock: ciò che si vende esaurito è dovuto, quindi viene riordinato.",
-    pt: "Vende-se sem stock: o que se vende esgotado fica pendente, por isso volta a ser encomendado.",
-    nl: "Verkoopt ook zonder voorraad: wat zonder voorraad verkocht is, staat open en wordt mee besteld.",
-    pl: "Sprzedaje się bez stanu: to, co sprzedano bez stanu, czeka na wysyłkę, więc zamawiamy to ponownie.",
-  },
+  "Sells when out of stock: what it sells while out of stock is owed, so it is ordered back.": { es: "Se vende sin stock: lo que se vende sin stock está pendiente, así que se vuelve a pedir.", fr: "Se vend en rupture de stock : ce qui est vendu en rupture est dû, donc recommandé.", de: "Verkauft auch ohne Bestand: Was ohne Bestand verkauft wird, ist offen und wird mitbestellt.", it: "Si vende anche senza stock: ciò che si vende senza stock è dovuto, quindi viene riordinato.", pt: "Vende-se sem stock: o que se vende sem stock fica pendente, por isso volta a ser encomendado.", nl: "Verkoopt ook zonder voorraad: wat zonder voorraad verkocht is, staat open en wordt mee besteld.", pl: "Sprzedaje się bez stanu: to, co sprzedano bez stanu, czeka na wysyłkę, więc zamawiamy to ponownie." },
   "Sales per day based on in-stock days since {month}.": {
     es: "Ventas al día según los días con stock desde {month}.",
     fr: "Ventes par jour calculées sur les jours en stock depuis {month}.",
@@ -388,7 +380,6 @@ export const ORDERING_TR: Record<string, Tr> = {
     pl: "Ten wariant ma ustawione Nie zamawiaj ponownie: zostaje w liczbach stanów, ale nigdy nie trafia do zamówienia.",
   },
   "Reordered as planned.": { es: "Se vuelve a pedir según el plan.", fr: "Recommandé selon le plan.", de: "Wird nach Plan nachbestellt.", it: "Riordinato secondo il piano.", pt: "Volta a ser encomendado conforme o plano.", nl: "Wordt volgens plan nabesteld.", pl: "Zamawiany zgodnie z planem." },
-  "Case size": { es: "Tamaño de caja", fr: "Conditionnement", de: "Kartongröße", it: "Confezione", pt: "Tamanho da caixa", nl: "Doosgrootte", pl: "Wielkość opakowania" },
   "Units per case for this product, used for all its variants. It wins over the supplier's case pack. Leave empty to use the supplier's.": {
     es: "Unidades por caja de este producto, para todas sus variantes. Prevalece sobre las unidades por caja del proveedor. Déjalo vacío para usar las del proveedor.",
     fr: "Unités par carton pour ce produit, pour toutes ses variantes. Prioritaire sur le conditionnement du fournisseur. Laissez vide pour utiliser celui du fournisseur.",
