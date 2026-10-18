@@ -17,6 +17,7 @@ import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { applyImport, importCounts, planImport, type ApplyResult } from "../models/setup-import.server";
 import { AppPage, FormCard } from "../components/ui";
+import { settingsHelp } from "../components/help";
 import { PreviewCard } from "../components/import-preview";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -107,7 +108,7 @@ export default function ImportExportSettings() {
   const showCheck = !!preview && !(result?.ok && result.intent === "import");
 
   return (
-    <AppPage heading={t("Settings")}>
+    <AppPage heading={t("Settings")} help={settingsHelp(t, "import")}>
       <SettingsTabs current="import" />
       {!data.enabled && <UpgradeBanner feature="csvImport" />}
       {result?.ok && result.intent === "import" && (

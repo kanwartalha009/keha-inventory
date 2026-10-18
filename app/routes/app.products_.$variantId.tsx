@@ -28,6 +28,7 @@ import { enqueueJob } from "../services/jobs/queue.server";
 import { PLAN_LIKE_DAYS, PLAN_LIKE_PCT, parsePlanLike, type LikeKind } from "../lib/forecast-override-shared";
 import type { LikeSearchData } from "./app.products_.$variantId_.like";
 import { AppPage, DaysLeft, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import { productDetailHelp } from "../components/help";
 import ConfirmModal from "../components/ConfirmModal";
 import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
 import { flag, val } from "../components/wc";
@@ -191,6 +192,11 @@ export default function VariantDetailPage() {
     <AppPage
       heading={row.productTitle}
       breadcrumb={{ label: t("Products"), to: "/app/products" }}
+      help={productDetailHelp(t, locale, {
+        leadTimeDays: forecast ? (data.inputs?.leadTimeDays ?? null) : null,
+        cycleDays: forecast ? (data.inputs?.cycleDays ?? null) : null,
+        fromSupplier: data.inputs?.leadTimeSource === "supplier",
+      })}
       meta={row.status ? <s-badge tone={statusTone(row.status)}>{statusLabel(row.status, t)}</s-badge> : undefined}
       intro={[variant, row.sku, data.vendor].filter(Boolean).join(" · ") || undefined}
     >

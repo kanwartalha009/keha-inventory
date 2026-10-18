@@ -35,6 +35,7 @@ import {
 } from "../models/suppliers.server";
 import { secretsWritable } from "../lib/crypto.server";
 import { AppPage, Disclosure, EmptyState, FormCard, FormSaveBar, sameValues } from "../components/ui";
+import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
@@ -157,6 +158,7 @@ export default function SuppliersSettings() {
   return (
     <AppPage
       heading={t("Settings")}
+      help={settingsHelp(t, "suppliers")}
       primaryAction={
         data.enabled ? (
           <s-button variant="primary" icon="plus" {...link("/app/settings/suppliers?edit=new")}>

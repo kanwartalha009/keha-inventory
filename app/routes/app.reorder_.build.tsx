@@ -31,6 +31,7 @@ import { getEntitlements, upgradeResponse } from "../services/entitlements.serve
 import { addToSupplierDraft, createSupplierDraft, loadSupplierOrder, type SupplierOrderResult } from "../models/supplier-order.server";
 import { PoDetailsFields, type ShipToChoice } from "../components/po-details";
 import { AppPage, EmptyState, FormCard, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import { buildOrderHelp } from "../components/help";
 import { DueLabel, WhyPopover } from "../components/order-plan";
 import { planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
@@ -287,6 +288,7 @@ function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: stri
     <AppPage
       heading={fill(t("Order from {supplier}"), { supplier: title })}
       breadcrumb={{ label: t("Due now"), to: "/app/reorder" }}
+      help={buildOrderHelp(t)}
       meta={view.kind === "vendor" ? <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge> : undefined}
       intro={t("One purchase order for everything this supplier needs until your next order. Change quantities or add products, then create the draft. Nothing is sent until you email it or mark it as ordered.")}
       primaryAction={

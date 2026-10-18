@@ -21,6 +21,7 @@ import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
 import { activeLocations, listLocationSettings, saveLocationSettings } from "../models/locations.server";
 import { AppPage, EmptyState, FormCard, FormSaveBar, HeaderLabel, sameValues } from "../components/ui";
+import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
 import { planTag } from "../components/plan";
 import { SelectField, flag, isChecked, useLinkProps } from "../components/wc";
@@ -83,7 +84,7 @@ export default function LocationsSettings() {
   const counting = data.locations.filter((l) => l.counts).map((l) => l.name);
 
   return (
-    <AppPage heading={t("Settings")}>
+    <AppPage heading={t("Settings")} help={settingsHelp(t, "locations")}>
       {data.locations.length > 0 && (
         <FormSaveBar id="keha-settings-locations" dirty={dirty} saving={saving} onSave={save} onDiscard={() => setForm(initial)} />
       )}

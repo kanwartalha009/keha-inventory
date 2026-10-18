@@ -34,6 +34,7 @@ import {
 } from "../models/planner.server";
 import { plannerShop } from "../services/planner.server";
 import { AppPage, FormCard, HeaderLabel, ProductThumb } from "../components/ui";
+import { seasonHelp } from "../components/help";
 import ConfirmModal from "../components/ConfirmModal";
 import { featureCopy, planTag } from "../components/plan";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
@@ -174,6 +175,7 @@ export default function Planner() {
   return (
     <AppPage
       heading={t("Order plan")}
+      help={seasonHelp(t)}
       intro={t("Plan a season or a growth target: what to order, by when, and the cash you need each week.")}
       primaryAction={
         data.canAdd && !data.editing ? (

@@ -13,6 +13,7 @@ import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { AppPage, Disclosure, FormCard, FormSaveBar, sameValues } from "../components/ui";
+import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
 import { ChoiceListField, SelectField, val } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale, plural } from "../lib/i18n";
@@ -117,7 +118,7 @@ export default function Settings() {
   );
 
   return (
-    <AppPage heading={t("Settings")}>
+    <AppPage heading={t("Settings")} help={settingsHelp(t, "defaults")}>
       <FormSaveBar id="keha-settings-defaults" dirty={!sameValues(form, saved)} saving={saving} onSave={save} onDiscard={() => setForm(saved)} />
       <SettingsTabs current="defaults" />
       {result?.ok && <s-banner tone="success">{t("Settings saved.")}</s-banner>}

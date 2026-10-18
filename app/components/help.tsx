@@ -71,7 +71,7 @@ export function dashboardHelp(t: T, locale: string, d: { leadTimeDays: number; c
       { title: t("How your numbers are worked out"), paragraphs: how },
     ],
     links: [
-      { label: t("Default lead time, order days and safety stock"), to: "/app/settings" },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
       { label: d.supplierCount > 0 ? t("Suppliers: lead times, case packs and minimums") : t("Add your suppliers"), to: "/app/settings/suppliers" },
     ],
   };
@@ -131,7 +131,7 @@ export function dueNowHelp(t: T, locale: string, example: { product: string; why
     ],
     links: [
       { label: t("Suppliers: lead times, case packs and minimums"), to: "/app/settings/suppliers" },
-      { label: t("Default lead time, order days and safety stock"), to: "/app/settings" },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
@@ -150,7 +150,7 @@ export function calendarHelp(t: T): HelpContent {
     ],
     links: [
       { label: t("Due now"), to: "/app/reorder" },
-      { label: t("Default lead time, order days and safety stock"), to: "/app/settings" },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
     ],
   };
 }
@@ -175,7 +175,7 @@ export function productsHelp(t: T): HelpContent {
       },
     ],
     links: [
-      { label: t("Default lead time, order days and safety stock"), to: "/app/settings" },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
       { label: t("Suppliers: lead times, case packs and minimums"), to: "/app/settings/suppliers" },
     ],
   };
@@ -196,5 +196,200 @@ export function purchaseOrdersHelp(t: T): HelpContent {
       },
     ],
     links: [{ label: t("Due now"), to: "/app/reorder" }],
+  };
+}
+
+/** Settings links shared by the panels (S4: the setting behind each number, one click away). */
+const STORE_SETTINGS = "/app/settings?more=1";
+const SUPPLIER_SETTINGS = "/app/settings/suppliers";
+
+/** Season planner: what a scenario is and how its numbers are built. */
+export function seasonHelp(t: T): HelpContent {
+  return {
+    sections: [
+      {
+        title: t("What you see here"),
+        paragraphs: [
+          t("A scenario is a period you plan for: a season, a sale or a growth target. Give it dates and the growth you expect."),
+          t("For that period you see the expected sales and revenue, what to order and by when, and the cash needed each week."),
+          t("Results are calculated when you save. Nothing in your store changes."),
+        ],
+      },
+      {
+        title: t("How the numbers are worked out"),
+        paragraphs: [
+          t("Expected sales are sales per day while in stock, times last year's season for those weeks, times your growth."),
+          t("Collection goals compare each collection's share of revenue with the share you set, so you see where to push."),
+        ],
+      },
+    ],
+    links: [
+      { label: t("Order calendar"), to: "/app/reorder/calendar" },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+    ],
+  };
+}
+
+/** Product detail: the chart, the forecast terms, and what can be changed on the page. */
+export function productDetailHelp(t: T, locale: string, d: { leadTimeDays: number | null; cycleDays: number | null; fromSupplier: boolean }): HelpContent {
+  const how = [t("How the forecast was built lists every number the forecast used: the sales windows, the season, the trend, the lead time, the order days and the safety stock.")];
+  if (d.leadTimeDays !== null && d.cycleDays !== null)
+    how.push(
+      fill(t("An order for this product takes {lead} days to arrive and is sized to last {cycle} days after that, plus safety stock."), {
+        lead: formatCount(d.leadTimeDays, locale),
+        cycle: formatCount(d.cycleDays, locale),
+      }),
+    );
+  return {
+    sections: [
+      {
+        title: t("What you see here"),
+        paragraphs: [
+          t("13 months of sales per day. Shaded days were out of stock: they never count as slow days."),
+          ...how,
+        ],
+      },
+      {
+        title: t("What you can change here"),
+        paragraphs: [
+          t("Case size and supplier code are saved for this product and used on its purchase orders."),
+          t("Forecast like another product while this one is new and has few days in stock."),
+          t("Don't reorder keeps the product in your stock numbers but never puts it in an order."),
+        ],
+      },
+    ],
+    links: d.fromSupplier
+      ? [
+          { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
+          { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+        ]
+      : [
+          { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+          { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
+        ],
+  };
+}
+
+/** Build purchase order: one supplier's lines, the quantities and what Create does. */
+export function buildOrderHelp(t: T): HelpContent {
+  return {
+    sections: [
+      {
+        title: t("What you see here"),
+        paragraphs: [
+          t("Every product due from this supplier now and before your next order, each with a suggested quantity."),
+          t("Quantities are rounded to the case pack and topped up to the supplier's minimum. The info button on a line shows the sum."),
+        ],
+      },
+      {
+        title: t("What you can change here"),
+        paragraphs: [
+          t("Change any quantity, or untick a line to leave it out. Add products adds any product from this supplier, at any quantity."),
+          t("Order enough for changes the days this one order covers. Your default stays as it is."),
+          t("Create purchase order saves a draft. Nothing goes to the supplier until you send it."),
+        ],
+      },
+    ],
+    links: [
+      { label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS },
+      { label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS },
+    ],
+  };
+}
+
+export type SettingsHelpTab = "defaults" | "suppliers" | "locations" | "alerts" | "import";
+
+/** Settings: one panel per tab, in plain words. */
+export function settingsHelp(t: T, tab: SettingsHelpTab): HelpContent {
+  const after = t("The order plan uses a change the next time it opens. Product statuses update with the nightly refresh.");
+  switch (tab) {
+    case "defaults":
+      return {
+        sections: [
+          {
+            title: t("What each setting does"),
+            paragraphs: [
+              t("Default lead time: days from placing an order to the stock arriving. Used until a supplier has its own."),
+              t("Order enough for: days of stock each order lasts after it arrives. You can change it for a single order when you build it."),
+              t("Safety stock: extra stock for surprises. Higher means fewer sell-outs and more cash tied up in stock."),
+              t("Overstock and dead stock: when a product is flagged for too much stock, or for no sales."),
+              after,
+            ],
+          },
+        ],
+        links: [{ label: t("Suppliers: lead times, case packs and minimums"), to: SUPPLIER_SETTINGS }],
+      };
+    case "suppliers":
+      return {
+        sections: [
+          {
+            title: t("What a supplier changes"),
+            paragraphs: [
+              t("A supplier's lead time, order days, minimums and case pack replace your store defaults for every product it delivers."),
+              t("Products match a supplier by vendor, or you assign them one by one."),
+              t("Once a few orders have arrived, the measured lead time is shown, and you can use it with one click."),
+              after,
+            ],
+          },
+        ],
+        links: [{ label: t("Default lead time, order days and safety stock"), to: STORE_SETTINGS }],
+      };
+    case "locations":
+      return {
+        sections: [
+          {
+            title: t("How this is used"),
+            paragraphs: [
+              t("Purchase orders, daily sales and days of stock are worked out from the stock in every included location."),
+              t("Leave a location out when its stock isn't for sale, for example a returns room."),
+            ],
+          },
+        ],
+        links: [],
+      };
+    case "alerts":
+      return {
+        sections: [
+          {
+            title: t("What you get"),
+            paragraphs: [
+              t("Every Monday at 08:00 in your store's time zone: the money at stake and what to do this week."),
+              t("When a best seller will run out before new stock can arrive, or a busy product sells out."),
+              t("Slack gets the same weekly summary and alerts when it's connected."),
+            ],
+          },
+        ],
+        links: [],
+      };
+    case "import":
+      return {
+        sections: [
+          {
+            title: t("How importing works"),
+            paragraphs: [
+              t("Download the file, fill it in a spreadsheet and upload it. We check it and show what will change before anything is saved."),
+              t("Suppliers and products not in the file stay as they are."),
+              t("Leave a column out to keep its values. An empty cell clears the value."),
+            ],
+          },
+        ],
+        links: [{ label: t("Suppliers"), to: SUPPLIER_SETTINGS }],
+      };
+  }
+}
+
+/** Plans & billing. */
+export function plansHelp(t: T): HelpContent {
+  return {
+    sections: [
+      {
+        title: t("What each plan includes"),
+        paragraphs: [
+          t("Start free with your 10 most urgent products. Growth plans every order by supplier, with purchase orders and the cash per week. Pro plans each warehouse and store."),
+          t("Billed through Shopify. Choose, change or cancel your plan on Shopify's plan page any time. A downgrade never deletes your data."),
+        ],
+      },
+    ],
+    links: [],
   };
 }

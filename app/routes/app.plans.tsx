@@ -10,6 +10,7 @@ import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppPage, FormCard, Segmented } from "../components/ui";
+import { plansHelp } from "../components/help";
 import { flag } from "../components/wc";
 import { planName } from "../components/plan";
 import { PLAN_CODES, type PlanCode } from "../lib/plan-shared";
@@ -64,6 +65,7 @@ export default function PlansPage() {
   return (
     <AppPage
       heading={t("Plans & billing")}
+      help={plansHelp(t)}
       intro={t("Start free with your 10 most urgent products. Growth plans every order by supplier, with purchase orders and the cash per week. Pro plans each warehouse and store.")}
     >
       {comped && <s-banner tone="success">{t("Your plan is comped — no charge.")}</s-banner>}

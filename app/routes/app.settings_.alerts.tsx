@@ -20,6 +20,7 @@ import { authenticate } from "../shopify.server";
 import { authenticateApp } from "../services/data-scope.server";
 import { SampleOffNote, useSample } from "../components/sample";
 import { AppPage, FormCard, FormSaveBar, sameValues } from "../components/ui";
+import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { flag, isChecked, val } from "../components/wc";
@@ -168,7 +169,7 @@ export default function AlertsSettings() {
   };
 
   return (
-    <AppPage heading={t("Settings")}>
+    <AppPage heading={t("Settings")} help={settingsHelp(t, "alerts")}>
       <FormSaveBar
         id="keha-settings-alerts"
         dirty={dirty}
