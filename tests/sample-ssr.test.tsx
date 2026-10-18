@@ -154,7 +154,7 @@ describe("store-changing actions are off on sample data, with a note", () => {
     expect(render(Reorder, data, { path: "/app/reorder" })).not.toContain("Transfers are off in sample data");
   });
 
-  it("Purchase order: drafting only — email, mark as sent and receive are disabled, delete isn't", () => {
+  it("Purchase order on sample data: emailing is off, the rest of the workflow is on", () => {
     const order: OrderDetail = {
       id: "po1",
       number: "PO-0001",
@@ -180,13 +180,48 @@ describe("store-changing actions are off on sample data, with a note", () => {
     const view: OrderPageView = { enabled: true, order, link: null, hidePrices: false, features: { poExport: true, supplierConfirm: true }, today: "2026-10-16", stale: false, reopenTo: null };
     for (const locale of ["en", "de"] as const) {
       const html = render(OrderPage, view, { sample: ON, locale, path: "/app/reorder/:id", url: "/app/reorder/po1" });
-      expect(has(html, locale, "In sample data you can create purchase orders, but nothing is emailed, sent or received.")).toBe(true);
+      expect(has(html, locale, "Sample data: every step works on the sample orders, but nothing is emailed to a supplier.")).toBe(true);
       expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Open in your email")}`));
-      expect(html).toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Mark as ordered")}`));
+      // The workflow runs on the sample rows (database only): only reaching a supplier is off.
+      expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Mark as ordered")}`));
       expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Delete draft")}`));
     }
     const live = render(OrderPage, view, { path: "/app/reorder/:id", url: "/app/reorder/po1" });
     expect(live).not.toMatch(/disabled="(?:true)?"[^>]*>Open in your email/);
+  });
+
+  it("An open purchase order can be closed (Close order), also on sample data; Receive items is on", () => {
+    const order: OrderDetail = {
+      id: "po2",
+      number: "PO-0002",
+      source: "keha",
+      status: "confirmed",
+      supplierId: "s1",
+      supplierName: "Istanbul Denim A.S.",
+      supplier: { name: "Istanbul Denim A.S.", hasEmail: true, hidePrices: false, leadTimeDays: 35, transitDays: 6, currency: null, exchangeRate: null, minOrder: null, minOrderTotal: null, minOrderValue: null, minOrderScope: "variant" },
+      lines: [{ variantId: "gid://shopify/ProductVariant/1", qty: 12, unitCost: 20, productTitle: "Straight leg jeans", variantTitle: "32", sku: "JEAN-32", received: 4 }],
+      currency: "EUR",
+      storeCurrency: "EUR",
+      confirmToken: "",
+      confirmExpiresAt: null,
+      confirmedShipDate: "2026-10-18",
+      expectedDate: null,
+      arrival: "2026-10-24",
+      sentAt: "2026-09-18T10:00:00Z",
+      receivedAt: null,
+      cancelledAt: null,
+      createdAt: "2026-09-18T10:00:00Z",
+      updatedAt: "2026-10-16T10:00:00.000Z",
+    } as OrderDetail;
+    const view: OrderPageView = { enabled: true, order, link: null, hidePrices: false, features: { poExport: true, supplierConfirm: true }, today: "2026-10-18", stale: false, reopenTo: null };
+    for (const opts of [{}, { sample: ON }, { sample: ON, locale: "de" as const }]) {
+      const locale = opts.locale ?? "en";
+      const html = render(OrderPage, view, { ...opts, path: "/app/reorder/:id", url: "/app/reorder/po2" });
+      expect(html).toContain(`>${translate(locale, "Close order")}</s-button>`);
+      expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Close order")}`));
+      expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Receive items")}`));
+      expect(html).not.toMatch(new RegExp(`disabled="(?:true)?"[^>]*>${translate(locale, "Cancel order")}`));
+    }
   });
 
   it("Settings → Alerts: the store's own alerts, shown but not changed from sample data", () => {

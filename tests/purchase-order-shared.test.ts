@@ -1,6 +1,8 @@
 /** Keha purchase orders (spec §5.3, J3, §14): numbers, transitions, dates, CSV, confirm link, auto-receive. */
 import { describe, expect, it } from "vitest";
 import {
+  applyReceipt,
+  closedWithNothingDelivered,
   ARRIVAL_WINDOW_DAYS,
   AUTO_RECEIVE_SHARE,
   arrivalWindowStart,
@@ -287,5 +289,22 @@ describe("supplier email", () => {
     expect(m.text).not.toContain("€");
     expect(m.text.startsWith("Hello,")).toBe(true);
     expect(confirmUrl("https://a.io/", "x y")).toBe("https://a.io/supplier/confirm/x%20y");
+  });
+});
+
+describe("Close order (2026-10-18)", () => {
+  const lines: PoLine[] = [
+    { variantId: "v1", qty: 12, unitCost: 5, received: 4, productTitle: "Jeans", variantTitle: "32", sku: "J-32" },
+    { variantId: "v2", qty: 6, unitCost: 5, productTitle: "Jeans", variantTitle: "34", sku: "J-34" },
+  ];
+  it("closes with nothing more received: received units stay, the rest is short", () => {
+    const r = applyReceipt(lines, [0, 0], true);
+    expect(r.ok && r.close).toBe(true);
+    if (r.ok) expect(r.lines.map((l) => l.received ?? 0)).toEqual([4, 0]);
+  });
+  it("an order closed before anything arrived is no lead-time sample; a partial delivery is", () => {
+    expect(closedWithNothingDelivered({ source: "keha", lines: [{ qty: 12, received: 0 }, { qty: 6 }] })).toBe(true);
+    expect(closedWithNothingDelivered({ source: "keha", lines })).toBe(false);
+    expect(closedWithNothingDelivered({ source: "shopify", lines: [{ qty: 12 }] })).toBe(false);
   });
 });

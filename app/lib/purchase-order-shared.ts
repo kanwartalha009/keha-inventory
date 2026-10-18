@@ -358,6 +358,14 @@ export function applyReceipt(lines: readonly PoLine[], receivedNow: unknown, clo
   };
 }
 
+/**
+ * A Keha order closed with nothing delivered ("Close order" before anything arrived) is not a
+ * delivery: it must not count as a lead-time sample. Shopify orders carry their own receipts.
+ */
+export function closedWithNothingDelivered(o: { source: string; lines: readonly Pick<PoLine, "qty" | "received">[] }): boolean {
+  return o.source === "keha" && o.lines.length > 0 && poProgress(o.lines).received === 0;
+}
+
 /** A received or cancelled Keha order can be re-opened this long after it closed. */
 export const REOPEN_DAYS = 30;
 

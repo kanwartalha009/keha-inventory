@@ -12,7 +12,7 @@
  *  - Event handlers are typed `(event: Event) => void`; the value lives on
  *    `currentTarget`. `val()` / `isChecked()` read it without casts everywhere.
  */
-import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, type ReactElement, type ReactNode } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 /** `flag(cond)` → `true` or `undefined` (never `false`) for boolean attributes. */
@@ -70,6 +70,26 @@ function withSlot(node: ReactNode, slot: "primary-action" | "secondary-actions")
   ).map((child) => (isValidElement(child) ? cloneElement(child as ReactElement<{ slot?: string }>, { slot }) : child));
 }
 
+/**
+ * React 18 drops `on*` props it doesn't know on custom elements (onHide, onDismiss, …): they never
+ * reach the element. Attach the element's own event instead. Returns the unsubscribe.
+ * (Live 2026-10-18: closing a dialog with its X left React thinking it was open — the admin bar
+ * stayed dimmed and the same dialog wouldn't open again.)
+ */
+export function bindElementEvent(el: EventTarget | null, name: string, handler: () => void): () => void {
+  if (!el) return () => {};
+  const fn = () => handler();
+  el.addEventListener(name, fn);
+  return () => el.removeEventListener(name, fn);
+}
+
+/** `bindElementEvent` for a ref; the latest handler is always the one called. */
+export function useElementEvent(ref: RefObject<EventTarget | null>, name: string, handler: (() => void) | undefined) {
+  const latest = useRef(handler);
+  latest.current = handler;
+  useEffect(() => bindElementEvent(ref.current, name, () => latest.current?.()), [ref, name]);
+}
+
 export function Modal({
   open,
   onClose,
@@ -88,6 +108,15 @@ export function Modal({
   secondaryActions?: ReactNode;
 }) {
   const ref = useRef<HTMLElement & { showOverlay(): void; hideOverlay(): void }>(null);
+  const isOpen = useRef(open);
+  isOpen.current = open;
+  // The X, Esc and a click outside fire "hide": tell the page, once, while it still thinks it's open.
+  useElementEvent(ref, "hide", () => {
+    if (isOpen.current) {
+      isOpen.current = false;
+      onClose();
+    }
+  });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -99,11 +128,32 @@ export function Modal({
     }
   }, [open]);
   return (
-    <s-modal ref={ref as never} heading={heading} size={size} onHide={onClose}>
+    <s-modal ref={ref as never} heading={heading} size={size}>
       {children}
       {withSlot(primaryAction, "primary-action")}
       {withSlot(secondaryActions, "secondary-actions")}
     </s-modal>
+  );
+}
+
+/** `<s-banner>` whose close button really calls `onDismiss` (see bindElementEvent). No handler = no close button. */
+export function DismissibleBanner({
+  onDismiss,
+  tone,
+  heading,
+  children,
+}: {
+  onDismiss?: () => void;
+  tone?: "auto" | "info" | "success" | "warning" | "critical";
+  heading?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useElementEvent(ref, "dismiss", onDismiss);
+  return (
+    <s-banner ref={ref as never} tone={tone} heading={heading} dismissible={onDismiss ? true : undefined}>
+      {children}
+    </s-banner>
   );
 }
 

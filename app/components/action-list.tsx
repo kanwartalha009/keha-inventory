@@ -20,7 +20,7 @@ import {
 import { factLines, reasonSentence } from "../lib/action-facts-shared";
 import { CLEAR_PERCENT, defaultClearForm, type ClearForm, type ClearFormError } from "../lib/clearance-shared";
 import { formatAmount, formatCount, formatDay, formatPercent, todayIn } from "../lib/dashboard-shared";
-import { Modal, Tabs, flag, useLinkProps, val, vals } from "./wc";
+import { DismissibleBanner, Modal, Tabs, flag, useLinkProps, val, vals } from "./wc";
 import { ProductThumb } from "./ui";
 import { planTag } from "./plan";
 import type { ActionsResult } from "../routes/app.actions";
@@ -105,7 +105,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
     <s-section heading={t("This week's actions")}>
       <s-stack direction="block" gap="base">
         {notice && notice.op !== "clear" && (
-          <s-banner tone="info" dismissible onDismiss={() => setNotice(null)}>
+          <DismissibleBanner tone="info" onDismiss={() => setNotice(null)}>
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text>
                 {notice.op === "snooze"
@@ -118,12 +118,12 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
                 {t("Undo")}
               </s-button>
             </s-stack>
-          </s-banner>
+          </DismissibleBanner>
         )}
         {notice?.op === "clear" && (
-          <s-banner tone="success" dismissible onDismiss={() => setNotice(null)}>
+          <DismissibleBanner tone="success" onDismiss={() => setNotice(null)}>
             {t("Discount created. We'll track the cash it frees.")}
-          </s-banner>
+          </DismissibleBanner>
         )}
 
         {empty ? (

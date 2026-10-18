@@ -9,7 +9,8 @@ import prisma from "../db.server";
 import { forgetOrderPlan } from "./plan-cache.server";
 import { decryptSecret, encryptSecret } from "../lib/crypto.server";
 import { readSettings } from "../lib/settings-shared";
-import { readMinOrderScope, type MinOrderScope } from "../lib/supplier-shared";
+import { readMinOrderScope, readPoLines, type MinOrderScope } from "../lib/supplier-shared";
+import { closedWithNothingDelivered } from "../lib/purchase-order-shared";
 import { supplierToForm, type SupplierForm, type SupplierInput } from "../lib/suppliers-shared";
 import { deliveryOf, leadStats, measuredLead, readLeadStats, statsChanged, supplierOfOrder, type Delivery, type LeadStats } from "../lib/lead-time-shared";
 import { readLandedPct, readPaymentTerms, type PaymentTerms } from "../lib/cash-shared";
@@ -285,7 +286,7 @@ export async function refreshLeadStats(shop: string): Promise<number> {
     prisma.shop.findUnique({ where: { domain: shop }, select: { timezone: true } }),
     prisma.purchaseOrder.findMany({
       where: { shop, status: "received", sentAt: { not: null }, receivedAt: { not: null } },
-      select: { source: true, supplierId: true, supplierName: true, sentAt: true, receivedAt: true, expectedDate: true, createdAt: true },
+      select: { source: true, supplierId: true, supplierName: true, sentAt: true, receivedAt: true, expectedDate: true, createdAt: true, lines: true },
       orderBy: { receivedAt: "desc" },
       take: 5000,
     }),
@@ -295,6 +296,8 @@ export async function refreshLeadStats(shop: string): Promise<number> {
   const day = (d: Date | null | undefined) => (d instanceof Date ? localDate(d, tz) : null);
   const per = new Map<string, Delivery[]>();
   for (const o of orders) {
+    // Closed before anything arrived: no delivery to measure.
+    if (closedWithNothingDelivered({ source: o.source, lines: readPoLines(o.lines) })) continue;
     const s = supplierOfOrder(o, suppliers);
     if (!s) continue;
     const d = deliveryOf({

@@ -193,7 +193,7 @@ describe("loading, reading and removing sample data", () => {
     expect(m.graphql.filter((q) => /mutation/i.test(q))).toEqual([]);
   }, 300_000);
 
-  it("store-changing actions are refused on sample data (I-1); drafting orders works", async () => {
+  it("store-changing actions are refused on sample data (I-1); the order workflow runs on the sample rows", async () => {
     await loadSampleData(REAL, NOW, { products: 30 });
     const clear = (db.tables.action ?? []).find((a) => a.shop === KEY);
     const r1 = await json(await actionsAction({ request: req("/app/actions", { op: "clear", id: clear?.id ?? "x", kind: "automatic", percent: "20", endsOn: "", code: "" }), params: {}, context: {} } as never));
@@ -204,14 +204,30 @@ describe("loading, reading and removing sample data", () => {
     expect(r2).toEqual({ ok: false, error: "sample" });
     expect(createTransfer).not.toHaveBeenCalled();
     const po = rows("purchaseOrder", KEY).find((p) => p.status === "draft" && (p.lines as unknown[]).length > 0)!;
-    for (const intent of ["email", "transition", "receive", "reopen"]) {
-      const r = await json(await orderAction({ request: req(`/app/reorder/${po.id}`, { intent, to: "sent" }), params: { id: po.id as string }, context: {} } as never));
+    // Only what reaches a supplier is refused: the app's email and the mailto.
+    for (const intent of ["email", "compose"]) {
+      const r = await json(await orderAction({ request: req(`/app/reorder/${po.id}`, { intent }), params: { id: po.id as string }, context: {} } as never));
       expect(r, intent).toEqual({ ok: false, error: "sample" });
     }
     expect(emailSupplier).not.toHaveBeenCalled();
     const lines = (po.lines as { qty: number }[]).map((l) => l.qty + 1);
     const edit = await json(await orderAction({ request: req(`/app/reorder/${po.id}`, { intent: "edit", quantities: lines, version: (po.updatedAt as Date).toISOString() }), params: { id: po.id as string }, context: {} } as never));
     expect(edit).toEqual({ ok: true, intent: "edit" });
+    // The rest of the workflow runs on the sample rows (2026-10-18): mark as ordered, then close.
+    const sent = await json(await orderAction({ request: req(`/app/reorder/${po.id}`, { intent: "transition", to: "sent" }), params: { id: po.id as string }, context: {} } as never));
+    expect(sent).toEqual({ ok: true, intent: "transition", to: "sent" });
+    const after = rows("purchaseOrder", KEY).find((p) => p.id === po.id)!;
+    expect(after.status).toBe("sent");
+    const closed = await json(
+      await orderAction({
+        request: req(`/app/reorder/${po.id}`, { intent: "receive", received: (after.lines as unknown[]).map(() => 0), closeShort: true, version: (after.updatedAt as Date).toISOString() }),
+        params: { id: po.id as string },
+        context: {},
+      } as never),
+    );
+    expect(closed).toEqual({ ok: true, intent: "receive" });
+    expect(rows("purchaseOrder", KEY).find((p) => p.id === po.id)!.status).toBe("received");
+    expect(rows("purchaseOrder", REAL).some((p) => p.id === po.id)).toBe(false);
     // Alerts, Slack and the Monday email are the store's own: shown, never changed from sample data.
     const r3 = await json(await alertsAction({ request: req("/app/settings/alerts", { intent: "test" }), params: {}, context: {} } as never));
     expect(r3).toEqual({ ok: false, sample: true });

@@ -160,8 +160,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     throw new Response("Bad request", { status: 400 });
   }
   const id = params.id ?? "";
-  // Sample data: orders can be drafted (edit, delete), never emailed, sent, received or re-opened.
-  if (sample && body.intent !== "edit" && body.intent !== "delete") return { ok: false, error: "sample" } satisfies OrderAction;
+  // Sample data: the whole order workflow works on the sample store's own rows (database only);
+  // only what would reach a supplier — the app's email and the mailto — stays off.
+  if (sample && (body.intent === "email" || body.intent === "compose")) return { ok: false, error: "sample" } satisfies OrderAction;
   switch (body.intent) {
     case "transition": {
       if (!isPoStatus(body.to)) break;
@@ -210,6 +211,7 @@ type Pending =
   | { kind: "transition"; to: PoStatus }
   | { kind: "email" }
   | { kind: "delete" }
+  | { kind: "close" }
   | { kind: "reopen"; to: PoStatus };
 
 export default function OrderPage() {
@@ -311,11 +313,14 @@ function OrderView({ data }: { data: OrderPageView }) {
           ? { intent: "delete" }
           : p.kind === "reopen"
             ? { intent: "reopen" }
-            : { intent: "transition", to: p.to }) as never,
+            : p.kind === "close"
+              ? // "Close order": nothing more arrives — receive nothing now and close the rest as short.
+                { intent: "receive", received: order.lines.map(() => 0), closeShort: true, version: order.updatedAt }
+              : { intent: "transition", to: p.to }) as never,
       { method: "post", encType: "application/json" },
     );
 
-  // Sample data: only drafting (edit, delete) — nothing is emailed, sent or received.
+  // Sample data: everything but what would reach a supplier (the app's email, "Open in your email").
   const sample = useSample().on;
   const button = (p: Pending | (() => void), label: string, primary = false, critical = false, disabled = false) => (
     <s-button
@@ -323,7 +328,7 @@ function OrderView({ data }: { data: OrderPageView }) {
       variant={primary ? "primary" : undefined}
       tone={critical ? "critical" : undefined}
       loading={flag(busy && primary)}
-      disabled={flag(busy || disabled || (sample && (typeof p === "function" || p.kind !== "delete")))}
+      disabled={flag(busy || disabled || (sample && (p === openCompose || (typeof p !== "function" && p.kind === "email"))))}
       onClick={() => (typeof p === "function" ? p() : setPending(p))}
     >
       {label}
@@ -362,6 +367,8 @@ function OrderView({ data }: { data: OrderPageView }) {
     can("confirmed") ? button({ kind: "transition", to: "confirmed" }, t("Mark as confirmed")) : null,
     // Drafts were never sent: delete them. Sent orders are cancelled (and can be re-opened for 30 days).
     draft ? button({ kind: "delete" }, t("Delete draft"), false, true) : null,
+    // An open order that won't be completed: close it with what arrived (Shopify's "Close").
+    canReceive ? button({ kind: "close" }, t("Close order")) : null,
     !draft && can("cancelled") ? button({ kind: "transition", to: "cancelled" }, t("Cancel order"), false, true) : null,
   ].filter(Boolean);
 
@@ -383,6 +390,27 @@ function OrderView({ data }: { data: OrderPageView }) {
         label: t("Delete draft"),
         destructive: true,
       };
+    if (p.kind === "close") {
+      const arrived = poProgress(order.lines);
+      return {
+        title: fill(t("Close {number}?"), { number: order.number }),
+        message:
+          arrived.received > 0
+            ? fill(
+                plural(
+                  arrived.remaining,
+                  t("The order closes with what arrived. The 1 unit still to come no longer counts as on order. You can reopen it within {days} days."),
+                  t("The order closes with what arrived. The {n} units still to come no longer count as on order. You can reopen it within {days} days."),
+                ),
+                { n: formatCount(arrived.remaining, locale), days: REOPEN_DAYS },
+              )
+            : fill(t("Nothing has arrived yet. The order closes and its units no longer count as on order. Keha doesn't tell the supplier, so let them know yourself. You can reopen it within {days} days."), {
+                days: REOPEN_DAYS,
+              }),
+        label: t("Close order"),
+        destructive: false,
+      };
+    }
     if (p.kind === "reopen")
       return {
         title: fill(t("Reopen {number}?"), { number: order.number }),
@@ -469,7 +497,7 @@ function OrderView({ data }: { data: OrderPageView }) {
       primaryAction={primary}
       secondaryActions={secondary}
     >
-      <SampleOffNote>{t("In sample data you can create purchase orders, but nothing is emailed, sent or received.")}</SampleOffNote>
+      <SampleOffNote>{t("Sample data: every step works on the sample orders, but nothing is emailed to a supplier.")}</SampleOffNote>
       {!keha && (
         <s-banner tone="info">{t("This order comes from Shopify. Change it in Shopify; we read it again every night.")}</s-banner>
       )}
@@ -478,7 +506,9 @@ function OrderView({ data }: { data: OrderPageView }) {
         <s-banner tone="success">{fill(t("Order is now {status}."), { status: poStatusLabel(result.to, t) })}</s-banner>
       )}
       {result?.ok && result.intent === "edit" && <s-banner tone="success">{t("Draft saved.")}</s-banner>}
-      {result?.ok && result.intent === "receive" && <s-banner tone="success">{t("Delivery recorded.")}</s-banner>}
+      {result?.ok && result.intent === "receive" && (
+        <s-banner tone="success">{(fetcher.json as { closeShort?: boolean } | undefined)?.closeShort ? t("Order closed.") : t("Delivery recorded.")}</s-banner>
+      )}
       {result && !result.ok && <s-banner tone="critical">{orderError(result.error, t)}</s-banner>}
       {data.stale && (
         <s-banner tone="warning">
@@ -929,7 +959,7 @@ function orderError(code: string, t: (s: string) => string): string {
     case "invalid":
       return t("Use a whole number, 0 or more.");
     case "sample":
-      return t("In sample data you can create purchase orders, but nothing is emailed, sent or received.");
+      return t("Sample data: every step works on the sample orders, but nothing is emailed to a supplier.");
     default:
       return t("This order doesn't exist any more.");
   }
