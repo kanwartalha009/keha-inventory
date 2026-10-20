@@ -327,9 +327,8 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
     <FormCard
       title={heading}
       action={
-        <s-button variant="tertiary" {...link("/app/reorder")}>
-          {t("Order plan")}
-        </s-button>
+        // A link like "See the order calendar" below it (a bare tertiary button read as plain text).
+        <s-link {...link("/app/reorder")}>{t("Order plan")}</s-link>
       }
     >
       <s-stack direction="block" gap="base">

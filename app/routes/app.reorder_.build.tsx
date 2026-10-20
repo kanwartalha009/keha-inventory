@@ -24,7 +24,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
-import { useFetcher, useLoaderData, useNavigate, useNavigation, useSearchParams } from "react-router";
+import { useFetcher, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -35,7 +35,7 @@ import { buildOrderHelp } from "../components/help";
 import { DueLabel, WhyPopover } from "../components/order-plan";
 import { planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
-import { flag, isChecked, useLinkProps, val } from "../components/wc";
+import { flag, isChecked, useLinkProps, val, useSafeNavigate } from "../components/wc";
 import { fill, useLocale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
 import { daysBetween } from "../lib/engine/dates-shared";
@@ -133,7 +133,8 @@ export default function SupplierOrderBuilder() {
     return (
       <AppPage heading={t("Build purchase order")} breadcrumb={{ label: t("Due now"), to: "/app/reorder" }}>
         <s-section>
-          <EmptyState body={t("This supplier doesn't exist any more. Reload the page.")} />
+          {/* Reloading never helped; the way out is Due now (live 2026-10-20). */}
+          <EmptyState body={t("This supplier isn't in your order plan any more.")} action={<BackToDueNow />} />
         </s-section>
       </AppPage>
     );
@@ -180,7 +181,7 @@ function money(store: number | null, supplier: number | null, view: Pick<Supplie
 function Builder({ view, today, shipTo }: { view: SupplierOrderView; today: string; shipTo: { choices: ShipToChoice[]; default: string | null } }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const fetcher = useFetcher<BuilderAction>();
   const products = useFetcher<BuilderProductsData>();
   const title = groupTitle(view, t);
@@ -689,4 +690,10 @@ function BuilderRow({
       </s-table-cell>
     </s-table-row>
   );
+}
+
+function BackToDueNow() {
+  const { t } = useLocale();
+  const link = useLinkProps();
+  return <s-button {...link("/app/reorder")}>{t("Back to Due now")}</s-button>;
 }

@@ -13,7 +13,14 @@ export type HelpSection = { title: string; paragraphs: string[] };
 export type HelpContent = { sections: HelpSection[]; links: HelpLink[] };
 
 /** The panel body (AppPage opens it in a large dialog). */
-export function HelpBody({ content, onNavigate }: { content: HelpContent; /** Close the dialog first: a page change must never leave it open (audit 2026-10-18). */ onNavigate?: () => void }) {
+export function HelpBody({
+  content,
+  onNavigate,
+}: {
+  content: HelpContent;
+  /** Close the dialog, then go to `to` (AppPage): a page change must never happen while it is shown (2026-10-20). */
+  onNavigate?: (to: string) => void;
+}) {
   const { t } = useLocale();
   const linkProps = useLinkProps();
   const link = (to: string) => {
@@ -21,8 +28,10 @@ export function HelpBody({ content, onNavigate }: { content: HelpContent; /** Cl
     return {
       ...p,
       onClick: (e: Event) => {
-        onNavigate?.();
-        p.onClick(e);
+        const me = e as unknown as MouseEvent;
+        if (!onNavigate || me.metaKey || me.ctrlKey || me.shiftKey || me.button === 1) return p.onClick(e);
+        e.preventDefault();
+        onNavigate(to);
       },
     };
   };

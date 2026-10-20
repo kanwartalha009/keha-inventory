@@ -307,11 +307,11 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
         <s-table>
           <s-table-header-row>
             <s-table-header listSlot="primary">{t("Product")}</s-table-header>
-            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-by" label={t("Order by")} /></s-table-header>
-            <s-table-header listSlot="labeled"><HeaderLabel id="keha-cal-arrives" label={t("Expected arrival")} /></s-table-header>
-            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-qty" label={t("Quantity")} /></s-table-header>
-            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id="keha-cal-cost" label={t("Cost")} /></s-table-header>
-            <s-table-header><HeaderLabel id="keha-cal-why" label={t("Why")} hint={t("Why this quantity")} /></s-table-header>
+            <s-table-header listSlot="labeled"><HeaderLabel id={`keha-cal-by-${s.supplierKey}-${s.orderByFrom}`} label={t("Order by")} /></s-table-header>
+            <s-table-header listSlot="labeled"><HeaderLabel id={`keha-cal-arrives-${s.supplierKey}-${s.orderByFrom}`} label={t("Expected arrival")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id={`keha-cal-qty-${s.supplierKey}-${s.orderByFrom}`} label={t("Quantity")} /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeaderLabel id={`keha-cal-cost-${s.supplierKey}-${s.orderByFrom}`} label={t("Cost")} /></s-table-header>
+            <s-table-header><HeaderLabel id={`keha-cal-why-${s.supplierKey}-${s.orderByFrom}`} label={t("Why")} hint={t("Why this quantity")} /></s-table-header>
           </s-table-header-row>
           <s-table-body>
             {byProduct(s.events, plan).map((e, i) => {
@@ -487,7 +487,7 @@ function FitSuggestion({ fit, plan }: { fit: FitMonth; plan: OrderPlanData }) {
         {failed && <s-text tone="critical">{t("This suggestion changed. Reload the page and try again.")}</s-text>}
         {fit.deferrals.length > 0 && (
           <s-stack direction="inline">
-            <s-button variant="primary" loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
+            <s-button variant="primary" loading={flag(fetcher.state !== "idle")} disabled={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
               {t("Apply")}
             </s-button>
           </s-stack>
@@ -527,7 +527,7 @@ function HeldBanner({ holds, currency }: { holds: HoldBatch[]; currency: string 
                 date: shortDay(h.until, locale),
               })}
             </s-text>
-            <s-button variant="tertiary" loading={flag(fetcher.state !== "idle")} onClick={() => fetcher.submit({ intent: "undoFit", batch: h.batch } as never, { method: "post", encType: "application/json" })}>
+            <s-button variant="tertiary" loading={flag(fetcher.state !== "idle")} disabled={flag(fetcher.state !== "idle")} onClick={() => fetcher.submit({ intent: "undoFit", batch: h.batch } as never, { method: "post", encType: "application/json" })}>
               {t("Undo")}
             </s-button>
           </s-stack>

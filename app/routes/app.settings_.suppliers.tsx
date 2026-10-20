@@ -15,7 +15,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useNavigate, useSearchParams } from "react-router";
+import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticateApp } from "../services/data-scope.server";
@@ -40,7 +40,7 @@ import { settingsHelp } from "../components/help";
 import { SettingsTabs } from "../components/settings-tabs";
 import { UpgradeBanner, planTag } from "../components/plan";
 import ConfirmModal from "../components/ConfirmModal";
-import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val } from "../components/wc";
+import { ChoiceListField, SelectField, flag, isChecked, useLinkProps, val, useSafeNavigate } from "../components/wc";
 import { LOCALES, LOCALE_NAMES, fill, useLocale, type Locale, plural } from "../lib/i18n";
 import { formatAmount, formatCount, formatPercent } from "../lib/dashboard-shared";
 import { landedText, termsText } from "../lib/cash-shared";
@@ -151,7 +151,7 @@ export default function SuppliersSettings() {
   const { t, locale } = useLocale();
   const data = useLoaderData<typeof loader>() as SuppliersData;
   const fetcher = useFetcher<SuppliersAction>();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const link = useLinkProps();
   const [params] = useSearchParams();
   const [confirm, setConfirm] = useState<{ kind: "delete" | "clear" | "useMeasured"; row: SupplierListRow } | null>(null);
@@ -227,7 +227,7 @@ export default function SuppliersSettings() {
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
-              <s-table-header listSlot="labeled" format="numeric">{t("Lead time")}</s-table-header>
+              <s-table-header listSlot="labeled">{t("Lead time")}</s-table-header>
               <s-table-header listSlot="labeled">{t("Order minimums")}</s-table-header>
               <s-table-header listSlot="labeled">{t("Products from")}</s-table-header>
               <s-table-header>{t("Actions")}</s-table-header>
@@ -346,14 +346,32 @@ function SupplierRow({
       <s-table-cell>
         <s-stack direction="block" gap="none">
           <span className="keha-num">{fill(plural(s.leadTimeDays, t("1 day"), t("{n} days")), { n: formatCount(s.leadTimeDays, locale) })}</span>
-          {reliability && <s-text tone={late ? "caution" : undefined} color={late ? undefined : "subdued"}>{reliability}</s-text>}
-          {reliabilityMore && <s-text color="subdued">{reliabilityMore}</s-text>}
-          {measured && (
-            <s-text color="subdued">
-              {fill(t("Measured: {median} days typical, 80% within {p80} days"), { median: formatCount(Math.round(measured.median), locale), p80: formatCount(Math.round(measured.p80), locale) })}
+          {reliability && (
+            <s-text tone={late ? "caution" : undefined} color={late ? undefined : "subdued"} interestFor={reliabilityMore || measured ? `${menuId}-lead` : undefined}>
+              {reliability}
             </s-text>
           )}
-          {lateBy !== null && <s-badge tone="warning">{fill(t("Consistently late: {n} days"), { n: formatCount(lateBy, locale) })}</s-badge>}
+          {/* The detail (on-time share, spread, measured days) is in the badge's tooltip: the cell was
+              eight lines tall and pushed the Actions column off the card (live 2026-10-20). */}
+          {lateBy !== null ? (
+            <span className="keha-nowrap">
+              <s-badge tone="warning">
+                {fill(t("Consistently late: {n} days"), { n: formatCount(lateBy, locale) })}
+              </s-badge>
+            </span>
+          ) : null}
+          {(reliabilityMore || measured) && (
+            <s-tooltip id={`${menuId}-lead`}>
+              {[
+                reliabilityMore,
+                measured
+                  ? fill(t("Measured: {median} days typical, 80% within {p80} days"), { median: formatCount(Math.round(measured.median), locale), p80: formatCount(Math.round(measured.p80), locale) })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </s-tooltip>
+          )}
           {measured && measured.suggested !== s.leadTimeDays && onUseMeasured && (
             <s-stack direction="inline">
               <s-button variant="tertiary" disabled={flag(!enabled)} onClick={onUseMeasured}>
@@ -379,13 +397,10 @@ function SupplierRow({
         </s-stack>
       </s-table-cell>
       <s-table-cell>
-        {/* Two actions in view, the rest one click away: the row's buttons never wrap. */}
+        {/* One action in view, the rest one click away: the row never overflows the card (live 2026-10-20). */}
         <span className="keha-inline">
           <s-button variant="tertiary" disabled={flag(!enabled)} onClick={onEdit}>
             {t("Edit")}
-          </s-button>
-          <s-button variant="tertiary" disabled={flag(!enabled)} onClick={pick}>
-            {t("Assign products")}
           </s-button>
           <s-button
             variant="tertiary"
@@ -395,6 +410,7 @@ function SupplierRow({
             accessibilityLabel={`${t("More actions")}: ${s.name}`}
           />
           <s-menu id={menuId} accessibilityLabel={t("More actions")}>
+            <s-button onClick={pick}>{t("Assign products")}</s-button>
             {s.products > 0 && <s-button onClick={onClear}>{t("Remove assignments")}</s-button>}
             <s-button tone="critical" onClick={onDelete}>
               {t("Delete")}

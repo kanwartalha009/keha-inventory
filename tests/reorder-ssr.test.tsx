@@ -149,7 +149,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     const data = reorderData({ minOrderTotal: null });
     const html = render("/app/reorder", "reorder", Reorder, data);
     expect(html).toContain(">How it works</s-button>");
-    expect(html).toContain('<s-modal heading="How it works" size="large">');
+    expect(html).toMatch(/<s-modal id="keha-modal-[A-Za-z0-9_-]+" heading="How it works" size="large">/);
     const c = dueNowHelp((s) => s, "en", dueNowExample(data.groups));
     const text = c.sections.flatMap((s) => s.paragraphs).join("\n");
     // Canvas tote: 28 + safety 10 − 10 on hand − 0 on order − 4 it can't sell while out = 24 (the sum adds up).

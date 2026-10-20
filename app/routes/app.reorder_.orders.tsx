@@ -108,7 +108,7 @@ export function OpenOrders({ orders }: { orders: OpenOrderListRow[] }) {
                   <s-table-cell>
                     <s-stack direction="inline" gap="small-200" alignItems="center">
                       <span className="keha-nowrap">
-                        <s-badge tone={o.partial ? "info" : poStatusTone(o.status)}>
+                        <s-badge tone={o.partial ? "caution" : poStatusTone(o.status)}>
                           {o.partial ? t("Partially received") : poStatusLabel(o.status, t)}
                         </s-badge>
                       </span>

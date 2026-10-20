@@ -52,6 +52,9 @@ export const ACTION_REASONS: Record<string, string> = {
   reorder_low: "Runs out in {days} days; a new order takes {lead} days to arrive. Order by {date}.",
   reorder_now: "Runs out in {days} days; a new order takes {lead} days to arrive. Order now.",
   reorder_out: "Out of stock. It sells {rate} a day while in stock.",
+  // Stock on order arrives before it runs out, so the next order is later (live 2026-10-20: "Runs out
+  // in 2 days; a new order takes 35 days to arrive. Order by Jan 3." read as a contradiction).
+  reorder_next: "Stock lasts {days} days and more is already on order. Order the next batch by {date}.",
   bridge_gap: "Runs out {gap} days before new stock arrives on {date}.",
   bridge_out: "Out of stock for about {gap} more days, until new stock arrives on {date}.",
   push_up: "Sales are up {pct}% on last year and it has enough stock. Feature it to sell more.",
@@ -69,12 +72,14 @@ export const ACTION_REASONS: Record<string, string> = {
   "reorder_low.one": "Runs out in 1 day; a new order takes {lead} days to arrive. Order by {date}.",
   "reorder_now.today": "Runs out today; a new order takes {lead} days to arrive. Order now.",
   "reorder_now.one": "Runs out in 1 day; a new order takes {lead} days to arrive. Order now.",
+  "reorder_next.today": "Runs out today and more is already on order. Order the next batch by {date}.",
+  "reorder_next.one": "Stock lasts 1 day and more is already on order. Order the next batch by {date}.",
   "bridge_gap.one": "Runs out 1 day before new stock arrives on {date}.",
   "bridge_out.one": "Out of stock for about 1 more day, until new stock arrives on {date}.",
 };
 
 /** Which param a reason's singular form depends on. */
-const COUNT_PARAM: Record<string, string> = { reorder_low: "days", reorder_now: "days", bridge_gap: "gap", bridge_out: "gap" };
+const COUNT_PARAM: Record<string, string> = { reorder_low: "days", reorder_now: "days", reorder_next: "days", bridge_gap: "gap", bridge_out: "gap" };
 
 /**
  * The English template for a reason: its "today" form for 0 days, its singular form for 1 (each

@@ -15,7 +15,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -39,7 +39,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import { featureCopy, planTag } from "../components/plan";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { TabLock } from "../components/order-plan";
-import { SelectField, flag, useLinkProps, val } from "../components/wc";
+import { SelectField, flag, useLinkProps, val, useSafeNavigate } from "../components/wc";
 import { fill, plural, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, formatUpdatedAt } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
@@ -162,7 +162,7 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 export default function Planner() {
   const { t } = useLocale();
   const data = useLoaderData<typeof loader>() as PlannerData;
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   if (!data.enabled) {
     return (
       <AppPage heading={t("Order plan")}>
@@ -211,7 +211,7 @@ function LockedSection({ feature }: { feature: Feature }) {
         <s-badge tone="info">{planTag(feature, t)}</s-badge>
         <s-paragraph color="subdued">{copy.body}</s-paragraph>
         <s-stack direction="inline">
-          <s-button variant="primary" {...link("/app/plans")}>
+          <s-button {...link("/app/plans")}>
             {t("See plans")}
           </s-button>
         </s-stack>
@@ -261,7 +261,7 @@ function targetText(s: Pick<ScenarioView, "targetType" | "targetValue">, currenc
 function Scenarios({ data }: { data: PlannerData }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const fetcher = useFetcher<PlannerAction>();
   const [confirm, setConfirm] = useState<ScenarioView | null>(null);
   const atLimit = !data.canAdd;
@@ -313,7 +313,7 @@ function Scenarios({ data }: { data: PlannerData }) {
         {atLimit ? (
           <s-banner tone="info" heading={t("Growth includes 1 scenario")}>
             <s-paragraph>{t("Edit or replace the scenario you have, or move to Pro to plan as many seasons as you like.")}</s-paragraph>
-            <s-button slot="secondary-actions" variant="primary" {...link("/app/plans")}>
+            <s-button slot="secondary-actions" {...link("/app/plans")}>
               {t("See plans")}
             </s-button>
           </s-banner>
@@ -347,7 +347,7 @@ function Scenarios({ data }: { data: PlannerData }) {
 
 function ScenarioEditor({ editing, today }: { editing: NonNullable<PlannerData["editing"]>; today: string }) {
   const { t } = useLocale();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const fetcher = useFetcher<PlannerAction>();
   const [form, setForm] = useState<ScenarioForm>(editing.form);
   const result = fetcher.data;

@@ -307,7 +307,7 @@ describe("tools on Growth", () => {
     expect(r.results![0]!._meta).toMatchObject({ action: "Product issue: missing sizes", money_at_stake: 500 });
     expect(r.results![1]!._meta).toMatchObject({
       action: "Reorder",
-      why: "Runs out in 5 days; a new order takes 21 days to arrive. Order by 20 Oct.",
+      why: "Runs out in 5 days; a new order takes 21 days to arrive. Order by Oct 20.",
       url: "app://app/reorder?variants=gid%3A%2F%2Fshopify%2FProductVariant%2F1",
     });
     expect(r.note).toBeUndefined();

@@ -20,7 +20,7 @@ import {
 import { factLines, reasonSentence } from "../lib/action-facts-shared";
 import { CLEAR_PERCENT, defaultClearForm, type ClearForm, type ClearFormError } from "../lib/clearance-shared";
 import { formatAmount, formatCount, formatDay, formatPercent, todayIn } from "../lib/dashboard-shared";
-import { DismissibleBanner, Modal, Tabs, flag, useLinkProps, val, vals } from "./wc";
+import { DismissibleBanner, Modal, Tabs, flag, leaveAfterClose, useLastDefined, useLinkProps, val, vals } from "./wc";
 import { ProductThumb } from "./ui";
 import { planTag } from "./plan";
 import type { ActionsResult } from "../routes/app.actions";
@@ -177,7 +177,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
                   </s-stack>
                   <s-stack direction="inline" gap="small-200" alignItems="center">
                     <s-badge>{planTag("fixDetails", t)}</s-badge>
-                    <s-button variant="primary" {...link("/app/plans")}>
+                    <s-button {...link("/app/plans")}>
                       {t("Upgrade to see them")}
                     </s-button>
                   </s-stack>
@@ -207,7 +207,6 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
       <PushDialog row={dialog?.type === "push" ? dialog.row : null} onClose={() => setDialog(null)} />
       <SignupsDialog row={dialog?.type === "signups" ? dialog.row : null} onClose={() => setDialog(null)} />
       <ClearDialog
-        key={dialog?.type === "clear" ? dialog.row.id : "closed"}
         row={dialog?.type === "clear" ? dialog.row : null}
         timezone={timezone}
         onClose={() => setDialog(null)}
@@ -327,11 +326,13 @@ function LockedButton({ feature }: { feature: "bridge" | "clearance" }) {
   );
 }
 
-function WhyDialog({ dialog: row, onClose }: { dialog: ActionRowView | null; onClose: () => void }) {
+function WhyDialog({ dialog, onClose }: { dialog: ActionRowView | null; onClose: () => void }) {
   const { t, locale } = useLocale();
+  // The last row stays while the dialog closes (it went blank mid-animation — 2026-10-20).
+  const row = useLastDefined(dialog);
   const facts = row ? whyFactsText(row, t, locale) : null;
   return (
-    <Modal open={!!row} onClose={onClose} heading={t("Why this action")}>
+    <Modal open={!!dialog} onClose={onClose} heading={t("Why this action")}>
       {row && (
         <s-stack direction="block" gap="small-200">
           <s-paragraph>{reasonText(row, t, locale)}</s-paragraph>
@@ -346,17 +347,18 @@ function WhyDialog({ dialog: row, onClose }: { dialog: ActionRowView | null; onC
   );
 }
 
-function PushDialog({ row, onClose }: { row: ActionRowView | null; onClose: () => void }) {
+function PushDialog({ row: current, onClose }: { row: ActionRowView | null; onClose: () => void }) {
   const { t } = useLocale();
+  const row = useLastDefined(current);
   const url = row?.button.kind === "pushHow" ? row.button.productUrl : null;
   return (
     <Modal
-      open={!!row}
+      open={!!current}
       onClose={onClose}
       heading={t("How to promote this product")}
       primaryAction={
         url ? (
-          <s-button variant="primary" href={url} target="_top">
+          <s-button variant="primary" onClick={() => leaveAfterClose(url, onClose)}>
             {t("Open product in Shopify")}
           </s-button>
         ) : undefined
@@ -377,17 +379,18 @@ function PushDialog({ row, onClose }: { row: ActionRowView | null; onClose: () =
   );
 }
 
-function SignupsDialog({ row, onClose }: { row: ActionRowView | null; onClose: () => void }) {
+function SignupsDialog({ row: current, onClose }: { row: ActionRowView | null; onClose: () => void }) {
   const { t, locale } = useLocale();
+  const row = useLastDefined(current);
   const b = row?.button.kind === "signups" ? row.button : null;
   return (
     <Modal
-      open={!!row}
+      open={!!current}
       onClose={onClose}
       heading={t("Collect back-in-stock sign-ups")}
       primaryAction={
         b ? (
-          <s-button variant="primary" href={b.productUrl} target="_top">
+          <s-button variant="primary" onClick={() => leaveAfterClose(b.productUrl, onClose)}>
             {t("Open product in Shopify")}
           </s-button>
         ) : undefined
@@ -436,11 +439,24 @@ export function ClearDialog({
   onCreated: (id: string) => void;
 }) {
   const { t } = useLocale();
-  // Keyed by the row: each opening starts from fresh defaults and a new code.
+  // One dialog for every row (a key per row remounted the open dialog, which left the admin title bar
+  // dimmed — 2026-10-20). Each opening starts from fresh defaults and a new code instead.
   const fetcher = useFetcher<ActionsResult>();
   const [form, setForm] = useState<ClearForm>(() => defaultClearForm(todayIn(timezone, new Date())));
+  const [submittedFor, setSubmittedFor] = useState<string | null>(null);
+  const rowId = row?.id ?? null;
+  useEffect(() => {
+    if (rowId) {
+      setForm(defaultClearForm(todayIn(timezone, new Date())));
+      setSubmittedFor(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowId]);
+  // Its content stays while the dialog closes (it went blank mid-animation).
+  const shown = useLastDefined(row);
 
-  const result = fetcher.data;
+  // A result belongs to this opening only when it answered this row's submit.
+  const result = submittedFor !== null && submittedFor === rowId ? fetcher.data : undefined;
   const created = !!(result && result.ok && "discountId" in result && row && result.id === row.id);
   useEffect(() => {
     if (created && row) onCreated(row.id);
@@ -454,6 +470,7 @@ export function ClearDialog({
   const set = (k: keyof ClearForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const submit = () => {
     if (!row || busy || sample) return; // one request at a time (the server also claims the action atomically)
+    setSubmittedFor(row.id);
     fetcher.submit({ op: "clear", id: row.id, ...form }, { method: "post", action: ENDPOINT, encType: "application/json" });
   };
 
@@ -469,7 +486,7 @@ export function ClearDialog({
       }
       secondaryActions={<s-button onClick={onClose}>{t("Cancel")}</s-button>}
     >
-      {row && (
+      {shown && (
         <s-stack direction="block" gap="base">
           <SampleOffNote>{t("Discounts are off in sample data — nothing is created in your store.")}</SampleOffNote>
           {result && !result.ok && result.error === "shopify" && (
@@ -498,7 +515,7 @@ export function ClearDialog({
           )}
           <s-paragraph>
             {fill(t("Applies to {product} only. Nothing changes in your store until you press Create discount."), {
-              product: row.productTitle ?? "—",
+              product: shown.productTitle ?? "—",
             })}
           </s-paragraph>
           <s-choice-list

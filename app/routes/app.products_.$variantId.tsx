@@ -642,7 +642,8 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
       n: nf(spikes.count),
       date: shortDay(largest.day, locale),
       units: nf(largest.sold),
-      cap: nf(largest.cap),
+      // A cap that rounds to the day's own units read "2 units, counted as 2": one decimal then.
+      cap: nf(largest.cap, Math.round(largest.cap) >= largest.sold ? 1 : 0),
     });
   else capText = t("No unusual days in the last 90 days.");
 
@@ -655,7 +656,8 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
             {t("A day far above this product's usual sales, for example one large wholesale order, counts as a busy normal day, so one order doesn't raise every future order.")}
           </s-text>
           <s-text>{capText}</s-text>
-          {!choice.noCap && spikes?.recurringPerDay ? (
+          {/* Only when it rounds to something: "count as 0 a day" read as a bug (live 2026-10-20). */}
+          {!choice.noCap && spikes?.recurringPerDay && Math.round(spikes.recurringPerDay * 10) > 0 ? (
             <s-text>{fill(t("High days that come back (promotions, repeat orders) count as {units} a day over the year."), { units: nf(spikes.recurringPerDay, 1) })}</s-text>
           ) : null}
           {(choice.noCap || (spikes?.count ?? 0) > 0) && (
@@ -749,6 +751,7 @@ function ForecastChoicesCard({ data, choice }: { data: VariantDetailData; choice
           days: nf(PLAN_LIKE_DAYS),
         })}
         confirmLabel={t("Forecast like this product")}
+        disabled={pctBad}
         onCancel={() => setPick(null)}
         onConfirm={() => {
           const p = pick;

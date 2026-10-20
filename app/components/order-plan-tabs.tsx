@@ -3,9 +3,9 @@
  * Each tab is its own route — the URLs emails, Slack, Flow and supplier links already use keep
  * working (/app/reorder; /app/planner redirects to /app/reorder/season) — and this strip links them.
  */
-import { useNavigate } from "react-router";
+
 import { useLocale } from "../lib/i18n";
-import { Tabs } from "./wc";
+import { Tabs, useSafeNavigate } from "./wc";
 
 export const ORDER_PLAN_TABS = [
   { id: "now", path: "/app/reorder" },
@@ -32,7 +32,7 @@ export function orderPlanTabLabel(id: OrderPlanTabId, t: T): string {
 
 export function OrderPlanTabs({ current }: { current: OrderPlanTabId }) {
   const { t } = useLocale();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   return (
     <Tabs
       tabs={ORDER_PLAN_TABS.map((x) => ({ id: x.id, content: orderPlanTabLabel(x.id, t) }))}

@@ -9,10 +9,10 @@
  * page actions such as "Add supplier". Switching tabs with unsaved changes
  * asks first (App Bridge leave confirmation).
  */
-import { useNavigate } from "react-router";
+
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { useLocale } from "../lib/i18n";
-import { Tabs } from "./wc";
+import { Tabs, useSafeNavigate } from "./wc";
 
 export const SETTINGS_TABS = [
   { id: "defaults", path: "/app/settings", label: "Defaults" },
@@ -26,7 +26,7 @@ export type SettingsTabId = (typeof SETTINGS_TABS)[number]["id"];
 
 export function SettingsTabs({ current }: { current: SettingsTabId }) {
   const { t } = useLocale();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const shopify = useAppBridge();
   const open = (i: number) => {
     const go = () => navigate(SETTINGS_TABS[i].path);

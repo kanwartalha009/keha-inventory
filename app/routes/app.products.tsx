@@ -355,7 +355,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
       <s-table-cell>{formatCount(r.onHand, locale)}</s-table-cell>
       <s-table-cell>
         {r.onOrder > 0 ? (
-          <s-stack direction="block" gap="none">
+          <s-stack direction="block" gap="none" alignItems="end">
             <span>{formatCount(r.incoming, locale)}</span>
             <span className="keha-nowrap">
               <s-text color="subdued">{fill(t("+{n} on order"), { n: formatCount(r.onOrder, locale) })}</s-text>

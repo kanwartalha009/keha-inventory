@@ -68,7 +68,8 @@ export function CashStrip({ cash, currency, compact }: { cash: PaidWeek[]; curre
               )}
               {i % every === 0 && (
                 <text x={b.x + b.width / 2} y={h - 6} textAnchor="middle" fontSize="11" fill="currentColor">
-                  {formatWeekRange(b.week.weekStart, locale)}
+                  {/* The week's Monday only: full ranges overlapped on the axis (live 2026-10-20); the bar's tooltip has the range. */}
+                  {shortDay(b.week.weekStart, locale)}
                 </text>
               )}
             </g>
@@ -269,8 +270,9 @@ export function StaleDrafts({ n }: { n: number | null | undefined }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   if (!n) return null;
+  // The same tone as the Purchase orders page's note about these drafts.
   return (
-    <s-banner tone="info">
+    <s-banner tone="warning">
       <s-stack direction="inline" gap="small-200" alignItems="center">
         <s-text>
           {n === 1

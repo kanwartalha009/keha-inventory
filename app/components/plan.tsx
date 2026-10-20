@@ -81,7 +81,7 @@ export function UpgradeBanner({
   return (
     <DismissibleBanner tone="info" heading={message ? t(message) : copy.title} onDismiss={onDismiss}>
       <s-paragraph>{copy.body}</s-paragraph>
-      <s-button slot="secondary-actions" variant="primary" {...link("/app/plans")}>
+      <s-button slot="secondary-actions" {...link("/app/plans")}>
         {t("See plans")}
       </s-button>
     </DismissibleBanner>

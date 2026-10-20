@@ -117,7 +117,7 @@ describe("Supplier order builder (Growth)", () => {
     const html = page(growth(empty));
     expect(html).toContain("Nothing is due from Acme Textiles before Nov 14, 2026. Add products to order anyway.");
     expect(html).toContain("Add products");
-    expect(page(growth(null))).toContain(esc("This supplier doesn't exist any more. Reload the page."));
+    expect(page(growth(null))).toContain(esc("This supplier isn't in your order plan any more."));
   });
 
   it("German: the builder's strings are translated", () => {

@@ -424,7 +424,7 @@
   display: flex; align-items: center; gap: 14px; width: 100%;
   padding: 12px 16px; border: 0; border-bottom: 1px solid var(--keha-border-secondary);
   background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit;
-  transition: background var(--keha-fast, 140ms) ease;
+  transition: background var(--dur-fast) ease;
 }
 .keha-row:last-child { border-bottom: 0; }
 .keha-row:hover { background: var(--keha-surface-hover); }
@@ -434,7 +434,7 @@
 .keha-row__sub { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .keha-row__meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .keha-row__units { font-size: var(--keha-font-size-sm); color: var(--keha-text-secondary); font-variant-numeric: tabular-nums; }
-.keha-row__arrow { display: inline-flex; color: var(--keha-text-tertiary); transition: transform var(--keha-fast, 140ms) ease; }
+.keha-row__arrow { display: inline-flex; color: var(--keha-text-tertiary); transition: transform var(--dur-fast) ease; }
 .keha-row:hover .keha-row__arrow { transform: translateX(3px); }
 @media (max-width: 720px) { .keha-row__units { display: none; } }
 
@@ -443,7 +443,7 @@
 .keha-tab {
   appearance: none; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: var(--keha-font-size-md); font-weight: var(--keha-weight-medium);
   color: var(--keha-text-secondary); padding: 8px 12px 10px; border-radius: 8px 8px 0 0; position: relative; white-space: nowrap;
-  transition: color var(--keha-fast, 140ms) ease, background var(--keha-fast, 140ms) ease;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 .keha-tab:hover { background: var(--keha-surface-hover); color: var(--keha-text); }
 .keha-tab--active { color: var(--keha-text); font-weight: var(--keha-weight-semibold); }
@@ -534,7 +534,9 @@
 /* Card anatomy: <s-heading> + <s-paragraph color="subdued"> (Polaris typography), action on the right */
 .keha-form-card { display: flex; flex-direction: column; gap: var(--keha-space-400); }
 .keha-form-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--keha-space-300); }
-.keha-form-card__head > :last-child:not(:first-child) { flex-shrink: 0; }
+.keha-form-card__head > :last-child:not(:first-child) { flex-shrink: 0; max-width: 60%; }
+/* Several badges/buttons in a card head wrap instead of squeezing the title (German, narrow). */
+.keha-form-card__head > .keha-inline:last-child { flex-wrap: wrap; justify-content: flex-end; white-space: normal; }
 /* Card head of a flush card (a table fills the card edge to edge): the same
    padding s-section gives a padded card, so headings line up across cards. */
 .keha-form-card__head--pad { padding: var(--keha-space-400) var(--keha-space-400) var(--keha-space-300); }
@@ -652,6 +654,9 @@
 /* Digits line up down a column; numeric columns are right-aligned through
    <s-table-header format="numeric">. */
 s-table { font-variant-numeric: tabular-nums; }
+/* A wide table scrolls sideways inside its card instead of running off it (live 2026-10-20:
+   Settings → Suppliers cut the Actions column; Due now and Products did before). */
+s-table { display: block; max-width: 100%; overflow-x: auto; }
 .keha-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Plans: one row per plan — name, price and button on the left, what it

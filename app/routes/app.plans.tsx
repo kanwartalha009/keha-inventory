@@ -17,7 +17,7 @@ import { PLAN_CODES, type PlanCode } from "../lib/plan-shared";
 import { INHERITS, PLAN_MATRIX, PLAN_PITCH, PLAN_POINTS, cellFor, type Cell } from "../lib/plan-matrix";
 
 import { authenticate } from "../shopify.server";
-import { useLocale } from "../lib/i18n";
+import { fill, useLocale } from "../lib/i18n";
 import { getPlans, getPlanOverride } from "../services/plans.server";
 import { forgetEntitlements, getEntitlements } from "../services/entitlements.server";
 import { getBillingState } from "../services/billing.server";
@@ -49,11 +49,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const headers: HeadersFunction = (h) => boundary.headers(h);
 
-const money = (minor: number, currency: string) =>
-  new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
+/** In the app's language (the browser's own differed from the server's and from the rest of the app). */
+const money = (minor: number, currency: string, locale: string) => {
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`;
+  }
+};
 
 export default function PlansPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { plans, plan, billing, comped, manageUrl, checked } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const [interval, setInterval] = useState<"EVERY_30_DAYS" | "ANNUAL">("EVERY_30_DAYS");
@@ -141,15 +147,15 @@ export default function PlansPage() {
                     </s-stack>
                     <s-stack direction="block" gap="none">
                       <s-text type="strong">
-                        <span className="keha-num">{free ? t("Free") : `${money(minor, p.currency)} ${t("/mo")}`}</span>
+                        <span className="keha-num">{free ? t("Free") : `${money(minor, p.currency, locale)} ${t("/mo")}`}</span>
                       </s-text>
                       <s-text color="subdued">
                         {free
                           ? t("Free forever")
                           : interval === "ANNUAL"
-                            ? `${money(p.amountAnnual, p.currency)} ${t("billed yearly")}`
+                            ? `${money(p.amountAnnual, p.currency, locale)} ${t("billed yearly")}`
                             : p.trialDays > 0
-                              ? t("{n}-day free trial").replace("{n}", String(p.trialDays))
+                              ? fill(t("{n}-day free trial"), { n: p.trialDays })
                               : t("Billed monthly")}
                       </s-text>
                     </s-stack>

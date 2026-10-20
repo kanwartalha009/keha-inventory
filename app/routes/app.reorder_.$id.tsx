@@ -26,9 +26,9 @@
  *  - Ship date and arrival (ship + transit days); prices in the supplier's currency when it has
  *    an exchange rate, with the store-currency total; the supplier's minimums are checked.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
-import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -54,12 +54,13 @@ import { LockedPage } from "../components/plan";
 import { SampleOffNote, useSample } from "../components/sample";
 import ConfirmModal from "../components/ConfirmModal";
 import { DownloadButton } from "../components/download-button";
-import { Modal, flag, isChecked, val } from "../components/wc";
+import { Modal, flag, isChecked, val, useLastDefined, useSafeNavigate } from "../components/wc";
 import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount, formatDay, todayIn } from "../lib/dashboard-shared";
 import { SUPPLIER_EMAIL_COOLDOWN_MS, SUPPLIER_EMAIL_DAILY_CAP, confirmUrl } from "../lib/po-email-shared";
 import { DRAFT_EXPIRY_DAYS, poCountsAsOrdered } from "../lib/supplier-shared";
 import {
+  byProduct,
   REOPEN_DAYS,
   canTransition,
   confirmLinkOpen,
@@ -233,8 +234,15 @@ function OrderView({ data }: { data: OrderPageView }) {
   const [composing, setComposing] = useState(false);
   const [opened, setOpened] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState(false);
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const [pending, setPending] = useState<Pending | null>(null);
+  // "Mark as ordered" from the email dialog: its confirm opens after that dialog has closed.
+  const confirmAfterCompose = useRef(false);
+  const openConfirmAfterCompose = () => {
+    if (!confirmAfterCompose.current) return;
+    confirmAfterCompose.current = false;
+    setPending({ kind: "transition", to: "sent" });
+  };
   const [copied, setCopied] = useState(false);
   const { order, link, hidePrices, features } = data;
   const keha = order.source === "keha";
@@ -351,17 +359,17 @@ function OrderView({ data }: { data: OrderPageView }) {
       : reopenTo
         ? button({ kind: "reopen", to: reopenTo }, t("Reopen order"), true)
         : undefined;
+  // The documents sit in the Order card: with them the title bar held eight buttons (live 2026-10-20).
+  const downloads =
+    keha && features.poExport
+      ? [
+          <DownloadButton key="pdf" url={`/app/reorder/${order.id}/pdf`} fileName={poFileName(order.number, "pdf")} label={t("Download PDF")} />,
+          <DownloadButton key="csv" url={`/app/reorder/${order.id}/csv`} fileName={poFileName(order.number, "csv")} label={t("Download CSV")} />,
+          // Supplier module: one row per style and colour, sizes as columns.
+          <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />,
+        ]
+      : [];
   const secondary = [
-    keha && features.poExport ? (
-      <DownloadButton key="pdf" url={`/app/reorder/${order.id}/pdf`} fileName={poFileName(order.number, "pdf")} label={t("Download PDF")} />
-    ) : null,
-    keha && features.poExport ? (
-      <DownloadButton key="csv" url={`/app/reorder/${order.id}/csv`} fileName={poFileName(order.number, "csv")} label={t("Download CSV")} />
-    ) : null,
-    // Supplier module: one row per style and colour, sizes as columns (the flat CSV stays above).
-    keha && features.poExport ? (
-      <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />
-    ) : null,
     draft && (canEmail || canCompose) && can("sent") ? button({ kind: "transition", to: "sent" }, t("Mark as ordered"), false, false, dirty) : null,
     // With a provider the app's own send stays first; "Open in your email" is the second way.
     canCompose && (canEmail || !draft) ? button(openCompose, t("Open in your email"), false, false, dirty) : null,
@@ -452,6 +460,8 @@ function OrderView({ data }: { data: OrderPageView }) {
     }
   };
   const copy = pending ? confirmCopy(pending) : null;
+  // The text stays while the dialog closes (the title went blank mid-animation — 2026-10-20).
+  const shownCopy = useLastDefined(copy);
 
   const copyLink = async () => {
     if (!link) return;
@@ -591,6 +601,13 @@ function OrderView({ data }: { data: OrderPageView }) {
           ) : null}
           {keha && !draft && order.note && <KvRow label={t("Note to the supplier")} value={order.note} />}
         </div>
+        {downloads.length > 0 && (
+          <s-box paddingBlockStart="base">
+            <s-stack direction="inline" gap="small-200">
+              {downloads}
+            </s-stack>
+          </s-box>
+        )}
         {draft && (
           <s-box paddingBlockStart="base">
             <PoDetailsFields choices={data.shipTo?.choices ?? []} shipTo={shipTo} onShipTo={setShipTo} note={note} onNote={setNote} />
@@ -667,7 +684,9 @@ function OrderView({ data }: { data: OrderPageView }) {
             {draft && <s-table-header listSlot="labeled">{t("Remove")}</s-table-header>}
           </s-table-header-row>
           <s-table-body>
-            {order.lines.map((l, i) => {
+            {/* Grouped by product (a product's sizes together, in their order on the order); `i` stays the
+                line's index on the order — the edits and receipts are kept by it (live 2026-10-20). */}
+            {byProduct(order.lines).map(({ l, i }) => {
               const name = [l.productTitle, lineVariant(l.variantTitle)].filter(Boolean).join(" — ");
               const n = draft ? parsed[i] : l.qty;
               return (
@@ -818,18 +837,21 @@ function OrderView({ data }: { data: OrderPageView }) {
           onCopied={setCopiedMessage}
           onClose={() => setComposing(false)}
           onMarkSent={() => {
+            // One dialog at a time: the confirm opens once this one has closed (2026-10-20).
+            confirmAfterCompose.current = true;
             setComposing(false);
-            setPending({ kind: "transition", to: "sent" });
+            window.setTimeout(openConfirmAfterCompose, 700);
           }}
+          onAfterHide={openConfirmAfterCompose}
         />
       )}
 
       <ConfirmModal
         open={!!pending}
-        destructive={copy?.destructive ?? false}
-        title={copy?.title ?? ""}
-        message={copy?.message ?? ""}
-        confirmLabel={copy?.label ?? ""}
+        destructive={shownCopy?.destructive ?? false}
+        title={shownCopy?.title ?? ""}
+        message={shownCopy?.message ?? ""}
+        confirmLabel={shownCopy?.label ?? ""}
         onCancel={() => setPending(null)}
         onConfirm={() => {
           if (pending) run(pending);
@@ -858,6 +880,7 @@ export function ComposeModal(props: {
   onCopied: (v: boolean) => void;
   onClose: () => void;
   onMarkSent: () => void;
+  onAfterHide?: () => void;
 }) {
   const { t, locale } = useLocale();
   const r = props.result;
@@ -884,6 +907,7 @@ export function ComposeModal(props: {
     <Modal
       open={props.open}
       onClose={props.onClose}
+      onAfterHide={props.onAfterHide}
       heading={fill(t("Email {number} to {supplier}"), { number: props.number, supplier: props.supplier })}
       primaryAction={
         markSent ? (
@@ -974,3 +998,4 @@ function orderError(code: string, t: (s: string) => string): string {
       return t("This order doesn't exist any more.");
   }
 }
+

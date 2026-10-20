@@ -56,8 +56,13 @@ describe("reorder", () => {
     // demand(28) = 2 × 28 = 56; stock 20 + incoming 6 → 30 units × 10 = 300.
     const d = of(generateActions([p({}, [v({ status: "running_low", onHand: 20, incoming: 6, daysLeft: 10, orderBy: "2026-10-20" })])], CTX), "reorder")!;
     expect(d.amount).toBe(300);
-    expect(d.reason).toMatchObject({ key: "reorder_low", params: { days: 10, lead: 14, date: "2026-10-20" } });
+    // Runs out (10 days) before a new order could arrive (14), but stock on order covers it: the
+    // reason says so instead of "takes 14 days to arrive. Order by Oct 20" (live 2026-10-20).
+    expect(d.reason).toMatchObject({ key: "reorder_next", params: { days: 10, date: "2026-10-20" } });
     expect(d.reason.facts).toMatchObject({ rate: 2, leadTimeDays: 14, horizonDays: 28 });
+    // Nothing on order: the plain reason.
+    const none = of(generateActions([p({}, [v({ status: "running_low", onHand: 20, incoming: 0, daysLeft: 10, orderBy: "2026-10-20" })])], CTX), "reorder")!;
+    expect(none.reason).toMatchObject({ key: "reorder_low", params: { days: 10, lead: 14, date: "2026-10-20" } });
   });
 
   it("dated incoming counts from its arrival day (sales at risk day by day, H3)", () => {
@@ -378,8 +383,8 @@ describe("contract", () => {
     expect(all).not.toMatch(/velocity|days of cover|carrying cost|run rate|insufficient/i);
   });
 
-  it("formats ISO days as '20 Oct' and numbers per locale", () => {
-    expect(formatReasonParams({ date: "2026-10-20", rate: 1.5, days: 4 }, "en")).toEqual({ date: "20 Oct", rate: "1.5", days: "4" });
+  it("formats ISO days as 'Oct 20' and numbers per locale", () => {
+    expect(formatReasonParams({ date: "2026-10-20", rate: 1.5, days: 4 }, "en")).toEqual({ date: "Oct 20", rate: "1.5", days: "4" });
     expect(formatReasonParams({ rate: 1.5 }, "de").rate).toBe("1,5");
   });
 

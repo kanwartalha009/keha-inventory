@@ -120,10 +120,13 @@ export function factStrings(): string[] {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Plain "en" reads day-month ("12 Nov"), as the copy rules write it. */
-const dateLocale = (locale: string) => (locale === "en" ? "en-GB" : locale);
+/**
+ * The admin's own date style, the same as every table and badge ("Nov 12" in English): action
+ * reasons said "12 Nov" next to "Sep 16, 2026" in the same screen (live 2026-10-20).
+ */
+const dateLocale = (locale: string) => locale;
 
-/** "2026-11-12" → "12 Nov" (de "12. Nov.", fr "12 nov."); anything else as is. */
+/** "2026-11-12" → "Nov 12" (de "12. Nov.", fr "12 nov."); anything else as is. */
 export function shortDay(iso: string, locale: string): string {
   if (!ISO_DAY.test(iso)) return iso;
   try {

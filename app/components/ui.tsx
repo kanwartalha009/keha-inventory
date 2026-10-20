@@ -6,7 +6,7 @@
  */
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { SaveBar } from "@shopify/app-bridge-react";
-import { Modal, useLinkProps } from "./wc";
+import { Modal, useLinkProps, useSafeNavigate } from "./wc";
 import { HelpBody, type HelpContent } from "./help";
 import { UpgradeFromQuery } from "./plan";
 import { SampleBanner } from "./sample";
@@ -471,15 +471,38 @@ export function AppPage({
   children: ReactNode;
 }) {
   const link = useLinkProps();
+  const navigate = useSafeNavigate();
   const { t } = useLocale();
   const [helpOpen, setHelpOpen] = useState(false);
+  // The panel's content stays until the close animation ends (it went blank mid-animation).
+  const [helpShown, setHelpShown] = useState(false);
+  // A link in "How it works": close the dialog, then change page once it has closed (afterhide),
+  // with a fallback — changing page while it is shown left the admin title bar dimmed (2026-10-20).
+  const pending = useRef<string | null>(null);
+  const goPending = () => {
+    const to = pending.current;
+    pending.current = null;
+    if (to) navigate(to);
+  };
+  const navigateFromHelp = (to: string) => {
+    pending.current = to;
+    setHelpOpen(false);
+    window.setTimeout(goPending, 700);
+  };
   const slotted = (el: ReactNode, slot: string, key?: number) =>
     isValidElement(el) ? cloneElement(el as ReactElement<{ slot?: string; key?: number }>, { slot, key }) : null;
   const actions = [
     ...(secondaryActions ?? []),
     ...(help
       ? [
-          <s-button key="help" icon="question-circle" onClick={() => setHelpOpen(true)}>
+          <s-button
+            key="help"
+            icon="question-circle"
+            onClick={() => {
+              setHelpShown(true);
+              setHelpOpen(true);
+            }}
+          >
             {t("How it works")}
           </s-button>,
         ]
@@ -507,9 +530,18 @@ export function AppPage({
         {children}
       </div>
       {help && (
-        <Modal open={helpOpen} onClose={() => setHelpOpen(false)} heading={t("How it works")} size="large">
-          {/* Rendered only while open: the explanation names sections a page may not show yet. */}
-          {helpOpen && <HelpBody content={help} onNavigate={() => setHelpOpen(false)} />}
+        <Modal
+          open={helpOpen}
+          onClose={() => setHelpOpen(false)}
+          onAfterHide={() => {
+            setHelpShown(false);
+            goPending();
+          }}
+          heading={t("How it works")}
+          size="large"
+        >
+          {/* Rendered only while shown: the explanation names sections a page may not show yet. */}
+          {(helpOpen || helpShown) && <HelpBody content={help} onNavigate={navigateFromHelp} />}
         </Modal>
       )}
     </s-page>

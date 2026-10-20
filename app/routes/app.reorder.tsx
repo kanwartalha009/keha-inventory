@@ -35,7 +35,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useNavigate, useNavigation, useSearchParams } from "react-router";
+import { useFetcher, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
@@ -51,7 +51,7 @@ import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../compo
 import { loadTransfers } from "../models/transfers.server";
 import { AppPage, DaysLeft, EmptyState, FormCard, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
-import { flag, useLinkProps, val } from "../components/wc";
+import { flag, useLinkProps, val, useSafeNavigate } from "../components/wc";
 import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount, formatDay, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
@@ -263,6 +263,8 @@ export default function Reorder() {
           : t("Everything to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums.")
       }
     >
+      {/* Tabs first, then this page's notes: the tab strip no longer jumps between tabs (2026-10-20). */}
+      <OrderPlanTabs current="now" />
       {filter && (
         <s-banner tone="info">
           <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -306,17 +308,16 @@ export default function Reorder() {
           <s-stack gap="small-200">
             <s-text>{t("Wait for the next season, or add it to a larger order.")}</s-text>
             {data.belowMinimum.map((b) => (
-              <span key={`${b.supplierKey}|${b.productTitle}`} className="keha-inline">
+              <s-stack key={`${b.supplierKey}|${b.productTitle}`} direction="inline" gap="small-200" alignItems="center">
                 <s-text>{fill(t("{product}: needs {n} of a minimum of {min} per style"), { product: b.productTitle, n: formatCount(b.units, locale), min: formatCount(b.styleMin, locale) })}</s-text>
                 {!location && (
                   <s-link {...link(builderLink(b.supplierKey))}>{t("Build purchase order")}</s-link>
                 )}
-              </span>
+              </s-stack>
             ))}
           </s-stack>
         </s-banner>
       )}
-      <OrderPlanTabs current="now" />
       {switcherMode({ enabled: data.locationsEnabled, planning: data.locations.length, locationCount: data.locationCount, viewing: !!location }) !== "none" && (
         <Toolbar
           filters={
@@ -409,7 +410,7 @@ function HiddenCoverNote({ groups }: { groups: readonly ReorderGroup[] }) {
 function GroupCard({ group, location, today }: { group: ReorderGroup; location: PlanningLocation | null; today: string }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const fetcher = useFetcher<ReorderAction>();
   const noReorder = useFetcher<ReorderAction>();
   // Lines that joined from "Can join this order" (client side until the order is created).
@@ -603,7 +604,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
                 {t("Build purchase order")}
               </s-button>
             )}
-            <s-button variant="primary" disabled={flag(totals.units === 0)} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
+            <s-button variant="primary" disabled={flag(totals.units === 0 || fetcher.state !== "idle")} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
               {t("Create purchase order")}
             </s-button>
           </span>
@@ -782,7 +783,7 @@ function LineRow({
       </s-table-cell>
       <s-table-cell>{formatCount(l.onHand, locale)}</s-table-cell>
       <s-table-cell>
-        <s-stack direction="block" gap="none">
+        <s-stack direction="block" gap="none" alignItems="end">
           <span>{formatCount(l.incoming, locale)}</span>
           {l.onOrder > 0 && (
             <s-text color="subdued">

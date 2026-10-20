@@ -227,6 +227,11 @@ function reorderRule(p: RuleProduct, ctx: RuleContext): ActionDraft | null {
     const v = low.reduce((a, b) => ((b.daysLeft as number) < (a.daysLeft as number) ? b : a));
     const orderBy = v.orderBy;
     const now = !orderBy || orderBy <= ctx.today;
+    // Runs out before a new order could arrive, yet the order-by date is later: stock on order covers
+    // the gap. Say so, instead of "takes 35 days to arrive. Order by Jan 3".
+    const covered = !now && finite(v.leadTimeDays) && (v.daysLeft as number) < (v.leadTimeDays as number) && (v.incoming ?? 0) > 0;
+    if (covered)
+      return draft("reorder", p.productId, ids, amount, "reorder_next", { days: Math.max(0, Math.floor(v.daysLeft as number)), date: orderBy! }, facts(v));
     return draft(
       "reorder",
       p.productId,

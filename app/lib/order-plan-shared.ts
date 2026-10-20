@@ -372,7 +372,9 @@ export function formatWeekRange(weekStartDay: DayKey, locale: string): string {
   const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC" };
   try {
     const f = new Intl.DateTimeFormat(locale, opts) as Intl.DateTimeFormat & { formatRange?: (a: Date, b: Date) => string };
-    if (typeof f.formatRange === "function") return f.formatRange(from, to);
+    // formatRange adds both years when a week crosses New Year ("Dec 28, 2026 – Jan 3, 2027"):
+    // too long for a chart label or a week row (live 2026-10-20). Day and month only.
+    if (typeof f.formatRange === "function" && from.getUTCFullYear() === to.getUTCFullYear()) return f.formatRange(from, to);
     return `${f.format(from)} – ${f.format(to)}`;
   } catch {
     return `${weekStartDay} – ${addDays(weekStartDay, 6)}`;
@@ -494,10 +496,11 @@ export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   if (why.paceFrom) out.push(fill(t("Sales per day based on in-stock days since {month}."), { month: monthYear(why.paceFrom, locale) }));
   // R4: one-off spikes capped in the pace; a new style planned like another product.
   if (why.spikes && why.spikes.count > 0) {
-    const v = { n: nf(why.spikes.count, locale, 0), date: shortDay(why.spikes.day, locale), units: nf(why.spikes.sold, locale, 0), cap: nf(why.spikes.cap, locale, 0) };
+    const cap = why.spikes.cap;
+    const v = { n: nf(why.spikes.count, locale, 0), date: shortDay(why.spikes.day, locale), units: nf(why.spikes.sold, locale, 0), cap: nf(cap, locale, Math.round(cap) >= why.spikes.sold ? 1 : 0) };
     out.push(fill(why.spikes.count === 1 ? t("1 unusual day limited ({date}: {units} units, counted as {cap})") : t("{n} unusual days limited (largest {date}: {units} units, counted as {cap})"), v));
   }
-  if (why.recurringSpikes) out.push(fill(t("High days that come back (promotions, repeat orders) count as {units} a day over the year."), { units: nf(why.recurringSpikes, locale, 1) }));
+  if (why.recurringSpikes && Math.round(why.recurringSpikes * 10) > 0) out.push(fill(t("High days that come back (promotions, repeat orders) count as {units} a day over the year."), { units: nf(why.recurringSpikes, locale, 1) }));
   if (why.planLike) {
     const v = { name: why.planLike.name, pct: nf(why.planLike.pct, locale, 0), days: nf(why.planLike.days, locale, 0) };
     out.push(

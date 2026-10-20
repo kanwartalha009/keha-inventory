@@ -1,6 +1,6 @@
 /**
  * Action wording (review fixes): the "Why" dialog shows plain-words labels and formatted values
- * in the admin language, never the engine's code names; action sentences show "12 Nov" and the
+ * in the admin language, never the engine's code names; action sentences show "Nov 12" and the
  * locale's number separators on Home, in the Monday email and in Slack.
  */
 import { describe, expect, it } from "vitest";
@@ -138,7 +138,7 @@ describe("Why dialog facts", () => {
     ];
     expect(factLines(facts, { t: en, locale: "en", currency: "EUR" })).toEqual([
       { label: "Supplier lead time", value: "14 days" },
-      { label: "Order by", value: "12 Nov" },
+      { label: "Order by", value: "Nov 12" },
       { label: "Price", value: "€9.50" },
       { label: "Seasonal change", value: "× 1.2" },
       { label: "Trend vs last year", value: "+25%" },
@@ -179,11 +179,11 @@ describe("Why dialog facts", () => {
   });
 });
 
-describe("action sentences: '12 Nov' and local numbers everywhere", () => {
+describe("action sentences: 'Nov 12' and local numbers everywhere", () => {
   const reason = { key: "reorder_low", params: { days: 1234, lead: 14, date: "2026-11-12" } };
 
   it("the shared formatter (en, de)", () => {
-    expect(formatReasonParams({ date: "2026-11-12", rate: 1.5, days: 1234 }, "en")).toEqual({ date: "12 Nov", rate: "1.5", days: "1,234" });
+    expect(formatReasonParams({ date: "2026-11-12", rate: 1.5, days: 1234 }, "en")).toEqual({ date: "Nov 12", rate: "1.5", days: "1,234" });
     expect(formatReasonParams({ date: "2026-11-12", rate: 1.5, days: 1234 }, "de")).toEqual({ date: "12. Nov.", rate: "1,5", days: "1.234" });
     expect(formatReasonParams({ cash: 1200 }, "en", { currency: "EUR", money: ["cash"] })).toEqual({ cash: "€1,200" });
     expect(shortDay("not a day", "en")).toBe("not a day");
@@ -194,12 +194,12 @@ describe("action sentences: '12 Nov' and local numbers everywhere", () => {
 
   it("Home (en, de)", () => {
     const row = { reason: readReason(reason) };
-    expect(reasonText(row, en, "en")).toBe("Runs out in 1,234 days; a new order takes 14 days to arrive. Order by 12 Nov.");
+    expect(reasonText(row, en, "en")).toBe("Runs out in 1,234 days; a new order takes 14 days to arrive. Order by Nov 12.");
     expect(reasonText(row, tr("de"), "de")).toBe("Ist in 1.234 Tagen ausverkauft; eine neue Bestellung braucht 14 Tage. Bestelle bis 12. Nov.");
   });
 
   it("Monday email and Slack (en, de)", () => {
-    expect(actionReasonText("en", reason)).toBe("Runs out in 1,234 days; a new order takes 14 days to arrive. Order by 12 Nov.");
+    expect(actionReasonText("en", reason)).toBe("Runs out in 1,234 days; a new order takes 14 days to arrive. Order by Nov 12.");
     expect(actionReasonText("de", reason)).toContain("Bestelle bis 12. Nov.");
     expect(actionReasonText("de", reason)).toContain("1.234 Tagen");
     expect(actionReasonText("de", { key: "reorder_low", params: { days: 3, bad: { x: 1 } } })).not.toContain("[object");

@@ -65,7 +65,7 @@ describe("partial receiving", () => {
     expect(poProgress(r.lines)).toEqual({ ordered: 150, received: 60, remaining: 90 });
     expect(r.lines.every((l) => l.reopenReceived === undefined)).toBe(true);
     expect(partiallyReceived({ status: "sent", lines: r.lines })).toBe(true);
-    expect(poStatusBadge({ status: "confirmed", lines: r.lines }, t)).toEqual({ label: "Partially received", tone: "info" });
+    expect(poStatusBadge({ status: "confirmed", lines: r.lines }, t)).toEqual({ label: "Partially received", tone: "caution" });
     // A second delivery is capped at what's left; everything in → it closes.
     const r2 = applyReceipt(r.lines, [999, 50], false);
     if (!r2.ok) throw new Error("expected ok");
@@ -86,7 +86,7 @@ describe("partial receiving", () => {
     expect(poStatusBadge({ status: "received", lines: r.lines }, t)).toEqual({ label: "Closed", tone: "neutral" });
     const full = applyReceipt(lines, [100, 50], false);
     if (!full.ok) throw new Error("expected ok");
-    expect(poStatusBadge({ status: "received", lines: full.lines }, t)).toEqual({ label: "Received", tone: "success" });
+    expect(poStatusBadge({ status: "received", lines: full.lines }, t)).toEqual({ label: "Received", tone: "neutral" });
     // Close without receiving anything more (the supplier won't ship the rest).
     expect(applyReceipt(lines, [0, 0], true)).toMatchObject({ ok: true, close: true });
   });

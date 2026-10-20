@@ -12,7 +12,7 @@
  *  - Event handlers are typed `(event: Event) => void`; the value lives on
  *    `currentTarget`. `val()` / `isChecked()` read it without casts everywhere.
  */
-import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, type ReactElement, type ReactNode, type RefObject } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 /** `flag(cond)` → `true` or `undefined` (never `false`) for boolean attributes. */
@@ -41,7 +41,7 @@ export function isChecked(e: Event): boolean {
  * Polaris `linkComponent` fixed (login form inside the admin, 2026-09-13).
  */
 export function useLinkProps() {
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   return (to: string) => ({
     href: to,
     onClick: (e: Event) => {
@@ -51,6 +51,20 @@ export function useLinkProps() {
       navigate(to);
     },
   });
+}
+
+/**
+ * `useNavigate` that first closes any dialog still shown: the page change removes it, and a dialog
+ * removed while shown kept the admin title bar dimmed and unclickable (2026-10-20). Search-param
+ * changes on the same page keep their dialogs.
+ */
+export function useSafeNavigate() {
+  const navigate = useNavigate();
+  return (to: string, opts?: { replace?: boolean; preventScrollReset?: boolean }) => {
+    const path = to.split(/[?#]/)[0];
+    if (typeof window !== "undefined" && path && path !== window.location.pathname) closeAllModals();
+    navigate(to, opts);
+  };
 }
 
 /**
@@ -90,9 +104,73 @@ export function useElementEvent(ref: RefObject<EventTarget | null>, name: string
   useEffect(() => bindElementEvent(ref.current, name, () => latest.current?.()), [ref, name]);
 }
 
+/** useLayoutEffect in the browser, nothing on the server (no SSR warning). */
+const useClientLayoutEffect = typeof window === "undefined" ? () => {} : useLayoutEffect;
+
+type OverlayElement = HTMLElement & { showOverlay(): void; hideOverlay(): void };
+
+/** A DOM-safe id for an `<s-modal>` from React's useId (":r1:" → "keha-modal-r1"). */
+export function modalDomId(reactId: string): string {
+  return `keha-modal-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+}
+
+/**
+ * Close a dialog that is about to disappear. In the embedded admin App Bridge draws the dialog and
+ * dims the admin's title bar OUTSIDE the app's iframe; if the `<s-modal>` element is removed while
+ * shown (the page changed), nothing tells App Bridge, and the title bar stayed dimmed and
+ * unclickable — no way back (live 2026-10-20). Both routes are tried; each is best-effort.
+ */
+export function closeOverlay(el: Partial<OverlayElement> | null | undefined, id: string, app: unknown = (globalThis as { shopify?: unknown }).shopify): void {
+  try {
+    el?.hideOverlay?.();
+  } catch {
+    /* not upgraded (SSR / preview) */
+  }
+  try {
+    (app as { modal?: { hide?: (id: string) => unknown } } | undefined)?.modal?.hide?.(id);
+  } catch {
+    /* no App Bridge (outside the admin) */
+  }
+}
+
+/** The last non-null value: a dialog keeps its title and content while it closes (they went blank mid-animation). */
+export function useLastDefined<T>(value: T | null | undefined): T | null {
+  const last = useRef<T | null>(value ?? null);
+  if (value !== null && value !== undefined) last.current = value;
+  return last.current;
+}
+
+/** Dialogs shown right now (id → element), so a page change can close any of them first. */
+const shownModals = new Map<string, Partial<OverlayElement>>();
+
+/** Close every dialog that is shown (before leaving the page). Returns how many were open. */
+export function closeAllModals(app?: unknown): number {
+  const n = shownModals.size;
+  for (const [id, el] of [...shownModals]) closeOverlay(el, id, app);
+  shownModals.clear();
+  return n;
+}
+
+/**
+ * Leave the app for `url` (a shopify:// admin link) from inside a dialog: close the dialog, then go
+ * once it has gone — leaving with it shown kept the admin title bar dimmed (2026-10-20).
+ */
+export function leaveAfterClose(url: string, close: () => void, delayMs = 400): void {
+  close();
+  closeAllModals();
+  window.setTimeout(() => {
+    try {
+      window.open(url, "_top");
+    } catch {
+      window.top?.location.assign(url);
+    }
+  }, delayMs);
+}
+
 export function Modal({
   open,
   onClose,
+  onAfterHide,
   heading,
   size,
   children,
@@ -101,15 +179,30 @@ export function Modal({
 }: {
   open: boolean;
   onClose: () => void;
+  /** Fired once the dialog has finished closing (s-modal "afterhide"): navigate from here, never while it is shown. */
+  onAfterHide?: () => void;
   heading: string;
   size?: "small" | "base" | "large";
   children: ReactNode;
   primaryAction?: ReactNode;
   secondaryActions?: ReactNode;
 }) {
-  const ref = useRef<HTMLElement & { showOverlay(): void; hideOverlay(): void }>(null);
+  const ref = useRef<OverlayElement>(null);
+  const id = modalDomId(useId());
+  const shown = useRef(false);
   const isOpen = useRef(open);
   isOpen.current = open;
+  useElementEvent(ref, "afterhide", onAfterHide);
+  // Unmounted while shown (a page change, a navigate after a fetcher): close it first. A layout
+  // effect's cleanup runs before React removes the element, so App Bridge still finds it.
+  useClientLayoutEffect(
+    () => () => {
+      if (shown.current) closeOverlay(ref.current, id);
+      shown.current = false;
+      shownModals.delete(id);
+    },
+    [id],
+  );
   // The X, Esc and a click outside fire "hide": tell the page, once, while it still thinks it's open.
   useElementEvent(ref, "hide", () => {
     if (isOpen.current) {
@@ -123,12 +216,15 @@ export function Modal({
     try {
       if (open) el.showOverlay();
       else el.hideOverlay();
+      shown.current = open;
+      if (open) shownModals.set(id, el);
+      else shownModals.delete(id);
     } catch {
       /* element not upgraded yet (SSR / preview) */
     }
   }, [open]);
   return (
-    <s-modal ref={ref as never} heading={heading} size={size}>
+    <s-modal ref={ref as never} id={id} heading={heading} size={size}>
       {children}
       {withSlot(primaryAction, "primary-action")}
       {withSlot(secondaryActions, "secondary-actions")}

@@ -615,10 +615,11 @@ export function poStatusTone(status: string): "neutral" | "info" | "success" | "
       return "neutral";
     case "sent":
       return "info";
+    // Confirmed is good news (the supplier set a ship date); yellow read as a problem (2026-10-20).
     case "confirmed":
-      return "caution";
-    case "received":
       return "success";
+    case "received":
+      return "neutral";
     case "cancelled":
       return "critical";
     default:
@@ -635,7 +636,8 @@ export function poStatusBadge(
   o: { status: string; lines: readonly Pick<PoLine, "qty" | "received" | "autoReceived">[] },
   t: T,
 ): { label: string; tone: ReturnType<typeof poStatusTone> } {
-  if (partiallyReceived(o)) return { label: t("Partially received"), tone: "info" };
+  // Partly in, the rest still to come: yellow, apart from Ordered's blue.
+  if (partiallyReceived(o)) return { label: t("Partially received"), tone: "caution" };
   if (shortUnits(o) > 0) return { label: t("Closed"), tone: "neutral" };
   return { label: poStatusLabel(o.status, t), tone: poStatusTone(o.status) };
 }
@@ -650,4 +652,14 @@ export function formatPrice(value: number | null | undefined, currency: string |
   } catch {
     return `${value.toFixed(2)}${currency ? ` ${currency}` : ""}`;
   }
+}
+
+/** The order's lines grouped by product, each product where it first appears; `i` is the line's index. */
+export function byProduct<L extends { productTitle?: string | null }>(lines: readonly L[]): { l: L; i: number }[] {
+  const first = new Map<string, number>();
+  lines.forEach((l, i) => {
+    const k = l.productTitle ?? "";
+    if (!first.has(k)) first.set(k, i);
+  });
+  return lines.map((l, i) => ({ l, i })).sort((a, b) => first.get(a.l.productTitle ?? "")! - first.get(b.l.productTitle ?? "")! || a.i - b.i);
 }
