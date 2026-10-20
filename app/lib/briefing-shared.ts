@@ -47,8 +47,11 @@ export type BriefingInput = {
   cashStuck: number | null;
 };
 
-/** Action-list tab links (the list reads ?tab= and the page scrolls to it). */
-export const actionTabHref = (tab: Exclude<ActionTab, "all">) => `/app?tab=${tab}#actions`;
+/**
+ * Action-list tab links: the Actions page opens on that tab. (Until 0286 they pointed at the
+ * Dashboard's list with #actions, which never scrolled inside the admin iframe — live 2026-10-20.)
+ */
+export const actionTabHref = (tab: Exclude<ActionTab, "all">) => `/app/actions?tab=${tab}`;
 
 export const MAX_SENTENCES = 3;
 

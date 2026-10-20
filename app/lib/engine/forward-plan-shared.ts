@@ -374,6 +374,10 @@ export class VariantProjection {
   private readonly input: ForwardVariantInput;
   private readonly base: number;
   private readonly safety: number;
+  /** The late-PO part of `safety` (inputs.latePo.extra): only the first planned order carries it (C2). */
+  private readonly lateExtra: number;
+  /** Orders added so far (add()); the late-PO extra stops after the first. */
+  private added = 0;
   /** Window demand W(d) = demand over [d, d + H) ÷ W(0): the seasonal scale of safety and the off-season test. */
   private readonly scale: Float64Array = new Float64Array(1);
   private readonly off: Uint8Array = new Uint8Array(1);
@@ -406,6 +410,8 @@ export class VariantProjection {
     this.base = rate * (finite(input.trend) ? input.trend : 1) * (finite(input.plan) ? input.plan : 1);
     const safety = finite(input.safety) ? Math.max(0, input.safety) : null;
     this.safety = safety ?? 0;
+    const extra = input.latePo && finite(input.latePo.extra) ? input.latePo.extra : 0;
+    this.lateExtra = clamp(extra, 0, this.safety);
     const notCounted = Math.max(0, finite(input.notCounted) ? input.notCounted : 0);
     this.needNow = this.skip ? null : netNeed(input.need, input.orderQty, notCounted);
     this.projected = this.base > 0 && safety !== null;
@@ -538,9 +544,15 @@ export class VariantProjection {
     return this.U[Math.min(this.T, s + this.L)]! >= this.safetyAt(s) - EPS;
   }
 
-  /** Safety stock for an order placed on day s: today's, scaled by the season of its window (A1). */
+  /**
+   * Safety stock for an order placed on day s: today's, scaled by the season of its window (A1).
+   * A late open order's extra safety (accuracy audit 2026-10-18) goes on the first planned order
+   * only — the one that covers the late order's gap; every later order of the 13 weeks comes after
+   * it has landed (post-approval backlog C2: it inflated every later quantity and the cash plan).
+   */
   safetyAt(s: number): number {
-    return this.safety * (this.scale[Math.min(this.T, Math.max(0, s))] ?? 1);
+    const day = Math.max(0, s);
+    return (this.safety - this.lateExtra) * (this.scale[Math.min(this.T, day)] ?? 1) + (this.added === 0 ? this.lateExtra : 0);
   }
 
   /** The next day d in [from, days) on which an order is due (an order-by date); null when none. */
@@ -601,7 +613,7 @@ export class VariantProjection {
         recurringSpikes: this.input.recurringSpikes ?? null,
         planLike: this.input.planLike ?? null,
         levelShift: this.input.levelShift ?? null,
-        latePo: this.input.latePo ?? null,
+        latePo: this.added === 0 ? (this.input.latePo ?? null) : null,
         safetyBasis: this.input.safetyBasis ?? null,
         need,
         rounded: 0,
@@ -632,6 +644,7 @@ export class VariantProjection {
   /** Book `qty` units ordered on day t (arriving t + lead). */
   add(t: number, qty: number): void {
     if (!(qty > 0)) return;
+    this.added += 1;
     if (!this.projected) {
       if (t === 0) this.legacyDone = true;
       return;

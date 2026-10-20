@@ -11,13 +11,14 @@ import { createRoutesStub } from "react-router";
 
 vi.mock("../app/shopify.server", () => ({ authenticate: { admin: vi.fn() } }));
 vi.mock("../app/services/entitlements.server", () => ({ planFor: vi.fn(), getEntitlements: vi.fn() }));
-vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn(), reviewAskDue: vi.fn(async () => null) }));
+vi.mock("../app/models/dashboard.server", () => ({ getHomeData: vi.fn(), reviewAskDue: vi.fn(async () => null), readiness: vi.fn(async () => ({ ready: true })) }));
 vi.mock("../app/models/settings.server", () => ({ recordReviewAsk: vi.fn(async () => true) }));
 vi.mock("../app/models/actions.server", () => ({ getActionList: vi.fn() }));
 vi.mock("../app/services/keha-preorder.server", () => ({ kehaPreorderInstalled: vi.fn() }));
 vi.mock("../app/models/order-plan.server", () => ({ loadOrderPlan: vi.fn() }));
 
 import Home, { action, loader, type HomeLoaderData } from "../app/routes/app._index";
+import ActionsPage, { type ActionsPageData } from "../app/routes/app.actions";
 import { orderPlanFixture } from "./order-plan-fixtures";
 import { lockTeaser, planWeeks, previewRows } from "../app/lib/order-plan-shared";
 import { cashTotals } from "../app/lib/engine/forward-plan-shared";
@@ -25,6 +26,7 @@ import { buildHome, formatAmount, type HomeRaw } from "../app/lib/dashboard-shar
 import type { PlanCode } from "../app/lib/plan-shared";
 import type { ActionListView } from "../app/lib/action-list-shared";
 import { actionList, homeRaw } from "./home-fixtures";
+import { actionTabHref } from "../app/lib/briefing-shared";
 
 const NOW = new Date("2026-10-16T10:00:00Z");
 
@@ -34,6 +36,12 @@ function render(data: HomeLoaderData, url = "/app") {
 }
 
 const home = (raw: HomeRaw, plan: PlanCode = "growth") => render(buildHome(raw, plan, NOW));
+
+/** The Actions page (0286): the whole list with its tabs. */
+function renderActions(data: ActionsPageData, url = "/app/actions") {
+  const Stub = createRoutesStub([{ id: "actions", path: "/app/actions", Component: ActionsPage, loader: () => data }]);
+  return renderToString(<Stub initialEntries={[url]} hydrationData={{ loaderData: { actions: data } }} />);
+}
 
 /** Occurrences of a substring. */
 const count = (html: string, s: string) => html.split(s).length - 1;
@@ -108,7 +116,7 @@ describe("Home", () => {
     expect(html).toContain("€1,235");
     expect(html).toContain("€800");
     expect(html).toContain("€0"); // a real zero stays a zero
-    expect(html).toContain('<span class="keha-money__value">—</span>'); // lost90 is null
+    expect(html).toContain('<span class="keha-money__figure">—</span>'); // lost90 is null
     expect(html).toContain("Not enough sales yet to advise");
     expect(count(html, "<s-popover")).toBe(4);
     expect(count(html, "Based on: ")).toBe(4);
@@ -216,9 +224,9 @@ describe("Home", () => {
   });
 });
 
-describe("Home: this week's actions (task 2.3)", () => {
-  const withActions = (plan: PlanCode, actions: ActionListView | null, url?: string) =>
-    render({ ...buildHome(homeRaw(), plan, NOW), actions }, url);
+describe("Actions page: this week's actions (task 2.3; its own page since 0286)", () => {
+  const withActions = (_plan: PlanCode, actions: ActionListView | null, url?: string) =>
+    renderActions({ readiness: { ready: true }, list: actions, timezone: "Europe/Madrid" }, url);
 
   it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
     const html = withActions("growth", actionList("growth"));
@@ -271,7 +279,7 @@ describe("Home: this week's actions (task 2.3)", () => {
   });
 
   it("?tab=clear opens the Clear tab with the clearances running and the cash freed", () => {
-    const html = withActions("growth", actionList("growth"), "/app?tab=clear");
+    const html = withActions("growth", actionList("growth"), "/app/actions?tab=clear");
     expect(html).toContain("Clear Cardigan");
     expect(html).not.toContain("Reorder Tee");
     expect(html).toContain('aria-selected="true" class="keha-tab keha-tab--active">Clearance (1)');
@@ -284,11 +292,11 @@ describe("Home: this week's actions (task 2.3)", () => {
   });
 
   it("?tab=fix shows only Fix rows; an unknown tab falls back to All", () => {
-    const fix = withActions("growth", actionList("growth"), "/app?tab=fix");
+    const fix = withActions("growth", actionList("growth"), "/app/actions?tab=fix");
     expect(fix).toContain("Falling Fleece");
     expect(fix).not.toContain("Clear Cardigan");
     expect(fix).not.toContain("Active clearance discounts");
-    const junk = withActions("growth", actionList("growth"), "/app?tab=nope");
+    const junk = withActions("growth", actionList("growth"), "/app/actions?tab=nope");
     expect(junk).toContain("Clear Cardigan");
     expect(junk).toContain("Reorder Tee");
   });
@@ -338,6 +346,25 @@ describe("Home: this week's actions (task 2.3)", () => {
   });
 });
 
+describe("Dashboard: the top 5 actions (0286)", () => {
+  it("shows the 5 biggest by money, no tabs, and links to the Actions page", () => {
+    const html = render({ ...buildHome(homeRaw(), "growth", NOW), actions: actionList("growth") });
+    expect(html).toContain("This week&#x27;s actions");
+    expect(count(html, 'role="listitem"')).toBe(5);
+    expect(html).not.toContain('role="tablist"');
+    expect(html).toContain('href="/app/actions"');
+    expect(html).toMatch(/See all \d+ actions/);
+    // Ranked: the biggest first.
+    expect(html.indexOf("Clear Cardigan")).toBeLessThan(html.indexOf("Reorder Tee"));
+    // Clearances running and the Fix upsell live on the Actions page.
+    expect(html).not.toContain("Active clearance discounts");
+  });
+  it("tiles open the Actions page on their tab, never a #fragment on the Dashboard", () => {
+    expect(actionTabHref("clear")).toBe("/app/actions?tab=clear");
+    expect(actionTabHref("bridge")).not.toContain("#");
+  });
+});
+
 describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
   const ready = (plan: PlanCode = "growth") => buildHome(homeRaw(), plan, NOW);
 
@@ -360,9 +387,10 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     expect(ready().seasonsLearning).toBeNull();
   });
 
-  it("leads the page: per supplier the products, units, cash, order-by date and Review order; the 13-week strip", () => {
+  it("per supplier the products, units, cash, order-by date and Review order; one cash line (the bars are on Next 13 weeks, 0286)", () => {
     const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
-    expect(html.indexOf("Due this week")).toBeLessThan(html.indexOf("Money at stake"));
+    // 0286: the money at stake sits in the summary at the top; the order block follows it.
+    expect(html.indexOf("Money at stake")).toBeLessThan(html.indexOf("Due this week"));
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Overdue");
     expect(html).toContain("Review order");
@@ -370,7 +398,7 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     expect(html).toMatch(/[\d,]+ units from 1 supplier · €[\d,]+/);
     expect(html).toMatch(/Cash needed, next 13 weeks: €[\d,]+/);
-    expect(html).toContain("keha-orderplan-strip");
+    expect(html).not.toContain("keha-orderplan-strip");
     expect(html).toContain('href="/app/reorder/calendar"');
     expect(html).toContain("12 products can&#x27;t be planned yet — not enough sales history.");
   });
@@ -520,5 +548,22 @@ describe("weekly sales re-check line (owner 2026-10-18)", () => {
     const data = buildHome(withRecheck({ corrected: 1, differing: 1 }), "growth", NOW);
     expect(home(withRecheck({ corrected: 1 }))).toContain("Shopify updated 1 day of past sales (refunds or order edits). Your numbers include it.");
     expect(data.recheckNotice).toEqual({ corrected: 1 });
+  });
+});
+
+describe("Sample data: no link into the Shopify admin (0286, live 404)", () => {
+  it("Review product page / sizing open Keha's Products list instead", async () => {
+    const { SampleProvider } = await import("../app/components/sample");
+    const data: ActionsPageData = { readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid" };
+    const Wrapped = () => (
+      <SampleProvider value={{ on: true }}>
+        <ActionsPage />
+      </SampleProvider>
+    );
+    const Stub = createRoutesStub([{ id: "actions", path: "/app/actions", Component: Wrapped, loader: () => data }]);
+    const html = renderToString(<Stub initialEntries={["/app/actions"]} hydrationData={{ loaderData: { actions: data } }} />);
+    expect(html).toContain("Review product page");
+    expect(html).not.toContain("shopify://admin/products/");
+    expect(html).toMatch(/href="\/app\/products\?q=[^"]+"/);
   });
 });

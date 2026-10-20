@@ -112,5 +112,11 @@ describe("the size-grid document", () => {
     const flat = await (await call("")).text();
     expect(flat).toContain("SKU,Product,Variant,Quantity,Unit cost,Line total,Currency");
     expect(flat).toContain("TS-1-BlackS,Tee,Black / S,4,10,40,EUR");
+    // C5: ?layout=table — the header on line 1, no detail rows, for importers.
+    const tableRes = await call("?layout=table");
+    expect(tableRes.headers.get("Content-Disposition")).toContain("PO-0001-table.csv");
+    const table = (await tableRes.text()).replace(/^\uFEFF/, "").split("\r\n");
+    expect(table[0]).toBe("SKU,Product,Variant,Quantity,Unit cost,Line total,Currency");
+    expect(table.join("\n")).not.toContain("Expected ship date");
   });
 });

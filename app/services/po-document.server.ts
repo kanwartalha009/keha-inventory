@@ -116,11 +116,22 @@ export async function poDocument(shop: string, id: string): Promise<{ pdf: PoPdf
  * Shared by the merchant download (/app/reorder/:id/csv) and the supplier page
  * (/supplier/confirm/:token/csv).
  */
-export function poCsvFile(pdf: PoPdfInput, grid: boolean): { csv: string; fileName: string } {
+export type PoCsvLayout = "lines" | "grid" | "table";
+
+/** ?layout= → the CSV layout: "grid" (size grid), "table" (the lines only, for importers), else lines with details. */
+export function poCsvLayout(param: string | null): PoCsvLayout {
+  return param === "grid" || param === "table" ? param : "lines";
+}
+
+export function poCsvFile(pdf: PoPdfInput, layoutOrGrid: PoCsvLayout | boolean): { csv: string; fileName: string } {
+  const layout: PoCsvLayout = layoutOrGrid === true ? "grid" : layoutOrGrid === false ? "lines" : layoutOrGrid;
+  const grid = layout === "grid";
   const tr = (s: string) => translate(pdf.locale, s);
   const table = grid
     ? poGridCsv(buildPoGrid(pdf.gridLines ?? pdf.lines.map((l, i) => ({ ...l, group: `l${i}` })), pdf.hidePrices), tr, { hidePrices: pdf.hidePrices, currency: pdf.currency })
     : poCsv(pdf.lines, tr, { hidePrices: pdf.hidePrices, currency: pdf.currency });
-  const csv = withDetailRows(table, pdf.details ? poDetailRows(pdf.details, tr, (d) => d) : []);
-  return { csv, fileName: poFileName(grid ? `${pdf.number}-grid` : pdf.number, "csv") };
+  // "table": no detail rows above the header — supplier and ERP importers expect the header on
+  // line 1 (post-approval backlog C5).
+  const csv = layout === "table" ? table : withDetailRows(table, pdf.details ? poDetailRows(pdf.details, tr, (d) => d) : []);
+  return { csv, fileName: poFileName(grid ? `${pdf.number}-grid` : layout === "table" ? `${pdf.number}-table` : pdf.number, "csv") };
 }

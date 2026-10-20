@@ -6,6 +6,7 @@
  * Shopify; after creation the card links to it in the Shopify admin. Below Pro the section
  * stays visible with what it does and the plans link (plan locks teach, they don't hide).
  */
+import { shopifyErrorLines } from "../lib/shopify-errors-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 import { fill, useLocale } from "../lib/i18n";
@@ -115,7 +116,7 @@ function TransferCard({ group, heading }: { group: TransferGroup; heading: strin
         )}
         {result && !result.ok && result.error === "shopify" && (
           <s-banner tone="critical" heading={t("Shopify didn't create the transfer")}>
-            {result.userErrors.map((m, i) => (
+            {shopifyErrorLines(result.userErrors, t).map((m, i) => (
               <s-paragraph key={i}>{m}</s-paragraph>
             ))}
           </s-banner>

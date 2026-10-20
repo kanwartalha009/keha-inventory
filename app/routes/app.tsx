@@ -1,4 +1,4 @@
-import type { HeadersFunction, LinksFunction, LoaderFunctionArgs } from "react-router";
+import type { HeadersFunction, LinksFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
 import { POLARIS_URL } from "../lib/polaris-shared";
 import appStyles from "../app.css?url";
 import { Outlet, useLoaderData, useLocation, useNavigation, useRouteError } from "react-router";
@@ -17,6 +17,8 @@ import { SampleProvider, type SampleView } from "../components/sample";
 import { dataScope } from "../services/data-scope.server";
 import { sampleIsStale } from "../lib/sample-mode-shared";
 import { readiness } from "../models/dashboard.server";
+import { usePolarisFieldSync } from "../components/wc";
+import { onlyParamChanged } from "../lib/revalidate-shared";
 import {
   LocaleProvider,
   toSupportedLocale,
@@ -126,6 +128,8 @@ function useBusy(): boolean {
 
 function Content({ plan }: { plan: PlanCode | "none" }) {
   const busy = useBusy();
+  // Fields follow their React value after Discard / Top up / Remove (components/wc).
+  usePolarisFieldSync();
   const { pathname } = useLocation();
   const locked = lockedPageFeature(pathname, plan);
   return (
@@ -144,6 +148,7 @@ function AppNav() {
   return (
     <s-app-nav>
       <s-link href="/app">{t("Dashboard")}</s-link>
+      <s-link href="/app/actions">{t("Actions")}</s-link>
       <s-link href="/app/reorder">{t("Order plan")}</s-link>
       <s-link href="/app/products">{t("Products")}</s-link>
       <s-link href="/app/settings">{t("Settings")}</s-link>
@@ -171,6 +176,10 @@ export default function App() {
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }
+
+/** A tab switch on the Actions page (only ?tab= changes) reloads nothing (lib/revalidate-shared). */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }) =>
+  !formMethod && onlyParamChanged(currentUrl, nextUrl, "tab") ? false : defaultShouldRevalidate;
 
 export const headers: HeadersFunction = (headersArgs) => {
   return boundary.headers(headersArgs);

@@ -74,6 +74,8 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 type NumberKey = keyof typeof SETTINGS_BOUNDS;
 
+const channelSet = (f: SettingsForm) => ({ ...f, excludedChannels: [...(f.excludedChannels ?? [])].sort() });
+
 export default function Settings() {
   const { t, locale, setLocale } = useLocale();
   const loaded = useLoaderData<typeof loader>() as { form: SettingsForm; currency: string; channels?: SalesChannelRow[]; locationLeftOut?: boolean };
@@ -123,7 +125,8 @@ export default function Settings() {
 
   return (
     <AppPage heading={t("Settings")} help={settingsHelp(t, "defaults")}>
-      <FormSaveBar id="keha-settings-defaults" dirty={!sameValues(form, saved)} saving={saving} onSave={save} onDiscard={() => setForm(saved)} />
+      {/* Channels compare as a set: the saved order can differ from the list's (link audit 2026-10-20). */}
+      <FormSaveBar id="keha-settings-defaults" dirty={!sameValues(channelSet(form), channelSet(saved))} saving={saving} onSave={save} onDiscard={() => setForm(saved)} />
       <SettingsTabs current="defaults" />
       {result?.ok && <s-banner tone="success">{t("Settings saved.")}</s-banner>}
       {result && !result.ok && result.notReady && (

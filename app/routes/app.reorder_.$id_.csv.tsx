@@ -9,7 +9,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements, upgradeResponse } from "../services/entitlements.server";
-import { poCsvFile, poDocument } from "../services/po-document.server";
+import { poCsvFile, poCsvLayout, poDocument } from "../services/po-document.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { shop } = await authenticateApp(request);
@@ -17,7 +17,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!features.poExport) return upgradeResponse("poExport", "Purchase order downloads are on the Growth plan.");
   const doc = await poDocument(shop, params.id ?? "");
   if (!doc) throw new Response("Not found", { status: 404 });
-  const { csv, fileName } = poCsvFile(doc.pdf, new URL(request.url).searchParams.get("layout") === "grid");
+  const { csv, fileName } = poCsvFile(doc.pdf, poCsvLayout(new URL(request.url).searchParams.get("layout")));
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

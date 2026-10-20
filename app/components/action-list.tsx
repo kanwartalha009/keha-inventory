@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { SampleOffNote, useSample } from "./sample";
+import { shopifyErrorLines } from "../lib/shopify-errors-shared";
 import { useFetcher, useSearchParams } from "react-router";
 import { fill, useLocale } from "../lib/i18n";
 import { ACTION_TABS, reasonTemplate, rowsForTab, type ActionTab } from "../lib/actions-shared";
@@ -20,7 +21,7 @@ import {
 import { factLines, reasonSentence } from "../lib/action-facts-shared";
 import { CLEAR_PERCENT, defaultClearForm, type ClearForm, type ClearFormError } from "../lib/clearance-shared";
 import { formatAmount, formatCount, formatDay, formatPercent, todayIn } from "../lib/dashboard-shared";
-import { DismissibleBanner, Modal, Tabs, flag, leaveAfterClose, useLastDefined, useLinkProps, val, vals } from "./wc";
+import { DismissibleBanner, Modal, Tabs, flag, leaveAfterClose, useLastDefined, useLinkProps, useSafeNavigate, val, vals } from "./wc";
 import { ProductThumb } from "./ui";
 import { planTag } from "./plan";
 import type { ActionsResult } from "../routes/app.actions";
@@ -75,24 +76,43 @@ type Dialog =
   | { type: "signups"; row: ActionRowView }
   | { type: "clear"; row: ActionRowView };
 
-export function ActionList({ list, timezone }: { list: ActionListView; timezone: string | null }) {
+/** How many rows the Dashboard shows; the rest are on the Actions page (0286). */
+export const DASHBOARD_ACTION_ROWS = 5;
+
+/**
+ * mode "full" — the Actions page (/app/actions): tabs (the selected one kept in ?tab= so a tile
+ * link, Back and a reload open the same tab), every row, product issues and running clearances.
+ * mode "preview" — the Dashboard: the top 5 by money at stake and "See all actions" (0286; the
+ * whole list made the Dashboard long, and tiles linking to #actions never scrolled in the iframe).
+ */
+export function ActionList({ list, timezone, mode = "full" }: { list: ActionListView; timezone: string | null; mode?: "full" | "preview" }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
-  const [params] = useSearchParams();
-  const [tab, setTab] = useState<ActionTab>(() => parseTab(params.get("tab")));
+  const preview = mode === "preview";
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState<ActionTab>(() => (preview ? "all" : parseTab(params.get("tab"))));
   const [limit, setLimit] = useState(TAB_PAGE_SIZE);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<{ op: "snooze" | "dismiss" | "done" | "clear"; id: string } | null>(null);
   const fetcher = useFetcher<ActionsResult>();
 
-  const urlTab = params.get("tab");
+  const urlTab = preview ? null : params.get("tab");
   useEffect(() => {
-    setTab(parseTab(urlTab));
-    // A Dashboard tile (lib/briefing-shared actionTabHref) opens a tab: bring the list into view.
-    if (urlTab && typeof window !== "undefined" && window.location.hash === "#actions") {
-      document.getElementById("actions")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [urlTab]);
+    if (!preview) setTab(parseTab(urlTab));
+  }, [urlTab, preview]);
+  const selectTab = (next: ActionTab) => {
+    setTab(next);
+    setLimit(TAB_PAGE_SIZE);
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next === "all") p.delete("tab");
+        else p.set("tab", next);
+        return p;
+      },
+      { replace: true, preventScrollReset: true },
+    );
+  };
 
   const rows = useMemo(() => rowsForTab(list.rows, tab), [list.rows, tab]);
   const money = (v: number | null, currency: string) => formatAmount(v, currency, locale);
@@ -101,12 +121,14 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
     setNotice(op === "undo" ? null : { op, id });
   };
 
-  const showFixCount = list.fixCount > 0 && (tab === "all" || tab === "fix");
+  const showFixCount = !preview && list.fixCount > 0 && (tab === "all" || tab === "fix");
   const showHidden = list.hiddenCount > 0 && tab === "all";
   const empty = list.rows.length === 0 && list.fixCount === 0 && list.hiddenCount === 0;
+  const total = list.rows.length + list.fixCount;
+  const shown = preview ? Math.min(DASHBOARD_ACTION_ROWS, rows.length) : limit;
 
   return (
-    <s-section id="actions" heading={t("This week's actions")}>
+    <s-section id="actions" heading={preview ? t("This week's actions") : undefined} accessibilityLabel={preview ? undefined : t("This week's actions")}>
       <s-stack direction="block" gap="base">
         {notice && notice.op !== "clear" && (
           <DismissibleBanner tone="info" onDismiss={() => setNotice(null)}>
@@ -134,20 +156,19 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
           <s-paragraph color="subdued">{t("Nothing to do this week. We'll tell you when something needs you.")}</s-paragraph>
         ) : (
           <>
-            <Tabs
-              tabs={ACTION_TABS.map((id) => ({ id, content: `${tabLabel(id, t)} (${formatCount(list.counts[id], locale)})` }))}
-              selected={ACTION_TABS.indexOf(tab)}
-              onSelect={(i) => {
-                setTab(ACTION_TABS[i] ?? "all");
-                setLimit(TAB_PAGE_SIZE);
-              }}
-            />
+            {!preview && (
+              <Tabs
+                tabs={ACTION_TABS.map((id) => ({ id, content: `${tabLabel(id, t)} (${formatCount(list.counts[id], locale)})` }))}
+                selected={ACTION_TABS.indexOf(tab)}
+                onSelect={(i) => selectTab(ACTION_TABS[i] ?? "all")}
+              />
+            )}
             {rows.length === 0 && !(tab === "fix" && showFixCount) && (
               <s-paragraph color="subdued">{t("Nothing in this group this week.")}</s-paragraph>
             )}
             {rows.length > 0 && (
               <div role="list">
-                {rows.slice(0, limit).map((row, i) => (
+                {rows.slice(0, shown).map((row, i) => (
                   <ActionRow
                     key={row.id}
                     row={row}
@@ -161,7 +182,12 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
                 ))}
               </div>
             )}
-            {rows.length > limit && (
+            {preview && total > shown && (
+              <s-stack direction="inline">
+                <s-button {...link("/app/actions")}>{fill(t("See all {n} actions"), { n: formatCount(total, locale) })}</s-button>
+              </s-stack>
+            )}
+            {!preview && rows.length > limit && (
               <s-stack direction="inline">
                 <s-button variant="tertiary" onClick={() => setLimit((n) => n + TAB_PAGE_SIZE)}>
                   {fill(t("Show more ({n} left)"), { n: formatCount(rows.length - limit, locale) })}
@@ -200,7 +226,7 @@ export function ActionList({ list, timezone }: { list: ActionListView; timezone:
           </>
         )}
 
-        {(tab === "clear" || empty) && list.clearances.length > 0 && <ClearancesRunning items={list.clearances} />}
+        {!preview && (tab === "clear" || empty) && list.clearances.length > 0 && <ClearancesRunning items={list.clearances} />}
       </s-stack>
 
       <WhyDialog dialog={dialog?.type === "why" ? dialog.row : null} onClose={() => setDialog(null)} />
@@ -271,9 +297,18 @@ function ActionRow({
   );
 }
 
+/**
+ * Sample data: its products aren't in the merchant's Shopify store, so a link into the Shopify admin
+ * opens a 404 (live 2026-10-20). These open the product in Keha's Products list instead.
+ */
+export function sampleProductHref(row: Pick<ActionRowView, "productTitle">): string {
+  return row.productTitle ? `/app/products?${new URLSearchParams({ q: row.productTitle }).toString()}` : "/app/products";
+}
+
 function PrimaryButton({ row, onOpen }: { row: ActionRowView; onOpen: (type: Dialog["type"]) => void }) {
   const { t } = useLocale();
   const link = useLinkProps();
+  const sample = useSample().on;
   const b = row.button;
   switch (b.kind) {
     case "reorder":
@@ -293,13 +328,17 @@ function PrimaryButton({ row, onOpen }: { row: ActionRowView; onOpen: (type: Dia
     case "restockSizes":
       return <s-button {...link(b.href)}>{t("Reorder sizes")}</s-button>;
     case "checkPage":
-      return (
+      return sample ? (
+        <s-button {...link(sampleProductHref(row))}>{t("Review product page")}</s-button>
+      ) : (
         <s-button href={b.productUrl} target="_top">
           {t("Review product page")}
         </s-button>
       );
     case "checkSizing":
-      return (
+      return sample ? (
+        <s-button {...link(sampleProductHref(row))}>{t("Review sizing and quality")}</s-button>
+      ) : (
         <s-button href={b.productUrl} target="_top">
           {t("Review sizing and quality")}
         </s-button>
@@ -350,6 +389,8 @@ function WhyDialog({ dialog, onClose }: { dialog: ActionRowView | null; onClose:
 function PushDialog({ row: current, onClose }: { row: ActionRowView | null; onClose: () => void }) {
   const { t } = useLocale();
   const row = useLastDefined(current);
+  const link = useSafeNavigate();
+  const sample = useSample().on;
   const url = row?.button.kind === "pushHow" ? row.button.productUrl : null;
   return (
     <Modal
@@ -358,8 +399,15 @@ function PushDialog({ row: current, onClose }: { row: ActionRowView | null; onCl
       heading={t("How to promote this product")}
       primaryAction={
         url ? (
-          <s-button variant="primary" onClick={() => leaveAfterClose(url, onClose)}>
-            {t("Open product in Shopify")}
+          <s-button
+            variant="primary"
+            onClick={() => {
+              if (!sample) return leaveAfterClose(url, onClose);
+              onClose();
+              link(sampleProductHref(row!));
+            }}
+          >
+            {sample ? t("Open product") : t("Open product in Shopify")}
           </s-button>
         ) : undefined
       }
@@ -382,6 +430,8 @@ function PushDialog({ row: current, onClose }: { row: ActionRowView | null; onCl
 function SignupsDialog({ row: current, onClose }: { row: ActionRowView | null; onClose: () => void }) {
   const { t, locale } = useLocale();
   const row = useLastDefined(current);
+  const link = useSafeNavigate();
+  const sample = useSample().on;
   const b = row?.button.kind === "signups" ? row.button : null;
   return (
     <Modal
@@ -390,8 +440,15 @@ function SignupsDialog({ row: current, onClose }: { row: ActionRowView | null; o
       heading={t("Collect back-in-stock sign-ups")}
       primaryAction={
         b ? (
-          <s-button variant="primary" onClick={() => leaveAfterClose(b.productUrl, onClose)}>
-            {t("Open product in Shopify")}
+          <s-button
+            variant="primary"
+            onClick={() => {
+              if (!sample) return leaveAfterClose(b.productUrl, onClose);
+              onClose();
+              link(sampleProductHref(row!));
+            }}
+          >
+            {sample ? t("Open product") : t("Open product in Shopify")}
           </s-button>
         ) : undefined
       }
@@ -493,7 +550,7 @@ export function ClearDialog({
             <s-banner tone="critical" heading={t("Shopify couldn't create the discount")}>
               {result.userErrors.length > 0 ? (
                 <s-unordered-list>
-                  {result.userErrors.map((m, i) => (
+                  {shopifyErrorLines(result.userErrors, t).map((m, i) => (
                     <s-list-item key={i}>{m}</s-list-item>
                   ))}
                 </s-unordered-list>

@@ -53,7 +53,7 @@ import { purchaseOrdersHelp } from "../components/help";
 import { LockedPage } from "../components/plan";
 import { SampleOffNote, useSample } from "../components/sample";
 import ConfirmModal from "../components/ConfirmModal";
-import { DownloadButton } from "../components/download-button";
+import { DownloadButton, DownloadMenu } from "../components/download-button";
 import { Modal, flag, isChecked, val, useLastDefined, useSafeNavigate } from "../components/wc";
 import { fill, useLocale, plural } from "../lib/i18n";
 import { formatCount, formatDay, todayIn } from "../lib/dashboard-shared";
@@ -233,7 +233,7 @@ function OrderView({ data }: { data: OrderPageView }) {
   const composeFetcher = useFetcher<OrderAction>();
   const [composing, setComposing] = useState(false);
   const [opened, setOpened] = useState(false);
-  const [copiedMessage, setCopiedMessage] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState<boolean | null>(null);
   const navigate = useSafeNavigate();
   const [pending, setPending] = useState<Pending | null>(null);
   // "Mark as ordered" from the email dialog: its confirm opens after that dialog has closed.
@@ -280,9 +280,13 @@ function OrderView({ data }: { data: OrderPageView }) {
   const [receiving, setReceiving] = useState(false);
   const [rec, setRec] = useState<string[]>([]);
   const [closeShort, setCloseShort] = useState(false);
+  // Each opening draws fresh fields: after Cancel the old input stayed on screen while Save sent
+  // the reset numbers (link audit 2026-10-20).
+  const [recRound, setRecRound] = useState(0);
   const openReceive = () => {
     setRec(order.lines.map((l) => String(lineRemaining(l))));
     setCloseShort(false);
+    setRecRound((n) => n + 1);
     setReceiving(true);
   };
   const recParsed = rec.map(wholeOrNull);
@@ -309,7 +313,7 @@ function OrderView({ data }: { data: OrderPageView }) {
   const canCompose = keha && features.poExport && openStatus;
   const openCompose = () => {
     setOpened(false);
-    setCopiedMessage(false);
+    setCopiedMessage(null);
     setComposing(true);
     composeFetcher.submit({ intent: "compose" } as never, { method: "post", encType: "application/json" });
   };
@@ -363,10 +367,20 @@ function OrderView({ data }: { data: OrderPageView }) {
   const downloads =
     keha && features.poExport
       ? [
-          <DownloadButton key="pdf" url={`/app/reorder/${order.id}/pdf`} fileName={poFileName(order.number, "pdf")} label={t("Download PDF")} />,
-          <DownloadButton key="csv" url={`/app/reorder/${order.id}/csv`} fileName={poFileName(order.number, "csv")} label={t("Download CSV")} />,
-          // Supplier module: one row per style and colour, sizes as columns.
-          <DownloadButton key="csv-grid" url={`/app/reorder/${order.id}/csv?layout=grid`} fileName={poFileName(`${order.number}-grid`, "csv")} label={t("Download CSV (size grid)")} />,
+          // Unsaved quantities: save first, or the file has the old ones (link audit 2026-10-20).
+          <DownloadButton key="pdf" url={`/app/reorder/${order.id}/pdf`} fileName={poFileName(order.number, "pdf")} label={t("Download PDF")} disabled={dirty} />,
+          <DownloadMenu
+            key="csv"
+            label={t("Download CSV")}
+            disabled={dirty}
+            items={[
+              { url: `/app/reorder/${order.id}/csv`, fileName: poFileName(order.number, "csv"), label: t("With order details") },
+              // C5: the header on line 1, for supplier and ERP importers.
+              { url: `/app/reorder/${order.id}/csv?layout=table`, fileName: poFileName(`${order.number}-table`, "csv"), label: t("Table only (for importing)") },
+              // Supplier module: one row per style and colour, sizes as columns.
+              { url: `/app/reorder/${order.id}/csv?layout=grid`, fileName: poFileName(`${order.number}-grid`, "csv"), label: t("Size grid") },
+            ]}
+          />,
         ]
       : [];
   const secondary = [
@@ -376,7 +390,7 @@ function OrderView({ data }: { data: OrderPageView }) {
     !draft && canEmail ? button({ kind: "email" }, t("Email again")) : null,
     can("confirmed") ? button({ kind: "transition", to: "confirmed" }, t("Mark as confirmed")) : null,
     // Drafts were never sent: delete them. Sent orders are cancelled (and can be re-opened for 30 days).
-    draft ? button({ kind: "delete" }, t("Delete draft"), false, true) : null,
+    draft ? button({ kind: "delete" }, t("Delete draft"), false, true, dirty) : null,
     // An open order that won't be completed: close it with what arrived (Shopify's "Close").
     canReceive ? button({ kind: "close" }, t("Close order")) : null,
     !draft && can("cancelled") ? button({ kind: "transition", to: "cancelled" }, t("Cancel order"), false, true) : null,
@@ -785,7 +799,7 @@ function OrderView({ data }: { data: OrderPageView }) {
           }
           secondaryActions={<s-button onClick={() => setReceiving(false)}>{t("Cancel")}</s-button>}
         >
-          <s-stack direction="block" gap="base">
+          <s-stack key={recRound} direction="block" gap="base">
             <s-paragraph color="subdued">
               {t("Enter what arrived. This updates the order in Keha only: Keha orders aren't in Shopify, so add the stock in Shopify as usual.")}
             </s-paragraph>
@@ -874,7 +888,8 @@ export function ComposeModal(props: {
   result: OrderAction | undefined;
   loading: boolean;
   opened: boolean;
-  copied: boolean;
+  /** null = not tried; false = the browser refused (no click reached the app): say so. */
+  copied: boolean | null;
   canMarkSent: boolean;
   onOpened: () => void;
   onCopied: (v: boolean) => void;
@@ -955,7 +970,8 @@ export function ComposeModal(props: {
           {!m.to && <s-text color="subdued">{t("No email saved for this supplier. You can save one in Settings → Suppliers.")}</s-text>}
           <s-text-field label={t("Subject")} value={m.subject} readOnly />
           <s-text-area label={t("Message")} value={m.body} rows={8} readOnly />
-          {props.copied && <s-text color="subdued">{t("Copied")}</s-text>}
+          {props.copied === true && <s-text color="subdued">{t("Copied")}</s-text>}
+          {props.copied === false && <s-text tone="critical">{t("Your browser didn't allow copying. Select the message above and copy it.")}</s-text>}
         </s-stack>
       )}
     </Modal>

@@ -1,18 +1,36 @@
 /**
+ * GET /app/actions — the Actions page (0286, Kanwar 2026-10-20): the whole "This week's actions"
+ * list with its tabs; ?tab= opens a tab (the Dashboard's tiles link here). The Dashboard keeps the
+ * top 5. Before the plan is ready it says why, as Order plan does.
+ *
  * POST /app/actions — the action list's writes (spec §5.1, §4 J5). JSON body:
  *   { op: "snooze" | "dismiss" | "done" | "undo", id }
  *   { op: "clear", id, kind, percent, endsOn, code }   (Growth: clearance)
  * Every write checks the action belongs to the session's shop. "clear" runs
  * only from the confirm dialog (invariant I-1), checks the plan on the
- * server, and never runs on sample data (services/data-scope). No GET: this is a resource route.
+ * server, and never runs on sample data (services/data-scope).
  *
  * Handled outcomes answer 200 with `ok: false` and a reason (as the Settings
  * action does): a non-2xx Response returned to a fetcher becomes a route
  * error in React Router, and the dialog must show the message instead.
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
+import { useLoaderData } from "react-router";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
-import { can } from "../services/entitlements.server";
+import { can, planFor } from "../services/entitlements.server";
+import { getActionList } from "../models/actions.server";
+import { readiness } from "../models/dashboard.server";
+import { kehaPreorderInstalled } from "../services/keha-preorder.server";
+import { ActionList } from "../components/action-list";
+import { PlanNotReadyNote } from "../components/order-plan";
+import { actionsHelp } from "../components/help";
+import { AppPage } from "../components/ui";
+import { useLinkProps } from "../components/wc";
+import { useLocale } from "../lib/i18n";
+import type { ActionListView } from "../lib/action-list-shared";
+import type { PlanReadiness } from "../lib/dashboard-shared";
+import { onlyParamChanged } from "../lib/revalidate-shared";
 import { createClearanceDiscount } from "../services/clearance.server";
 import { claimClearAction, getClearTarget, recordClearance, releaseClearAction, updateActionState } from "../models/actions.server";
 import { isActionOp, type ActionOp } from "../lib/action-list-shared";
@@ -30,9 +48,50 @@ export type ActionsResult =
   /** Sample data mode: no discount is created in the store (I-1). */
   | { ok: false; error: "sample" };
 
-export const loader = async (_args: LoaderFunctionArgs) => {
-  throw new Response("Method not allowed", { status: 405 });
+export type ActionsPageData = { readiness: PlanReadiness; list: ActionListView | null; timezone: string | null };
+
+export const loader = async ({ request }: LoaderFunctionArgs): Promise<ActionsPageData> => {
+  const { admin, shop, sample } = await authenticateApp(request);
+  const now = new Date();
+  const [plan, ready] = await Promise.all([planFor(shop), readiness(shop, now)]);
+  const list = ready.ready
+    ? await getActionList(shop, plan, now, { preorderInstalled: sample ? async () => false : () => kehaPreorderInstalled(admin, shop) })
+    : null;
+  return { readiness: ready, list, timezone: list?.timezone ?? null };
 };
+
+/** A tab switch on the Actions page (only ?tab= changes) reloads nothing (lib/revalidate-shared). */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }) =>
+  !formMethod && onlyParamChanged(currentUrl, nextUrl, "tab") ? false : defaultShouldRevalidate;
+
+export const headers: HeadersFunction = (h) => boundary.headers(h);
+
+export default function ActionsPage() {
+  const { t } = useLocale();
+  const link = useLinkProps();
+  const data = useLoaderData<typeof loader>() as ActionsPageData;
+  const notReady = data.readiness.ready ? null : data.readiness;
+  return (
+    <AppPage heading={t("Actions")} intro={t("Everything that needs you this week, ranked by the money at stake.")} help={actionsHelp(t)}>
+      {notReady ? (
+        <s-section heading={t("This week's actions")}>
+          <s-stack direction="block" gap="base">
+            <PlanNotReadyNote readiness={notReady} />
+            <s-stack direction="inline">
+              <s-button {...link("/app")}>{t("Back to Dashboard")}</s-button>
+            </s-stack>
+          </s-stack>
+        </s-section>
+      ) : data.list ? (
+        <ActionList list={data.list} timezone={data.timezone} mode="full" />
+      ) : (
+        <s-section heading={t("This week's actions")}>
+          <s-paragraph color="subdued">{t("Nothing to do this week. We'll tell you when something needs you.")}</s-paragraph>
+        </s-section>
+      )}
+    </AppPage>
+  );
+}
 
 const reply = (body: ActionsResult) => Response.json(body);
 

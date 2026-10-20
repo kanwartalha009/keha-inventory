@@ -81,10 +81,9 @@ export function dashboardHelp(t: T, locale: string, d: { leadTimeDays: number; c
       {
         title: t("What you see here"),
         paragraphs: [
-          t("This week in 30 seconds says what to do now. Each tile opens the place to do it."),
+          t("This week says what to do now. Each tile opens the place to do it. Below the tiles, the money at stake shows sales you could lose, sales already lost to sold-out products and cash tied up in stock that isn't selling."),
           t("Due this week lists the orders to place, by supplier. The bars show the cash your orders need over the next 13 weeks."),
-          t("Money at stake shows sales you could lose, sales already lost to sold-out products and cash tied up in stock that isn't selling."),
-          t("This week's actions is the full to-do list, ranked by the money at stake."),
+          t("This week's actions shows the top 5 to-dos, ranked by the money at stake. The whole list is on the Actions page."),
         ],
       },
       { title: t("How your numbers are worked out"), paragraphs: how },
@@ -170,6 +169,36 @@ export function calendarHelp(t: T): HelpContent {
     links: [
       { label: t("Due now"), to: "/app/reorder" },
       { label: t("Default lead time, Order enough for and safety stock"), to: STORE_SETTINGS },
+    ],
+  };
+}
+
+/** The Actions page (0286): the whole to-do list, by tab. */
+export function actionsHelp(t: T): HelpContent {
+  return {
+    sections: [
+      {
+        title: t("What each tab means"),
+        paragraphs: [
+          t("Reorder: products that run out before a new order would arrive."),
+          t("Stock gaps: sold-out products shoppers still look for. Reorder them or take preorders."),
+          t("Promote: products with plenty of stock that sell well when people see them."),
+          t("Product issues: missing sizes, weak product pages, high returns and falling best sellers."),
+          t("Clearance: stock that isn't selling. A discount turns it back into cash."),
+        ],
+      },
+      {
+        title: t("How the list works"),
+        paragraphs: [
+          t("Every action shows the money at stake, and the list is ranked by it. Why this action, in the ··· menu, shows the numbers behind it."),
+          t("Mark as done, Snooze 7 days or Dismiss takes an action off the list. A dismissed action comes back if the money at stake doubles."),
+          t("The list is worked out again every night from your sales and stock."),
+        ],
+      },
+    ],
+    links: [
+      { label: t("Dashboard"), to: "/app" },
+      { label: t("Due now"), to: "/app/reorder" },
     ],
   };
 }

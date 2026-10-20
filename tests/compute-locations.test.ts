@@ -119,6 +119,31 @@ describe("per-location metrics (Pro)", () => {
     expect(i.error.ratio).toBeNull();
   });
 
+  it("C1: an open Keha order shipping to the store counts as on order there (the store's suggestion shrinks)", async () => {
+    await computeShop(S, { now: () => NOW });
+    const before = metric(A, SHOP1)!.orderQty as number;
+    expect(before).toBeGreaterThan(50);
+    db.tables.purchaseOrder = [
+      {
+        id: "po-store",
+        shop: S,
+        source: "keha",
+        status: "sent",
+        createdAt: new Date("2026-10-10T00:00:00Z"),
+        sentAt: new Date("2026-10-10T00:00:00Z"),
+        confirmedShipDate: null,
+        expectedDate: new Date("2026-10-30T00:00:00Z"),
+        supplierId: null,
+        shipToLocationId: SHOP1,
+        lines: [{ variantId: A, qty: 50, received: 0 }],
+      },
+    ];
+    await computeShop(S, { now: () => NOW });
+    const m = metric(A, SHOP1)!;
+    expect((m.inputs as { kehaOnOrder: number }).kehaOnOrder).toBe(50);
+    expect(m.orderQty as number).toBeLessThan(before);
+  });
+
   it("#4: the pool counts the store by default — its stock and its POS demand (all channels, once)", async () => {
     await computeShop(S, { now: () => NOW });
     const online = metric(A, "online")!;

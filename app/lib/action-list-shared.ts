@@ -329,6 +329,8 @@ export type ClearanceView = {
 
 export type ActionListView = {
   currency: string;
+  /** The store's time zone (the clearance dialog's end date); absent in older fixtures. */
+  timezone?: string | null;
   /** Ranked (by € across groups), already limited to what the plan shows. */
   rows: ActionRowView[];
   /** Rows per tab ("fix" on Free = the held-back count). */

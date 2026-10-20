@@ -99,6 +99,7 @@ const { buildSupplierOrder, builderTeaser } = await import("../app/lib/supplier-
 const { SampleProvider } = await import("../app/components/sample");
 
 const { default: Home } = await import("../app/routes/app._index");
+const { default: ActionsPage } = await import("../app/routes/app.actions");
 const { default: Reorder } = await import("../app/routes/app.reorder");
 const { default: OrderCalendar } = await import("../app/routes/app.reorder_.calendar");
 const { default: Planner } = await import("../app/routes/app.reorder_.season");
@@ -556,10 +557,11 @@ const confirm = (locale: Locale): ConfirmPageData => ({
 const SAMPLE_ON: SampleView = { on: true, loadedAt: "2026-10-16T09:00:00.000Z", realReady: false, planLifted: true };
 
 // ── 4. Screens × states ─────────────────────────────────────────────────────────────────────
-type Nav = "dashboard" | "orderplan" | "products" | "settings" | "plans" | "public";
+type Nav = "dashboard" | "actions" | "orderplan" | "products" | "settings" | "plans" | "public";
 const NAV: { id: Exclude<Nav, "public">; label: string }[] = [
   // Labels of AppNav in app/routes/app.tsx (s-app-nav only renders inside the admin).
   { id: "dashboard", label: "Dashboard" },
+  { id: "actions", label: "Actions" },
   { id: "orderplan", label: "Order plan" },
   { id: "products", label: "Products" },
   { id: "settings", label: "Settings" },
@@ -592,6 +594,9 @@ const screens: Screen[] = [
   S({ slug: "dashboard--growth-first-sync-large", screen: "Dashboard", state: "Growth, first sync, large store, a month failing", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("large", "growth"), expect: ["Setting up your order plan", "Large stores take a few hours — you can close this page.", "We'll email you when your order plan is ready.", "While you wait", "Import from a CSV", "Worked out from how fast your store has been read so far."] }),
   S({ slug: "dashboard--free-first-sync-small", screen: "Dashboard", state: "Free, first sync, small store (first estimate)", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => firstSync("small", "free"), expect: ["Setting up your order plan", "You can close this page — we keep reading in the background.", "Growth plan"] }),
   S({ slug: "dashboard--growth-plan-ready", screen: "Dashboard", state: "Growth, the read just finished", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("finished", "growth"), expect: ["Your order plan is ready", "Due this week"] }),
+  S({ slug: "actions--growth", screen: "Actions", state: "Growth, all tabs", nav: "actions", url: "/app/actions", plan: "growth", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid" }), expect: ["Actions", "Stock gaps", "Clear Cardigan"] }),
+  S({ slug: "actions--growth-clearance", screen: "Actions", state: "Growth, ?tab=clear (a Dashboard tile)", nav: "actions", url: "/app/actions?tab=clear", plan: "growth", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid" }), expect: ["Clear Cardigan", "Active clearance discounts"] }),
+  S({ slug: "actions--free", screen: "Actions", state: "Free, top 10", nav: "actions", url: "/app/actions", plan: "free", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("free", { fillers: 12 }), timezone: "Europe/Madrid" }), expect: ["Upgrade to see them"] }),
   S({ slug: "dashboard--pro-ready", screen: "Dashboard", state: "Pro, ready", nav: "dashboard", url: "/app", plan: "pro", Component: Home, data: () => dashboard("pro"), expect: ["Due this week", "Money at stake", "Take preorders"] }),
 
   S({ slug: "order-now--free-preview", screen: "Order plan → Due now", state: "Free preview", nav: "orderplan", url: "/app/reorder", plan: "free", Component: Reorder, data: () => orderNow("free"), expect: ["Order plan", "What to order, and by when", "Linen shirt"] }),

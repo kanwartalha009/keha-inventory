@@ -7,10 +7,9 @@
  * banners, then cards (FormCard: heading + one-line description). Forms save
  * through the contextual save bar (FormSaveBar); a tab's title bar holds only
  * page actions such as "Add supplier". Switching tabs with unsaved changes
- * asks first (App Bridge leave confirmation).
+ * asks first (components/wc useSafeNavigate → "Discard unsaved changes?").
  */
 
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { useLocale } from "../lib/i18n";
 import { Tabs, useSafeNavigate } from "./wc";
 
@@ -26,26 +25,14 @@ export type SettingsTabId = (typeof SETTINGS_TABS)[number]["id"];
 
 export function SettingsTabs({ current }: { current: SettingsTabId }) {
   const { t } = useLocale();
+  // With unsaved changes useSafeNavigate asks "Discard unsaved changes?" first (one question:
+  // App Bridge's own leave confirmation as well asked twice — link audit 2026-10-20).
   const navigate = useSafeNavigate();
-  const shopify = useAppBridge();
-  const open = (i: number) => {
-    const go = () => navigate(SETTINGS_TABS[i].path);
-    // Resolves at once when no save bar is shown; otherwise only after the merchant
-    // chooses to leave. Without App Bridge (tests, preview) navigate straight away.
-    let wait: Promise<void> | undefined;
-    try {
-      wait = shopify?.saveBar?.leaveConfirmation?.();
-    } catch {
-      wait = undefined;
-    }
-    if (wait && typeof wait.then === "function") wait.then(go, () => undefined);
-    else go();
-  };
   return (
     <Tabs
       tabs={SETTINGS_TABS.map((x) => ({ id: x.id, content: t(x.label) }))}
       selected={SETTINGS_TABS.findIndex((x) => x.id === current)}
-      onSelect={open}
+      onSelect={(i) => navigate(SETTINGS_TABS[i].path)}
     />
   );
 }

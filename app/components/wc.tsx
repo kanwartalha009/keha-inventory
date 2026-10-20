@@ -12,7 +12,7 @@
  *  - Event handlers are typed `(event: Event) => void`; the value lives on
  *    `currentTarget`. `val()` / `isChecked()` read it without casts everywhere.
  */
-import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, type ReactElement, type ReactNode, type RefObject } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState as useStateCompat, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 /** `flag(cond)` → `true` or `undefined` (never `false`) for boolean attributes. */
@@ -62,8 +62,71 @@ export function useSafeNavigate() {
   const navigate = useNavigate();
   return (to: string, opts?: { replace?: boolean; preventScrollReset?: boolean }) => {
     const path = to.split(/[?#]/)[0];
-    if (typeof window !== "undefined" && path && path !== window.location.pathname) closeAllModals();
+    const browser = typeof window !== "undefined";
+    const leaving = browser && !!path && path !== window.location.pathname;
+    // Same page, other view (Suppliers ?edit=…): with unsaved changes that loses them too.
+    const changing = browser && to.split("#")[0] !== window.location.pathname + window.location.search;
+    // Unsaved changes: App Bridge silently blocks the page change while its save bar shows, so a
+    // tab or link "did nothing" and merchants kept clicking (live 2026-10-20). Ask instead.
+    if (changing && dirtyForms.size > 0) {
+      requestLeave(() => navigate(to, opts));
+      return;
+    }
+    if (leaving) closeAllModals();
     navigate(to, opts);
+  };
+}
+
+// ── Unsaved changes (FormSaveBar) and leaving the page ─────────────────────────
+
+/** Save bars with unsaved changes on this page: id → their Discard. */
+const dirtyForms = new Map<string, () => void>();
+type LeaveRequest = { go: () => void } | null;
+let leaveRequest: LeaveRequest = null;
+const leaveListeners = new Set<(r: LeaveRequest) => void>();
+const setLeave = (r: LeaveRequest) => {
+  leaveRequest = r;
+  for (const l of leaveListeners) l(r);
+};
+
+/** A FormSaveBar reports whether it has unsaved changes (and how to discard them). */
+export function useDirtyForm(id: string, dirty: boolean, discard: () => void) {
+  const latest = useRef(discard);
+  latest.current = discard;
+  useEffect(() => {
+    if (dirty) dirtyForms.set(id, () => latest.current());
+    else dirtyForms.delete(id);
+    return () => {
+      dirtyForms.delete(id);
+    };
+  }, [id, dirty]);
+}
+
+function requestLeave(go: () => void) {
+  setLeave({ go });
+}
+
+/** The page's "Discard unsaved changes?" question (AppPage renders it once per page). */
+export function useLeaveRequest(): { open: boolean; discardAndLeave: () => void; stay: () => void } {
+  const [r, setR] = useStateCompat<LeaveRequest>(leaveRequest);
+  useEffect(() => {
+    leaveListeners.add(setR);
+    return () => {
+      leaveListeners.delete(setR);
+    };
+  }, [setR]);
+  return {
+    open: !!r,
+    stay: () => setLeave(null),
+    discardAndLeave: () => {
+      const go = leaveRequest?.go;
+      setLeave(null);
+      for (const discard of [...dirtyForms.values()]) discard();
+      dirtyForms.clear();
+      closeAllModals();
+      // Leave once the save bar has gone: App Bridge blocks the page change while it shows.
+      if (go) window.setTimeout(go, 350);
+    },
   };
 }
 
@@ -383,4 +446,52 @@ export function ChoiceListField<T extends string>({
       ))}
     </s-choice-list>
   );
+}
+
+/**
+ * Polaris form fields treat their `value` / `checked` / `selected` ATTRIBUTES as the starting value
+ * only (polaris-types: "defaultValue reflects to the value attribute"), and React 18 sets props on
+ * custom elements as attributes. So once a merchant had typed in a field, a value set by the app —
+ * Discard on a save bar, "Top up", "Remove", a dialog reopened with fresh numbers — changed the
+ * state and the totals but not the box on screen (link audit 2026-10-20; Kanwar: "Discard doesn't
+ * work"). React writes the attribute only when the prop changes, so copying each attribute change
+ * to the matching property makes every field follow its React value, without touching what the
+ * merchant is typing (the attribute then already equals the property).
+ */
+export const SYNCED_FIELD_ATTRS = ["value", "checked", "selected"] as const;
+
+type SyncTarget = { tagName: string; getAttribute(n: string): string | null; hasAttribute(n: string): boolean } & Record<string, unknown>;
+
+/** Copy one changed attribute to its property on a Polaris element; true when the property changed. */
+export function syncFieldProperty(el: SyncTarget, attr: string): boolean {
+  if (!el.tagName.toUpperCase().startsWith("S-")) return false;
+  if (attr === "value") {
+    if (!("value" in el)) return false;
+    const next = el.getAttribute("value") ?? "";
+    if (el.value === next) return false;
+    el.value = next;
+    return true;
+  }
+  if (attr === "checked" || attr === "selected") {
+    if (!(attr in el)) return false;
+    const next = el.hasAttribute(attr);
+    if (el[attr] === next) return false;
+    el[attr] = next;
+    return true;
+  }
+  return false;
+}
+
+/** Mounted once at the app root (routes/app.tsx). */
+export function usePolarisFieldSync() {
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined" || typeof document === "undefined") return;
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === "attributes" && r.attributeName) syncFieldProperty(r.target as unknown as SyncTarget, r.attributeName);
+      }
+    });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: [...SYNCED_FIELD_ATTRS] });
+    return () => observer.disconnect();
+  }, []);
 }

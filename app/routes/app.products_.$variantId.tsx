@@ -505,7 +505,10 @@ function OrderingCard({ data }: { data: VariantDetailData }) {
   const [code, setCode] = useState(savedCode);
   useEffect(() => setCode(savedCode), [savedCode]);
   const codeInvalid = !readSupplierCode(code).ok;
-  const caseChanged = caseQty !== saved;
+  // "1" is stored as "no case size" (saved ""): compare normalised, or a saved 1 kept the save bar
+  // open for good (link audit 2026-10-20).
+  const normCase = (v: string) => (v.trim() === "" || Number(v) === 1 ? "" : v.trim());
+  const caseChanged = normCase(caseQty) !== saved;
   const codeChanged = code.trim() !== savedCode;
   const [confirmCase, setConfirmCase] = useState(false);
   const [ask, setAsk] = useState<null | { scope: "product" | "variant"; value: boolean }>(null);

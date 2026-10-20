@@ -11,6 +11,7 @@ export default function ConfirmModal({
   title,
   message,
   confirmLabel,
+  cancelLabel,
   destructive = true,
   disabled = false,
   onConfirm,
@@ -21,6 +22,8 @@ export default function ConfirmModal({
   title: string;
   message: string;
   confirmLabel: string;
+  /** Default "Cancel". */
+  cancelLabel?: string;
   destructive?: boolean;
   /** The confirm button can't be pressed (e.g. an invalid value in `children`). */
   disabled?: boolean;
@@ -43,7 +46,7 @@ export default function ConfirmModal({
           {text.confirmLabel}
         </s-button>
       }
-      secondaryActions={<s-button onClick={onCancel}>{t("Cancel")}</s-button>}
+      secondaryActions={<s-button onClick={onCancel}>{cancelLabel ?? t("Cancel")}</s-button>}
     >
       <s-paragraph>{text.message}</s-paragraph>
       {children}

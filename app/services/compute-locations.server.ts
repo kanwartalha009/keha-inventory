@@ -16,7 +16,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
-import { POOL_LOCATION_SELECT, SCOPE_ONLINE, buildSeries, countsForOnline, metricRow, type SalesDay } from "../lib/compute-shared";
+import { POOL_LOCATION_SELECT, SCOPE_ONLINE, buildSeries, countsForOnline, kehaOpenUnits, metricRow, type SalesDay } from "../lib/compute-shared";
 import {
   carriedAt,
   demandSourceFor,
@@ -92,7 +92,38 @@ export type LocationComputeInput = {
   };
   /** The shop's stored first / last days are built (DB scale #3): read them, not the facts. */
   daysReady?: boolean;
+  /** Open Keha orders by ship-to location (kehaUnitsByLocation, C1); absent = none counted. */
+  kehaByLocation?: ReadonlyMap<string, { raw: ReadonlyMap<string, number>; open: ReadonlyMap<string, number> }>;
 };
+
+type PoUnits = { id?: string; lines: { variantId: string; qty: number; received?: number }[] };
+
+/**
+ * Open Keha units per ship-to location and variant (post-approval backlog C1: per-location plans
+ * set kehaOnOrder 0 and suggested stock already on order). `raw` = the open units (inputs, as the
+ * pool's kehaOnOrder); `open` = less what has landed already (the plan's incoming). Orders without
+ * a ship-to go to the pool and are counted there only.
+ */
+export function kehaUnitsByLocation(
+  raw: readonly PoUnits[],
+  landed: readonly PoUnits[],
+  shipToOf: ReadonlyMap<string, string | null>,
+): Map<string, { raw: Map<string, number>; open: Map<string, number> }> {
+  const out = new Map<string, { raw: Map<string, number>; open: Map<string, number> }>();
+  const add = (pos: readonly PoUnits[], key: "raw" | "open") => {
+    for (const po of pos) {
+      const loc = po.id ? shipToOf.get(po.id) : null;
+      if (!loc) continue;
+      const entry = out.get(loc) ?? { raw: new Map<string, number>(), open: new Map<string, number>() };
+      out.set(loc, entry);
+      // The same open-units rule as the pool (compute-shared kehaOpenUnits).
+      for (const [variantId, units] of kehaOpenUnits([po])) entry[key].set(variantId, (entry[key].get(variantId) ?? 0) + units);
+    }
+  };
+  add(raw, "raw");
+  add(landed, "open");
+  return out;
+}
 
 /** Does the series hold a day with a sale (the engine's own last sale)? */
 const seriesSold = (rows: readonly DailyRow[] | undefined) => !!rows?.some((r) => Number.isFinite(r.sold) && r.sold > 0);
@@ -260,6 +291,7 @@ async function computeLocation(
   if (unknown.length && fromPool) await x.pool.resolveLastSale?.(unknown);
   if (unknown.length && !fromPool) for (const [id, day] of await lastSaleBefore(shop, unknown, x.from, view)) lastSale.set(id, day);
 
+  const keha = x.kehaByLocation?.get(locationId);
   const results: { r: VariantResult; supplierId: string | null }[] = [];
   // Pages share this event loop when WORKER_MODE=all: let them in every YIELD_EVERY variants.
   const breathe = yielder(YIELD_EVERY);
@@ -274,7 +306,8 @@ async function computeLocation(
       series: seriesOf(v.id),
       today: x.today,
       onHand: s?.available ?? 0, // planning position: Shopify available (may be negative), not on_hand (audit C2)
-      incoming: s?.incoming ?? 0,
+      // Shopify's incoming here plus open Keha orders shipping here (C1).
+      incoming: (s?.incoming ?? 0) + (keha?.open.get(v.id) ?? 0),
       role: x.roles.get(v.id) ?? "C",
       productCreatedAt: v.productCreatedAt ? v.productCreatedAt.toISOString() : null,
       lastSaleDay: (fromPool ? x.pool.lastSale.get(v.id) : lastSale.get(v.id)) ?? null,
@@ -314,7 +347,7 @@ async function computeLocation(
         safetyLevel: x.safetyLevel,
         serviceLevel: serviceLevelFor(x.safetyLevel, r.role),
         supplierId,
-        kehaOnOrder: 0,
+        kehaOnOrder: keha?.raw.get(r.id) ?? 0,
         // The engine's safety stock (z × σ × √(lead + cycle)): transfers' keep level reads it.
         safety: r.safety,
       });

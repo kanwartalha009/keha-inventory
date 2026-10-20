@@ -6,13 +6,25 @@ import prisma from "../db.server";
  * in afterAuth to attribute the install, then the row is cleared.
  */
 
-export async function storeReferral(shop: string, ref: string): Promise<void> {
+/** A stored code older than this can be replaced by a newer partner link (the first one lapsed). */
+export const REFERRAL_KEEP_DAYS = 30;
+
+/**
+ * The FIRST partner's code wins (post-approval backlog C7): anyone opening another partner's link
+ * for the same shop used to overwrite it. A code older than REFERRAL_KEEP_DAYS has lapsed and can
+ * be replaced. Never throws: a referral must not block the install.
+ */
+export async function storeReferral(shop: string, ref: string, now: Date = new Date()): Promise<void> {
   try {
-    await prisma.novaReferral.upsert({
-      where: { shop },
-      update: { ref },
-      create: { shop, ref },
-    });
+    const existing = await prisma.novaReferral.findUnique({ where: { shop } });
+    if (!existing) {
+      await prisma.novaReferral.create({ data: { shop, ref } });
+      return;
+    }
+    if (existing.ref === ref) return;
+    const ageDays = (now.getTime() - new Date(existing.createdAt).getTime()) / 86_400_000;
+    if (ageDays <= REFERRAL_KEEP_DAYS) return;
+    await prisma.novaReferral.update({ where: { shop }, data: { ref, createdAt: now } });
   } catch (err) {
     console.error("[inventory/referral] storeReferral failed", err);
   }

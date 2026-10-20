@@ -19,6 +19,7 @@ import { ACTION_REASONS } from "../app/lib/actions-shared";
 import { SETTINGS_TABS } from "../app/components/settings-tabs";
 import { factStrings } from "../app/lib/action-facts-shared";
 import { PRODUCT_COLUMNS, SUPPLIER_COLUMNS } from "../app/lib/setup-import-shared";
+import { SHOPIFY_ERROR_TEXT } from "../app/lib/shopify-errors-shared";
 
 /** Strings spelled the same in a language (brand words, loanwords). */
 const SAME_WORD: Record<string, string[]> = {
@@ -74,6 +75,7 @@ function dataKeys(): Set<string> {
     }
   }
   for (const v of Object.values(SETTINGS_ERRORS)) out.add(v);
+  for (const v of Object.values(SHOPIFY_ERROR_TEXT)) out.add(v);
   for (const v of Object.values(ACTION_REASONS)) out.add(v);
   for (const x of SETTINGS_TABS) out.add(x.label);
   for (const v of factStrings()) out.add(v);

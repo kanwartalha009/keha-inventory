@@ -25,9 +25,9 @@ describe("buildBriefing", () => {
     expect(b.sentences[0]).toEqual({ key: "order", suppliers: 2, cash: 1000, late: 1 });
     expect(b.tiles.map((t) => [t.key, t.count, t.amount, t.href])).toEqual([
       ["order", 2, 1000, "/app/reorder"],
-      ["soldOut", 2, null, "/app?tab=bridge#actions"],
-      ["clear", 6, 3693, "/app?tab=clear#actions"],
-      ["fix", 3, null, "/app?tab=fix#actions"],
+      ["soldOut", 2, null, "/app/actions?tab=bridge"],
+      ["clear", 6, 3693, "/app/actions?tab=clear"],
+      ["fix", 3, null, "/app/actions?tab=fix"],
     ]);
   });
   it("nothing to order: says when the next order is; nothing else to say: one sentence", () => {
@@ -57,10 +57,10 @@ describe("BriefingCard", () => {
   for (const locale of ["en", "de"] as const) {
     it(`${locale}: plain sentences and one button per job`, () => {
       const html = render(locale);
-      expect(html).toContain(esc(translate(locale, "This week in 30 seconds")));
+      expect(html).toContain(esc(translate(locale, "This week")));
       expect(html).toContain(esc(translate(locale, "1 order is already late.")));
       expect(html).toContain(esc(translate(locale, "Create discounts")));
-      expect(html).toContain('href="/app?tab=clear#actions"');
+      expect(html).toContain('href="/app/actions?tab=clear"');
       expect(html).toContain('href="/app/reorder"');
     });
   }

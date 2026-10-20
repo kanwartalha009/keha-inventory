@@ -157,10 +157,15 @@ export default function SuppliersSettings() {
   const [confirm, setConfirm] = useState<{ kind: "delete" | "clear" | "useMeasured"; row: SupplierListRow } | null>(null);
   const result = fetcher.data;
 
-  // After a save, go back to the list (the loader re-reads it).
+  // After a save, go back to the list (the loader re-reads it). The editor stops counting as
+  // changed first (saved), so its save bar is gone before the page changes — App Bridge blocks a
+  // page change while it shows (link audit 2026-10-20: the editor stayed open after Save).
+  const saved = !!(result?.ok && result.intent === "save");
   useEffect(() => {
-    if (result?.ok && result.intent === "save" && params.get("edit")) navigate("/app/settings/suppliers", { replace: true });
-  }, [result, params, navigate]);
+    if (!saved || !params.get("edit")) return;
+    const timer = window.setTimeout(() => navigate("/app/settings/suppliers", { replace: true }), 150);
+    return () => window.clearTimeout(timer);
+  }, [saved, params, navigate]);
 
   const post = (body: Record<string, unknown>) => fetcher.submit(body as never, { method: "post", encType: "application/json" });
 
@@ -211,6 +216,7 @@ export default function SuppliersSettings() {
           storeCurrency={data.currency}
           storeCycleDays={data.cycleDays ?? null}
           saving={fetcher.state !== "idle"}
+          saved={saved}
           errors={result && !result.ok ? (result.errors ?? {}) : {}}
           onSave={(form) => post({ intent: "save", id: data.editing?.id ?? null, form })}
           onCancel={() => navigate("/app/settings/suppliers")}
@@ -429,6 +435,7 @@ function SupplierEditor({
   storeCurrency,
   storeCycleDays,
   saving,
+  saved,
   errors,
   onSave,
   onCancel,
@@ -439,12 +446,24 @@ function SupplierEditor({
   storeCurrency: string;
   storeCycleDays: number | null;
   saving: boolean;
+  /** Saved: closing, nothing left unsaved. */
+  saved?: boolean;
   errors: SupplierErrors;
   onSave: (form: SupplierForm) => void;
   onCancel: () => void;
 }) {
   const { t, locale } = useLocale();
   const [form, setForm] = useState<SupplierForm>(initial);
+  // Cancel / Discard: stop counting as changed so the save bar goes, then close (App Bridge
+  // blocks the page change while the save bar shows — link audit 2026-10-20).
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(onCancel, 150);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closing]);
+  const close = () => setClosing(true);
   // More options opens by itself when one of its fields has an error after a save.
   const moreHasError = !!(
     errors.orderCycleDays ||
@@ -461,7 +480,9 @@ function SupplierEditor({
     if (moreHasError) setMore(true);
   }, [moreHasError]);
   // A new supplier counts as changed from the start, so Save is there as soon as it opens.
-  const dirty = id === null || !sameValues(form, initial);
+  // Vendors compare as a set: untick and re-tick isn't a change (link audit 2026-10-20).
+  const asSet = (f: SupplierForm) => ({ ...f, vendorMatch: [...f.vendorMatch].sort() });
+  const dirty = !closing && !saved && (id === null || !sameValues(asSet(form), asSet(initial)));
   const set = <K extends keyof SupplierForm>(key: K, value: SupplierForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const err = (key: keyof SupplierForm) => {
     const code = errors[key];
@@ -492,7 +513,7 @@ function SupplierEditor({
       title={id ? t("Edit supplier") : t("New supplier")}
       sub={t("Lead time and minimums apply to every product this supplier delivers.")}
       action={
-        <s-button variant="tertiary" onClick={onCancel}>
+        <s-button variant="tertiary" onClick={close}>
           {t("Cancel")}
         </s-button>
       }
@@ -502,7 +523,7 @@ function SupplierEditor({
         dirty={dirty}
         saving={saving}
         onSave={() => onSave(form)}
-        onDiscard={id === null ? onCancel : () => setForm(initial)}
+        onDiscard={id === null ? close : () => setForm(initial)}
       />
       <s-stack direction="block" gap="base">
         <s-text-field label={t("Supplier name")} value={form.name} error={err("name")} onInput={(e) => set("name", val(e))} />

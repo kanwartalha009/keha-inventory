@@ -6,7 +6,9 @@
  *     those lines at the planned quantities, that supplier only); then a 13-week cash strip
  *     linking to Order plan · Next 13 weeks. Free: the read-only top-10 preview and the teaching
  *     lock instead (suppliers, purchase orders and the calendar are Growth).
- *  2. Money at stake (4 cards, each with "How we got this").
+ *  0. "This week" (components/briefing): the 30-second report, its 4 tiles and the money at stake
+ *     as one compact strip (each figure with "How we got this") — one card since 0286.
+ *  2. (merged into 0.)
  *  3. The setup guide while incomplete (Lead times, Suppliers, Product costs, Monday email),
  *     the first-sync screen and the empty states. While the store is read for the first time
  *     (owner 2026-10-17) the sync screen leads: stages with their own progress, an ETA measured
@@ -15,7 +17,8 @@
  *     the setup guide follows. Once numbers show from the newest months, they say "Based on the
  *     last 90 days so far" and a compact sync card sits at the bottom; when the read finishes,
  *     "Your order plan is ready" for a few days.
- *  4. "This week's actions" (task 2.3) once the store is ready.
+ *  4. The top 5 of "This week's actions" (task 2.3) once the store is ready; the whole list, with
+ *     its tabs, is the Actions page (/app/actions, 0286).
  * The loader reads only the database; the only Shopify call is the cached, time-boxed "is Keha
  * Preorder installed?" check, made only when a Growth store has a Bridge row to show.
  */
@@ -30,14 +33,13 @@ import { getHomeData, reviewAskDue } from "../models/dashboard.server";
 import { recordReviewAsk } from "../models/settings.server";
 import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../lib/review-ask-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
-import { CantPlan, CashBreakdown, CashStrip, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
+import { CantPlan, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
 import { cashTotals, dueNote, ordersDue } from "../lib/engine/forward-plan-shared";
 import {
   lockTeaser,
   orderLink,
   paidSummary,
-  paidWeeks,
   previewRows,
   supplierName,
   thisWeek,
@@ -183,12 +185,20 @@ export default function Home() {
 
       {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
 
-      {ready && data.briefing && <BriefingCard briefing={data.briefing} />}
+      {ready && data.briefing ? (
+        <BriefingCard briefing={data.briefing}>
+          <MoneyStrip data={data} />
+        </BriefingCard>
+      ) : (
+        ready && (
+          <s-section heading={t("Money at stake")}>
+            <MoneyStrip data={data} />
+          </s-section>
+        )
+      )}
       <OrderThisWeek data={data} />
 
-      {ready && <MoneyAtStake data={data} />}
-
-      {ready && data.actions && <ActionList list={data.actions} timezone={data.timezone} />}
+      {ready && data.actions && <ActionList list={data.actions} timezone={data.timezone} mode="preview" />}
 
       {data.state === "noSales" && (
         <s-section heading={t("Not enough sales yet to advise")}>
@@ -319,7 +329,6 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
   const week = thisWeek(plan);
   // One cash horizon (merchant #2): the same 13 weeks and the same total as Next 13 weeks — each
   // payment in the week it is paid (supplier payment terms), open orders' balances included.
-  const paid = paidWeeks(plan);
   const cashOut = paidSummary(plan);
   const strip = cashTotals(plan.events);
   const money = (v: number | null) => formatAmount(v, plan.currency, locale);
@@ -401,14 +410,14 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
           </s-stack>
         )}
         <CantPlan plan={plan} />
+        {/* One line on the Dashboard (0286): the 13 weekly bars and the breakdown live on Order plan ·
+            Next 13 weeks — the Dashboard answers "what now", the calendar "what's coming". */}
         {(strip.lines > 0 || cashOut.committed > 0) && (
           <s-stack direction="block" gap="small-200">
             <div className="keha-row-between">
               <s-text fontWeight="medium">{fill(t("Cash needed, next 13 weeks: {cash}"), { cash: money(cashOut.any ? cashOut.total : null) })}</s-text>
               <s-link {...link("/app/reorder/calendar")}>{t("See the order calendar")}</s-link>
             </div>
-            <CashStrip cash={paid} currency={plan.currency} compact />
-            <CashBreakdown summary={cashOut} currency={plan.currency} />
             {strip.missingCost > 0 && (
               <s-text color="subdued">
                 {fill(plural(strip.missingCost, t("1 line without a cost price is not in the cash totals."), t("{n} lines without a cost price are not in the cash totals.")), { n: formatCount(strip.missingCost, locale) })}
@@ -431,76 +440,72 @@ function useFmt(currency: string): Fmt {
   };
 }
 
-function MoneyAtStake({ data }: { data: HomeData }) {
+/**
+ * The money at stake as one compact strip inside "This week" (0286; four big cards before). Each
+ * figure keeps its "How we got this" popover, now behind an info button.
+ */
+function MoneyStrip({ data }: { data: HomeData }) {
   const { t } = useLocale();
   const link = useLinkProps();
   const money = data.money;
   const fmt = useFmt(money?.currency ?? "USD");
+  if (!money) return <s-paragraph color="subdued">{t("Your first numbers are being calculated.")}</s-paragraph>;
   return (
-    <s-section heading={t("Money at stake")}>
-      <s-stack direction="block" gap="base">
-        {money ? (
-          <>
-            <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
-              {MONEY_CARDS.map((key) => (
-                <MoneyCard key={key} cardKey={key} data={data} fmt={fmt} />
-              ))}
-            </s-grid>
-            <s-stack direction="inline" gap="small-200" alignItems="center">
-              <s-text color="subdued">{fill(t("Numbers from {day}"), { day: fmt.day(money.day) })}</s-text>
-              {data.syncView.partial && <s-text color="subdued">· {partialText(data.syncView.monthsRead, t, fmt.count)}</s-text>}
-              {data.refresh !== "daily" && (
-                <>
-                  <s-text color="subdued">· {t("Refreshed weekly on Free")}</s-text>
-                  <s-link {...link("/app/plans")}>{t("Upgrade")}</s-link>
-                </>
-              )}
-            </s-stack>
-            {data.recheckNotice && <s-text color="subdued">{recheckNoticeText(data.recheckNotice.corrected, t, fmt.count)}</s-text>}
-          </>
-        ) : (
-          <s-paragraph color="subdued">{t("Your first numbers are being calculated.")}</s-paragraph>
-        )}
+    <s-box padding="base" background="subdued" borderRadius="base">
+      <s-stack direction="block" gap="small-200">
+        <s-text type="strong">{t("Money at stake")}</s-text>
+        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(170px, 1fr))" gap="base">
+          {MONEY_CARDS.map((key) => (
+            <MoneyFigure key={key} cardKey={key} data={data} fmt={fmt} />
+          ))}
+        </s-grid>
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-text color="subdued">{fill(t("Numbers from {day}"), { day: fmt.day(money.day) })}</s-text>
+          {data.syncView.partial && <s-text color="subdued">· {partialText(data.syncView.monthsRead, t, fmt.count)}</s-text>}
+          {data.refresh !== "daily" && (
+            <>
+              <s-text color="subdued">· {t("Refreshed weekly on Free")}</s-text>
+              <s-link {...link("/app/plans")}>{t("Upgrade")}</s-link>
+            </>
+          )}
+        </s-stack>
+        {data.recheckNotice && <s-text color="subdued">{recheckNoticeText(data.recheckNotice.corrected, t, fmt.count)}</s-text>}
       </s-stack>
-    </s-section>
+    </s-box>
   );
 }
 
-function MoneyCard({ cardKey, data, fmt }: { cardKey: MoneyCardKey; data: HomeData; fmt: Fmt }) {
+function MoneyFigure({ cardKey, data, fmt }: { cardKey: MoneyCardKey; data: HomeData; fmt: Fmt }) {
   const { t } = useLocale();
   const value = data.money?.values[cardKey] ?? null;
   const lines = basisLines(cardKey, data.money?.basis ?? null, t, fmt);
   const title = moneyCardTitle(cardKey, t);
   const popId = `keha-how-${cardKey}`;
   return (
-    <s-box padding="base" border="base" borderRadius="base">
-      <s-stack direction="block" gap="small-200">
-        <s-text color="subdued">{title}</s-text>
-        <span className="keha-money__value">{fmt.money(value)}</span>
-        {value === null && <s-text color="subdued">{t("Not enough sales yet to advise")}</s-text>}
-        <s-stack direction="inline">
-          <s-button variant="tertiary" icon="info" commandFor={popId} accessibilityLabel={`${t("How we got this")}: ${title}`}>
-            {t("How we got this")}
-          </s-button>
-        </s-stack>
-        <s-popover id={popId}>
-          <s-box padding="base" maxInlineSize="360px">
-            <s-stack direction="block" gap="small-200">
-              <s-heading>{title}</s-heading>
-              {lines.length > 0 ? (
-                lines.map((l, i) => (
-                  <s-text key={i} color={i === lines.length - 1 ? "subdued" : "base"}>
-                    {l}
-                  </s-text>
-                ))
-              ) : (
-                <s-text color="subdued">{t("The details appear after the next calculation.")}</s-text>
-              )}
-            </s-stack>
-          </s-box>
-        </s-popover>
+    <s-stack direction="block" gap="small-100">
+      <s-text color="subdued">{title}</s-text>
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <span className="keha-money__figure">{fmt.money(value)}</span>
+        <s-button variant="tertiary" icon="info" commandFor={popId} accessibilityLabel={`${t("How we got this")}: ${title}`} />
       </s-stack>
-    </s-box>
+      {value === null && <s-text color="subdued">{t("Not enough sales yet to advise")}</s-text>}
+      <s-popover id={popId}>
+        <s-box padding="base" maxInlineSize="360px">
+          <s-stack direction="block" gap="small-200">
+            <s-heading>{title}</s-heading>
+            {lines.length > 0 ? (
+              lines.map((l, i) => (
+                <s-text key={i} color={i === lines.length - 1 ? "subdued" : "base"}>
+                  {l}
+                </s-text>
+              ))
+            ) : (
+              <s-text color="subdued">{t("The details appear after the next calculation.")}</s-text>
+            )}
+          </s-stack>
+        </s-box>
+      </s-popover>
+    </s-stack>
   );
 }
 

@@ -166,7 +166,7 @@ export async function getActionList(
 
   // Free: rows beyond the top 10 never reach the browser — only their count and the money
   // they are worth (hiddenAmount, summed here on the server inside buildActionList).
-  return buildActionList({
+  const list = buildActionList({
     actions,
     variants,
     clearances,
@@ -177,6 +177,7 @@ export async function getActionList(
     preorderInstalled,
     currency: row.currency,
   });
+  return list ? { ...list, timezone: row.timezone ?? null } : list;
 }
 
 /** Snooze / dismiss / done / undo one of this shop's actions. Null when it isn't this shop's. */

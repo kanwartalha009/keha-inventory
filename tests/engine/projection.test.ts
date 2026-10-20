@@ -102,4 +102,20 @@ describe("late purchase orders (accuracy audit 2026-10-18)", () => {
     expect(whyLines({ ...why, latePo: { days: 1, extra: 10 } }, (x) => x, "en")).toContain("An open order is 1 day late: counted as arriving now, with 10 more safety while it is late.");
     expect(whyLines(why, (x) => translate("de", x), "de").join(" ")).toContain("12 Tage zu spät");
   });
+
+  it("C2: only the first planned order carries the late order's extra safety; later orders don't", () => {
+    const r = computeVariant({ ...base(), arrivals: [{ day: ago(12), units: 200 }] })!;
+    const metric = { status: r.status, rate: r.rate, sigma: r.sigma, orderQty: r.orderQty, inputs: JSON.parse(JSON.stringify({ ...r.inputs, safety: r.safety })) };
+    const input = forwardInputFromMetric(metric, { today: TODAY, pack: null, moq: null, notCounted: 0, days: 91 });
+    const withLate = planVariant(input);
+    const [first, ...later] = withLate.orders;
+    expect(first!.why!.latePo).toEqual({ days: 12, extra: 70 });
+    expect(first!.why!.safety).toBeCloseTo(r.safety!, 6);
+    expect(later.length).toBeGreaterThan(0);
+    for (const o of later) {
+      expect(o.why!.latePo).toBeNull();
+      // Safety without the 70 extra (scaled by season only: flat here, so the base safety).
+      expect(o.why!.safety).toBeCloseTo(r.safety! - 70, 6);
+    }
+  });
 });

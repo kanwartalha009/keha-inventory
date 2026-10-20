@@ -6,7 +6,8 @@
  */
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { SaveBar } from "@shopify/app-bridge-react";
-import { Modal, useLinkProps, useSafeNavigate } from "./wc";
+import { Modal, useDirtyForm, useLeaveRequest, useLinkProps, useSafeNavigate } from "./wc";
+import ConfirmModal from "./ConfirmModal";
 import { HelpBody, type HelpContent } from "./help";
 import { UpgradeFromQuery } from "./plan";
 import { SampleBanner } from "./sample";
@@ -529,6 +530,7 @@ export function AppPage({
         <UpgradeFromQuery />
         {children}
       </div>
+      <LeaveGuard />
       {help && (
         <Modal
           open={helpOpen}
@@ -749,6 +751,8 @@ export function FormSaveBar({
   onDiscard: () => void;
 }) {
   const { t } = useLocale();
+  // Tells the page's links and tabs there are unsaved changes (they ask before leaving).
+  useDirtyForm(id, dirty && !saving, onDiscard);
   return (
     <SaveBar id={id} open={dirty || saving}>
       <button variant="primary" onClick={onSave} loading={saving ? "" : undefined}>
@@ -900,5 +904,22 @@ export function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/** "Discard unsaved changes?" before a tab or link leaves a page with a save bar showing. */
+function LeaveGuard() {
+  const { t } = useLocale();
+  const leave = useLeaveRequest();
+  return (
+    <ConfirmModal
+      open={leave.open}
+      title={t("Discard unsaved changes?")}
+      message={t("If you leave this page, the changes you made here are lost.")}
+      confirmLabel={t("Discard changes")}
+      cancelLabel={t("Keep editing")}
+      onConfirm={leave.discardAndLeave}
+      onCancel={leave.stay}
+    />
   );
 }

@@ -198,12 +198,14 @@ export default function AlertsSettings() {
             <s-checkbox
               label={t("Send the weekly summary email")}
               checked={flag(form.mondayEnabled)}
+              disabled={flag(sample)}
               onChange={(e) => set("mondayEnabled", isChecked(e))}
             />
             <s-text-field
               label={t("Send to")}
               details={t("Leave empty to send it to the store owner. Separate several addresses with commas.")}
               value={form.recipients}
+              disabled={flag(sample)}
               error={err("recipients")}
               onInput={(e) => set("recipients", val(e))}
             />
@@ -239,6 +241,7 @@ export default function AlertsSettings() {
                 : t("To Slack when it's connected. At most once per product per week.")
             }
             checked={flag(form.instant)}
+            disabled={flag(sample)}
             onChange={(e) => set("instant", isChecked(e))}
           />
           {!emailProvider && (
@@ -281,7 +284,7 @@ export default function AlertsSettings() {
               placeholder="https://hooks.slack.com/services/…"
               value={form.slackWebhook}
               error={err("slackWebhook")}
-              disabled={flag(!canSlack)}
+              disabled={flag(!canSlack || sample)}
               onInput={(e) => set("slackWebhook", val(e))}
             />
           )}
@@ -289,7 +292,7 @@ export default function AlertsSettings() {
             label={t("Send the weekly summary to Slack")}
             details={canSlack ? t("The same numbers and top actions as the email, shorter.") : planTag("slack", t)}
             checked={flag(form.slackMonday)}
-            disabled={flag(!canSlack)}
+            disabled={flag(!canSlack || sample)}
             onChange={(e) => set("slackMonday", isChecked(e))}
           />
         </s-stack>

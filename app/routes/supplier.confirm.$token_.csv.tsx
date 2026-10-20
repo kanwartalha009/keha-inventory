@@ -7,14 +7,14 @@
  */
 import type { LoaderFunctionArgs } from "react-router";
 import { allowConfirmRequest, lookupConfirm } from "../services/supplier-confirm.server";
-import { documentFor, poCsvFile } from "../services/po-document.server";
+import { documentFor, poCsvFile, poCsvLayout } from "../services/po-document.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const token = params.token ?? "";
   if (!allowConfirmRequest(request, token)) return new Response("Too many requests", { status: 429 });
   const found = await lookupConfirm(token);
   if (!found.ok) return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
-  const { csv, fileName } = poCsvFile(await documentFor(found.shop, found.order), new URL(request.url).searchParams.get("layout") === "grid");
+  const { csv, fileName } = poCsvFile(await documentFor(found.shop, found.order), poCsvLayout(new URL(request.url).searchParams.get("layout")));
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

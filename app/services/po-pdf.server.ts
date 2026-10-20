@@ -7,11 +7,13 @@
  * column); products without sizes as a flat list. Freight & duty (landed cost)
  * is never on it: only the order's own line costs.
  *
- * pdfkit's built-in Helvetica only covers Windows-1252 (Western European).
- * Text outside it (e.g. Polish ł, ą) is written without its accent rather
- * than as a broken glyph — `pdfSafe` below. Embedding a Unicode font would
- * need a font file in the repo; not done in v1.
+ * Fonts: Liberation Sans (SIL OFL 1.1, app/assets/fonts) is embedded so every language prints —
+ * Polish ł, ą, ż included (post-approval backlog C4). If the font files can't be read, pdfkit's
+ * built-in Helvetica is used and text outside Windows-1252 is written without its accent rather
+ * than as a broken glyph (`pdfSafe` below).
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import PDFDocument from "pdfkit";
 import { translate, fill, type Locale } from "../lib/i18n";
 import { lineVariant, supplierTotals, type SupplierLine } from "../lib/purchase-order-shared";
@@ -41,6 +43,31 @@ export type PoPdfInput = {
 // Windows-1252 characters above Latin-1's control block (0x80–0x9F).
 const CP1252_EXTRA = new Set("€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ");
 const SPECIAL: Record<string, string> = { ł: "l", Ł: "L", đ: "d", Đ: "D", ı: "i", " ": " ", " ": " ", " ": " " };
+
+type PdfFonts = { regular: string; bold: string; unicode: boolean; files?: { regular: Buffer; bold: Buffer } };
+let fontCache: PdfFonts | null = null;
+
+/** The embedded Unicode font when its files are there (the Docker image copies the repo), else Helvetica. */
+export function pdfFonts(dir: string = join(process.cwd(), "app", "assets", "fonts")): PdfFonts {
+  if (fontCache && dir === join(process.cwd(), "app", "assets", "fonts")) return fontCache;
+  let out: PdfFonts;
+  try {
+    out = {
+      regular: "Keha-Regular",
+      bold: "Keha-Bold",
+      unicode: true,
+      files: { regular: readFileSync(join(dir, "LiberationSans-Regular.ttf")), bold: readFileSync(join(dir, "LiberationSans-Bold.ttf")) },
+    };
+  } catch (e) {
+    console.error("[po-pdf] embedded font missing, using Helvetica", e);
+    out = { regular: "Helvetica", bold: "Helvetica-Bold", unicode: false };
+  }
+  if (dir === join(process.cwd(), "app", "assets", "fonts")) fontCache = out;
+  return out;
+}
+
+/** With the embedded font: any text, control characters as spaces. */
+const unicodeSafe = (text: string) => text.replace(/[\u0000-\u001f\u007f]/g, " ");
 
 /** Text the standard PDF fonts can draw: Windows-1252 kept, other letters without their accent, the rest "?". */
 export function pdfSafe(text: string): string {
@@ -79,10 +106,14 @@ function day(d: string | null, locale: Locale): string {
 }
 
 /** Renders the PDF into a Buffer. */
-export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
+export function renderPoPdf(input: PoPdfInput, fonts: PdfFonts = pdfFonts()): Promise<Buffer> {
   const tr = (key: string) => translate(input.locale, key);
-  const s = (t: string) => pdfSafe(t);
+  const s = (t: string) => (fonts.unicode ? unicodeSafe(t) : pdfSafe(t));
   const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: `${input.number}`, Producer: "Keha Inventory Planner" } });
+  if (fonts.files) {
+    doc.registerFont(fonts.regular, fonts.files.regular);
+    doc.registerFont(fonts.bold, fonts.files.bold);
+  }
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
     doc.on("data", (c: Buffer) => chunks.push(c));
@@ -94,9 +125,9 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const bottom = () => doc.page.height - doc.page.margins.bottom;
 
-  doc.font("Helvetica-Bold").fontSize(20).text(s(fill(tr("Purchase order {number}"), { number: input.number })), left);
+  doc.font(fonts.bold).fontSize(20).text(s(fill(tr("Purchase order {number}"), { number: input.number })), left);
   doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(11).fillColor("#444444").text(s(input.storeName));
+  doc.font(fonts.regular).fontSize(11).fillColor("#444444").text(s(input.storeName));
   doc.moveDown(0.8);
   doc.fillColor("#000000").fontSize(10);
   const meta: [string, string][] = [
@@ -108,22 +139,22 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
     if (input.confirmedShipDate) meta.push([tr("Ship date confirmed by the supplier"), day(input.confirmedShipDate, input.locale)]);
   }
   for (const [k, v] of meta) {
-    doc.font("Helvetica-Bold").text(s(`${k}: `), { continued: true }).font("Helvetica").text(s(v));
+    doc.font(fonts.bold).text(s(`${k}: `), { continued: true }).font(fonts.regular).text(s(v));
   }
   // Buyer, ship-to, terms, Incoterms, dates, note — the same rows as the CSV and the email.
   for (const r of input.details ? poDetailRows(input.details, tr, (d) => day(d, input.locale)) : []) {
     if (r.lines.length === 1) {
-      doc.font("Helvetica-Bold").text(s(`${r.label}: `), { continued: true }).font("Helvetica").text(s(r.lines[0]!));
+      doc.font(fonts.bold).text(s(`${r.label}: `), { continued: true }).font(fonts.regular).text(s(r.lines[0]!));
     } else {
-      doc.moveDown(0.3).font("Helvetica-Bold").text(s(r.label));
-      for (const l of r.lines) doc.font("Helvetica").text(s(l));
+      doc.moveDown(0.3).font(fonts.bold).text(s(r.label));
+      for (const l of r.lines) doc.font(fonts.regular).text(s(l));
     }
   }
   doc.moveDown(1);
 
   type Col = { key: string; w: number; right?: boolean };
   const row = (cols: readonly Col[], cells: Record<string, string>, bold: boolean, size = 9) => {
-    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(size);
+    doc.font(bold ? fonts.bold : fonts.regular).fontSize(size);
     const heights = cols.map((c) => doc.heightOfString(s(cells[c.key] ?? ""), { width: c.w * width - 4 }));
     const h = Math.max(...heights) + 6;
     if (doc.y + h > bottom()) doc.addPage();
@@ -216,14 +247,14 @@ export function renderPoPdf(input: PoPdfInput): Promise<Buffer> {
   }
   const totals = supplierTotals(input.lines, input.hidePrices);
   doc.moveDown(0.8);
-  doc.font("Helvetica-Bold").fontSize(10);
+  doc.font(fonts.bold).fontSize(10);
   doc.text(s(fill(tr("Total units: {n}"), { n: new Intl.NumberFormat(input.locale).format(totals.units) })), left, doc.y, { width, align: "right" });
   if (!input.hidePrices) {
     doc.text(s(fill(tr("Total cost: {amount}"), { amount: money(totals.cost ?? null, input.currency, input.locale) })), left, doc.y, { width, align: "right" });
   }
   if (input.confirmUrl) {
     doc.moveDown(1.5);
-    doc.font("Helvetica").fontSize(10).fillColor("#000000").text(s(tr("Please confirm the ship date here:")), left, doc.y, { width });
+    doc.font(fonts.regular).fontSize(10).fillColor("#000000").text(s(tr("Please confirm the ship date here:")), left, doc.y, { width });
     doc.fillColor("#1a56db").text(input.confirmUrl, { width, link: input.confirmUrl, underline: true });
     doc.fillColor("#000000");
   }

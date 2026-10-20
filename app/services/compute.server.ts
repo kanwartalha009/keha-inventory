@@ -35,6 +35,7 @@
  * is every active location that counts in supplier orders, on every plan, and its demand is all
  * channels (compute-shared demandScope).
  */
+import { lineCosts } from "../lib/order-plan-shared";
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { facts } from "./facts-store.server";
@@ -102,7 +103,7 @@ import { ALL, dayDate } from "../lib/sync/facts-shared";
 import { localDate, safeTimeZone } from "../lib/sync/store-time-shared";
 import { addDays } from "../lib/sync/shopifyql-shared";
 import { planFor } from "./entitlements.server";
-import { finishLocationMetrics, locationMetricsChunk, prepareLocationMetrics } from "./compute-locations.server";
+import { finishLocationMetrics, kehaUnitsByLocation, locationMetricsChunk, prepareLocationMetrics } from "./compute-locations.server";
 import { YIELD_EVERY, allLimit, yieldToEventLoop, yielder } from "../lib/concurrency-shared";
 import { sweepVariantMetrics, writeVariantMetrics } from "./metric-writes.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
@@ -451,7 +452,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   }
 
   // ---- catalog and pool ----
-  const [locations, variants, suppliers] = await Promise.all([
+  const [locations, variants, supplierRows] = await Promise.all([
     prisma.location.findMany({ where: { shop }, select: POOL_LOCATION_SELECT }),
     prisma.variant.findMany({
       where: { shop },
@@ -466,6 +467,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         isBundle: true,
         bundleComponents: true,
         cost: true,
+        costCurrency: true,
         price: true,
         productCreatedAt: true,
         caseQty: true,
@@ -480,9 +482,11 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
     }),
     prisma.supplier.findMany({
       where: { shop },
-      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true, orderCycleDays: true, leadSamples: true, leadSigmaDays: true },
+      select: { id: true, name: true, leadTimeDays: true, minOrder: true, minOrderTotal: true, casePack: true, vendorMatch: true, transitDays: true, orderCycleDays: true, leadSamples: true, leadSigmaDays: true, currency: true, exchangeRate: true },
     }),
   ]);
+  // Decimal → number (lineCosts converts a cost kept in the supplier's currency, C3).
+  const suppliers = supplierRows.map((r) => ({ ...r, exchangeRate: numOrNull(r.exchangeRate) }));
   const pool = poolLocationIds(locations);
   const considered = variants.filter((v) => v.tracked && !v.isBundle && v.status === "ACTIVE");
   warnSharedLoop(shop, considered.length);
@@ -508,7 +512,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // units: the Reorder screen nets drafts against it, and landed units are in on-hand.
   const openPoRows = await prisma.purchaseOrder.findMany({
     where: { shop, status: { in: [...OPEN_PO_STATUSES] } },
-    select: { id: true, source: true, status: true, createdAt: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true },
+    select: { id: true, source: true, status: true, createdAt: true, lines: true, sentAt: true, confirmedShipDate: true, expectedDate: true, supplierId: true, shipToLocationId: true },
   });
   // H2: a confirmed SHIP date lands `transitDays` later (the supplier's freight time).
   const transitOf = new Map(suppliers.map((x) => [x.id, x.transitDays ?? null]));
@@ -533,6 +537,10 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
   // Each Keha order's share of the incoming (inputs.kehaOrders): the order plan takes the units of
   // an order closed short / cancelled after this run out at once (H2).
   const kehaShares = kehaOrderShares(rawPos, openPos);
+  // Pro per-location plans (post-approval backlog C1): open Keha orders shipping to a location
+  // are on order THERE — their open units (raw for the inputs, landed-adjusted for the plan).
+  const shipToOf = new Map(openPoRows.map((po) => [po.id, po.shipToLocationId ?? null]));
+  const kehaByLocation = kehaUnitsByLocation(rawPos.filter(isKeha), openPos.filter(isKeha), shipToOf);
   const dated = datedIncoming(openPos);
 
   // ---- seasonality and trend (§7.3) ----
@@ -874,7 +882,9 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         // Keeps selling when out of stock: the backlog is owed (data audit #1); otherwise missed sales are lost.
         sellsWhenOut: v.inventoryPolicy === "CONTINUE",
         price: numOrNull(v.price),
-        cost: numOrNull(v.cost),
+        // In the store's currency (post-approval backlog C3): a cost kept in the supplier's currency
+        // is converted with the supplier's exchange rate, as the order plan does; unknown stays null.
+        cost: lineCosts(numOrNull(v.cost), v.costCurrency ?? null, shopRow.currency, supplier?.currency ?? null, supplier?.exchangeRate ?? null).store,
         settings: overrides,
       });
       if (r && reuse) r.inputs.error = withCachedBacktest(r.inputs.error, c!, prior ?? 1);
@@ -912,6 +922,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
           days: 0,
           outSince: r.inputs.outSince,
           sellsWhenOut: r.inputs.sellsWhenOut,
+          latePo: r.inputs.latePo ?? null,
         });
         // "Don't reorder" variants get no order-by date (no order advice at all).
         r.orderBy = r.inputs.noReorder ? null : fwd.deadline;
@@ -976,6 +987,7 @@ export async function computeShop(shop: string, opts: ComputeOptions = {}): Prom
         noCapProducts: new Set([...forecastChoices.values()].filter((o) => o.noCap).map((o) => o.productId)),
         pool: { series, lastSale, dataSince, resolveLastSale: (unknown: readonly string[]) => resolveLastSale(shop, lastSale, unknown, from, demandFilter) },
         daysReady,
+        kehaByLocation,
       });
     }
 

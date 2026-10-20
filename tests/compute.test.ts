@@ -302,6 +302,16 @@ describe("computeShop", () => {
     expect(basis.soldOutTraffic).toMatchObject({ productsSoldOut: 1, soldOutSessions: 150, aov: 50 });
   });
 
+  it("C3: a cost kept in the supplier's currency is converted with its exchange rate before cash tied up", async () => {
+    db.tables.supplier = [{ id: "S9", shop: S, name: "US Mill", leadTimeDays: 14, minOrder: null, minOrderTotal: null, casePack: null, vendorMatch: [], currency: "USD", exchangeRate: 0.9 }];
+    const c = db.tables.variant.find((v) => v.id === C)!;
+    c.supplierId = "S9";
+    c.costCurrency = "USD";
+    await computeShop(S, { now: () => NOW });
+    // 30 units × $10 × 0.9 = €270 (was €300: the dollar cost read as euros).
+    expect(db.tables.moneyAtStake[0].cashStuck).toBe(270);
+  });
+
   it("Free plan: money once per ISO week (store time), first run on Monday before the 08:00 email; metrics every run", async () => {
     await computeShop(S, { now: () => NOW, plan: async () => "free" }); // Friday 16 Oct
     const first = db.tables.moneyAtStake[0];

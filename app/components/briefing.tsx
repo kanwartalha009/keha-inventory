@@ -1,13 +1,16 @@
 /**
- * "This week in 30 seconds" (lib/briefing-shared): plain sentences, then one tile per job with
- * one button. Words only here; the numbers come from the server.
+ * "This week" (lib/briefing-shared): plain sentences, then one tile per job with one button, then
+ * the money at stake as a compact strip (children). One card since 0286: "This week in 30 seconds"
+ * and "Money at stake" were two sections saying overlapping things (Kanwar 2026-10-20: "too much
+ * scroll and a bit noisy"). Words only here; the numbers come from the server.
  */
+import type { ReactNode } from "react";
 import type { Briefing, BriefingSentence, BriefingTile } from "../lib/briefing-shared";
 import { fill, plural, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
 import { useLinkProps } from "./wc";
 
-export function BriefingCard({ briefing }: { briefing: Briefing }) {
+export function BriefingCard({ briefing, children }: { briefing: Briefing; children?: ReactNode }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const money = (v: number | null) => formatAmount(v, briefing.currency, locale);
@@ -96,7 +99,7 @@ export function BriefingCard({ briefing }: { briefing: Briefing }) {
   };
 
   return (
-    <s-section heading={t("This week in 30 seconds")}>
+    <s-section heading={t("This week")}>
       <s-stack direction="block" gap="base">
         <s-stack direction="block" gap="small-200">
           {briefing.sentences.map((s) => (
@@ -106,6 +109,7 @@ export function BriefingCard({ briefing }: { briefing: Briefing }) {
         <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
           {briefing.tiles.map(tile)}
         </s-grid>
+        {children}
       </s-stack>
     </s-section>
   );

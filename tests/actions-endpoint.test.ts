@@ -21,7 +21,7 @@ const m = vi.hoisted(() => ({
 vi.mock("../app/shopify.server", () => ({
   authenticate: { admin: vi.fn(async () => ({ admin: { graphql: m.graphql }, session: { shop: m.shop } })) },
 }));
-vi.mock("../app/services/entitlements.server", () => ({ can: m.can }));
+vi.mock("../app/services/entitlements.server", () => ({ can: m.can, planFor: vi.fn(async () => "growth") }));
 
 import * as dbModule from "../app/db.server";
 import { action, loader } from "../app/routes/app.actions";
@@ -121,8 +121,12 @@ describe("snooze / dismiss / done / undo", () => {
     expect(await post({ op: "explode", id: "a1" })).toEqual({ ok: false, error: "bad_request" });
   });
 
-  it("has no GET", async () => {
-    await expect(loader({ request: new Request("https://app.test/app/actions"), params: {}, context: {} } as never)).rejects.toMatchObject({ status: 405 });
+  it("GET is the Actions page (0286): this shop's list and its time zone", async () => {
+    seed();
+    const data = await loader({ request: new Request("https://app.test/app/actions?tab=clear"), params: {}, context: {} } as never);
+    expect(data.readiness.ready).toBe(true);
+    expect(data.timezone).toBe("Europe/Madrid");
+    expect(data.list?.rows.map((r) => r.id).sort()).toEqual(["a1", "c1"]);
   });
 });
 

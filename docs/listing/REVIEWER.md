@@ -37,7 +37,7 @@ as sent**. Slack works as a direct integration (Growth).
    store with no orders shows the empty state "Your first order plan needs 14 days of sales —
    expected on <date>". To see numbers and actions, use our demo store below, or a
    test store with at least 14 days of orders on tracked products.
-3. Shopify Flow (free app) installed, only to see the two Flow triggers.
+3. Shopify Flow (free app) installed, only to see the four Flow triggers.
 4. For the Pro features: at least two active locations — one with spare stock to act as the
    warehouse, one selling through Shopify POS as a store — with stock of the same products.
 5. For the Season planner's seasonality: 13 months of sales history (with less, the Season planner still works
@@ -87,19 +87,22 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    appears here when it's ready" (with Shopify Flow, **First order plan ready** fires then). The newest 90 days are read first; the
    numbers appear when they are in, labelled "Based on the last 90 days so far" until the older
    months are read, and the header then shows the real update time.
-3. **Dashboard → This week in 30 seconds** (top of the page): up to three plain sentences (what to
+3. **Dashboard → This week** (top of the page): up to three plain sentences (what to
    order this week and the cash, sold-out products shoppers still look for, stock that doesn't
    move and the cash it ties up) and one tile each — **Order**, **Sold out**, **Not selling**,
-   **Product pages** — that opens the matching list (Due now, or the matching tab of This week's
-   actions; **Not selling** is the Clearance tab with **Create discounts**).
+   **Product pages** — that opens the place to act (Due now, or the matching tab of the
+   **Actions** page; **Not selling** is the Clearance tab with **Create discounts**). Under the
+   tiles, **Money at stake**: sales at risk, lost sales, cash tied up and sales missed on sold-out
+   pages, each with an info button ("How we got this") that shows the inputs. A dash (—) means not
+   enough data, never zero.
    **Dashboard → Due this week** (below it): each supplier with orders due in the
    next 7 days (overdue ones included) — products, units, cash and order-by date — with
    **Review order**, which opens Due now for that supplier at the planned quantities. Below it,
-   the cash needed for the next 13 weeks with **See the next 13 weeks**.
-4. **Dashboard → money cards:** open "How we got this" on any card to see the inputs. A dash (—)
-   means not enough data, never zero.
-5. **Dashboard → This week's actions:** switch tabs (All, Reorder, Stock gaps, Promote, Product issues, Clearance).
-   Each row's "…" menu has **Mark as done**, **Snooze 7 days**, **Dismiss** and **Why** (Undo
+   the cash needed for the next 13 weeks with **See the order calendar**.
+4. **Dashboard → This week's actions:** the 5 actions with the most money at stake and **See all
+   … actions**, which opens the **Actions** page (also in the app menu).
+5. **Actions:** the whole list. Switch tabs (All, Reorder, Stock gaps, Promote, Product issues, Clearance).
+   Each row's "…" menu has **Mark as done**, **Snooze 7 days**, **Dismiss** and **Why this action** (Undo
    appears after Done, Snooze and Dismiss).
 6. **Clearance** tab → **Create discount** → a confirm dialog shows the products and the
    percentage → confirm. The discount appears in Shopify → Discounts. Nothing is created

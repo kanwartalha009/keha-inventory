@@ -229,7 +229,6 @@ export const CASH_TR: Record<string, Tr> = {
     pl: "Numer artykułu lub modelu dostawcy dla tego produktu. Widoczny na zamówieniach. Zostaw puste, aby użyć początku kodów SKU.",
   },
   "Use up to 64 characters.": { es: "Usa hasta 64 caracteres.", fr: "64 caractères maximum.", de: "Höchstens 64 Zeichen.", it: "Usa fino a 64 caratteri.", pt: "Use até 64 caracteres.", nl: "Gebruik maximaal 64 tekens.", pl: "Użyj maksymalnie 64 znaków." },
-  "Download CSV (size grid)": { es: "Descargar CSV (tabla de tallas)", fr: "Télécharger le CSV (grille de tailles)", de: "CSV herunterladen (Größenraster)", it: "Scarica CSV (griglia taglie)", pt: "Transferir CSV (grelha de tamanhos)", nl: "CSV downloaden (maatraster)", pl: "Pobierz CSV (siatka rozmiarów)" },
   "Style code": { es: "Referencia", fr: "Référence", de: "Artikelnummer", it: "Codice articolo", pt: "Referência", nl: "Artikelcode", pl: "Kod artykułu" },
   "Total units": { es: "Unidades totales", fr: "Unités au total", de: "Stück gesamt", it: "Unità totali", pt: "Unidades no total", nl: "Totaal stuks", pl: "Razem sztuk" },
   Totals: { es: "Totales", fr: "Totaux", de: "Summe", it: "Totali", pt: "Totais", nl: "Totalen", pl: "Razem" },
