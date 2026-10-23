@@ -354,7 +354,7 @@ const statusMeta = (o: Outcome | null, today: DayKey) =>
 const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey, note?: DueNote | null) => {
   // The order-by date in words; how urgent it is comes from the status word next to it (`status`).
   if (!day && overdue && note?.soldOutSince) return `due now — sold out since ${dayLabel(note.soldOutSince, today)}`;
-  if (!day && overdue && note?.runsOut) return `due now — ${note.belowSafety ? "its buffer is running low, lasts to" : "runs out"} ${dayLabel(note.runsOut, today)}`;
+  if (!day && overdue && note?.runsOut) return `due now — ${note.belowSafety ? "dipping into safety stock, lasts to" : "runs out"} ${dayLabel(note.runsOut, today)}`;
   if (day && !overdue && note?.nextSeason) return `next season: order by ${dayLabel(day, today)}`;
   return day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null;
 };

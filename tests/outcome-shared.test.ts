@@ -130,10 +130,10 @@ describe("plain words for numbers", () => {
   it("why this quantity, in a sentence whose numbers add up; rounding said only when it happened", () => {
     const why = { day: 0, days: 28, demand: 56, rate: 2, season: 1, growth: 1, safety: 10, onHand: 5, onOrder: 0, missed: 23, need: 38, rounded: 38, pack: null, moq: null, topUp: 0 };
     expect(whyPlain(why, id, "en")).toBe(
-      "Sells 2 a day. The next 28 days need about 56, plus a buffer of 10. About 23 of those sales come before it can arrive, so they aren't ordered. You have 5 in stock, so order 38.",
+      "Sells 2 a day. The next 28 days need about 56, plus 10 safety stock. About 23 of those sales come before it can arrive, so they aren't ordered. You have 5 in stock, so order 38.",
     );
     expect(whyPlain({ ...why, day: 3, missed: 0, onOrder: 6, need: 55, rounded: 60, pack: 12 }, id, "en")).toBe(
-      "Sells 2 a day. The next 28 days need about 56, plus a buffer of 10. You'll have about 5 in stock then and 6 on order, so order 60. Rounded up for the case pack or the supplier's minimum.",
+      "Sells 2 a day. The next 28 days need about 56, plus 10 safety stock. You'll have about 5 in stock then and 6 on order, so order 60. Rounded up for the case pack or the supplier's minimum.",
     );
   });
 });
@@ -144,12 +144,12 @@ describe("How we plan (said once per page)", () => {
       "Sales counted only on days in stock",
       "21-day lead time unless a supplier has its own",
       "stock for 30 days after each delivery",
-      "a standard buffer",
+      "standard safety stock",
     ]);
     expect(planBasisParts({ leadTimeDays: 14, cycleDays: 30, safetyLevel: "lean", suppliers: 0, locationsLeftOut: 2 }, id, "en").slice(1)).toEqual([
       "14-day lead time",
       "stock for 30 days after each delivery",
-      "a small buffer",
+      "low safety stock",
       "2 locations left out of orders",
     ]);
   });

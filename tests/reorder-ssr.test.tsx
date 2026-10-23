@@ -79,6 +79,11 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 150 units.");
     expect(html).toContain("The products from your action list are highlighted.");
     expect(html).toContain("From your action list");
+    // From the product page's "Add to purchase order" (`src=product`): said so.
+    const fromProduct = render("/app/reorder?variants=1&src=product", "reorder", Reorder, reorderData());
+    expect(fromProduct).toContain("The product you came from is highlighted.");
+    expect(fromProduct).toContain("From the product page");
+    expect(fromProduct).not.toContain("From your action list");
     // Acme: the plan's quantities, in whole cases of 6, topped up to ≥ 150.
     expect(html).toMatch(/Units: 15\d/);
     // A line without a cost is "—" and counted; the order's cost is still shown (store currency).

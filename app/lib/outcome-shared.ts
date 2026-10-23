@@ -154,7 +154,7 @@ export function outcomeMeaning(k: OutcomeKey, t: T): string {
     case "orderNow":
       return t("Sold out, or runs out before a new order could arrive.");
     case "orderSoon":
-      return t("Order within a week to keep a small buffer.");
+      return t("Order within a week to keep its safety stock.");
     case "ok":
       return t("Enough stock. Nothing to do this week.");
     case "tooMuch":
@@ -183,7 +183,7 @@ export function outcomeReasonText(r: OutcomeReason, t: T, day: (d: DayKey) => st
       // expected date (the order page has that); the words stay true either way.
       return r.runsOut ? fill(t("Runs out {date} until the stock on order arrives"), { date: day(r.runsOut) }) : t("Runs out before the stock on order arrives");
     case "buffer":
-      return r.lasts ? fill(t("Lasts to {date} · its buffer is running low"), { date: day(r.lasts) }) : t("Its buffer is running low");
+      return r.lasts ? fill(t("Lasts to {date} · dipping into safety stock"), { date: day(r.lasts) }) : t("Dipping into safety stock");
     case "orderBy":
       return r.lasts ? fill(t("Order by {date} · lasts to {lasts}"), { date: day(r.orderBy), lasts: day(r.lasts) }) : fill(t("Order by {date}"), { date: day(r.orderBy) });
     case "lasts":
@@ -241,12 +241,13 @@ export function planOutcome(l: PlanLineIn, today: DayKey): Outcome {
   return outcomeOf({ status: "healthy", today, orderBy: l.orderBy, overdue: false });
 }
 
-const RANK: Record<OutcomeKey, number> = { orderNow: 0, orderSoon: 1, ok: 2, tooMuch: 3, notSelling: 4, learning: 5, dontReorder: 6 };
+/** Most urgent first: the order of the Products table, the supplier's worst word, the Dashboard. */
+export const OUTCOME_RANK: Record<OutcomeKey, number> = { orderNow: 0, orderSoon: 1, ok: 2, tooMuch: 3, notSelling: 4, learning: 5, dontReorder: 6 };
 
 /** The most urgent outcome of several (a supplier's orders this week): Order now beats Order soon beats OK. */
 export function worstOutcome(list: readonly Outcome[]): Outcome | null {
   let best: Outcome | null = null;
-  for (const o of list) if (!best || RANK[o.key] < RANK[best.key]) best = o;
+  for (const o of list) if (!best || OUTCOME_RANK[o.key] < OUTCOME_RANK[best.key]) best = o;
   return best;
 }
 

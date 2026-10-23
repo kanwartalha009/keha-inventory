@@ -242,6 +242,7 @@ export default function Reorder() {
   const data = useLoaderData<typeof loader>() as ReorderPageData;
   const anySelected = data.groups.some((g) => g.selected);
   const fromPlanner = data.groups.some((g) => g.lines.some((l) => l.fromPlanner));
+  const pickedFromProduct = usePickedLabel().product;
   const location = data.location;
   const today = data.today ?? new Date().toISOString().slice(0, 10);
   const notReadyLine = useNotReadyText();
@@ -295,7 +296,9 @@ export default function Reorder() {
         <s-banner tone="info">
           {fromPlanner
             ? t("The products from the Season planner are highlighted, starting at the planned quantities.")
-            : t("The products from your action list are highlighted.")}
+            : pickedFromProduct
+              ? t("The product you came from is highlighted.")
+              : t("The products from your action list are highlighted.")}
         </s-banner>
       )}
       {data.missingSelected > 0 && (
@@ -396,6 +399,14 @@ function money(store: number | null, supplier: number | null, group: Pick<Reorde
  * A shorter "Order enough for" can push every line of a supplier past this week: its card (and its
  * picker) then disappears. Say so, with the way back to the plan's days (audit 2026-10-18).
  */
+/** Where the highlighted products came from: the product page (`?src=product`) or the action list. */
+function usePickedLabel(): { product: boolean; label: string } {
+  const { t } = useLocale();
+  const [params] = useSearchParams();
+  const product = params.get("src") === "product";
+  return { product, label: product ? t("From the product page") : t("From your action list") };
+}
+
 function HiddenCoverNote({ groups }: { groups: readonly ReorderGroup[] }) {
   const { t, locale } = useLocale();
   const [params, setParams] = useSearchParams();
@@ -419,6 +430,7 @@ function HiddenCoverNote({ groups }: { groups: readonly ReorderGroup[] }) {
 
 function GroupCard({ group, location, today }: { group: ReorderGroup; location: PlanningLocation | null; today: string }) {
   const { t, locale } = useLocale();
+  const picked = usePickedLabel();
   const link = useLinkProps();
   const navigate = useSafeNavigate();
   const fetcher = useFetcher<ReorderAction>();
@@ -476,7 +488,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
         group.late
           ? t("some products run out before a new order could arrive")
           : group.overdue
-            ? t("order this week to keep a small buffer")
+            ? t("order this week to keep their safety stock")
             : `${t("Order by")}: ${formatDay(group.orderBy, locale)}`
       }`}
       action={
@@ -485,7 +497,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             {group.late ? <s-badge tone="critical">{t("Order now")}</s-badge> : group.overdue ? <s-badge tone="warning">{t("Order soon")}</s-badge> : null}
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.selected && (
-              <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the Season planner") : t("From your action list")}</s-badge>
+              <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the Season planner") : picked.label}</s-badge>
             )}
           </span>
         ) : undefined
@@ -762,6 +774,7 @@ function LineRow({
   onStop: () => void;
 }) {
   const { t, locale } = useLocale();
+  const picked = usePickedLabel();
   const variant = variantName(l.variantTitle);
   const sub = [variant, l.sku].filter(Boolean).join(" · ");
   const n = readQty(value);
@@ -787,7 +800,7 @@ function LineRow({
           <s-stack direction="block" gap="none">
             <s-text fontWeight="medium">{l.productTitle}</s-text>
             {sub && <s-text color="subdued">{sub}</s-text>}
-            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From the Season planner") : t("From your action list")}</s-badge>}
+            {l.selected && <s-badge tone="info">{l.fromPlanner ? t("From the Season planner") : picked.label}</s-badge>}
             {l.noReorder && <s-badge tone="neutral">{t("Don't reorder")}</s-badge>}
           </s-stack>
         </div>

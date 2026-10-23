@@ -54,7 +54,7 @@ describe("Order calendar", () => {
     expect(html).toContain("Order soon");
     expect(html).toContain("Order by Oct 17 · lasts to Nov 4");
     // Why this quantity: the plain sentence first, the formula under Details.
-    expect(html).toContain("Sells 2 a day. The next 28 days need about 56, plus a buffer of 10. About 23 of those sales come before it can arrive, so they aren&#x27;t ordered. You have 5 in stock, so order 38.");
+    expect(html).toContain("Sells 2 a day. The next 28 days need about 56, plus 10 safety stock. About 23 of those sales come before it can arrive, so they aren&#x27;t ordered. You have 5 in stock, so order 38.");
     expect(html).toContain("<summary>Details</summary>");
     expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (out of stock before it arrives) 23 = 38");
     // Unknown costs are counted, never 0.

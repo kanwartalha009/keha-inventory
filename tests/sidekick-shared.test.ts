@@ -237,7 +237,7 @@ describe("product stock", () => {
     const r = productStockResponse([stockRow({ daysLeft: null, orderBy: null, orderQty: null })], { query: "x", total: 1, forecast: false, today: TODAY });
     const meta = r.results![0]!._meta;
     for (const k of ["days_left", "order_by", "order_by_label", "suggested_order_qty"]) expect(meta).not.toHaveProperty(k);
-    expect(meta).toMatchObject({ status: "Order soon", status_reason: "Its buffer is running low", on_hand: 9 });
+    expect(meta).toMatchObject({ status: "Order soon", status_reason: "Dipping into safety stock", on_hand: 9 });
   });
 
   it("says when nothing matches", () => {

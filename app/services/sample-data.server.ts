@@ -20,6 +20,8 @@ import { upsertCollections, upsertLocation, upsertVariants } from "./sync/catalo
 import { storeHistory } from "./sync/facts.server";
 import type { ShopifyqlClient } from "./sync/shopifyql.server";
 import { computeShop } from "./compute.server";
+import { createScenario } from "../models/planner.server";
+import { eventPeriod } from "../lib/planner-shared";
 import { purgeSampleData } from "./gdpr.server";
 import { forgetOrderPlan } from "../models/plan-cache.server";
 import { simulateStore, type SimOptions, type SimStore } from "../lib/sim/store-sim-shared";
@@ -226,7 +228,16 @@ export async function loadSampleData(shop: string, now: Date = new Date(), opts:
       locale: real.locale,
     });
     const report = await writeSimStore(key, store, { now });
-    if (opts.compute !== false) await computeShop(key, { now: () => now.getTime() });
+    if (opts.compute !== false) {
+      await computeShop(key, { now: () => now.getTime() });
+      // A ready season scenario (Black Friday, +20 %) so the Season planner shows its order list and
+      // cash per week on sample data too (merchant audit 2026-10-23: the page was empty there).
+      const bf = eventPeriod("black_friday", store.meta.today);
+      if (bf)
+        await createScenario(key, "pro", { name: `Black Friday ${bf.start.slice(0, 4)}`, event: "black_friday", start: bf.start, end: bf.end, targetType: "growth", targetValue: 20 }, now).catch((e) =>
+          console.error(`[sample] ${shop}: sample scenario failed`, e),
+        );
+    }
     await writeState(shop, { on: true, loadedAt: now.toISOString(), idPrefix });
     return { ok: true, variants: report.variants };
   } catch (e) {

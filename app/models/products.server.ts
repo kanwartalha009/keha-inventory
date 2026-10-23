@@ -24,7 +24,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { facts } from "../services/facts-store.server";
 import { dueNote, variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
-import { outcomeOf, type OutcomeKey } from "../lib/outcome-shared";
+import { OUTCOME_RANK, outcomeOf, type OutcomeKey } from "../lib/outcome-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
@@ -227,39 +227,41 @@ async function orderedIds(
   ]);
   let list = f.supplier ? rows.filter((r) => supplierValue(r, suppliers) === f.supplier) : rows;
   const metricRows =
-    view && (f.sort !== "title" || f.outcome)
+    (view && f.sort !== "title") || f.outcome
       ? await prisma.variantMetric.findMany({ where: { shop, scope }, select: { variantId: true, orderBy: true, status: true, daysLeft: true } })
       : [];
-  if (view && f.outcome) {
-    // The status words row by row (the database only pre-filtered by nightly status).
-    const metric = new Map(metricRows.map((m) => [m.variantId, m]));
-    list = list.filter((r) => {
-      const m = metric.get(r.id);
-      const l = view.line.get(r.id);
-      const st = view.state.get(r.id);
-      const o = outcomeOf({
-        status: m && isVariantStatus(m.status) ? m.status : null,
-        today: view.today,
-        noReorder: r.noReorder,
-        orderBy: l ? l.orderBy : (st?.deadline ?? null),
-        overdue: !!l?.overdue,
-        outlook: st?.outlook ?? null,
-        soldOutSince: l ? (dueNote(l.events)?.soldOutSince ?? null) : null,
-        daysLeft: m?.daysLeft === null || m?.daysLeft === undefined ? null : Number(m.daysLeft),
-      });
-      return o.key === f.outcome;
+  // The status word of each row (the same rule as withPlan and the Dashboard's counts).
+  const metric = new Map(metricRows.map((m) => [m.variantId, m]));
+  const outcomeFor = (r: { id: string; noReorder: boolean }) => {
+    const m = metric.get(r.id);
+    const l = view?.line.get(r.id);
+    const st = view?.state.get(r.id);
+    return outcomeOf({
+      status: m && isVariantStatus(m.status) ? m.status : null,
+      today: view?.today ?? new Date().toISOString().slice(0, 10),
+      noReorder: r.noReorder,
+      orderBy: l ? l.orderBy : (st?.deadline ?? null),
+      overdue: !!l?.overdue,
+      outlook: st?.outlook ?? null,
+      soldOutSince: l ? (dueNote(l.events)?.soldOutSince ?? null) : null,
+      daysLeft: m?.daysLeft === null || m?.daysLeft === undefined ? null : Number(m.daysLeft),
     });
-  }
+  };
+  // The database only pre-filtered by nightly status; the status words are checked row by row
+  // (without the plan — Free — from the nightly status alone, as the rows show them).
+  if (f.outcome) list = list.filter((r) => outcomeFor(r).key === f.outcome);
   if (!view || f.sort === "title") return list.map((r) => r.id);
   const stored = new Map(metricRows.map((m) => [m.variantId, m.orderBy ? m.orderBy.toISOString().slice(0, 10) : null]));
+  // Most urgent first (clarity pass): the status word's rank (Order now, Order soon, OK, …), then
+  // the order-by date (none last) — an "Order soon" row never sits above an "Order now" one.
   const key = (r: { id: string; noReorder: boolean }): [number, string] => {
-    if (r.noReorder) return [2, ""];
+    const rank = OUTCOME_RANK[outcomeFor(r).key];
+    if (r.noReorder) return [rank * 2, ""];
     const l = view.line.get(r.id);
-    // Overdue with no date (already out, run-out day unknown): first.
-    if (l?.overdue && !l.orderBy) return [0, ""];
+    if (l?.overdue && !l.orderBy) return [rank * 2, ""];
     const st = view.state.get(r.id);
     const d = l ? l.orderBy : st ? st.deadline : (stored.get(r.id) ?? null);
-    return d ? [0, d] : [1, ""];
+    return d ? [rank * 2, d] : [rank * 2 + 1, ""];
   };
   const keyed = list.map((r, i) => ({ id: r.id, i, k: key(r) }));
   keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1].localeCompare(b.k[1]) || a.i - b.i);
@@ -307,8 +309,9 @@ export async function listProducts(
 ): Promise<ProductPage> {
   const q = await variantWhere(shop, filters, scope);
   const view = forecast ? await planView(shop, scope, now) : null;
-  // By order-by date (the default with the forecast) or a supplier filter: ordered in memory.
-  const inMemory = (!!view && (filters.sort !== "title" || !!filters.outcome)) || !!filters.supplier;
+  // Most urgent first (the default with the forecast), a status-word filter (checked row by row) or a
+  // supplier filter: ordered and filtered in memory.
+  const inMemory = (!!view && filters.sort !== "title") || !!filters.outcome || !!filters.supplier;
   let total: number;
   let info: PageInfo;
   let variants: { id: string; productId: string; productTitle: string; variantTitle: string; sku: string | null; vendor: string | null; image: string | null; noReorder: boolean }[];
@@ -541,9 +544,10 @@ export type OutcomeCounts = Record<OutcomeKey, number> & { total: number };
  * (clarity pass 2026-10-23). The same rule as the Products table (outcomeOf with the plan's
  * outlook); tracked, non-bundle variants with a metric. Database only (the plan is cached).
  */
-export async function outcomeCounts(shop: string, now: Date = new Date()): Promise<OutcomeCounts> {
+export async function outcomeCounts(shop: string, now: Date = new Date(), forecast = true): Promise<OutcomeCounts> {
+  // Without the forecast (Free) the rows show the words from the nightly status alone — so do the counts.
   const [view, metrics, variants] = await Promise.all([
-    planView(shop, METRIC_SCOPE, now),
+    forecast ? planView(shop, METRIC_SCOPE, now) : Promise.resolve(null),
     prisma.variantMetric.findMany({ where: { shop, scope: METRIC_SCOPE }, select: { variantId: true, status: true, daysLeft: true } }),
     prisma.variant.findMany({ where: { shop, tracked: true, isBundle: false }, select: { id: true, noReorder: true } }),
   ]);
@@ -552,11 +556,11 @@ export async function outcomeCounts(shop: string, now: Date = new Date()): Promi
   for (const v of variants) {
     const m = metric.get(v.id);
     if (!m) continue;
-    const l = view.line.get(v.id);
-    const st = view.state.get(v.id);
+    const l = view?.line.get(v.id);
+    const st = view?.state.get(v.id);
     const o = outcomeOf({
       status: isVariantStatus(m.status) ? m.status : null,
-      today: view.today,
+      today: view?.today ?? now.toISOString().slice(0, 10),
       noReorder: !!v.noReorder,
       orderBy: l ? l.orderBy : (st?.deadline ?? null),
       overdue: !!l?.overdue,

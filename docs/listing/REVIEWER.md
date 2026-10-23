@@ -28,7 +28,7 @@ a workflow with Flow's **Send internal email** action delivers them (Settings �
 and links to Flow). Purchase orders go to suppliers from the merchant's own email app: **Open in
 your email** prepares the message (in the supplier's language, with the supplier confirmation link where the
 supplier confirms the ship date and downloads the PDF or CSV), and the merchant then presses **Mark
-as sent**. Slack works as a direct integration (Growth).
+as ordered**. Slack works as a direct integration (Growth).
 
 **Test store requirements.**
 
@@ -76,8 +76,8 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
 
 **Steps (Growth plan, store with history).**
 
-1. Install the app and pick **Growth** on Shopify's plan page. You land on the **Dashboard**.
-   The app menu is **Dashboard · Order plan · Products · Settings · Plans & billing**. Every page
+1. Install the app: on its first open it sends you to Shopify's plan page (once). Pick **Growth**; you land on the **Dashboard**.
+   The app menu is **Dashboard · Actions · Order plan · Products · Settings · Plans & billing**. Every page
    has a **How it works** button in its title bar: a panel that explains the page in plain words,
    with the store's own numbers where they exist (lead time, order days, a real line of Due now
    worked through) and links to the settings behind them.
@@ -114,7 +114,7 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    **Export CSV**). The store's planning rules are said once under the title ("How we plan: …",
    with **Change**). Click a row: the product page opens with **What to do** (the status, one plain
    sentence such as "Sells about 3 a month. 12 in stock, enough until about Dec 2. Order 6 by Oct
-   30.", and the stock numbers), then 13 months of sales with out-of-stock days shaded, then
+   30.", the stock numbers and **Add to purchase order**, which opens Due now with that product highlighted), then 13 months of sales with out-of-stock days shaded, then
    **Forecast details and settings** (collapsed: "How the forecast was built" with lead time,
    order days, in-stock target and safety stock, each with a **Change** link to the setting). On
    Due now, the info button on a line (**Why this quantity**) says it in a sentence whose numbers
@@ -137,12 +137,12 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    **Settings → Import & export** does the same for many suppliers and products at once:
    **Download CSV** (the current values), change a case pack or a supplier in the file, upload
    it; the check lists what will change and any row with a problem — nothing is saved until
-   **Import**.
+   **Import {n} changes** (for example "Import 3 changes").
 9. **Order plan → Due now:** everything due in the next 7 days (overdue included), grouped by
    supplier, each line on its own order-by date, with case packs and the supplier's minimums →
    **Create purchase order** → confirm (a draft; nothing is sent). On the draft: change quantities or
    remove lines and save with the save bar, or **Delete draft**; then **Download PDF**,
-   **Download CSV**, **Download CSV (size grid)**, **Open in your email** (shows to, subject and the
+   **Download CSV**, **Size grid** (the CSV as a size grid), **Open in your email** (shows to, subject and the
    message; the button opens it in your own email app, from your address — on a long order the
    message lists the first lines and "+N more lines in the order link"; **Copy message** for
    webmail), then **Mark as ordered** (always its own confirm — opening the email never marks it as ordered).
@@ -170,8 +170,8 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
     (the order is still created only after the confirm there), **Build purchase order** opens the
     builder for that week. **Download CSV** exports the plan. The cash strip puts each payment in
     the week it is paid (the suppliers' payment terms; without terms, the week of the order) and
-    shows what is still due on orders already sent ("Still due on open orders"). With a **Monthly
-    budget for stock** (Settings → Defaults → More options) the **Monthly budget** card compares each
+    shows what is still due on orders already sent ("Still due on open purchase orders"). With a **Monthly
+    purchasing budget** (Settings → Defaults → More options) the **Monthly budget** card compares each
     month with it; a month over it has **Fit to budget**: the orders that could wait until next month
     (lowest priority first; never below a supplier's minimum), each with its risk — a suggestion,
     nothing changes.

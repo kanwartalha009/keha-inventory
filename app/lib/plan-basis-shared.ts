@@ -21,7 +21,7 @@ type T = (s: string) => string;
 const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? v[k]! : m));
 
 export function bufferWord(level: SafetyLevel, t: T): string {
-  return level === "lean" ? t("a small buffer") : level === "safe" ? t("a large buffer") : t("a standard buffer");
+  return level === "lean" ? t("low safety stock") : level === "safe" ? t("high safety stock") : t("standard safety stock");
 }
 
 /** The parts of the line, in order (the component joins them with " · "). */

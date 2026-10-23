@@ -342,7 +342,7 @@ describe("Products: the plan's To order, Don't reorder, sort and supplier filter
     expect(html).toContain("Reorder again");
     expect(html).toContain("All suppliers");
     expect(html).toContain("Lisbon Linen");
-    expect(html).toContain("Sort: order-by date");
+    expect(html).toContain("Sort: most urgent first");
     expect(html).toContain("The next planned order (the same as Due now)");
   });
 
@@ -549,7 +549,7 @@ describe("Clarity pass (2026-10-23): the answer first, the method once", () => {
   it("Products: 'How we plan' once under the title, with a link to change it", () => {
     const html = render(data(true, { basis: { leadTimeDays: 21, cycleDays: 30, safetyLevel: "balanced", suppliers: 2, locationsLeftOut: 1 } }));
     expect(count(html, "How we plan:")).toBe(1);
-    expect(html).toContain("How we plan: Sales counted only on days in stock · 21-day lead time unless a supplier has its own · stock for 30 days after each delivery · a standard buffer · 1 location left out of orders.");
+    expect(html).toContain("How we plan: Sales counted only on days in stock · 21-day lead time unless a supplier has its own · stock for 30 days after each delivery · standard safety stock · 1 location left out of orders.");
     expect(html).toContain('href="/app/settings?more=1"');
     expect(render(data(true))).not.toContain("How we plan:");
   });
@@ -565,5 +565,10 @@ describe("Clarity pass (2026-10-23): the answer first, the method once", () => {
     expect(html.indexOf("What to do")).toBeLessThan(html.indexOf("Sales, last 13 months"));
     expect(html.indexOf("Sales, last 13 months")).toBeLessThan(html.indexOf("Forecast details and settings"));
     expect(renderDetail(detail(true))).toContain('aria-expanded="true"');
+    // The answer comes with its action: Due now with this product highlighted; never on Free or Don't reorder.
+    expect(html).toContain(">Add to purchase order</s-button>");
+    expect(html).toContain('href="/app/reorder?variants=gid%3A%2F%2Fshopify%2FProductVariant%2F1&amp;src=product"');
+    expect(renderDetail(detail(false), true)).not.toContain("Add to purchase order");
+    expect(renderDetail({ ...detail(true), row: { ...detail(true).row, noReorder: true } }, true)).not.toContain("Add to purchase order");
   });
 });

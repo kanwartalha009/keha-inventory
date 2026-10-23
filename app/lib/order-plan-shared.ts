@@ -464,7 +464,7 @@ export function whyPlain(why: OrderWhy, t: T, locale: string): string {
   const qty = why.rounded + why.topUp;
   const amount = (v: number) => nf(v, locale, Math.abs(v) < 10 ? 1 : 0);
   const parts = [
-    fill(t("Sells {pace}. The next {n} days need about {demand}, plus a buffer of {safety}."), {
+    fill(t("Sells {pace}. The next {n} days need about {demand}, plus {safety} safety stock."), {
       pace: paceText(why.rate, t, locale),
       n: nf(why.days, locale, 0),
       demand: amount(why.demand),

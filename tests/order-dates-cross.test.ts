@@ -22,7 +22,7 @@ import * as dbModule from "../app/db.server";
 import { useFakeFacts } from "./helpers/fake-facts";
 import { clearOrderPlanCache, loadOrderPlan } from "../app/models/order-plan.server";
 import { loadReorder } from "../app/models/reorder.server";
-import { listProducts } from "../app/models/products.server";
+import { listProducts, outcomeCounts } from "../app/models/products.server";
 import { mondayOrders } from "../app/services/monday.server";
 import { orderPlanForSidekick } from "../app/services/sidekick.server";
 import { thisWeek } from "../app/lib/order-plan-shared";
@@ -113,6 +113,31 @@ describe("order-by dates across screens", () => {
     for (const l of reorder.groups.flatMap((g) => g.lines)) {
       const r = products.rows.find((x) => x.id === l.variantId)!;
       expect([r.id, r.orderQty, r.orderBy, r.overdue]).toEqual([l.variantId, l.suggested, l.orderBy, l.overdue]);
+    }
+  });
+  it("clarity pass: Products is most urgent first — no row's status word ranks above the one before it", async () => {
+    const { OUTCOME_RANK } = await import("../app/lib/outcome-shared");
+    const rows = (await listProducts(S, NF, 1, true, "online", NOW)).rows;
+    const ranks = rows.map((r) => OUTCOME_RANK[r.outcome!.key]);
+    expect(ranks.length).toBeGreaterThan(1);
+    expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
+    // The status filter keeps exactly the rows with that word.
+    const now = await listProducts(S, { ...NF, outcome: "orderNow" }, 1, true, "online", NOW);
+    expect(now.rows.every((r) => r.outcome?.key === "orderNow")).toBe(true);
+    expect(now.total).toBe(rows.filter((r) => r.outcome?.key === "orderNow").length);
+    // Free (no forecast, no plan read): the filter still keeps exactly the rows showing that word.
+    const free = (await listProducts(S, NF, 1, false, "online", NOW)).rows;
+    for (const k of ["orderNow", "orderSoon", "ok"] as const) {
+      const f = await listProducts(S, { ...NF, outcome: k }, 1, false, "online", NOW);
+      expect(f.rows.every((r) => r.outcome?.key === k), k).toBe(true);
+      expect(f.total, k).toBe(free.filter((r) => r.outcome?.key === k).length);
+    }
+    // The Dashboard's "Your stock today" boxes link to these filters: the same numbers, both plans.
+    for (const forecast of [true, false]) {
+      const counts = await outcomeCounts(S, NOW, forecast);
+      for (const k of ["orderNow", "orderSoon", "ok", "tooMuch", "notSelling", "learning"] as const) {
+        expect(counts[k], `${k} forecast=${forecast}`).toBe((await listProducts(S, { ...NF, outcome: k }, 1, forecast, "online", NOW)).total);
+      }
     }
   });
 });

@@ -195,6 +195,13 @@ describe("loading, reading and removing sample data", () => {
 
   it("store-changing actions are refused on sample data (I-1); the order workflow runs on the sample rows", async () => {
     await loadSampleData(REAL, NOW, { products: 30 });
+    // A ready Black Friday scenario (+20 %) so the Season planner isn't empty on sample data.
+    const scenarios = rows("scenario", KEY);
+    expect(scenarios).toHaveLength(1);
+    expect(scenarios[0]).toMatchObject({ event: "black_friday", targetType: "growth" });
+    expect(String(scenarios[0]!.name)).toMatch(/^Black Friday 20\d\d$/);
+    expect(scenarios[0]!.result).toBeTruthy();
+    expect(rows("scenario", REAL)).toHaveLength(0);
     const clear = (db.tables.action ?? []).find((a) => a.shop === KEY);
     const r1 = await json(await actionsAction({ request: req("/app/actions", { op: "clear", id: clear?.id ?? "x", kind: "automatic", percent: "20", endsOn: "", code: "" }), params: {}, context: {} } as never));
     expect(r1).toEqual({ ok: false, error: "sample" });

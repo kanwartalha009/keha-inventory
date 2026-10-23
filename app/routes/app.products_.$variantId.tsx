@@ -32,7 +32,8 @@ import { productDetailHelp } from "../components/help";
 import ConfirmModal from "../components/ConfirmModal";
 import { NoReorderConfirm, OutcomeCell } from "../components/order-plan";
 import { paceText, verdictText } from "../lib/outcome-shared";
-import { flag, val } from "../components/wc";
+import { flag, useLinkProps, val } from "../components/wc";
+import { reorderHref } from "../lib/action-list-shared";
 import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
 import { fill, useLocale, plural } from "../lib/i18n";
@@ -192,6 +193,9 @@ export default function VariantDetailPage() {
   const { row, forecast } = data;
   const variant = variantName(row.variantTitle);
   const locked = planTag("forecast", t);
+  const link = useLinkProps();
+  // The answer comes with its action: Due now with this product highlighted (`src=product`).
+  const toOrder = forecast && !row.noReorder && (row.orderQty ?? 0) > 0 ? `${reorderHref([row.id])}&src=product` : null;
 
   return (
     <AppPage
@@ -216,6 +220,13 @@ export default function VariantDetailPage() {
             <s-text>
               {verdictText(row, { t, locale, today: data.today ?? new Date().toISOString().slice(0, 10), day: (d: string) => shortDay(d, locale), forecast })}
             </s-text>
+            {toOrder && (
+              <span>
+                <s-button variant={row.outcome?.key === "orderNow" ? "primary" : "secondary"} {...link(toOrder)}>
+                  {t("Add to purchase order")}
+                </s-button>
+              </span>
+            )}
           </s-stack>
         </div>
         <div className="keha-kv keha-kv--flush">
@@ -264,7 +275,7 @@ function HowItWasBuilt({ children }: { children: ReactNode }) {
     <Disclosure
       id="keha-forecast-detail"
       title={t("Forecast details and settings")}
-      sub={t("The sales windows, season, lead time and buffer behind these numbers, and the choices you can change.")}
+      sub={t("The sales windows, season, lead time and safety stock behind these numbers, and the choices you can change.")}
       open={open}
       onToggle={() => setOpen((v) => !v)}
     >

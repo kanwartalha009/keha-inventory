@@ -9,6 +9,8 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
 import { pricingConfigured, syncPlan, syncPlanOnLoad } from "../services/app-pricing.server";
+import { firstTime } from "../models/activation.server";
+import { planSelectionUrl } from "../lib/admin-url.server";
 import { forgetEntitlements, getEntitlements } from "../services/entitlements.server";
 import { readShopLocale } from "../services/shop-locale.server";
 import { lockedPageFeature, type PlanCode } from "../lib/plan-shared";
@@ -47,14 +49,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // never synced (a new install) or synced over 6 hours ago — once, time-boxed,
   // cached per shop — so a new install is on Free from its first page instead
   // of failing open to Pro (pricing audit 2026-10-17).
+  // Managed pricing (shopify.dev billing/managed-pricing: "send them to the hosted plan selection
+  // page"): a store with no plan yet is sent to Shopify's plan page ONCE, on its first admin load —
+  // it comes back through the welcome link (`/app?plan_handle=…`). Never again after that (choosing
+  // Free creates no subscription, so "no plan" can't mean "ask again": that would loop).
+  let planPrompt: string | null = null;
   if (pricingConfigured()) {
     const url = new URL(request.url);
-    if (url.searchParams.has("plan_handle")) {
+    const back = url.searchParams.has("plan_handle");
+    if (back) {
       await syncPlan(admin, session.shop, { force: true });
     } else {
       await syncPlanOnLoad(admin, session.shop);
     }
     forgetEntitlements(session.shop);
+    if (back) {
+      await firstTime(session.shop, "plan_prompted"); // chose a plan already: never sent there
+    } else {
+      // Only once the plan is really known to be Free (a failed check never uses up the one prompt).
+      const own = await getEntitlements(session.shop).catch(() => null);
+      if (own?.plan === "free" && own.checked && (await firstTime(session.shop, "plan_prompted"))) planPrompt = planSelectionUrl(session.shop);
+    }
   }
 
   // Default admin language (a manual choice in Settings still wins):
@@ -96,7 +111,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", storeLocale, plan, sample };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", storeLocale, plan, sample, planPrompt };
 };
 
 /**
@@ -158,7 +173,16 @@ function AppNav() {
 }
 
 export default function App() {
-  const { apiKey, storeLocale, plan, sample } = useLoaderData<typeof loader>();
+  const { apiKey, storeLocale, plan, sample, planPrompt } = useLoaderData<typeof loader>();
+  // First admin load of a store with no plan: Shopify's plan page, in the top frame (loader above).
+  useEffect(() => {
+    if (!planPrompt) return;
+    try {
+      window.open(planPrompt, "_top");
+    } catch {
+      window.top?.location.assign(planPrompt);
+    }
+  }, [planPrompt]);
 
   return (
     <AppProvider apiKey={apiKey} polarisUrl={POLARIS_URL}>

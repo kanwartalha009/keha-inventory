@@ -113,7 +113,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
     ready ? loadOrderPlan(shop, now) : null,
     ready && !sample ? reviewAskDue(shop, now).catch(() => null) : null,
     // "Your stock today" (clarity pass): how many products carry each status word.
-    ready ? outcomeCounts(shop, now).catch(() => null) : null,
+    ready ? outcomeCounts(shop, now, hasFeature(plan, "forecast")).catch(() => null) : null,
   ]);
   // First-session measurement: the first time this shop saw its plan (never on sample data).
   if (ready && !sample) void recordActivation(shop, "plan_seen", now);

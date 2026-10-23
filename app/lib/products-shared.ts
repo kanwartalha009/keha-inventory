@@ -518,14 +518,16 @@ export function isNeutralMultiplier(v: number | null): boolean {
 }
 
 /**
- * The nightly statuses behind each status word — the database pre-filter (and the whole filter
- * when the plan isn't read: Free). With the plan, rows are then checked one by one (outcomeOf):
- * a healthy variant due this week is "Order soon", and running low can be "Order now" or "soon".
+ * The nightly statuses behind each status word — the database pre-filter only; rows are then
+ * checked one by one (outcomeOf, the same rule the rows show): a healthy variant due this week is
+ * "Order soon", and running low can be "Order now" or "soon".
  */
 export const OUTCOME_STATUSES: Record<OutcomeKey, VariantStatus[]> = {
-  orderNow: ["out", "running_low", "healthy"],
-  orderSoon: ["running_low", "healthy"],
-  ok: ["healthy", "running_low"],
+  // The plan's outlook decides these three, whatever the nightly status was (stock may have arrived
+  // or sold since; too much stock can still have an order due this week): every plannable status.
+  orderNow: ["out", "running_low", "healthy", "too_much"],
+  orderSoon: ["out", "running_low", "healthy", "too_much"],
+  ok: ["out", "running_low", "healthy", "too_much"],
   tooMuch: ["too_much"],
   notSelling: ["dead"],
   learning: ["not_enough_data"],

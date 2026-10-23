@@ -22,7 +22,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "get_product_stock",
-    "description": "Stock and forecast for products matching a search: status (Out of stock, Low stock, In stock, Overstock, Dead stock, Insufficient data), stock on hand, incoming, units on order with Keha and their arrival date, sales per day while in stock, days of stock, the order-by date and the suggested order quantity, per variant. Use for 'when does <product> run out', 'how much <product> do I have' and 'should I reorder <product>'.",
+    "description": "Stock and forecast for products matching a search: the app's status word (Order now, Order soon, OK, Too much, Not selling, Learning, Don't reorder) with its reason, stock on hand, incoming, units on order with Keha and their arrival date, sales per day while in stock, days of stock, the order-by date and the suggested order quantity, per variant. Use for 'when does <product> run out', 'how much <product> do I have' and 'should I reorder <product>'.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -52,7 +52,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "get_money_at_stake",
-    "description": "The store's money at stake from its stock, in the store currency, with how each number was calculated: sales at risk in the next 28 days, lost sales in the last 90 days, cash tied up in overstock and dead stock, out-of-stock page visits in the last 30 days, and the value of dead stock on its own. Use for 'what is my dead stock worth', 'how much cash is tied up in stock' and 'how much am I losing to stockouts'.",
+    "description": "The store's money at stake from its stock, in the store currency, with how each number was calculated: sales at risk in the next 4 weeks, sales lost while sold out in the last 90 days, cash tied up in slow stock (overstock and dead stock), sales missed on sold-out pages in the last 30 days, and the value of dead stock on its own. Use for 'what is my dead stock worth', 'how much cash is tied up in stock' and 'how much am I losing to stockouts'.",
     "inputSchema": {
       "type": "object",
       "properties": {}

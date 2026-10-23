@@ -39,7 +39,7 @@ Reorder before your products run out, and see the cash each order needs, week by
 ## App details
 
 ```text
-Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash needed each week for 13 weeks. Sales per day count only in-stock days, and every forecast shows how it was built. Send one purchase order per supplier per cycle as PDF, CSV or email; suppliers confirm the ship date by link. Every Monday: a ranked list of what to reorder, promote, fix or clear, with the money at stake. It also answers in Shopify Sidekick.
+Keha turns your Shopify sales and stock into an order plan: what to order from each supplier, how many, the last day to order, and the cash needed each week for 13 weeks. Every product gets one word, Order now, Order soon or OK, with the reason. Sales per day count only in-stock days, every forecast shows how it was built, and its accuracy is graded monthly. Send one purchase order per supplier as PDF, CSV or email; suppliers confirm the ship date by link. It also answers in Shopify Sidekick.
 ```
 
 ## Feature list
@@ -64,12 +64,14 @@ Where each claim lives in the code (the plan each one needs is in the plan cards
 
 | Claim | Code |
 |---|---|
-| Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "Due this week", Order plan → Due now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
+| Order plan by supplier: what, how many, last day to order | `app/lib/engine/forward-plan-shared.ts` (the forward plan, from the nightly forecast), Dashboard "This week", Order plan → Due now (`app/routes/app.reorder.tsx`; Growth — Free sees a read-only top-10 preview) |
 | Cash each week, next 13 weeks | Order plan → Order calendar (`app/routes/app.reorder_.calendar.tsx`, CSV `app.reorder_.calendar_.csv.tsx`; Growth), the Dashboard's 13-week cash strip |
 | Purchase orders PDF / CSV / email, ship date confirmed by link | `app/routes/app.reorder_.$id*.tsx` ("Open in your email": a mailto in the supplier's language, `app/lib/po-mailto-shared.ts`; "Email supplier" only when an email provider is set), `supplier.confirm.$token*.tsx` (PDF and CSV download) (Growth) |
 | One purchase order per supplier per cycle (details text) | The purchase order builder, `app/routes/app.reorder_.build.tsx`, `app/lib/supplier-order-shared.ts`: everything due before the supplier's next order (Settings → Suppliers "Order enough for", or a per-order choice of 30–180 days in the builder) in one draft, topped up to its minimums (Growth) |
 | Sales per day from in-stock days only; "How the forecast was built" | `app/lib/engine/rate-shared.ts`, `season-shared.ts`; the product page (`app/routes/app.products_.$variantId.tsx`) |
-| Weekly to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, Dashboard tabs, `app/services/monday.server.ts` (Free: top 10) |
+| Weekly to-do list (reorder, promote, fix, clear), ranked by money | `app/lib/engine/actions-rules-shared.ts`, the Actions page (tabs) and the Dashboard's top 5, `app/services/monday.server.ts` (Free: top 10) |
+| Every product gets one word, Order now, Order soon or OK, with the reason (details text) | `app/lib/outcome-shared.ts` (one rule for every screen, the CSV, the weekly summary and Sidekick), Dashboard "Your stock today", Products, the product page "What to do" |
+| Forecast accuracy graded monthly (details text) | `app/services/accuracy.server.ts` (the 1st of each month), Order plan → Season planner → Forecast accuracy (Growth) |
 | Clear dead stock, discount only after confirm | `app/services/clearance.server.ts` (Growth) |
 | Plan each warehouse and POS store, draft transfers | `app/routes/app.settings_.locations.tsx` (roles), location switcher, `app/routes/app.transfers.tsx`, `app/services/transfers.server.ts` (Pro; `inventoryTransferCreate` creates a draft after a confirm) |
 | Season planner: order list, order-by dates, cash per week | Order plan → Season planner, `app/routes/app.reorder_.season.tsx`, `app/models/planner.server.ts` (Growth: 1 scenario, Pro: unlimited) |

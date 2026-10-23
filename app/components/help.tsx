@@ -210,7 +210,7 @@ export function productsHelp(t: T): HelpContent {
         title: t("What each status means"),
         paragraphs: [
           t("Order now: sold out, or it runs out before a new order could arrive. Every day costs sales."),
-          t("Order soon: order within a week to keep a small buffer, or it runs out until the stock you ordered arrives."),
+          t("Order soon: order within a week to keep its safety stock, or it runs out until the stock you ordered arrives."),
           t("OK: enough stock. Nothing to do this week."),
           t("Too much: far more than it will sell before the next order."),
           t("Not selling: no sale for the days set in Settings (90 by default) while in stock. A discount clears it."),

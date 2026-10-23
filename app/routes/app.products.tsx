@@ -262,7 +262,7 @@ export default function Products() {
                     labelHidden
                     value={filters.sort === "title" ? "title" : "orderBy"}
                     options={[
-                      { value: "orderBy", label: t("Sort: order-by date") },
+                      { value: "orderBy", label: t("Sort: most urgent first") },
                       { value: "title", label: t("Sort: product name") },
                     ]}
                     onChange={(v) => apply({ sort: v === "title" ? "title" : "" })}

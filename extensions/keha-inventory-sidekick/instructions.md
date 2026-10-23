@@ -22,8 +22,8 @@ Common combinations:
 - `cost` and `cash` count only lines with a unit cost; `lines_without_cost` says how many lines have no cost, so the real amount is higher. Say so when it is set.
 - A `null` value means not known yet (for example, not enough sales history). Say "not known yet", never zero. `days_left_why: "no recent sales"` means the product has stock but no recent sale to measure a pace from.
 - Days of stock, order-by dates, suggested quantities and money at stake are forecasts: say "about" ("runs out in about 12 days").
-- Dates come as `YYYY-MM-DD` plus a readable label such as "Fri 24 Oct 2026 (in 7 days)". `overdue: true` (an order-by date in the past) means the order is already late: the lead time no longer covers the gap, so it is due today.
-- Status words are the app's own: Out of stock, Low stock, In stock, Overstock, Dead stock, Insufficient data.
+- Dates come as `YYYY-MM-DD` plus a readable label such as "Fri 24 Oct 2026 (in 7 days)". `overdue: true` means the order-by date has passed, so the order is due today; how urgent it is comes from `status`.
+- Status words are the app's own, with `status_reason` saying why: **Order now** (sold out, or it runs out before a new order could arrive — say so first), **Order soon** (order within a week to keep its safety stock, or it runs out until stock already on order arrives), **OK**, **Too much**, **Not selling**, **Learning** (not enough sales yet to plan it), **Don't reorder** (left out of orders by the merchant). Use these words, never "low stock" or "overdue".
 - `note` says when a list was shortened; the full list is in the app page given by `url`.
 - `message` means there is nothing to show for this question; pass it on as it is.
 - `ready: false` means the store doesn't have enough data for order suggestions yet (`message` says why and when): say that, not that nothing needs ordering.

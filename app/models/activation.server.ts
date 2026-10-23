@@ -22,6 +22,21 @@ export async function recordActivation(shop: string, kind: ActivationStep, at: D
   }
 }
 
+/**
+ * True the first time it is called for this shop and `kind` (a row is written), false after —
+ * also when the database can't be reached (then nothing happens, never twice).
+ */
+export async function firstTime(shop: string, kind: string, at: Date = new Date()): Promise<boolean> {
+  if (!shop || shop.includes("#")) return false;
+  try {
+    const r = await prisma.activationEvent.createMany({ data: [{ shop, kind, at }], skipDuplicates: true });
+    return r.count > 0;
+  } catch (e) {
+    console.error("[activation] firstTime failed", shop, kind, e);
+    return false;
+  }
+}
+
 /** Counts per step and the median minutes from install to each later step (/health). */
 export async function readActivation(): Promise<ActivationSummary | null> {
   try {
