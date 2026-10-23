@@ -10,6 +10,7 @@
  *                how long the oldest due job has waited (s) — over every instance
  *   - outbox:    PENDING / DEAD row counts (delivery backlog to the Nova backend)
  *   - pricing:   are plan checks configured, last success / error code (2026-10-13)
+ *   - activation: shops that installed / saw the plan / saw suggestions / made a PO, median minutes (2026-10-23)
  *   - config:    settings the privacy policy relies on (2026-09-28): secrets encrypted at
  *                rest, legal contact, and `email`: "flow" (no email provider — the default,
  *                not a failure) or "provider"
@@ -24,6 +25,7 @@
  * short codes and timestamps — no shop data, no secrets. The sync / compute
  * aggregates scan every shop, so they are cached for 60 s.
  */
+import { readActivation } from "../models/activation.server";
 import prisma from "../db.server";
 import { SAMPLE_SUFFIX } from "../lib/sample-mode-shared";
 import { schedulerHeartbeat } from "../services/scheduler.server";
@@ -173,6 +175,8 @@ export const loader = async () => {
       },
       // Shopify App Pricing plan checks (Partner API): configured + last result.
       pricing: pricingStatus(),
+      // First-session measurement (clarity pass): shops per step and median minutes from install.
+      activation: await readActivation(),
       sync,
       shopifyqlBudget: { lastCost: budget.lastCost, lastRemaining: budget.lastRemaining, lastAt: budget.lastAt },
       compute,

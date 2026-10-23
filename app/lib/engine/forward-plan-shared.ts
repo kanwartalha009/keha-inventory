@@ -85,6 +85,20 @@ export interface OverdueContext {
   belowSafety?: boolean;
 }
 
+/**
+ * Clarity pass (2026-10-23): what today's stock means, before any planned order — the one fact
+ * every status word is built from (lib/outcome-shared). `outNow`: nothing to sell today;
+ * `runsOut`: the day the last unit sells (with what is already on order; the overdue context's
+ * day), within the projection; `beforeArrival`: it is gone before an order placed today could arrive (`arrives`) —
+ * sales are lost whatever the merchant does now. Not before arrival = only below the buffer.
+ */
+export interface StockOutlook {
+  outNow: boolean;
+  runsOut: DayKey | null;
+  beforeArrival: boolean;
+  arrives: DayKey;
+}
+
 const EPS = 1e-9;
 const S_MIN = 0.2;
 const S_MAX = 5;
@@ -275,6 +289,8 @@ export interface ForwardOrder {
   nextSeason?: boolean;
   /** Overdue with no date: the day it sold out, or will (A1). */
   context?: OverdueContext | null;
+  /** The variant's stock outlook (StockOutlook), on its first planned order only. */
+  outlook?: StockOutlook | null;
 }
 
 export interface ForwardVariantPlan {
@@ -289,6 +305,8 @@ export interface ForwardVariantPlan {
   nextSeason?: boolean;
   /** Overdue with no date because it would be long past: the day it sold out, or will (A1). */
   context?: OverdueContext | null;
+  /** Today's stock outlook (StockOutlook); null when the variant isn't projected. */
+  outlook?: StockOutlook | null;
   orders: ForwardOrder[];
 }
 
@@ -371,6 +389,8 @@ export class VariantProjection {
   readonly context: OverdueContext | null;
   /** Sells when out of stock (input flag, or a negative on hand): the projection is not floored. */
   readonly sellsWhenOut: boolean;
+  /** Today's stock outlook before any planned order (StockOutlook); null when not projected. */
+  readonly outlook: StockOutlook | null;
   private readonly input: ForwardVariantInput;
   private readonly base: number;
   private readonly safety: number;
@@ -418,6 +438,7 @@ export class VariantProjection {
     this.sellsWhenOut = input.sellsWhenOut === true || (finite(input.onHand) && input.onHand < 0);
     this.T = 0;
     this.context = null;
+    this.outlook = null;
     if (!this.projected) {
       this.deadline = null;
       this.overdue = false;
@@ -468,6 +489,16 @@ export class VariantProjection {
       this.off[d] = peak > 0 && w < OFF_SEASON_SHARE * peak - EPS ? 1 : 0;
     }
     this.nextSeason = this.off[0] === 1;
+
+    {
+      // The outlook (StockOutlook): before any planned order, with what is already on order.
+      const outNow = this.O[0]! <= EPS;
+      let gone: number | null = outNow ? 0 : null;
+      if (gone === null) for (let d = 0; d < T; d++) if (this.U[d + 1]! <= EPS) { gone = d + 1; break; }
+      // `runsOut` follows the overdue context's day (the day the last unit sells); `gone` is the first
+      // day that starts empty, so the stock is short before an order placed today arrives when gone < L.
+      this.outlook = { outNow, runsOut: gone === null ? null : addDays(today, Math.max(0, gone - 1)), beforeArrival: gone !== null && gone < L, arrives: addDays(today, L) };
+    }
 
     this.overdue = !this.safeAt(0);
     if (this.overdue) {
@@ -661,6 +692,7 @@ export class VariantProjection {
     const orderBy = addDays(this.today, t);
     const deadline = t === 0 ? (this.projected ? this.deadline : null) : orderBy;
     const nextSeason = this.nextSeason && !this.ordered;
+    const first = !this.ordered;
     this.ordered = true;
     const overdue = t === 0 && this.overdue;
     return {
@@ -674,6 +706,7 @@ export class VariantProjection {
       why,
       ...(nextSeason ? { nextSeason: true } : {}),
       ...(overdue && this.context ? { context: this.context } : {}),
+      ...(first && this.outlook ? { outlook: this.outlook } : {}),
     };
   }
 }
@@ -682,7 +715,7 @@ export class VariantProjection {
 export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
   const sim = new VariantProjection(input);
   const orders: ForwardOrder[] = [];
-  if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, overdue: false, orders };
+  if (sim.skip) return { skip: sim.skip, deadline: sim.deadline, needNow: null, overdue: false, outlook: sim.outlook, orders };
   const extra = { ...(sim.nextSeason ? { nextSeason: true } : {}), ...(sim.overdue && sim.context ? { context: sim.context } : {}) };
   let t = 0;
   for (let d = sim.nextOrderDay(t); d !== null; d = sim.nextOrderDay(t)) {
@@ -694,7 +727,7 @@ export function planVariant(input: ForwardVariantInput): ForwardVariantPlan {
     }
     t = d + 1;
   }
-  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, overdue: sim.overdue, ...extra, orders };
+  return { skip: null, deadline: sim.deadline, needNow: sim.needNow, overdue: sim.overdue, outlook: sim.outlook, ...extra, orders };
 }
 
 // ---------------------------------------------------------------------------
@@ -904,6 +937,8 @@ export interface PlanEvent {
   nextSeason?: boolean;
   /** Overdue with no date: the day it sold out, or will (A1). */
   context?: OverdueContext | null;
+  /** The variant's stock outlook (StockOutlook), on its first planned order only. */
+  outlook?: StockOutlook | null;
 }
 
 /** Last day of the calendar: the Sunday of the 13th ISO week starting with today's. */
@@ -937,6 +972,7 @@ export function eventsOf(
     why: o.why,
     ...(o.nextSeason ? { nextSeason: true } : {}),
     ...(o.context ? { context: o.context } : {}),
+    ...(o.outlook ? { outlook: o.outlook } : {}),
   }));
 }
 
@@ -1142,7 +1178,7 @@ export interface StorePlan {
   /** Styles held back below the supplier's minimum (A2), one row per style, first day. */
   belowMinimum?: BelowMinimum[];
   /** Per variant: why it can't be planned, its order-by date before any order. */
-  variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean }>;
+  variants: Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean; outlook: StockOutlook | null }>;
 }
 
 type Ev = { spec: number; day: number; qty: number; need: number; why: OrderWhy | null };
@@ -1153,8 +1189,8 @@ type Ev = { spec: number; day: number; qty: number; need: number; why: OrderWhy 
  */
 export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Record<string, PlanSupplierRules>>, today: DayKey): StorePlan {
   const sims = specs.map((s) => new VariantProjection(s.input));
-  const variants = new Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean }>();
-  sims.forEach((sim, i) => variants.set(specs[i]!.variantId, { skip: sim.skip, deadline: sim.deadline, projected: sim.projected, overdue: sim.overdue }));
+  const variants = new Map<string, { skip: PlanSkip | null; deadline: DayKey | null; projected: boolean; overdue: boolean; outlook: StockOutlook | null }>();
+  sims.forEach((sim, i) => variants.set(specs[i]!.variantId, { skip: sim.skip, deadline: sim.deadline, projected: sim.projected, overdue: sim.overdue, outlook: sim.outlook }));
   const bySupplier = new Map<string, number[]>();
   specs.forEach((s, i) => (bySupplier.get(s.supplierKey) ?? bySupplier.set(s.supplierKey, []).get(s.supplierKey)!).push(i));
   const days = specs.reduce((a, s) => Math.max(a, Math.floor(s.input.days)), 0);
@@ -1262,6 +1298,7 @@ export function planStore(specs: readonly PlanVariantSpec[], rules: Readonly<Rec
       why: o.why,
       ...(o.nextSeason ? { nextSeason: true } : {}),
       ...(o.context ? { context: o.context } : {}),
+      ...(o.outlook ? { outlook: o.outlook } : {}),
     };
   });
   events.sort((a, b) => a.orderBy.localeCompare(b.orderBy) || a.supplierKey.localeCompare(b.supplierKey) || (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
@@ -1330,10 +1367,14 @@ export interface PlanWeek extends CashTotals {
 }
 
 /**
- * Really late (audit 2026-10-18): overdue, and not just below safety stock with stock left past
- * the lead time — those say "Below safety stock", so no red "Overdue" badge may sit next to them.
+ * Really late — the red "Order now" (clarity pass 2026-10-23, lib/outcome-shared): sold out, or it
+ * runs out before an order placed today could arrive (the order's StockOutlook). An order only
+ * below its buffer is "Order soon", never red — and so is one whose stock-out an order already on
+ * the way ends (not overdue: ordering today wouldn't arrive sooner). Rows without an outlook keep
+ * the audit-2026-10-18 rule: overdue and not only below safety stock.
  */
-export function isLate(e: Pick<PlanEvent, "overdue" | "context">): boolean {
+export function isLate(e: Pick<PlanEvent, "overdue" | "context" | "outlook">): boolean {
+  if (e.outlook) return e.outlook.outNow || (e.outlook.beforeArrival && e.overdue);
   return e.overdue && !e.context?.belowSafety;
 }
 

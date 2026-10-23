@@ -4,6 +4,7 @@
  * Order plan · Next 13 weeks, the Free preview and the 13-week CSV. Pure, client-safe; the
  * database part is models/order-plan.server.ts.
  */
+import { paceText } from "./outcome-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import {
   ORDER_NOW_DAYS,
@@ -24,6 +25,7 @@ import {
   type PlanEvent,
   type PlanSupplierWeek,
   type PlanWeek,
+  type StockOutlook,
 } from "./engine/forward-plan-shared";
 import { toCsv, variantName } from "./products-shared";
 import { fill } from "./i18n";
@@ -297,6 +299,8 @@ export type PreviewRow = {
   qty: number;
   /** A1: the season's first order, or why an overdue order has no date. */
   dueNote?: DueNote | null;
+  /** Today's stock outlook: the status words (lib/outcome-shared). */
+  outlook?: StockOutlook | null;
 };
 
 /**
@@ -323,6 +327,7 @@ export function previewRows(data: Pick<OrderPlanData, "events" | "variants">, li
         overdue: e.overdue,
         qty: e.qty,
         dueNote: dueNote([e]),
+        outlook: e.outlook ?? null,
       },
       value: v?.valuePerDay ?? -1,
     };
@@ -450,6 +455,36 @@ export function monthYear(day: DayKey, locale: string): string {
  * "Why this quantity": the terms the plan used for one order (never recomputed): the forecast,
  * safety stock, stock and stock on order, the need, then the rounding and any top-up.
  */
+/**
+ * "Why this quantity" in one plain paragraph first (clarity pass 2026-10-23: the formula line read
+ * "Safety 2: the forecast's own error over 35 days (± 2) for a 85 % in-stock target" to a store
+ * owner). The formula (whyLines) stays under Details for planners.
+ */
+export function whyPlain(why: OrderWhy, t: T, locale: string): string {
+  const qty = why.rounded + why.topUp;
+  const amount = (v: number) => nf(v, locale, Math.abs(v) < 10 ? 1 : 0);
+  const parts = [
+    fill(t("Sells {pace}. The next {n} days need about {demand}, plus a buffer of {safety}."), {
+      pace: paceText(why.rate, t, locale),
+      n: nf(why.days, locale, 0),
+      demand: amount(why.demand),
+      safety: amount(why.safety),
+    }),
+  ];
+  const missed = why.missed ?? 0;
+  if (missed > 1e-6) parts.push(fill(t("About {missed} of those sales come before it can arrive, so they aren't ordered."), { missed: amount(missed) }));
+  const have = why.day === 0 ? t("You have {onHand} in stock") : t("You'll have about {onHand} in stock then");
+  parts.push(
+    fill(why.onOrder > 1e-6 ? `${have} ${t("and {onOrder} on order, so order {qty}.")}` : `${have}${t(", so order {qty}.")}`, {
+      onHand: amount(Math.max(0, why.onHand)),
+      onOrder: amount(why.onOrder),
+      qty: nf(qty, locale, 0),
+    }),
+  );
+  if (qty > Math.ceil(Math.max(0, why.need) - 1e-9)) parts.push(t("Rounded up for the case pack or the supplier's minimum."));
+  return parts.join(" ");
+}
+
 export function whyLines(why: OrderWhy, t: T, locale: string): string[] {
   const first = why.day === 0;
   const qty = why.rounded + why.topUp;

@@ -70,7 +70,6 @@ export const ENGINE_TR: Record<string, Tr> = {
     nl: "Onder veiligheidsvoorraad · uitverkocht op {date}",
     pl: "Poniżej zapasu bezpieczeństwa · skończy się {date}",
   },
-  "Below safety stock": { es: "Bajo el stock de seguridad", fr: "Sous le stock de sécurité", de: "Unter Sicherheitsbestand", it: "Sotto la scorta di sicurezza", pt: "Abaixo do stock de segurança", nl: "Onder veiligheidsvoorraad", pl: "Poniżej zapasu bezpieczeństwa" },
   "Overdue · runs out {date}": {
     es: "Atrasado · se agota el {date}",
     fr: "En retard · rupture le {date}",
@@ -80,8 +79,6 @@ export const ENGINE_TR: Record<string, Tr> = {
     nl: "Te laat · uitverkocht op {date}",
     pl: "Po terminie · skończy się {date}",
   },
-  "out of stock since {date}": { es: "sin stock desde el {date}", fr: "en rupture depuis le {date}", de: "nicht vorrätig seit {date}", it: "esaurito dal {date}", pt: "sem stock desde {date}", nl: "niet op voorraad sinds {date}", pl: "brak w magazynie od {date}" },
-  "runs out {date}": { es: "se agota el {date}", fr: "rupture le {date}", de: "ausverkauft am {date}", it: "si esaurisce il {date}", pt: "esgota a {date}", nl: "uitverkocht op {date}", pl: "skończy się {date}" },
   // ---- Below the supplier's minimum (A2) ----
   "Below minimum order": { es: "Por debajo del pedido mínimo", fr: "En dessous du minimum de commande", de: "Unter der Mindestbestellmenge", it: "Sotto l'ordine minimo", pt: "Abaixo da encomenda mínima", nl: "Onder de minimale bestelling", pl: "Poniżej minimalnego zamówienia" },
   "{product}: needs {n} of a minimum of {min} per style": {

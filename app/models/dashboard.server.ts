@@ -5,7 +5,8 @@
  */
 import prisma from "../db.server";
 import { facts } from "../services/facts-store.server";
-import { buildHome, MIN_SALES_DAYS, planReadiness, type HomeData, type HomeRaw, type PlanReadiness } from "../lib/dashboard-shared";
+import { buildHome, MIN_SALES_DAYS, planReadiness, toMoneySnapshot, type HomeData, type HomeRaw, type PlanReadiness } from "../lib/dashboard-shared";
+import type { MoneySnapshot } from "../lib/money-shared";
 import type { PlanCode } from "../lib/plan-shared";
 import { readReviewAsk, reviewMoment, shouldAskForReview, type ReviewMoment } from "../lib/review-ask-shared";
 import { PLAN_READY_KIND, PLAN_READY_PERIOD } from "../lib/plan-ready-email-shared";
@@ -120,4 +121,24 @@ export async function readiness(shop: string, now: Date = new Date()): Promise<P
   } catch {
     return { ready: true };
   }
+}
+
+/** The newest money-at-stake row as a snapshot (Actions page: lost sales, sold-out page visits); null when none. */
+export async function latestMoney(shop: string): Promise<MoneySnapshot | null> {
+  const [money, row] = await Promise.all([
+    prisma.moneyAtStake.findFirst({ where: { shop }, orderBy: { day: "desc" } }),
+    prisma.shop.findUnique({ where: { domain: shop }, select: { currency: true } }),
+  ]);
+  if (!money) return null;
+  return toMoneySnapshot(
+    {
+      day: money.day,
+      atRisk: decimalToNumber(money.atRisk),
+      lost90: decimalToNumber(money.lost90),
+      cashStuck: decimalToNumber(money.cashStuck),
+      soldOutTraffic: decimalToNumber(money.soldOutTraffic),
+      basis: money.basis,
+    },
+    row?.currency ?? "USD",
+  );
 }

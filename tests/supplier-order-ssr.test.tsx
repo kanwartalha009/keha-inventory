@@ -73,7 +73,9 @@ describe("Supplier order builder (Growth)", () => {
     // The supplier's cycle, where it comes from, and the way to change it.
     expect(html).toContain("30 days (supplier)");
     expect(html).toContain('href="/app/settings/suppliers?edit=s1"');
-    expect(html).toContain("Overdue · runs out Oct 18");
+    // Clarity pass: the status words with both days; a later line keeps its date.
+    expect(html).toContain("Runs out Oct 18 · a new order would arrive Oct 30");
+    expect(html).toContain("Order by Oct 18 · lasts to Nov 4");
     expect(html).toContain("Due Oct 24");
     expect(html).toContain("Why this quantity");
     // Several orders of one product in the cycle are added together, and said so.
@@ -202,7 +204,8 @@ describe("entry points", () => {
 
   it("Order now: one 'Build supplier order' per supplier card — inside 'Can join this order' when it is there", () => {
     const html = render("/app/reorder", "reorder", Reorder, orderNow());
-    expect((html.match(/>Build purchase order</g) ?? []).length).toBe(2);
+    // Clarity pass: the button says what it adds (the products due before the next order).
+    expect((html.match(/>Add products due later</g) ?? []).length).toBe(2);
     expect(html).toContain('href="/app/reorder/build?supplier=supplier:s1"');
     expect(html).toContain('href="/app/reorder/build?supplier=vendor:beta"');
     const join = html.slice(html.indexOf("Due before next order"));

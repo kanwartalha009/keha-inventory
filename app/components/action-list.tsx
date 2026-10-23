@@ -76,6 +76,16 @@ type Dialog =
   | { type: "signups"; row: ActionRowView }
   | { type: "clear"; row: ActionRowView };
 
+const STOCK_FIRST: Record<string, number> = { reorder: 0, bridge: 0, clear: 1, push: 2, fix: 3 };
+
+/** Rows with stock actions first (stable: money order within each group). */
+export function stockFirst<R extends { tab: string }>(rows: readonly R[]): R[] {
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (STOCK_FIRST[a.r.tab] ?? 9) - (STOCK_FIRST[b.r.tab] ?? 9) || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** How many rows the Dashboard shows; the rest are on the Actions page (0286). */
 export const DASHBOARD_ACTION_ROWS = 5;
 
@@ -114,7 +124,13 @@ export function ActionList({ list, timezone, mode = "full" }: { list: ActionList
     );
   };
 
-  const rows = useMemo(() => rowsForTab(list.rows, tab), [list.rows, tab]);
+  // The Dashboard's top 5 lead with stock (clarity pass 2026-10-23, Kanwar: "stock first"):
+  // reorder and sold-out first, then clearance and promotion, product-page fixes last — each group
+  // still by money. The Actions page keeps the plain money order.
+  const rows = useMemo(() => {
+    const r = rowsForTab(list.rows, tab);
+    return preview ? stockFirst(r) : r;
+  }, [list.rows, tab, preview]);
   const money = (v: number | null, currency: string) => formatAmount(v, currency, locale);
   const send = (op: "snooze" | "dismiss" | "done" | "undo", id: string) => {
     fetcher.submit({ op, id }, { method: "post", action: ENDPOINT, encType: "application/json" });

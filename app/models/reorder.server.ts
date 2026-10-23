@@ -22,6 +22,7 @@
  *  - Purchase orders read from Shopify are listed under Open orders only;
  *    their units are not added anywhere (Shopify already counts them).
  */
+import { recordActivation } from "./activation.server";
 import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
@@ -435,6 +436,8 @@ export async function insertWithNumber(
         select: { id: true, number: true },
       });
       forgetOrderPlan(shop);
+      // First-session measurement: the shop's first purchase order (sample data skipped).
+      await recordActivation(shop, "first_po");
       return created;
     } catch (e) {
       if (!isUniqueViolation(e) || i >= attempts) throw e;

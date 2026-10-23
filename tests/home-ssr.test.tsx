@@ -61,7 +61,7 @@ describe("Home", () => {
     expect(html).toContain("First sync in progress");
     expect(html).not.toContain("—</span></div>");
     // The order block waits for the sync.
-    expect(html).toContain("Due this week");
+    expect(html).toContain("<s-heading>This week</s-heading>");
     expect(html).toContain("Your order plan appears here once your products, stock and sales are read.");
     // …and how far the reading is (never "nothing to order").
     expect(html).toContain("Still reading your store: 0%.");
@@ -71,7 +71,7 @@ describe("Home", () => {
     // Owner 2026-10-17: the sync screen leads (with what to do meanwhile), then the setup guide, then the order block.
     expect(html).toContain("While you wait");
     expect(html.indexOf("Setting up your order plan")).toBeLessThan(html.indexOf("Setup guide"));
-    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("Due this week"));
+    expect(html.indexOf("Setup guide")).toBeLessThan(html.indexOf("<s-heading>This week</s-heading>"));
     // Suppliers step (Growth): what suppliers are for.
     expect(html).toContain("Add your suppliers&#x27; lead times and case packs — they set every order-by date.");
   });
@@ -106,20 +106,22 @@ describe("Home", () => {
     expect(fhtml).toContain('href="/app/plans?upgrade=suppliers"');
   });
 
-  it("ready: four cards from the latest row, a null card shows a dash, popovers end with 'Based on:'", () => {
+  it("ready: 'Your stock today' with two forward-looking figures, popovers end with 'Based on:'", () => {
     const html = home(homeRaw(), "free");
+    // Clarity pass (2026-10-23): two figures on the Dashboard, same 4-week / stock-today window; the
+    // look-back figures (lost sales, sold-out page visits) are on the Actions page.
+    expect(html).toContain('<s-section heading="Your stock today">');
     expect(html).toContain("Money at stake");
-    expect(html).toContain("Sales at risk (next 28 days)");
-    expect(html).toContain("Lost sales (last 90 days)");
-    expect(html).toContain("Cash tied up");
-    expect(html).toContain("Sales missed on sold-out pages (last 30 days)");
+    expect(html).toContain("Sales at risk, next 4 weeks");
+    expect(html).toContain("Cash tied up in slow stock");
+    expect(html).not.toContain("Sales lost while sold out");
+    expect(html).not.toContain("Sales missed on sold-out pages");
     expect(html).toContain("€1,235");
     expect(html).toContain("€800");
-    expect(html).toContain("€0"); // a real zero stays a zero
-    expect(html).toContain('<span class="keha-money__figure">—</span>'); // lost90 is null
-    expect(html).toContain("Not enough sales yet to advise");
-    expect(count(html, "<s-popover")).toBe(4);
-    expect(count(html, "Based on: ")).toBe(4);
+    expect(count(html, "<s-popover")).toBe(2);
+    expect(count(html, "Based on: ")).toBe(2);
+    // No sales read yet in this fixture: no contradicting "We didn't find any sales yet" next to the numbers.
+    expect(html).not.toContain("We didn&#x27;t find any sales yet");
     expect(html).toContain("Assumes stock on order arrives within 28 days");
     expect(html).toContain("Valued at retail price");
     // Free plan: weekly refresh with an upgrade link.
@@ -227,6 +229,18 @@ describe("Home", () => {
 describe("Actions page: this week's actions (task 2.3; its own page since 0286)", () => {
   const withActions = (_plan: PlanCode, actions: ActionListView | null, url?: string) =>
     renderActions({ readiness: { ready: true }, list: actions, timezone: "Europe/Madrid" }, url);
+
+  it("What sold-out products cost you: the two look-back figures (clarity pass, from the Dashboard)", () => {
+    const money = buildHome(homeRaw(), "growth", NOW).money;
+    const html = renderActions({ readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid", money });
+    expect(html).toContain("What sold-out products cost you");
+    expect(html).toContain("Sales lost while sold out, last 90 days");
+    expect(html).toContain("Sales missed on sold-out pages, last 30 days");
+    expect(html).toContain('<span class="keha-money__figure">—</span>'); // lost90 is null
+    expect(html).toContain("€0"); // a real zero stays a zero
+    expect(html).not.toContain("Sales at risk, next 4 weeks");
+    expect(withActions("growth", actionList("growth"))).not.toContain("What sold-out products cost you");
+  });
 
   it("Growth, All tab: every kind's row and button, € figures, the … menu, ranked by €", () => {
     const html = withActions("growth", actionList("growth"));
@@ -354,8 +368,8 @@ describe("Dashboard: the top 5 actions (0286)", () => {
     expect(html).not.toContain('role="tablist"');
     expect(html).toContain('href="/app/actions"');
     expect(html).toMatch(/See all \d+ actions/);
-    // Ranked: the biggest first.
-    expect(html.indexOf("Clear Cardigan")).toBeLessThan(html.indexOf("Reorder Tee"));
+    // Stock first (clarity pass 2026-10-23): reorder before clearance, then by money.
+    expect(html.indexOf("Reorder Tee")).toBeLessThan(html.indexOf("Clear Cardigan"));
     // Clearances running and the Fix upsell live on the Actions page.
     expect(html).not.toContain("Active clearance discounts");
   });
@@ -390,13 +404,17 @@ describe("Dashboard: Order this week (Kanwar 2026-10-17)", () => {
   it("per supplier the products, units, cash, order-by date and Review order; one cash line (the bars are on Next 13 weeks, 0286)", () => {
     const html = render({ ...ready(), orderPlan: { kind: "full", plan: orderPlanFixture() } });
     // 0286: the money at stake sits in the summary at the top; the order block follows it.
-    expect(html.indexOf("Money at stake")).toBeLessThan(html.indexOf("Due this week"));
+    expect(html.indexOf("Money at stake")).toBeLessThan(html.indexOf("<s-heading>This week</s-heading>"));
     expect(html).toContain("Lisbon Linen");
-    expect(html).toContain("Overdue");
+    // The supplier's most urgent status word with its reason, never a bare "Overdue".
+    expect(html).toContain('<s-badge tone="critical">Order now</s-badge>');
+    expect(html).toContain("Runs out Oct 18 · a new order would arrive Oct 30");
+    expect(html).not.toContain("Overdue");
     expect(html).toContain("Review order");
     // Review order → Order now with that supplier's orders of the next 7 days (a key, never a list of variants).
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
-    expect(html).toMatch(/[\d,]+ units from 1 supplier · €[\d,]+/);
+    // The units summary line is gone (the table says it); one cash line stays.
+    expect(html).not.toMatch(/[\d,]+ units from 1 supplier/);
     expect(html).toMatch(/Cash needed, next 13 weeks: €[\d,]+/);
     expect(html).not.toContain("keha-orderplan-strip");
     expect(html).toContain('href="/app/reorder/calendar"');
@@ -565,5 +583,27 @@ describe("Sample data: no link into the Shopify admin (0286, live 404)", () => {
     expect(html).toContain("Review product page");
     expect(html).not.toContain("shopify://admin/products/");
     expect(html).toMatch(/href="\/app\/products\?q=[^"]+"/);
+  });
+});
+
+describe("Dashboard: Your stock today (clarity pass 2026-10-23)", () => {
+  const stock = { orderNow: 3, orderSoon: 5, ok: 40, tooMuch: 2, notSelling: 0, learning: 7, dontReorder: 1, total: 58 };
+  it("one box per status word with its meaning, each a link to those products; empty extra words hidden", () => {
+    const html = render({ ...buildHome(homeRaw(), "growth", NOW), stock });
+    expect(html).toContain("58 products are planned, each from the days it was in stock.");
+    for (const [k, label] of [["orderNow", "Order now"], ["orderSoon", "Order soon"], ["ok", "OK"], ["tooMuch", "Too much"], ["learning", "Learning"]] as const) {
+      expect(html).toContain(`href="/app/products?outcome=${k}"`);
+      expect(html).toContain(`>${label}</s-badge>`);
+    }
+    expect(html).not.toContain('href="/app/products?outcome=notSelling"'); // 0: not shown
+    expect(html).toContain("Sold out, or runs out before a new order could arrive.");
+    expect(html).toMatch(/<span class="keha-stat__count">3<\/span>/);
+    // The boxes come before the money, which comes before This week.
+    expect(html.indexOf("keha-stats")).toBeLessThan(html.indexOf("Money at stake"));
+  });
+  it("nothing counted yet: no boxes, the money still shows", () => {
+    const html = render({ ...buildHome(homeRaw(), "growth", NOW), stock: null });
+    expect(html).not.toContain("keha-stats");
+    expect(html).toContain("Money at stake");
   });
 });

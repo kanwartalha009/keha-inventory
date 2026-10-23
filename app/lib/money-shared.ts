@@ -11,6 +11,14 @@ import type { MoneyRefresh } from "./plan-shared";
 export const MONEY_CARDS = ["atRisk", "lost90", "cashStuck", "soldOutTraffic"] as const;
 export type MoneyCardKey = (typeof MONEY_CARDS)[number];
 
+/**
+ * The two figures the Dashboard and the weekly summary show (clarity pass 2026-10-23): the same
+ * window ahead, comparable at a glance. Lost sales and sold-out page visits are on the Actions page.
+ */
+export const DASHBOARD_MONEY = ["atRisk", "cashStuck"] as const satisfies readonly MoneyCardKey[];
+/** The Actions page's money: what sold-out products already cost. */
+export const ACTIONS_MONEY = ["lost90", "soldOutTraffic"] as const satisfies readonly MoneyCardKey[];
+
 type Basis<B> = B & { window: MoneyWindow; currency: string; costBasis: CostBasis };
 
 /** MoneyAtStake.basis JSON. */

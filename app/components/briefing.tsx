@@ -1,29 +1,37 @@
 /**
- * "This week" (lib/briefing-shared): plain sentences, then one tile per job with one button, then
- * the money at stake as a compact strip (children). One card since 0286: "This week in 30 seconds"
- * and "Money at stake" were two sections saying overlapping things (Kanwar 2026-10-20: "too much
- * scroll and a bit noisy"). Words only here; the numbers come from the server.
+ * "This week" (lib/briefing-shared): the plain sentences that lead the Dashboard's This week card.
+ * Clarity pass (2026-10-23): the four tiles are gone — they repeated the sentences and the order
+ * table ("order" said three times); the counts per status live in "Your stock today". Words only
+ * here; the numbers come from the server.
  */
-import type { ReactNode } from "react";
-import type { Briefing, BriefingSentence, BriefingTile } from "../lib/briefing-shared";
+import type { Briefing, BriefingSentence } from "../lib/briefing-shared";
 import { fill, plural, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay } from "../lib/dashboard-shared";
-import { useLinkProps } from "./wc";
 
-export function BriefingCard({ briefing, children }: { briefing: Briefing; children?: ReactNode }) {
+/** The plain sentences only (clarity pass 2026-10-23: they lead the Dashboard's "This week" card; the tiles are gone). */
+export function BriefingSentences({ briefing }: { briefing: Briefing }) {
+  const sentence = useSentence(briefing);
+  return (
+    <s-stack direction="block" gap="small-200">
+      {briefing.sentences.map((s) => (
+        <s-paragraph key={s.key}>{sentence(s)}</s-paragraph>
+      ))}
+    </s-stack>
+  );
+}
+
+function useSentence(briefing: Briefing): (s: BriefingSentence) => string {
   const { t, locale } = useLocale();
-  const link = useLinkProps();
   const money = (v: number | null) => formatAmount(v, briefing.currency, locale);
   const n = (v: number) => formatCount(v, locale);
-
-  const sentence = (s: BriefingSentence): string => {
+  return (s: BriefingSentence): string => {
     switch (s.key) {
       case "order": {
         const head =
           s.cash !== null
             ? fill(plural(s.suppliers, t("Order from 1 supplier this week ({cash})."), t("Order from {n} suppliers this week ({cash}).")), { n: n(s.suppliers), cash: money(s.cash) })
             : fill(plural(s.suppliers, t("Order from 1 supplier this week."), t("Order from {n} suppliers this week.")), { n: n(s.suppliers) });
-        return s.late > 0 ? `${head} ${fill(plural(s.late, t("1 order is already late."), t("{n} orders are already late.")), { n: n(s.late) })}` : head;
+        return s.late > 0 ? `${head} ${fill(plural(s.late, t("1 of them can't wait: something runs out before a new order could arrive."), t("{n} of them can't wait: something runs out before a new order could arrive.")), { n: n(s.late) })}` : head;
       }
       case "nothingToOrder":
         return s.nextOrderBy
@@ -53,64 +61,4 @@ export function BriefingCard({ briefing, children }: { briefing: Briefing; child
         return fill(plural(s.products, t("1 product page gets visitors but few sales."), t("{n} product pages get visitors but few sales.")), { n: n(s.products) });
     }
   };
-
-  const tile = (x: BriefingTile) => {
-    const copy = {
-      order: {
-        title: t("Order"),
-        value: fill(plural(x.count, t("1 supplier"), t("{n} suppliers")), { n: n(x.count) }),
-        // Suppliers due but no cost price on any line: say it is due, never "Nothing due" (audit 2026-10-18).
-        line: x.amount !== null ? fill(t("{cash} this week"), { cash: money(x.amount) }) : x.count > 0 ? t("Due this week") : t("Nothing due this week"),
-        button: t("See orders"),
-      },
-      soldOut: {
-        title: t("Sold out"),
-        value: fill(plural(x.count, t("1 product"), t("{n} products")), { n: n(x.count) }),
-        line: t("Shoppers still visit"),
-        button: t("Reorder or preorder"),
-      },
-      clear: {
-        title: t("Not selling"),
-        value: fill(plural(x.count, t("1 product"), t("{n} products")), { n: n(x.count) }),
-        line: x.amount !== null ? fill(t("{cash} tied up"), { cash: money(x.amount) }) : t("Stock that doesn't move"),
-        button: t("Create discounts"),
-      },
-      fix: {
-        title: t("Product pages"),
-        value: fill(plural(x.count, t("1 product"), t("{n} products")), { n: n(x.count) }),
-        line: t("Visitors but few sales"),
-        button: t("See pages"),
-      },
-    }[x.key];
-    return (
-      <s-box key={x.key} padding="base" borderWidth="base" borderRadius="base" background={x.count > 0 ? "base" : "subdued"}>
-        <s-stack direction="block" gap="small-200">
-          <s-text color="subdued">{copy.title}</s-text>
-          <s-heading>{x.count > 0 ? copy.value : t("All clear")}</s-heading>
-          <s-text color="subdued">{x.count > 0 ? copy.line : t("Nothing to do here this week")}</s-text>
-          {x.count > 0 && (
-            <s-button variant={x.key === "order" ? "primary" : "secondary"} {...link(x.href)}>
-              {copy.button}
-            </s-button>
-          )}
-        </s-stack>
-      </s-box>
-    );
-  };
-
-  return (
-    <s-section heading={t("This week")}>
-      <s-stack direction="block" gap="base">
-        <s-stack direction="block" gap="small-200">
-          {briefing.sentences.map((s) => (
-            <s-paragraph key={s.key}>{sentence(s)}</s-paragraph>
-          ))}
-        </s-stack>
-        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
-          {briefing.tiles.map(tile)}
-        </s-grid>
-        {children}
-      </s-stack>
-    </s-section>
-  );
 }

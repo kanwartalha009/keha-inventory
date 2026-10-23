@@ -8,9 +8,10 @@ import { fill, useLocale } from "../lib/i18n";
 import { formatAmount, formatCount, formatDay, formatPercent, notReadyText, type PlanNotReady, type PlanReadiness } from "../lib/dashboard-shared";
 import { variantName } from "../lib/products-shared";
 import { cashBars } from "../lib/planner-shared";
-import { dueState, type DueNote, type OrderWhy } from "../lib/engine/forward-plan-shared";
+import { dueDay, ordersDue, type DueNote, type OrderWhy, type PlanEvent, type StockOutlook } from "../lib/engine/forward-plan-shared";
+import { outcomeLabel, outcomeReasonText, outcomeTone, planOutcome, worstOutcome, type Outcome } from "../lib/outcome-shared";
 import type { CashSummary, CashWeek as PaidWeek } from "../lib/cash-shared";
-import { aboveLastYear, dueText, formatWeekRange, lastYearLine, shortDay, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
+import { aboveLastYear, dueText, whyPlain, formatWeekRange, lastYearLine, shortDay, whyLines, whySum, type LockTeaser, type OrderPlanData, type PreviewRow } from "../lib/order-plan-shared";
 import ConfirmModal from "./ConfirmModal";
 import { featureCopy, planTag } from "./plan";
 import { useLinkProps } from "./wc";
@@ -175,7 +176,7 @@ export function PreviewTable({ rows, readiness }: { rows: PreviewRow[]; readines
                   <DaysLeft id={`keha-prev-left-${r.variantId.replace(/\D/g, "")}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />
                 </s-table-cell>
                 <s-table-cell>
-                  <OrderByCell orderBy={r.orderBy} overdue={r.overdue} note={r.dueNote ?? null} />
+                  <OrderByCell orderBy={r.orderBy} overdue={r.overdue} note={r.dueNote ?? null} outlook={r.outlook ?? null} />
                 </s-table-cell>
                 <s-table-cell>{formatCount(r.qty, locale)}</s-table-cell>
               </s-table-row>
@@ -318,18 +319,36 @@ export function WhyPopover({
       <s-button variant="tertiary" icon="info" commandFor={id} accessibilityLabel={`${t("Why this quantity")}: ${title}`} />
       <s-popover id={id}>
         <s-box padding="base" maxInlineSize="400px">
+          {/* Wraps inside a table cell that doesn't (live 2026-10-23: the text ran past the edge). */}
+          <div className="keha-wrap">
           <s-stack direction="block" gap="small-200">
             <s-heading>{t("Why this quantity")}</s-heading>
             {sum.summary && <s-text fontWeight="medium">{sum.summary}</s-text>}
             {whys.length ? (
-              whys.map((w, i) => (
-                <s-stack key={i} direction="block" gap="none">
-                  {sum.headings[i] && <s-text fontWeight="medium">{sum.headings[i]}</s-text>}
-                  {whyLines(w, t, locale).map((l, k) => (
-                    <s-text key={k}>{l}</s-text>
-                  ))}
-                </s-stack>
-              ))
+              <>
+                {/* Plain words first (clarity pass); the formula for planners under Details. */}
+                {whys.map((w, i) => (
+                  <s-stack key={i} direction="block" gap="none">
+                    {sum.headings[i] && <s-text fontWeight="medium">{sum.headings[i]}</s-text>}
+                    <s-text>{whyPlain(w, t, locale)}</s-text>
+                  </s-stack>
+                ))}
+                <details className="keha-details">
+                  <summary>{t("Details")}</summary>
+                  <s-stack direction="block" gap="small-100">
+                    {whys.map((w, i) => (
+                      <s-stack key={i} direction="block" gap="none">
+                        {sum.headings[i] && <s-text color="subdued">{sum.headings[i]}</s-text>}
+                        {whyLines(w, t, locale).map((l, k) => (
+                          <s-text key={k} color="subdued">
+                            {l}
+                          </s-text>
+                        ))}
+                      </s-stack>
+                    ))}
+                  </s-stack>
+                </details>
+              </>
             ) : (
               <s-text color="subdued">{t("The details appear after the next calculation.")}</s-text>
             )}
@@ -342,6 +361,7 @@ export function WhyPopover({
               <s-link {...link("/app/settings/suppliers")}>{t("Suppliers")}</s-link>
             </s-stack>
           </s-stack>
+          </div>
         </s-box>
       </s-popover>
     </>
@@ -356,34 +376,83 @@ export function AboveLastYearBadge({ qty, lastYear }: { qty: number; lastYear: n
 }
 
 /**
- * An order-by date with the Overdue badge (Dashboard, Products, the product page, the Free
- * preview): the date, then the badge when late; the badge alone when late with no date (M3).
+ * The status words with their reason under them (clarity pass 2026-10-23, lib/outcome-shared):
+ * "Order now — Runs out Nov 2 · a new order would arrive Nov 23". The same everywhere.
  */
-export function OrderByCell({ orderBy, overdue, note = null }: { orderBy: string | null | undefined; overdue: boolean; note?: DueNote | null }) {
+export function OutcomeCell({ outcome, compact = false }: { outcome: Outcome; compact?: boolean }) {
   const { t, locale } = useLocale();
-  // Below safety stock but not out yet (a long-past order-by date, A1): not "Overdue" next to a
-  // far run-out date — that read as a contradiction (live 2026-10-18: 113 days of stock, "Overdue").
-  const belowSafety = overdue && !orderBy && !note?.soldOutSince && !!note?.runsOut && !!note?.belowSafety;
+  const reason = outcomeReasonText(outcome.reason, t, (d) => shortDay(d, locale));
   return (
     <span className="keha-due-cell">
-      {(orderBy || !overdue) && <span className="keha-nowrap">{formatDay(orderBy, locale)}</span>}
-      {overdue && (belowSafety ? <s-badge tone="warning">{t("Below safety stock")}</s-badge> : <s-badge tone="critical">{t("Overdue")}</s-badge>)}
-      {/* A1: the season's first order after an off season; a long-overdue line's context. */}
-      {!overdue && note?.nextSeason && <s-badge tone="info">{t("Next season")}</s-badge>}
-      {overdue && !orderBy && note?.soldOutSince && <s-text color="subdued">{fill(t("out of stock since {date}"), { date: shortDay(note.soldOutSince, locale) })}</s-text>}
-      {overdue && !orderBy && note?.runsOut && <s-text color="subdued">{fill(t("runs out {date}"), { date: shortDay(note.runsOut, locale) })}</s-text>}
+      <s-badge tone={outcomeTone(outcome.key)}>{outcomeLabel(outcome.key, t)}</s-badge>
+      {reason && !compact && <s-text color="subdued">{reason}</s-text>}
     </span>
   );
 }
 
-/** A line's real deadline: "Due 27 Oct", "Due today", "Overdue since 12 Oct" or "Overdue" (critical). */
-export function DueLabel({ deadline, today, overdue = false, note = null }: { deadline: string | null | undefined; today: string; overdue?: boolean; note?: DueNote | null }) {
+/**
+ * An order-by date (Dashboard, the Free preview, the product page): Order now / Order soon with
+ * the reason when it is due this week, else the date — never a red "Overdue" beside weeks of
+ * stock (live 2026-10-23). The A1 "Next season" note stays.
+ */
+export function OrderByCell({
+  orderBy,
+  overdue,
+  note = null,
+  outlook = null,
+  today,
+}: {
+  orderBy: string | null | undefined;
+  overdue: boolean;
+  note?: DueNote | null;
+  outlook?: StockOutlook | null;
+  today?: string;
+}) {
   const { t, locale } = useLocale();
-  const text = dueText(deadline, today, t, locale, overdue, note);
-  // Below safety stock, not out yet: a warning, not "Overdue" (see OrderByCell).
-  if (overdue && !deadline && !note?.soldOutSince && note?.runsOut && note.belowSafety) return <s-badge tone="warning">{text}</s-badge>;
-  if (dueState(deadline, today, overdue) === "overdue") return <s-badge tone="critical">{text}</s-badge>;
-  return <span className="keha-nowrap">{text}</span>;
+  const day = today ?? new Date().toISOString().slice(0, 10);
+  const o = planOutcome({ orderBy: orderBy ?? null, overdue, outlook, note }, day);
+  if (o.key === "orderNow" || o.key === "orderSoon") return <OutcomeCell outcome={o} />;
+  return (
+    <span className="keha-due-cell">
+      <span className="keha-nowrap">{formatDay(orderBy, locale)}</span>
+      {note?.nextSeason && <s-badge tone="info">{t("Next season")}</s-badge>}
+    </span>
+  );
+}
+
+/**
+ * A supplier's orders this week (Dashboard): the most urgent status words of its lines, else the
+ * earliest date.
+ */
+export function SupplierDueCell({ events, today }: { events: readonly PlanEvent[]; today: string }) {
+  const { locale } = useLocale();
+  const worst = worstOutcome(events.map((e) => planOutcome({ orderBy: dueDay(e), overdue: e.overdue, outlook: e.outlook ?? null, note: e.context ?? null }, today)));
+  if (worst && (worst.key === "orderNow" || worst.key === "orderSoon")) return <OutcomeCell outcome={worst} />;
+  const due = ordersDue(events);
+  return <span className="keha-nowrap">{formatDay(due.orderBy, locale)}</span>;
+}
+
+/**
+ * A planned order's date in a list (Due now, the calendar, the builder): the status words when
+ * it is due this week; later orders show "Due {date}" / "Next season: order by {date}".
+ */
+export function DueLabel({
+  deadline,
+  today,
+  overdue = false,
+  note = null,
+  outlook = null,
+}: {
+  deadline: string | null | undefined;
+  today: string;
+  overdue?: boolean;
+  note?: DueNote | null;
+  outlook?: StockOutlook | null;
+}) {
+  const { t, locale } = useLocale();
+  const o = planOutcome({ orderBy: deadline ?? null, overdue, outlook, note }, today);
+  if (o.key === "orderNow" || o.key === "orderSoon") return <OutcomeCell outcome={o} />;
+  return <span className="keha-nowrap">{dueText(deadline, today, t, locale, overdue, note)}</span>;
 }
 
 /**

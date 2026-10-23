@@ -9,10 +9,6 @@ import type { Tr } from "./i18n";
 export const PRODUCTS_TR: Record<string, Tr> = {
   // ---- Status ----
   "Out of stock": { es: "Sin stock", fr: "En rupture", de: "Nicht vorrätig", it: "Esaurito", pt: "Sem stock", nl: "Niet op voorraad", pl: "Brak w magazynie" },
-  "Low stock": { es: "Stock bajo", fr: "Stock bas", de: "Niedriger Bestand", it: "Scorte basse", pt: "Stock baixo", nl: "Lage voorraad", pl: "Niski stan" },
-  "Overstock": { es: "Exceso de stock", fr: "Surstock", de: "Überbestand", it: "Eccesso di scorte", pt: "Excesso de stock", nl: "Overvoorraad", pl: "Nadmiar zapasu" },
-  "Dead stock": { es: "Stock muerto", fr: "Stock dormant", de: "Ladenhüter", it: "Stock fermo", pt: "Stock parado", nl: "Dode voorraad", pl: "Martwy zapas" },
-  "Insufficient data": { es: "Datos insuficientes", fr: "Données insuffisantes", de: "Unzureichende Daten", it: "Dati insufficienti", pt: "Dados insuficientes", nl: "Onvoldoende gegevens", pl: "Niewystarczające dane" },
 
   // ---- Table and CSV columns ----
   "Product": { es: "Producto", fr: "Produit", de: "Produkt", it: "Prodotto", pt: "Produto", nl: "Product", pl: "Produkt" },
@@ -33,7 +29,6 @@ export const PRODUCTS_TR: Record<string, Tr> = {
   "No recent sales": { es: "Sin ventas recientes", fr: "Aucune vente récente", de: "Keine Verkäufe in letzter Zeit", it: "Nessuna vendita recente", pt: "Sem vendas recentes", nl: "Geen recente verkopen", pl: "Brak ostatniej sprzedaży" },
 
   // ---- Page, filters, paging ----
-  "One row per variant. Sales per day count only the days the variant was in stock.": { es: "Una fila por variante. Las ventas al día solo cuentan los días en que la variante tenía stock.", fr: "Une ligne par variante. Les ventes par jour ne comptent que les jours où la variante était en stock.", de: "Eine Zeile pro Variante. Verkäufe pro Tag zählen nur die Tage, an denen die Variante vorrätig war.", it: "Una riga per variante. Le vendite al giorno contano solo i giorni in cui la variante era disponibile.", pt: "Uma linha por variante. As vendas por dia só contam os dias em que a variante tinha stock.", nl: "Eén rij per variant. Verkopen per dag tellen alleen de dagen dat de variant op voorraad was.", pl: "Jeden wiersz na wariant. Sprzedaż dzienna liczy tylko dni, gdy wariant był dostępny." },
   "Search": { es: "Buscar", fr: "Rechercher", de: "Suchen", it: "Cerca", pt: "Pesquisar", nl: "Zoeken", pl: "Szukaj" },
   "All statuses": { es: "Todos los estados", fr: "Tous les statuts", de: "Alle Status", it: "Tutti gli stati", pt: "Todos os estados", nl: "Alle statussen", pl: "Wszystkie stany" },
   "Collection": { es: "Colección", fr: "Collection", de: "Kollektion", it: "Collezione", pt: "Coleção", nl: "Collectie", pl: "Kolekcja" },

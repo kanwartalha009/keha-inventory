@@ -85,19 +85,23 @@ describe("Products page", () => {
     expect(html).toContain("M · SKU-1");
     expect(html).toContain("Shirt 3");
     expect(html).not.toContain("Default Title");
-    expect(html).toContain("Low stock");
-    expect(html).toContain("Overstock");
+    // Clarity pass (2026-10-23): outcome words with the reason, and the pace in words.
+    expect(html).toContain("Order soon");
+    expect(html).toContain("Too much");
+    expect(html).not.toContain("Low stock");
+    expect(html).not.toContain("Overstock");
     expect(html).toContain(">12<");
     expect(html).toContain(">400<");
-    expect(html).toContain("2.3");
+    expect(html).toContain("2.3 a day");
+    expect(html).toContain("No recent sales");
     expect(html).toContain('src="https://cdn.shopify.com/a.jpg"');
     expect(html).toContain('href="/app/products/1"');
     expect(html).toContain("Page 2 of 3 · Variants: 120");
     // Short headers that never wrap; the long form is each header's tooltip.
-    for (const h of ["On hand", "Incoming", "Daily sales", "Days of stock", "Order by", "Suggested qty"]) {
+    for (const h of ["On hand", "Incoming", "Sells", "Days of stock", "Order by", "Suggested qty"]) {
       expect(html).toContain(h);
     }
-    for (const h of ["Sales per day while in stock", "Days of stock", "The next planned order (the same as Due now)"]) {
+    for (const h of ["Sales on the days it was in stock", "Days of stock", "The next planned order (the same as Due now)"]) {
       expect(html).toContain(`<s-tooltip id="keha-col-`);
       expect(html).toContain(h);
     }
@@ -120,7 +124,8 @@ describe("Products page", () => {
     expect(html).toMatch(/<s-table-cell>9<\/s-table-cell>/); // 9.7 days → 9
     expect(html).toContain("Oct 20, 2026");
     expect(html).toMatch(/<s-table-cell>30<\/s-table-cell>/);
-    expect(count(html, "<s-table-cell>—</s-table-cell>")).toBeGreaterThanOrEqual(7); // row 3 has no metric/stock
+    expect(count(html, "<s-table-cell>—</s-table-cell>")).toBeGreaterThanOrEqual(5); // row 3 has no metric/stock (its status reads "Learning")
+    expect(html).toContain("Learning");
     expect(html).not.toContain("Growth plan");
     expect(html).toContain("Export CSV");
     expect(html).not.toContain('href="/app/plans?upgrade=csvExport"');
@@ -138,8 +143,8 @@ describe("Products page", () => {
     expect(html).toContain("See how many days each variant will last and how many to order.");
     expect(html).toContain('href="/app/plans?upgrade=csvExport"');
     expect(html).toContain("Export CSV · Growth plan");
-    // The non-forecast columns still show.
-    expect(html).toContain("Low stock");
+    // The non-forecast columns still show, and the status words (from the stock numbers).
+    expect(html).toContain("Order soon");
     expect(html).toContain(">12<");
   });
 
@@ -219,9 +224,10 @@ function detail(forecast: boolean): VariantDetailData {
   };
 }
 
-function renderDetail(d: VariantDetailData) {
+/** The detail page with "Forecast details and settings" open (`?details=1`); `closed` = as a merchant first sees it. */
+function renderDetail(d: VariantDetailData, closed = false) {
   const Stub = createRoutesStub([{ id: "detail", path: "/app/products/:variantId", Component: VariantDetailPage, loader: () => d }]);
-  return renderToString(<Stub initialEntries={["/app/products/1"]} hydrationData={{ loaderData: { detail: d } }} />);
+  return renderToString(<Stub initialEntries={[closed ? "/app/products/1" : "/app/products/1?details=1"]} hydrationData={{ loaderData: { detail: d } }} />);
 }
 
 describe("Variant detail", () => {
@@ -266,7 +272,7 @@ describe("Variant detail", () => {
 
   it("layout: every card uses the shared head; count columns are right-aligned; no header wraps", () => {
     const html = renderDetail(detail(true));
-    for (const title of ["Stock", "Sales, last 13 months", "How the forecast was built", "Recent sales"]) {
+    for (const title of ["What to do", "Sales, last 13 months", "How the forecast was built", "Recent sales"]) {
       expect(html).toContain(`<div class="keha-form-card__head"><s-stack gap="small-500"><s-heading>${title}</s-heading>`);
     }
     expect(html).not.toMatch(/<s-section heading=/);
@@ -290,7 +296,8 @@ describe("Variant detail", () => {
     // The Trend row never says "No seasonal data yet" (only the seasonal row can).
     expect(count(html, "No seasonal data yet")).toBe(1);
     expect(renderDetail({ ...detail(true), trendMode: "store" })).toContain("No change from last year");
-    expect(html).toContain("Stock included in purchase orders");
+    // Clarity pass: which locations count is said once, on the lists ("How we plan:"), not per product.
+    expect(html).not.toContain("Stock included in purchase orders");
     expect(html).not.toContain("Online stock pool");
   });
 
@@ -321,12 +328,15 @@ describe("Products: the plan's To order, Don't reorder, sort and supplier filter
     const [a, b, c] = rows(true);
     const html = render(
       data(true, {
-        rows: [{ ...a!, overdue: true, productId: "gid://shopify/Product/1" }, { ...b!, noReorder: true, orderQty: null }, c!],
+        rows: [{ ...a!, overdue: true, outcome: { key: "orderNow", reason: { kind: "runsOutFirst", runsOut: "2026-10-19", arrives: "2026-10-30" } }, productId: "gid://shopify/Product/1" }, { ...b!, noReorder: true, orderQty: null }, c!],
         options: { vendors: [], collections: [], suppliers: [{ id: "s1", name: "Lisbon Linen" }] },
       }),
     );
     expect(html).toContain('<s-badge tone="neutral">Don&#x27;t reorder</s-badge>');
-    expect(html).toContain("Overdue");
+    // The status word with its reason (withPlan sets it from the plan; never a bare "Overdue").
+    expect(html).toContain('<s-badge tone="critical">Order now</s-badge>');
+    expect(html).toContain("Runs out Oct 19 · a new order would arrive Oct 30");
+    expect(html).not.toContain("Overdue");
     expect(html).toContain("Don&#x27;t reorder this variant");
     expect(html).toContain("Don&#x27;t reorder this product");
     expect(html).toContain("Reorder again");
@@ -532,5 +542,28 @@ describe("How the forecast was built: safety from the forecast's own error, a le
     expect(html.match(/>In-stock target</g)?.length).toBe(1);
     expect(readForecastInputs({ error: { horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 } }, 1)!.error).toEqual({ horizonDays: 42, sigma: 18.4, fill: 0.95, ratio: null, samples: 0 });
     expect(readForecastInputs({}, 1)!.error).toBeNull();
+  });
+});
+
+describe("Clarity pass (2026-10-23): the answer first, the method once", () => {
+  it("Products: 'How we plan' once under the title, with a link to change it", () => {
+    const html = render(data(true, { basis: { leadTimeDays: 21, cycleDays: 30, safetyLevel: "balanced", suppliers: 2, locationsLeftOut: 1 } }));
+    expect(count(html, "How we plan:")).toBe(1);
+    expect(html).toContain("How we plan: Sales counted only on days in stock · 21-day lead time unless a supplier has its own · stock for 30 days after each delivery · a standard buffer · 1 location left out of orders.");
+    expect(html).toContain('href="/app/settings?more=1"');
+    expect(render(data(true))).not.toContain("How we plan:");
+  });
+  it("Product page: What to do first with the plain answer; the forecast detail collapsed until asked for", () => {
+    const html = renderDetail(detail(true), true);
+    expect(html).toContain("<s-heading>What to do</s-heading>");
+    expect(html).toMatch(/Sells 2\.3 a day\. 12 in stock/);
+    expect(html).toContain("Forecast details and settings");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("<s-heading>How the forecast was built</s-heading>");
+    expect(html).not.toContain("<s-heading>Forecast settings</s-heading>");
+    // What to do comes before the sales chart, the chart before the detail.
+    expect(html.indexOf("What to do")).toBeLessThan(html.indexOf("Sales, last 13 months"));
+    expect(html.indexOf("Sales, last 13 months")).toBeLessThan(html.indexOf("Forecast details and settings"));
+    expect(renderDetail(detail(true))).toContain('aria-expanded="true"');
   });
 });

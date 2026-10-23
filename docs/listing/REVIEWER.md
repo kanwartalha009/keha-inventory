@@ -15,9 +15,10 @@ monthly budget, measured delivery times, size-grid purchase orders); labels are 
 
 **What the app does.** Keha reads a store's own products, stock, sales totals and store visits
 and plans its stock orders: what to order, from which supplier, by when, and the cash each week
-needs over the next 13 weeks. It also shows the money at stake (sales at risk, lost sales,
-cash tied up, out-of-stock page visits), a ranked weekly to-do list, purchase orders, and a
-weekly summary. It has no storefront part and stores no shopper data.
+needs over the next 13 weeks. Every product carries one status word with its reason (**Order
+now**, **Order soon**, **OK**, **Too much**, **Not selling**, **Learning**, **Don't reorder**). It
+also shows the money at stake (sales at risk in the next 4 weeks, cash tied up in slow stock), a
+ranked weekly to-do list, purchase orders, and a weekly summary. It has no storefront part and stores no shopper data.
 
 **How notifications work (no email service of our own).** Keha sends no email itself. Merchants get
 its summaries by email **through Shopify Flow**: the app fires the triggers **Weekly order plan
@@ -87,33 +88,40 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
    appears here when it's ready" (with Shopify Flow, **First order plan ready** fires then). The newest 90 days are read first; the
    numbers appear when they are in, labelled "Based on the last 90 days so far" until the older
    months are read, and the header then shows the real update time.
-3. **Dashboard → This week** (top of the page): up to three plain sentences (what to
-   order this week and the cash, sold-out products shoppers still look for, stock that doesn't
-   move and the cash it ties up) and one tile each — **Order**, **Sold out**, **Not selling**,
-   **Product pages** — that opens the place to act (Due now, or the matching tab of the
-   **Actions** page; **Not selling** is the Clearance tab with **Create discounts**). Under the
-   tiles, **Money at stake**: sales at risk, lost sales, cash tied up and sales missed on sold-out
-   pages, each with an info button ("How we got this") that shows the inputs. A dash (—) means not
-   enough data, never zero.
-   **Dashboard → Due this week** (below it): each supplier with orders due in the
-   next 7 days (overdue ones included) — products, units, cash and order-by date — with
-   **Review order**, which opens Due now for that supplier at the planned quantities. Below it,
-   the cash needed for the next 13 weeks with **See the order calendar**.
-4. **Dashboard → This week's actions:** the 5 actions with the most money at stake and **See all
-   … actions**, which opens the **Actions** page (also in the app menu).
+3. **Dashboard → Your stock today** (top of the page): how many products carry each status word
+   (**Order now**: sold out, or it runs out before a new order could arrive; **Order soon**: order
+   within a week to keep a small buffer; **OK**; and **Too much**, **Not selling**, **Learning** when
+   there are any). Each number opens Products filtered to those products. Below it, **Money at
+   stake**: sales at risk in the next 4 weeks and cash tied up in slow stock, each with an info
+   button ("How we got this") that shows the inputs. A dash (—) means not enough data, never zero.
+   **Dashboard → This week** (below it): up to three plain sentences (what to order this week and
+   the cash, sold-out products shoppers still look for, stock that doesn't move), then each
+   supplier with orders due in the next 7 days — products, units, cash and its most urgent status
+   word with the reason — with **Review order**, which opens Due now for that supplier at the
+   planned quantities. Below it, the cash needed for the next 13 weeks with **See the order calendar**.
+4. **Dashboard → This week's actions:** the top 5 actions, stock first (reorder and sold-out
+   products before clearance and page fixes), and **See all … actions**, which opens the
+   **Actions** page (also in the app menu). The Actions page also shows **What sold-out products
+   cost you** (sales lost while sold out, last 90 days; sales missed on sold-out pages, last 30 days).
 5. **Actions:** the whole list. Switch tabs (All, Reorder, Stock gaps, Promote, Product issues, Clearance).
    Each row's "…" menu has **Mark as done**, **Snooze 7 days**, **Dismiss** and **Why this action** (Undo
    appears after Done, Snooze and Dismiss).
 6. **Clearance** tab → **Create discount** → a confirm dialog shows the products and the
    percentage → confirm. The discount appears in Shopify → Discounts. Nothing is created
    without this confirm.
-7. **Products:** the table (one row per variant; filters; **Export CSV**). Click a row: the
-   product page shows 13 months of sales with out-of-stock days shaded and "How the forecast was
-   built" (lead time, order days, in-stock target and safety stock each with a **Change** link to
-   the setting). On Due now, the info button on a line (**Why this quantity**) shows the sum and
-   links to Settings and Suppliers. A line that still has stock but falls below safety stock before
-   a new order could arrive says **Below safety stock · runs out <date>**; **Overdue** means it runs
-   out before the order can arrive.
+7. **Products:** the table (one row per variant; the status word and its reason, how fast it
+   sells in words — "2.3 a day", "about 3 a month"; filter by status word, collection, vendor;
+   **Export CSV**). The store's planning rules are said once under the title ("How we plan: …",
+   with **Change**). Click a row: the product page opens with **What to do** (the status, one plain
+   sentence such as "Sells about 3 a month. 12 in stock, enough until about Dec 2. Order 6 by Oct
+   30.", and the stock numbers), then 13 months of sales with out-of-stock days shaded, then
+   **Forecast details and settings** (collapsed: "How the forecast was built" with lead time,
+   order days, in-stock target and safety stock, each with a **Change** link to the setting). On
+   Due now, the info button on a line (**Why this quantity**) says it in a sentence whose numbers
+   add up ("Sells 2 a day. The next 28 days need about 56, plus a buffer of 10. You have 5 in
+   stock, so order 38."), with the formula under **Details**. **Order now** (red) is used only when
+   a product is sold out or runs out before a new order could arrive; a product only below its
+   buffer, or one whose stock-out an order already on the way ends, is **Order soon** (amber).
 8. **Settings → Suppliers:** add a supplier with an email address you can read and assign it
    by vendor. Lead time is the total from placing the order to stock arriving; **Transit time**
    is the part from ship date to arrival (sea or air freight). Under **More options**: the
@@ -179,15 +187,16 @@ plan page (**Plans & billing → Choose plan**; no charge on a development store
     canceled order can be reopened within 30 days (**Reopen order**). An order whose stock
     landed is received automatically (and says so, with the date).
 13. **Settings → Defaults:** "How long do your suppliers take?" (the default lead time); under
-    **More options**: Order enough for, Overstock after, Dead stock after, **Safety stock** (Low /
+    **More options**: Order enough for, Too much after, Not selling after, **Safety stock** (Low /
     Standard / High), **Year-over-year growth** (off and recommended by default, or add the store's
     year-over-year growth) and an optional **Monthly purchasing budget**. **Settings → Alerts:** the
     **Weekly summary** card ("Get it by email with Shopify Flow", **Open Shopify Flow**), instant
     alerts on/off (Slack; by email through Flow's "Product needs reorder" on Growth); paste a Slack
     incoming-webhook link → **Send a test message**. The weekly summary (Flow's "Summary text", and
     Slack) opens with **Due this week** (one line per supplier with units, cash and order-by date,
-    **Review order**), and its subject says what to order (for example "2 orders due this week ·
-    first by Wed, Oct 21").
+    flagged **Order now** / **Order soon**, **Review order**), then the same two money figures as
+    the Dashboard, and its subject says what to order (for example "2 orders due this week · first
+    by Wed, Oct 21", or "Lisbon Linen: order now · 40 units").
 14. **Shopify Flow:** create a workflow with a Keha Inventory Planner trigger and the **Send
     internal email** action (Subject `{{ subject }}`, Message `{{ summaryText }}` for the two
     summary triggers). **Weekly order plan ready** fires on Mondays from 08:00 store time, once per

@@ -449,14 +449,15 @@ export function todayIn(timeZone: string | null | undefined, now: Date): string 
 
 export function moneyCardTitle(key: MoneyCardKey, t: T): string {
   switch (key) {
+    // Clarity pass (2026-10-23): plain titles, each with its period.
     case "atRisk":
-      return t("Sales at risk (next 28 days)");
+      return t("Sales at risk, next 4 weeks");
     case "lost90":
-      return t("Lost sales (last 90 days)");
+      return t("Sales lost while sold out, last 90 days");
     case "cashStuck":
-      return t("Cash tied up");
+      return t("Cash tied up in slow stock");
     case "soldOutTraffic":
-      return t("Sales missed on sold-out pages (last 30 days)");
+      return t("Sales missed on sold-out pages, last 30 days");
   }
 }
 

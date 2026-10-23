@@ -33,9 +33,9 @@ import { getHomeData, reviewAskDue } from "../models/dashboard.server";
 import { recordReviewAsk } from "../models/settings.server";
 import { REVIEW_ASK_DELAY_MS, isFinalReviewCode, type ReviewMoment } from "../lib/review-ask-shared";
 import { loadOrderPlan } from "../models/order-plan.server";
-import { CantPlan, OrderByCell, PreviewLock, PreviewTable } from "../components/order-plan";
+import { CantPlan, PreviewLock, PreviewTable, SupplierDueCell } from "../components/order-plan";
 import { hasFeature } from "../lib/plan-shared";
-import { cashTotals, dueNote, ordersDue } from "../lib/engine/forward-plan-shared";
+import { cashTotals } from "../lib/engine/forward-plan-shared";
 import {
   lockTeaser,
   orderLink,
@@ -50,7 +50,12 @@ import {
 import { getActionList } from "../models/actions.server";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
-import { BriefingCard } from "../components/briefing";
+import { BriefingSentences } from "../components/briefing";
+import { recordActivation } from "../models/activation.server";
+import { MoneyFigure, useFmt } from "../components/money";
+import { outcomeCounts, type OutcomeCounts } from "../models/products.server";
+import { outcomeLabel, outcomeMeaning, outcomeTone, type OutcomeKey } from "../lib/outcome-shared";
+import { salesSpanText } from "../lib/sync-progress-shared";
 import { dashboardHelp } from "../components/help";
 import { buildBriefing, type Briefing } from "../lib/briefing-shared";
 import { SampleOfferCard } from "../components/sample";
@@ -62,18 +67,14 @@ import { partialText } from "../lib/sync-progress-shared";
 import { useLinkProps } from "../components/wc";
 import { planTag } from "../components/plan";
 import { fill, useLocale, plural } from "../lib/i18n";
-import { MONEY_CARDS, type MoneyCardKey } from "../lib/money-shared";
+import { DASHBOARD_MONEY } from "../lib/money-shared";
 import { recheckNoticeText } from "../lib/sync/weekly-recheck-shared";
 import {
-  basisLines,
   formatAmount,
   formatCount,
   formatDay,
-  formatPercent,
-  moneyCardTitle,
   seasonsLearningText,
   updatedLabel,
-  type Fmt,
   type HomeData,
 } from "../lib/dashboard-shared";
 
@@ -92,8 +93,10 @@ export type HomeLoaderData = HomeData & {
   reviewAsk?: ReviewMoment | null;
   /** The store isn't ready yet: offer "Explore Keha with sample data" (components/sample). */
   sampleOffer?: boolean;
-  /** "This week in 30 seconds" (lib/briefing-shared); null until the plan is ready. */
+  /** "This week" sentences (lib/briefing-shared); null until the plan is ready. */
   briefing?: Briefing | null;
+  /** "Your stock today": products per status word (models/products.server outcomeCounts). */
+  stock?: OutcomeCounts | null;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> => {
@@ -105,11 +108,15 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
   // and no Shopify call for the preorder app.
   if (sample) home.dataLate = false;
   const ready = home.state === "ready";
-  const [actions, forward, reviewAsk] = await Promise.all([
+  const [actions, forward, reviewAsk, stock] = await Promise.all([
     ready ? getActionList(shop, plan, now, { preorderInstalled: sample ? async () => false : () => kehaPreorderInstalled(admin, shop) }) : null,
     ready ? loadOrderPlan(shop, now) : null,
     ready && !sample ? reviewAskDue(shop, now).catch(() => null) : null,
+    // "Your stock today" (clarity pass): how many products carry each status word.
+    ready ? outcomeCounts(shop, now).catch(() => null) : null,
   ]);
+  // First-session measurement: the first time this shop saw its plan (never on sample data).
+  if (ready && !sample) void recordActivation(shop, "plan_seen", now);
   const orderPlan: DashboardOrderPlan | null = forward
     ? hasFeature(plan, "reorderPlan")
       ? { kind: "full", plan: forward }
@@ -118,7 +125,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<HomeLoade
   const briefing = forward
     ? buildBriefing({ currency: forward.currency, week: thisWeek(forward), counts: actions?.counts ?? null, cashStuck: home.money?.values.cashStuck ?? null })
     : null;
-  return { ...home, actions, orderPlan, briefing, renderedAt: now.toISOString(), reviewAsk, sampleOffer: !sample && offerSample(home.state) };
+  return { ...home, actions, orderPlan, briefing, stock, renderedAt: now.toISOString(), reviewAsk, sampleOffer: !sample && offerSample(home.state) };
 };
 
 /** POST { intent: "reviewAsked", code }: remember Shopify's answer so we never ask twice. */
@@ -185,17 +192,9 @@ export default function Home() {
 
       {data.state === "syncing" && !data.setup.allDone && <SetupGuide data={data} />}
 
-      {ready && data.briefing ? (
-        <BriefingCard briefing={data.briefing}>
-          <MoneyStrip data={data} />
-        </BriefingCard>
-      ) : (
-        ready && (
-          <s-section heading={t("Money at stake")}>
-            <MoneyStrip data={data} />
-          </s-section>
-        )
-      )}
+      {/* Clarity pass (2026-10-23): first the diagnosis — what the app read and how the stock stands
+          — then what to do this week, then the top actions. */}
+      {ready && <StockToday data={data} />}
       <OrderThisWeek data={data} />
 
       {ready && data.actions && <ActionList list={data.actions} timezone={data.timezone} mode="preview" />}
@@ -271,7 +270,9 @@ function ReviewAsk() {
 /** The lead block: what to order this week, by supplier, and the cash needed over the next 13 weeks. */
 function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   const { t, locale } = useLocale();
-  const heading = t("Due this week");
+  const heading = t("This week");
+  // The plain sentences lead the card (they say what the table below details).
+  const lead = data.briefing ? <BriefingSentences briefing={data.briefing} /> : null;
   if (data.state === "syncing") {
     // Not ready: what will appear here, never "nothing to order" (2026-10-17 click-through); how
     // far the reading is lives in the sync screen above.
@@ -291,6 +292,7 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
   if (op.kind === "preview") {
     return (
       <FormCard title={heading} sub={t("Your 10 most urgent products: how many days of stock are left, the date to order by and how many to order.")}>
+        {lead}
         {partial}
         <PreviewTable rows={op.rows} />
         {op.cantPlan && <CantPlan plan={{ cantPlan: op.cantPlan }} />}
@@ -298,7 +300,7 @@ function OrderThisWeek({ data }: { data: HomeLoaderData }) {
       </FormCard>
     );
   }
-  return <OrderPlanBlock plan={op.plan} heading={heading} partial={partial} />;
+  return <OrderPlanBlock plan={op.plan} heading={heading} partial={partial} lead={lead} />;
 }
 
 /** "Based on the last 90 days so far" — on every number shown before the whole history is read. */
@@ -323,7 +325,7 @@ function PartialBadge({ monthsRead }: { monthsRead: number }) {
   );
 }
 
-function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; heading: string; partial?: ReactNode }) {
+function OrderPlanBlock({ plan, heading, partial, lead }: { plan: OrderPlanData; heading: string; partial?: ReactNode; lead?: ReactNode }) {
   const { t, locale } = useLocale();
   const link = useLinkProps();
   const week = thisWeek(plan);
@@ -341,25 +343,22 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
       }
     >
       <s-stack direction="block" gap="base">
+        {lead}
         {partial}
         {week.suppliers.length === 0 ? (
-          <s-paragraph>
-            {week.next
-              ? fill(t("Nothing to order this week. Next order: {supplier} by {date}."), {
-                  supplier: supplierName(plan, week.next.supplierKey, t),
-                  date: formatDay(week.next.orderBy, locale),
-                })
-              : t("No orders needed in the next 13 weeks.")}
-          </s-paragraph>
+          // The sentences already say there is nothing to order; without them, say it here.
+          lead ? null : (
+            <s-paragraph>
+              {week.next
+                ? fill(t("Nothing to order this week. Next order: {supplier} by {date}."), {
+                    supplier: supplierName(plan, week.next.supplierKey, t),
+                    date: formatDay(week.next.orderBy, locale),
+                  })
+                : t("No orders needed in the next 13 weeks.")}
+            </s-paragraph>
+          )
         ) : (
           <>
-            <s-text fontWeight="medium">
-              {fill(t("{units} units from {suppliers} · {cash}"), {
-                units: formatCount(week.totals.units, locale),
-                suppliers: fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) }),
-                cash: money(week.totals.cash),
-              })}
-            </s-text>
             <s-table>
               <s-table-header-row>
                 <s-table-header listSlot="primary">{t("Supplier")}</s-table-header>
@@ -388,7 +387,7 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
                     </s-table-cell>
                     <s-table-cell>
                       {/* The supplier's order-by date, as Order now, Sidekick and the Monday email show it (M2). */}
-                      <OrderByCell {...ordersDue(s.events)} note={dueNote(s.events)} />
+                      <SupplierDueCell events={s.events} today={plan.today} />
                     </s-table-cell>
                     <s-table-cell>
                       <span className="keha-nowrap">
@@ -430,20 +429,58 @@ function OrderPlanBlock({ plan, heading, partial }: { plan: OrderPlanData; headi
   );
 }
 
-function useFmt(currency: string): Fmt {
-  const { locale } = useLocale();
-  return {
-    money: (v) => formatAmount(v, currency, locale),
-    count: (v) => formatCount(v, locale),
-    percent: (v) => formatPercent(v, locale),
-    day: (v) => formatDay(v, locale),
-  };
-}
+/**
+ * The money at stake as one compact strip inside "Your stock today": two figures over the same
+ * window (clarity pass 2026-10-23 — four figures over four periods couldn't be compared; lost sales
+ * and sold-out page visits are on the Actions page). Each keeps "How we got this".
+ */
+/** The status words shown as counts, in order (Too much, Not selling and Learning only when there are any). */
+const STOCK_BOXES: readonly OutcomeKey[] = ["orderNow", "orderSoon", "ok", "tooMuch", "notSelling", "learning"];
+const ALWAYS: ReadonlySet<OutcomeKey> = new Set(["orderNow", "orderSoon", "ok"]);
 
 /**
- * The money at stake as one compact strip inside "This week" (0286; four big cards before). Each
- * figure keeps its "How we got this" popover, now behind an info button.
+ * "Your stock today" (clarity pass 2026-10-23): what the app read, how the stock stands in the
+ * status words (each count opens Products filtered), and the money at stake — the diagnosis a
+ * merchant gets on first open, before any to-do list.
  */
+function StockToday({ data }: { data: HomeLoaderData }) {
+  const { t, locale } = useLocale();
+  const link = useLinkProps();
+  const count = (n: number) => formatCount(n, locale);
+  const stock = data.stock;
+  const trust = [
+    // A ready store has sales: "We didn't find any sales yet" would contradict the numbers below.
+    data.salesSpan.kind === "none" ? null : salesSpanText(data.salesSpan, t, count),
+    stock && stock.total > 0
+      ? fill(plural(stock.total, t("1 product is planned from the days it was in stock."), t("{n} products are planned, each from the days it was in stock.")), { n: count(stock.total) })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <s-section heading={t("Your stock today")}>
+      <s-stack direction="block" gap="base">
+        <s-text color="subdued">{trust}</s-text>
+        {stock && stock.total > 0 && (
+          <div className="keha-stats">
+            {STOCK_BOXES.filter((k) => ALWAYS.has(k) || stock[k] > 0).map((k) => {
+              const to = link(`/app/products?outcome=${k}`);
+              return (
+                <a key={k} className="keha-stat" href={to.href} onClick={(e) => to.onClick(e.nativeEvent)}>
+                  <span className="keha-stat__count">{count(stock[k])}</span>
+                  <s-badge tone={outcomeTone(k)}>{outcomeLabel(k, t)}</s-badge>
+                  <s-text color="subdued">{outcomeMeaning(k, t)}</s-text>
+                </a>
+              );
+            })}
+          </div>
+        )}
+        <MoneyStrip data={data} />
+      </s-stack>
+    </s-section>
+  );
+}
+
 function MoneyStrip({ data }: { data: HomeData }) {
   const { t } = useLocale();
   const link = useLinkProps();
@@ -455,8 +492,8 @@ function MoneyStrip({ data }: { data: HomeData }) {
       <s-stack direction="block" gap="small-200">
         <s-text type="strong">{t("Money at stake")}</s-text>
         <s-grid gridTemplateColumns="repeat(auto-fit, minmax(170px, 1fr))" gap="base">
-          {MONEY_CARDS.map((key) => (
-            <MoneyFigure key={key} cardKey={key} data={data} fmt={fmt} />
+          {DASHBOARD_MONEY.map((key) => (
+            <MoneyFigure key={key} cardKey={key} money={money} fmt={fmt} />
           ))}
         </s-grid>
         <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -472,40 +509,6 @@ function MoneyStrip({ data }: { data: HomeData }) {
         {data.recheckNotice && <s-text color="subdued">{recheckNoticeText(data.recheckNotice.corrected, t, fmt.count)}</s-text>}
       </s-stack>
     </s-box>
-  );
-}
-
-function MoneyFigure({ cardKey, data, fmt }: { cardKey: MoneyCardKey; data: HomeData; fmt: Fmt }) {
-  const { t } = useLocale();
-  const value = data.money?.values[cardKey] ?? null;
-  const lines = basisLines(cardKey, data.money?.basis ?? null, t, fmt);
-  const title = moneyCardTitle(cardKey, t);
-  const popId = `keha-how-${cardKey}`;
-  return (
-    <s-stack direction="block" gap="small-100">
-      <s-text color="subdued">{title}</s-text>
-      <s-stack direction="inline" gap="small-200" alignItems="center">
-        <span className="keha-money__figure">{fmt.money(value)}</span>
-        <s-button variant="tertiary" icon="info" commandFor={popId} accessibilityLabel={`${t("How we got this")}: ${title}`} />
-      </s-stack>
-      {value === null && <s-text color="subdued">{t("Not enough sales yet to advise")}</s-text>}
-      <s-popover id={popId}>
-        <s-box padding="base" maxInlineSize="360px">
-          <s-stack direction="block" gap="small-200">
-            <s-heading>{title}</s-heading>
-            {lines.length > 0 ? (
-              lines.map((l, i) => (
-                <s-text key={i} color={i === lines.length - 1 ? "subdued" : "base"}>
-                  {l}
-                </s-text>
-              ))
-            ) : (
-              <s-text color="subdued">{t("The details appear after the next calculation.")}</s-text>
-            )}
-          </s-stack>
-        </s-box>
-      </s-popover>
-    </s-stack>
   );
 }
 

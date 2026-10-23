@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import {
   PAGE_SIZE,
-  STATUS_ORDER,
   csvCell,
   csvLine,
   dailySeries,
@@ -20,8 +19,6 @@ import {
   readForecastInputs,
   readSeasonSource,
   recentDays,
-  statusLabel,
-  statusTone,
   toCsv,
   toProductRow,
   variantGid,
@@ -43,33 +40,29 @@ const variant = {
 };
 const metric = { status: "running_low", rate: 2.345, daysLeft: 9.7, neverRunsOut: false, orderQty: 30, orderBy: new Date("2026-10-20T00:00:00Z") };
 
-describe("status", () => {
-  it("labels every engine status with the spec wording", () => {
-    expect(VARIANT_STATUSES.map((s) => statusLabel(s, id))).toEqual([
-      "Out of stock",
-      "Insufficient data",
-      "Dead stock",
-      "Low stock",
-      "Overstock",
-      "In stock",
-    ]);
-  });
-  it("orders the filter Out → Not enough data and covers every status", () => {
-    expect([...STATUS_ORDER].sort()).toEqual([...VARIANT_STATUSES].sort());
-    expect(STATUS_ORDER[0]).toBe("out");
-  });
-  it("tones", () => {
-    expect(statusTone("out")).toBe("critical");
-    expect(statusTone("running_low")).toBe("warning");
-    expect(statusTone("healthy")).toBe("success");
+describe("status words (clarity pass 2026-10-23)", () => {
+  it("every row carries the outcome word worked out from the nightly numbers; withPlan refines it", () => {
+    const row = (status: string, over: { orderBy?: Date | null } = {}, onHand = 12) =>
+      toProductRow({ id: "gid://shopify/ProductVariant/1", productTitle: "Shirt", variantTitle: "M", sku: null, vendor: null, image: null }, { ...metric, status, ...over }, { onHand, incoming: 0 }, true, null, "2026-10-16");
+    expect(row("running_low").outcome).toEqual({ key: "orderSoon", reason: { kind: "orderBy", orderBy: "2026-10-20", lasts: "2026-10-25" } });
+    expect(row("out", {}, 0).outcome?.key).toBe("orderNow");
+    expect(row("healthy", { orderBy: new Date("2026-12-01T00:00:00Z") }).outcome?.key).toBe("ok");
+    expect(row("too_much", { orderBy: null }).outcome?.key).toBe("tooMuch");
+    expect(row("dead", { orderBy: null }).outcome?.key).toBe("notSelling");
+    expect(row("not_enough_data").outcome?.key).toBe("learning");
+    expect(toProductRow({ id: "gid://shopify/ProductVariant/2", productTitle: "Cap", variantTitle: "", sku: null, vendor: null, image: null }, null, null, true).outcome?.key).toBe("learning");
   });
 });
 
 describe("filters and paging", () => {
   it("parses known values and drops unknown statuses", () => {
     const f = parseFilters(new URLSearchParams("status=bogus&vendor=%20Acme%20&q=&collection=Summer"));
-    expect(f).toEqual({ status: null, collection: "Summer", vendor: "Acme", productType: null, q: null, supplier: null, sort: null });
+    expect(f).toEqual({ status: null, outcome: null, collection: "Summer", vendor: "Acme", productType: null, q: null, supplier: null, sort: null });
     expect(parseFilters(new URLSearchParams("status=too_much")).status).toBe("too_much");
+    // Clarity pass: the status-word filter (?outcome=orderNow), unknown words dropped, round-trips.
+    expect(parseFilters(new URLSearchParams("outcome=orderNow")).outcome).toBe("orderNow");
+    expect(parseFilters(new URLSearchParams("outcome=bogus")).outcome).toBeNull();
+    expect(filtersToParams({ status: null, outcome: "tooMuch", collection: null, vendor: null, q: null, supplier: null, sort: null }).toString()).toBe("outcome=tooMuch");
   });
   it("supplier filter and sort (order-by date is the default; product name on request)", () => {
     expect(parseFilters(new URLSearchParams("supplier=s1&sort=title"))).toMatchObject({ supplier: "s1", sort: "title" });
@@ -177,15 +170,16 @@ describe("CSV", () => {
   });
   it("products CSV: Growth includes forecast columns, a dash (never ∞) when there are no recent sales", () => {
     const rows: ProductRow[] = [
-      toProductRow(variant, metric, { onHand: 12, incoming: 0 }, true),
-      toProductRow({ ...variant, id: "gid://shopify/ProductVariant/7", variantTitle: "Default Title", productTitle: "=cmd" }, { ...metric, status: "too_much", neverRunsOut: true, daysLeft: null }, null, true),
+      toProductRow(variant, metric, { onHand: 12, incoming: 0 }, true, null, "2026-10-16"),
+      toProductRow({ ...variant, id: "gid://shopify/ProductVariant/7", variantTitle: "Default Title", productTitle: "=cmd" }, { ...metric, status: "too_much", neverRunsOut: true, daysLeft: null, orderBy: null, orderQty: null }, null, true, null, "2026-10-16"),
     ];
     const lines = productsCsv(rows, id, true).replace("﻿", "").trim().split("\r\n");
     expect(lines[0]).toBe("Product,Variant,SKU,Vendor,Status,On hand,Incoming,Sales per day while in stock,Days of stock,Order by,Suggested qty");
-    expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Low stock,12,0,2.3,9,2026-10-20,30");
-    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Overstock,,,2.3,—,2026-10-20,30");
-    const free = productsCsv([toProductRow(variant, metric, null, false)], id, false).trim().split("\r\n");
-    expect(free[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Low stock,,,2.3,,,");
+    // The status column says the screen's status words (clarity pass 2026-10-23).
+    expect(lines[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Order soon,12,0,2.3,9,2026-10-20,30");
+    expect(lines[2]).toBe("'=cmd,,LS-M-B,Acme,Too much,,,2.3,—,,");
+    const free = productsCsv([toProductRow(variant, metric, null, false, null, "2026-10-16")], id, false).trim().split("\r\n");
+    expect(free[1]).toBe("Linen shirt,M / Blue,LS-M-B,Acme,Order soon,,,2.3,,,");
   });
 });
 

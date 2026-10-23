@@ -54,9 +54,9 @@ own history, so it must have history before the shots are taken:
    email; one purchase order sent to Northwind and its confirmation link opened (shot 5); Settings → Alerts: Weekly summary email on;
    Order plan → Season planner (`/app/reorder/season`): one scenario "Black Friday 2026" (event Black Friday, target grow 20 %), saved and
    calculated; one collection goal; for shot 6, Settings → Locations: Warehouse = Warehouse,
-   the two shops = Store. For shots 1–3, leave one supplier's best seller overdue (so "Order this
-   week" shows an Overdue badge) and give one product no cost (the "lines without a cost price"
-   note).
+   the two shops = Store. For shots 1–3, leave one supplier's best seller sold out or running out
+   before a new order could arrive (so "This week" shows a red **Order now** with its reason) and
+   give one product no cost (the "lines without a cost price" note).
 7. Wait for one nightly sync after the last change (03:00 store time) so the Dashboard shows fresh data.
 
 **[Kanwar to confirm]** which store provides this history: a dev store filled over ≥ 90 days, or
@@ -71,10 +71,10 @@ designed frame reads as a mock-up; the Dashboard shows the same content).
 
 | # | Screen | Exact state | What must be visible | Alt text (≤ 64) |
 |---|---|---|---|---|
-| 1 | **Dashboard → Due this week** (`/app`) | Growth plan; sync fresh | "Due this week" first: two suppliers with products, units, cash and order-by date (one **Overdue**), the **Review order** buttons, the 13-week cash strip; the money cards start below (none "—") | `Order this week by supplier, and the cash needed` |
+| 1 | **Dashboard** (`/app`) | Growth plan; sync fresh | "Your stock today" with the status boxes (Order now / Order soon / OK), the two money figures (none "—"), then "This week": two suppliers with products, units, cash and their status word (one **Order now** with its reason), the **Review order** buttons | `What to order today, by supplier, and the cash needed` |
 | 2 | **Order plan → Due now** (`/app/reorder`), by supplier | Two suppliers with lines due today | The tab bar, suppliers grouped, order-by dates, editable quantities rounded to case packs, unit and cost totals, **Create purchase order** | `Order now, grouped by supplier with order-by dates` |
 | 3 | **Order plan → Order calendar** (`/app/reorder/calendar`) | Same store; the first week with orders open | The summary line (orders, units, cash for 13 weeks), the cash strip, week rows with suppliers, units, cash and order-by dates; inside the open week, a supplier with its lines | `Every order for the next 13 weeks, with cash per week` |
-| 4 | **Product page → How the forecast was built** (`/app/products/<variant>`) | A best seller with an out-of-stock week in the last 13 months | The 13-month sales chart with out-of-stock days shaded, "How the forecast was built" (windows, days in stock, seasonal change, lead time, safety stock), days of stock, order by, suggested quantity | `How each forecast was built, sold-out days left out` |
+| 4 | **Product page** (`/app/products/<variant>?details=1`) | A best seller with an out-of-stock week in the last 13 months | **What to do** (status, the plain sentence, days of stock, order by, suggested quantity), the 13-month sales chart with out-of-stock days shaded, and **Forecast details and settings** open on "How the forecast was built" (windows, days in stock, seasonal change, lead time, safety stock) | `How each forecast was built, sold-out days left out` |
 | 5 | **Supplier confirmation page** (`/supplier/confirm/<token>`), shot at 1600 × 900 without browser chrome | The Northwind order from the setup, not yet confirmed | Store name, order number, lines (prices shown or hidden as set), the date picker and **Confirm ship date** | `Your supplier confirms the ship date from a link` |
 | 6 | **Due now on Pro** (`/app/reorder`) | Pro; Settings → Locations: Warehouse and two Stores | The location switcher on "Madrid store", that store's own order advice, and the "Transfers to stores" section with a line from Warehouse | `Plan each store and move stock from the warehouse` |
 
@@ -82,7 +82,7 @@ Captions (5–8 words each, optional): reuse the alt text.
 
 ## Feature image (1600 × 900)
 
-A designed composition: the Dashboard's "Due this week" block and the cash strip (values
+A designed composition: the Dashboard's "Your stock today" boxes and the "This week" block (values
 blurred or replaced by "—" shapes, since statistics are not allowed), Keha mark top-left, one
 line of copy: **"Every stock order, planned by supplier."** No prices, no numbers, no Shopify logo.
 

@@ -29,7 +29,7 @@ describe("How it works content", () => {
       }
     }
     expect(purchaseOrdersHelp(tDe).sections[0]!.title).toBe("So läuft eine Bestellung ab");
-    expect(productsHelp(tDe).sections[0]!.paragraphs[0]).toBe("Nicht vorrätig: nichts mehr zu verkaufen.");
+    expect(productsHelp(tDe).sections[0]!.paragraphs[0]).toBe("Jetzt bestellen: ausverkauft, oder der Bestand ist weg, bevor eine neue Bestellung ankommen könnte. Jeder Tag kostet Verkäufe.");
   });
 
   it("Product detail: this product's lead time and order days; the supplier's settings first when it has its own", () => {

@@ -1,7 +1,8 @@
 /**
  * The Dashboard's 30-second report (Kanwar 2026-10-18): what's going on and what to do this
- * week, in plain sentences a merchant with no inventory background understands, then one tile per
- * job (order, sold out, clear dead stock, fix product pages) with one button each.
+ * week, in plain sentences a merchant with no inventory background understands. (The four tiles
+ * went in the clarity pass, 2026-10-23: they repeated the sentences; the counts per status word
+ * are "Your stock today", the jobs are the actions below.)
  *
  * Built on the server from what the Dashboard already reads — this week's orders (the forward
  * plan), the action list's counts per tab and the money snapshot — so the report never disagrees
@@ -9,18 +10,6 @@
  */
 import type { ActionTab } from "./actions-shared";
 import type { ThisWeekView } from "./order-plan-shared";
-
-export type BriefingTileKey = "order" | "soldOut" | "clear" | "fix";
-
-export type BriefingTile = {
-  key: BriefingTileKey;
-  /** How many: suppliers to order from, products sold out / not selling / with a weak page. */
-  count: number;
-  /** Money behind it in the store currency: cash for this week's orders, cash tied up in dead stock; null = none shown. */
-  amount: number | null;
-  /** Where the button goes. */
-  href: string;
-};
 
 export type BriefingSentence =
   | { key: "order"; suppliers: number; cash: number | null; late: number }
@@ -33,7 +22,6 @@ export type Briefing = {
   currency: string;
   /** At most 3, the order sentence first, then what matters most. */
   sentences: BriefingSentence[];
-  tiles: BriefingTile[];
 };
 
 export type BriefingInput = {
@@ -78,11 +66,5 @@ export function buildBriefing(input: BriefingInput): Briefing | null {
   return {
     currency: input.currency,
     sentences: sentences.slice(0, MAX_SENTENCES),
-    tiles: [
-      { key: "order", count: suppliers, amount: suppliers > 0 ? cash : null, href: "/app/reorder" },
-      { key: "soldOut", count: soldOut, amount: null, href: actionTabHref("bridge") },
-      { key: "clear", count: clear, amount: cashStuck, href: actionTabHref("clear") },
-      { key: "fix", count: fix, amount: null, href: actionTabHref("fix") },
-    ],
   };
 }

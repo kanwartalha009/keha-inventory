@@ -41,15 +41,21 @@ describe("Order calendar", () => {
     expect(html).toContain("keha-orderplan-strip");
     expect(html.split("keha-orderplan-week ").length - 1 + (html.split("keha-orderplan-week\"").length - 1)).toBe(13);
     expect(html).toMatch(/Oct 12\s–\s18/); // this ISO week (Intl uses thin spaces)
-    expect(html).toContain("Overdue");
+    // Clarity pass (2026-10-23): status words, red only when the stock is gone before an order could arrive.
+    expect(html).toContain("Order now");
+    expect(html).not.toContain("Overdue");
     expect(html).toContain("Lisbon Linen");
     expect(html).toContain("Create purchase order");
     // Create order → Order now with that supplier's orders of the week (resolved on the server).
     expect(html).toContain('href="/app/reorder?supplier=supplier:s1&amp;from=2026-10-16&amp;to=2026-10-17"');
     // Each line: its real deadline and "Why this quantity" from the plan's own terms.
     // A1: the shirt is short by more than one lead time — "Overdue" with the day it runs out.
-    expect(html).toContain("Overdue · runs out Oct 18");
-    expect(html).toContain("Due Oct 17");
+    expect(html).toContain("Runs out Oct 18 · a new order would arrive Oct 30");
+    expect(html).toContain("Order soon");
+    expect(html).toContain("Order by Oct 17 · lasts to Nov 4");
+    // Why this quantity: the plain sentence first, the formula under Details.
+    expect(html).toContain("Sells 2 a day. The next 28 days need about 56, plus a buffer of 10. About 23 of those sales come before it can arrive, so they aren&#x27;t ordered. You have 5 in stock, so order 38.");
+    expect(html).toContain("<summary>Details</summary>");
     expect(html).toContain("Forecast for the next 28 days: 56 (sales per day 2, season ×1) + safety 10 − on hand 5 − on order 0 − sales it can&#x27;t cover (out of stock before it arrives) 23 = 38");
     // Unknown costs are counted, never 0.
     expect(html).toMatch(/\d+ lines without a cost price are not in the cash totals\./);
@@ -147,7 +153,9 @@ describe("order-plan-shared", () => {
     const html = renderToString(
       createElement(LocaleProvider, { defaultLocale: "en", children: createElement("div", null, createElement(DueLabel, { deadline: "2026-10-16", today: "2026-10-16", overdue: true })) }),
     );
-    expect(html).toContain("Due today");
+    // Clarity pass: due today reads "Order soon" (amber), never the red "Order now".
+    expect(html).toContain("Order soon");
+    expect(html).toContain("Order by Oct 16");
     expect(html).not.toContain("critical");
   });
 

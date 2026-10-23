@@ -72,9 +72,10 @@ describe("Reorder page (Order plan · Order now)", () => {
     expect(html).toContain("Beta");
     expect(html).toContain("14 days (supplier)");
     expect(html).toContain("14 days (store default)");
-    // The overdue group's card says so by the shared label rule (merchant audit 2026-10-18: it said "Order by: —").
-    expect(html).toContain("Overdue since Oct 2");
+    // A late group's card says why in plain words (clarity pass 2026-10-23; audit 2026-10-18: it said "Order by: —").
+    expect(html).toContain("some products run out before a new order could arrive");
     expect(html).not.toContain("Order by: —");
+    expect(html).not.toContain("Overdue");
     expect(html).toContain("Topped up to reach Acme Textiles&#x27;s minimum of 150 units.");
     expect(html).toContain("The products from your action list are highlighted.");
     expect(html).toContain("From your action list");
@@ -116,10 +117,12 @@ describe("Reorder page (Order plan · Order now)", () => {
 
   it("each line shows its real deadline, never 'today' unless it is (audit 2026-10-17)", () => {
     const html = render("/app/reorder", "reorder", Reorder, reorderData());
-    // A1: never a date more than one lead time back — "Overdue" with the day it runs out instead.
-    expect(html).toContain("Overdue · runs out Oct 18");
-    expect(html).toContain("Overdue since Oct 2");
-    expect(html).toContain("Due Oct 18");
+    // Clarity pass: red "Order now" only when it runs out before a new order could arrive, with both days;
+    // "Order soon" with its order-by date and how long it lasts. Never a past "Overdue since".
+    expect(html).toContain("Runs out Oct 18 · a new order would arrive Oct 30");
+    expect(html).toContain("Runs out Oct 25 · a new order would arrive Oct 30");
+    expect(html).toContain("Order by Oct 18 · lasts to Nov 4");
+    expect(html).not.toContain("Overdue");
     expect(html).not.toContain("Due today");
   });
 
@@ -135,13 +138,17 @@ describe("Reorder page (Order plan · Order now)", () => {
   it("Order enough for: the picker on each supplier, its choice shown and carried to the builder", () => {
     const data = reorderData({ minOrderTotal: null });
     const plain = render("/app/reorder", "reorder", Reorder, data);
-    expect(plain).toContain("Order enough for");
-    expect(plain).toContain("Days of stock after it arrives. Only this order changes.");
-    expect(plain).toMatch(/<s-option value="180">180 days<\/s-option>/);
+    // Simple by default (clarity pass): one line with the plan's days and "Change".
+    expect(plain).toContain("Order enough for 14 days after it arrives.");
+    expect(plain).toContain(">Change</s-button>");
+    expect(plain).not.toContain("<s-select");
     const g = data.groups[0]!;
     const chosen = { ...data, groups: [{ ...g, coverDays: 180 }, ...data.groups.slice(1)] };
     const html = render(`/app/reorder?cover=${encodeURIComponent(g.key)}~180`, "reorder", Reorder, chosen);
+    // A choice made for this order keeps the picker open with every choice.
     expect(html).toMatch(/<s-select[^>]*value="180"/);
+    expect(html).toContain("Days of stock after it arrives. Only this order changes.");
+    expect(html).toMatch(/<s-option value="180">180 days<\/s-option>/);
     expect(html).toContain(`days=180`);
   });
 
@@ -285,7 +292,7 @@ describe("Reorder page (Order plan · Order now)", () => {
     const html = render("/app/reorder", "reorder", Reorder, { ...reorderData(), groups: [], enabled: false, preview, teaser: { more: 23, suppliers: 4, cash: 5120, missingCost: 0 } });
     expect(html).toContain("keha-tabs");
     expect(html).toContain("Shirt 1");
-    expect(html).toContain("Overdue");
+    expect(html).toContain("Order now");
     expect(html).toContain("61");
     expect(html).toContain("Nov 12, 2026");
     expect(html).toContain("Group by supplier, send purchase orders, see the next 13 weeks");

@@ -19,7 +19,11 @@ import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
 import { listProducts, productFilterOptions, supplierFilterOptions } from "../models/products.server";
 import { setNoReorder } from "../models/reorder.server";
-import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
+import { NoReorderConfirm, OutcomeCell } from "../components/order-plan";
+import { IntroWithPlan } from "../components/plan-basis";
+import { planBasisOrNull } from "../models/plan-basis.server";
+import type { PlanBasis } from "../lib/plan-basis-shared";
+import { OUTCOME_FILTERS, outcomeLabel, paceText } from "../lib/outcome-shared";
 import { activeLocations, listPlanningLocations } from "../models/locations.server";
 import { LocationSwitcher } from "../components/location-switcher";
 import { AppPage, DaysLeft, EmptyState, HeaderLabel, ProductThumb, Toolbar } from "../components/ui";
@@ -28,15 +32,11 @@ import { SelectField, flag, useLinkProps, val } from "../components/wc";
 import { UpgradeBanner, planName, planTag } from "../components/plan";
 import { requiredPlan } from "../lib/plan-shared";
 import { fill, useLocale } from "../lib/i18n";
-import { formatCount } from "../lib/dashboard-shared";
+import { formatCount, formatDay } from "../lib/dashboard-shared";
 import {
-  STATUS_ORDER,
   filtersToParams,
-  formatRate,
   parseFilters,
   parsePage,
-  statusLabel,
-  statusTone,
   variantName,
   type PageInfo,
   type ProductFilters,
@@ -56,10 +56,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     activeLocations(shop),
   ]);
   const view = resolveScope(parseLocationParam(url.searchParams.get("location")), features.locations, locations);
-  const [page, options, suppliers] = await Promise.all([
+  const [page, options, suppliers, basis] = await Promise.all([
     listProducts(shop, filters, parsePage(url.searchParams), features.forecast, view.scope),
     productFilterOptions(shop),
     supplierFilterOptions(shop),
+    planBasisOrNull(shop),
   ]);
   return {
     ...page,
@@ -71,6 +72,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locations,
     location: view.location,
     locationCount: active.length,
+    basis,
   };
 };
 
@@ -117,9 +119,11 @@ export type ProductsData = {
   location: PlanningLocation | null;
   /** Active locations in the store (any role): fewer than 2 hides the switcher. */
   locationCount: number;
+  /** How we plan (clarity pass): the store's rules, said once under the title. */
+  basis?: PlanBasis | null;
 };
 
-type FilterKey = "status" | "collection" | "vendor" | "type" | "q" | "supplier" | "sort";
+type FilterKey = "status" | "outcome" | "collection" | "vendor" | "type" | "q" | "supplier" | "sort";
 
 export default function Products() {
   const { t, locale } = useLocale();
@@ -147,7 +151,7 @@ export default function Products() {
     else next.set("page", String(page));
     setParams(next);
   };
-  const anyFilter = !!(filters.status || filters.collection || filters.vendor || filters.productType || filters.q || filters.supplier);
+  const anyFilter = !!(filters.status || filters.outcome || filters.collection || filters.vendor || filters.productType || filters.q || filters.supplier);
   const suppliers = options.suppliers ?? [];
   const productTypes = options.productTypes ?? [];
   const locked = !forecast;
@@ -168,7 +172,7 @@ export default function Products() {
           ? location.role === "warehouse" && location.inPool
             ? `${t("One row per variant this warehouse carries. Shopify doesn't report which warehouse shipped an online order, so its sales per day are its share of online sales by the stock it holds. Purchase orders are planned once for every included warehouse.")} ${stockScope}`
             : `${t("One row per variant this location carries. Sales per day are this location's own sales, counted only on the days it had the variant in stock.")} ${stockScope}`
-          : `${t("One row per variant. Sales per day count only the days the variant was in stock.")} ${stockScope}`
+          : <IntroWithPlan text={t("Every product with what to do and why. Click one to see its sales and its plan.")} basis={data.basis} />
       }
       secondaryActions={[<CsvButton key="csv" enabled={data.csv} filters={filters} location={location} />]}
     >
@@ -205,12 +209,12 @@ export default function Products() {
                 <SelectField
                   label={t("Status")}
                   labelHidden
-                  value={filters.status ?? ""}
+                  value={filters.outcome ?? ""}
                   options={[
                     { value: "", label: t("All statuses") },
-                    ...STATUS_ORDER.map((s) => ({ value: s, label: statusLabel(s, t) })),
+                    ...OUTCOME_FILTERS.map((k) => ({ value: k, label: outcomeLabel(k, t) })),
                   ]}
-                  onChange={(v) => apply({ status: v })}
+                  onChange={(v) => apply({ outcome: v, status: "" })}
                 />
                 {options.collections.length > 0 && (
                   <SelectField
@@ -277,7 +281,7 @@ export default function Products() {
               <HeaderLabel id="keha-pool-incoming" label={t("Incoming")} hint={stockScope} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
-              <HeaderLabel id="keha-col-rate" label={t("Daily sales")} hint={t("Sales per day while in stock")} />
+              <HeaderLabel id="keha-col-rate" label={t("Sells")} hint={t("Sales on the days it was in stock")} />
             </s-table-header>
             <s-table-header listSlot="labeled" format="numeric">
               <HeaderLabel id="keha-col-left" label={t("Days of stock")} hint={t("How many days the stock lasts at the forecast sales")} badge={lockBadge} />
@@ -309,7 +313,7 @@ export default function Products() {
             }
             action={
               anyFilter ? (
-                <s-button variant="secondary" onClick={() => apply({ status: "", collection: "", vendor: "", type: "", supplier: "", q: "" })}>
+                <s-button variant="secondary" onClick={() => apply({ status: "", outcome: "", collection: "", vendor: "", type: "", supplier: "", q: "" })}>
                   {t("Clear filters")}
                 </s-button>
               ) : undefined
@@ -351,7 +355,7 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
           </s-stack>
         </div>
       </s-table-cell>
-      <s-table-cell>{r.status ? <s-badge tone={statusTone(r.status)}>{statusLabel(r.status, t)}</s-badge> : "—"}</s-table-cell>
+      <s-table-cell>{r.outcome ? <OutcomeCell outcome={r.outcome} /> : "—"}</s-table-cell>
       <s-table-cell>{formatCount(r.onHand, locale)}</s-table-cell>
       <s-table-cell>
         {r.onOrder > 0 ? (
@@ -365,7 +369,9 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
           formatCount(r.incoming, locale)
         )}
       </s-table-cell>
-      <s-table-cell>{formatRate(r.rate, locale)}</s-table-cell>
+      <s-table-cell>
+        <span className="keha-nowrap">{paceText(r.rate, t, locale)}</span>
+      </s-table-cell>
       <s-table-cell>
         {locked ? "" : <DaysLeft id={`keha-left-${r.numericId}`} daysLeft={r.daysLeft} neverRunsOut={r.neverRunsOut} />}
       </s-table-cell>
@@ -373,7 +379,8 @@ function Row({ r, locked, locale }: { r: ProductRow; locked: boolean; locale: st
         {locked ? (
           ""
         ) : (
-          <OrderByCell orderBy={r.orderBy} overdue={!!r.overdue} note={r.dueNote ?? null} />
+          // The date only: Order now / soon and why are in the Status column (clarity pass).
+          <span className="keha-nowrap">{r.noReorder ? "—" : formatDay(r.orderBy, locale)}</span>
         )}
       </s-table-cell>
       <s-table-cell>{locked ? "" : r.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(r.orderQty, locale)}</s-table-cell>

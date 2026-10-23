@@ -81,9 +81,9 @@ export function dashboardHelp(t: T, locale: string, d: { leadTimeDays: number; c
       {
         title: t("What you see here"),
         paragraphs: [
-          t("This week says what to do now. Each tile opens the place to do it. Below the tiles, the money at stake shows sales you could lose, sales already lost to sold-out products and cash tied up in stock that isn't selling."),
-          t("Due this week lists the orders to place, by supplier. The bars show the cash your orders need over the next 13 weeks."),
-          t("This week's actions shows the top 5 to-dos, ranked by the money at stake. The whole list is on the Actions page."),
+          t("Your stock today counts your products by what to do: Order now, Order soon, OK and the rest. Click a number to see those products. The money at stake below it is the sales you could lose in the next 4 weeks and the cash tied up in stock that isn't selling."),
+          t("This week lists the orders to place, by supplier, with the cash they need. The order calendar shows the next 13 weeks."),
+          t("This week's actions shows the top 5 to-dos, stock first. The whole list, and what sold-out products cost you, is on the Actions page."),
         ],
       },
       { title: t("How your numbers are worked out"), paragraphs: how },
@@ -209,17 +209,21 @@ export function productsHelp(t: T): HelpContent {
       {
         title: t("What each status means"),
         paragraphs: [
-          t("Out of stock: nothing left to sell."),
-          t("Low stock: it runs out before a new order would arrive. Order it now."),
-          t("In stock: enough until the next order."),
-          t("Overstock: far more than you will sell before the next order."),
-          t("Dead stock: no sale for the days set in Settings (90 by default) while you still have stock. A discount clears it."),
-          t("Insufficient data: not enough days in stock with sales to forecast yet."),
+          t("Order now: sold out, or it runs out before a new order could arrive. Every day costs sales."),
+          t("Order soon: order within a week to keep a small buffer, or it runs out until the stock you ordered arrives."),
+          t("OK: enough stock. Nothing to do this week."),
+          t("Too much: far more than it will sell before the next order."),
+          t("Not selling: no sale for the days set in Settings (90 by default) while in stock. A discount clears it."),
+          t("Learning: not enough days in stock with sales to plan it yet."),
+          t("Don't reorder: you left it out of orders. It stays in your stock numbers."),
         ],
       },
       {
         title: t("What you see here"),
-        paragraphs: [t("One row per variant. Click a row to see 13 months of sales, the days it was out of stock and how its forecast was built.")],
+        paragraphs: [
+          t("One row per variant. Click a row to see 13 months of sales, the days it was out of stock and how its forecast was built."),
+          t("Sells counts only the days a product was in stock, so days it was sold out don't make it look slow."),
+        ],
       },
     ],
     links: [
@@ -360,7 +364,7 @@ export function settingsHelp(t: T, tab: SettingsHelpTab): HelpContent {
               t("Default lead time: days from placing an order to the stock arriving. Used until a supplier has its own."),
               t("Order enough for: days of stock each order lasts after it arrives. You can change it for a single order when you build it."),
               t("Safety stock: extra stock for surprises. Higher means fewer sell-outs and more cash tied up in stock."),
-              t("Overstock and dead stock: when a product is flagged for too much stock, or for no sales."),
+              t("Too much and Not selling: when a product counts as having too much stock, or as not selling."),
               after,
             ],
           },

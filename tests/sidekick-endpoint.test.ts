@@ -281,7 +281,10 @@ describe("tools on Growth", () => {
     const r = await body("get_product_stock", "query=blue%20HOODIE");
     expect(r.results!.map((x) => x.name)).toEqual(["Hoodie — Blue / M"]);
     expect(r.results![0]!._meta).toMatchObject({
-      status: "Low stock",
+      // Clarity pass: it runs out in 5 days, but the order on the way ends that and the next order
+      // isn't due yet — "Order soon" (amber), never red: ordering today wouldn't arrive sooner.
+      status: "Order soon",
+      status_reason: "Runs out Thu 22 Oct 2026 (in 5 days) until the stock on order arrives",
       on_hand: 11,
       incoming: 0,
       on_order_with_keha: 20,
@@ -320,10 +323,10 @@ describe("tools on Growth", () => {
     expect(r).toMatchObject({ as_of: "2026-10-16", currency: "EUR", refreshed: "daily" });
     const cards = r.cards as { name: string; amount: number | null; how_we_got_this: string | null }[];
     expect(cards.map((c) => [c.name, c.amount])).toEqual([
-      ["Sales at risk (next 28 days)", 1234.5],
-      ["Lost sales (last 90 days)", null],
-      ["Cash tied up (overstock and dead stock)", 800],
-      ["Sales missed on sold-out pages (last 30 days)", 42],
+      ["Sales at risk, next 4 weeks", 1234.5],
+      ["Sales lost while sold out, last 90 days", null],
+      ["Cash tied up in slow stock (overstock and dead stock)", 800],
+      ["Sales missed on sold-out pages, last 30 days", 42],
     ]);
     expect(cards[0]!.how_we_got_this).toContain("Based on: sales per day while in stock");
     expect(r.dead_stock).toMatchObject({ amount: 250, units: 50, variants: 1, valued_at: "cost" });

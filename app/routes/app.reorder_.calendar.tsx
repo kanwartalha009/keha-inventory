@@ -224,7 +224,7 @@ function WeekRow({ week, paid, plan, initiallyOpen }: { week: PlanWeek; paid: Pa
       <button type="button" className="keha-orderplan-week__head" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
         <span className="keha-orderplan-week__when">
           {range}
-          {week.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+          {week.late && <s-badge tone="critical">{t("Order now")}</s-badge>}
         </span>
         <span className="keha-orderplan-week__n">{fill(week.suppliers.length === 1 ? t("1 supplier") : t("{n} suppliers"), { n: formatCount(week.suppliers.length, locale) })}</span>
         <span className="keha-orderplan-week__n">{fill(plural(week.units, t("1 unit"), t("{n} units")), { n: formatCount(week.units, locale) })}</span>
@@ -331,7 +331,7 @@ function SupplierWeek({ s, plan }: { s: PlanSupplierWeek; plan: OrderPlanData })
                     </div>
                   </s-table-cell>
                   <s-table-cell>
-                    <DueLabel deadline={dueDay(e)} overdue={e.overdue} today={plan.today} note={dueNote([e])} />
+                    <DueLabel deadline={dueDay(e)} overdue={e.overdue} today={plan.today} note={dueNote([e])} outlook={e.outlook} />
                   </s-table-cell>
                   <s-table-cell>{formatDay(e.arrives, locale)}</s-table-cell>
                   <s-table-cell>

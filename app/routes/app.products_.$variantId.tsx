@@ -14,9 +14,9 @@
  * like…" a similar product (or the median of its product type, suggested) while it has fewer
  * than 28 days in stock. Our database only; the next compute (queued at once) uses them.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, useParams } from "react-router";
+import { useFetcher, useLoaderData, useParams, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { getEntitlements } from "../services/entitlements.server";
@@ -27,10 +27,11 @@ import { forecastChoiceFor, likeTargetExists, setNoCap, setPlanLike, type Foreca
 import { enqueueJob } from "../services/jobs/queue.server";
 import { PLAN_LIKE_DAYS, PLAN_LIKE_PCT, parsePlanLike, type LikeKind } from "../lib/forecast-override-shared";
 import type { LikeSearchData } from "./app.products_.$variantId_.like";
-import { AppPage, DaysLeft, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
+import { AppPage, DaysLeft, Disclosure, FormCard, FormSaveBar, HeaderLabel, KvRow, ProductThumb } from "../components/ui";
 import { productDetailHelp } from "../components/help";
 import ConfirmModal from "../components/ConfirmModal";
-import { NoReorderConfirm, OrderByCell } from "../components/order-plan";
+import { NoReorderConfirm, OutcomeCell } from "../components/order-plan";
+import { paceText, verdictText } from "../lib/outcome-shared";
 import { flag, val } from "../components/wc";
 import type { TrendMode } from "../lib/settings-shared";
 import { UpgradeBanner, planTag } from "../components/plan";
@@ -45,8 +46,6 @@ import {
   monthlyTotals,
   readForecastInputs,
   recentDays,
-  statusLabel,
-  statusTone,
   variantGid,
   variantName,
   type ChartDay,
@@ -76,6 +75,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     supplierCode: detail.supplierCode ?? null,
     trendMode: detail.trendMode,
     vendor: detail.variant.vendor,
+    supplierName: detail.supplierName ?? null,
+    today: detail.today,
     series,
     months: monthlyTotals(series),
     recent: recentDays(series, 14),
@@ -159,6 +160,10 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 export type VariantDetailData = {
   row: ProductRow;
+  /** The supplier its orders go to; null = grouped by vendor (clarity pass: named on the page). */
+  supplierName?: string | null;
+  /** Today in the store's time zone. */
+  today?: string;
   productId?: string;
   /** This variant / every variant of the product is marked "Don't reorder". */
   noReorder?: boolean;
@@ -197,59 +202,74 @@ export default function VariantDetailPage() {
         cycleDays: forecast ? (data.inputs?.cycleDays ?? null) : null,
         fromSupplier: data.inputs?.leadTimeSource === "supplier",
       })}
-      meta={row.status ? <s-badge tone={statusTone(row.status)}>{statusLabel(row.status, t)}</s-badge> : undefined}
-      intro={[variant, row.sku, data.vendor].filter(Boolean).join(" · ") || undefined}
+      intro={[variant, row.sku, data.supplierName ? fill(t("From {supplier}"), { supplier: data.supplierName }) : data.vendor].filter(Boolean).join(" · ") || undefined}
     >
       {!forecast && <UpgradeBanner feature="forecast" />}
 
-      <FormCard title={t("Stock")} sub={t("Stock included in purchase orders: every active location unless you left it out in Settings → Locations.")}>
+      {/* Clarity pass (2026-10-23): the answer first — what to do and why, in plain words — then
+          the history, then the expert detail (collapsed), then this product's settings. */}
+      <FormCard title={t("What to do")}>
         <div className="keha-cell-product">
           <ProductThumb src={row.image} alt={row.productTitle} size={48} />
-          <div className="keha-kv keha-kv--flush keha-grow">
-            <KvRow label={t("On hand")} value={formatCount(row.onHand, locale)} />
-            <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
-            {row.onOrder > 0 && (
-              <KvRow
-                label={t("On order (Keha)")}
-                value={
-                  row.onOrderArrival
-                    ? fill(t("{n} · arrives {date}"), { n: formatCount(row.onOrder, locale), date: formatDay(row.onOrderArrival, locale) })
-                    : formatCount(row.onOrder, locale)
-                }
-              />
-            )}
-            <KvRow label={t("Sales per day while in stock")} value={formatRate(row.rate, locale)} />
+          <s-stack direction="block" gap="small-200">
+            {row.outcome && <OutcomeCell outcome={row.outcome} />}
+            <s-text>
+              {verdictText(row, { t, locale, today: data.today ?? new Date().toISOString().slice(0, 10), day: (d: string) => shortDay(d, locale), forecast })}
+            </s-text>
+          </s-stack>
+        </div>
+        <div className="keha-kv keha-kv--flush">
+          <KvRow label={t("On hand")} value={formatCount(row.onHand, locale)} />
+          <KvRow label={t("Incoming")} value={formatCount(row.incoming, locale)} />
+          {row.onOrder > 0 && (
             <KvRow
-              label={t("Days of stock")}
+              label={t("On order (Keha)")}
               value={
-                !forecast ? locked : <DaysLeft id="keha-detail-left" daysLeft={row.daysLeft} neverRunsOut={row.neverRunsOut} />
+                row.onOrderArrival
+                  ? fill(t("{n} · arrives {date}"), { n: formatCount(row.onOrder, locale), date: formatDay(row.onOrderArrival, locale) })
+                  : formatCount(row.onOrder, locale)
               }
             />
-            <KvRow
-              label={t("Order by")}
-              value={
-                !forecast ? (
-                  locked
-                ) : (
-                  <OrderByCell orderBy={row.orderBy} overdue={!!row.overdue} note={row.dueNote ?? null} />
-                )
-              }
-            />
-            <KvRow
-              label={t("Suggested qty")}
-              value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(row.orderQty, locale)}
-            />
-          </div>
+          )}
+          <KvRow label={t("Sells")} value={paceText(row.rate, t, locale)} />
+          <KvRow label={t("Days of stock")} value={!forecast ? locked : <DaysLeft id="keha-detail-left" daysLeft={row.daysLeft} neverRunsOut={row.neverRunsOut} />} />
+          <KvRow label={t("Order by")} value={!forecast ? locked : row.noReorder ? "—" : formatDay(row.orderBy, locale)} />
+          <KvRow
+            label={t("Suggested qty")}
+            value={!forecast ? locked : row.noReorder ? <s-badge tone="neutral">{t("Don't reorder")}</s-badge> : formatCount(row.orderQty, locale)}
+          />
         </div>
       </FormCard>
 
-      <OrderingCard data={data} />
-      {data.choice && <ForecastChoicesCard data={data} choice={data.choice} />}
-
       <SalesChart series={data.series} months={data.months} />
-      <ForecastInputs inputs={data.inputs} forecast={forecast} trendMode={data.trendMode ?? "off"} seasonCollection={data.seasonCollection ?? null} />
+      <HowItWasBuilt>
+        <ForecastInputs inputs={data.inputs} forecast={forecast} trendMode={data.trendMode ?? "off"} seasonCollection={data.seasonCollection ?? null} />
+        {data.choice && <ForecastChoicesCard data={data} choice={data.choice} />}
+      </HowItWasBuilt>
+      <OrderingCard data={data} />
       <RecentSales recent={data.recent} />
     </AppPage>
+  );
+}
+
+/**
+ * The planner's detail, collapsed (clarity pass): how the forecast was built and its choices.
+ * `?details=1` opens it (a link straight to the settings, and the SSR tests).
+ */
+function HowItWasBuilt({ children }: { children: ReactNode }) {
+  const { t } = useLocale();
+  const [params] = useSearchParams();
+  const [open, setOpen] = useState(params.get("details") === "1");
+  return (
+    <Disclosure
+      id="keha-forecast-detail"
+      title={t("Forecast details and settings")}
+      sub={t("The sales windows, season, lead time and buffer behind these numbers, and the choices you can change.")}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+    >
+      {children}
+    </Disclosure>
   );
 }
 

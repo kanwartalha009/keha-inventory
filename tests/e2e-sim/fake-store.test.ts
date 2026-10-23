@@ -76,7 +76,7 @@ describe("simulated S store, in-memory database", () => {
   it("every screen renders on the server in English and German", () => {
     for (const locale of ["en", "de"] as const) {
       const html = renderScreens(screens.screens, locale);
-      expectTranslated(html.get("dashboard")!, locale, ["Due this week", "Money at stake"]);
+      expectTranslated(html.get("dashboard")!, locale, ["This week", "Your stock today", "Money at stake"]);
       expectTranslated(html.get("order-now")!, locale, ["Order plan"]);
       expectTranslated(html.get("products")!, locale, ["Products"]);
       expect(html.size).toBe(screens.screens.length);

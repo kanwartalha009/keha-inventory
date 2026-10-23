@@ -35,6 +35,20 @@ export function CoverDaysPicker({
   }, [value]);
   const selectValue = custom ? "custom" : value === null ? "" : String(value);
   const typedDays = readCoverDays(typed);
+  // Simple by default (clarity pass 2026-10-23): one line with the plan's days and "Change"; the
+  // choice opens on request, or stays open once the merchant picked other days for this order.
+  const [editing, setEditing] = useState(value !== null);
+  if (!editing && value === null)
+    return (
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-text color="subdued">
+          {planDays ? fill(t("Order enough for {days} after it arrives."), { days: days(planDays) }) : t("Order enough for the plan's days after it arrives.")}
+        </s-text>
+        <s-button variant="tertiary" disabled={flag(busy)} onClick={() => setEditing(true)}>
+          {t("Change")}
+        </s-button>
+      </s-stack>
+    );
   return (
     <s-stack direction="inline" gap="small-200" alignItems="end">
       <s-select

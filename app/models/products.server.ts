@@ -24,12 +24,15 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { facts } from "../services/facts-store.server";
 import { dueNote, variantLine, type PlanEvent } from "../lib/engine/forward-plan-shared";
+import { outcomeOf, type OutcomeKey } from "../lib/outcome-shared";
 import { supplierFor } from "../lib/supplier-shared";
 import { readSettings, type TrendMode } from "../lib/settings-shared";
 import { cachedOrderPlan, planSuppliers, type PlanVariantState } from "./order-plan.server";
 import {
   CHART_DAYS,
   METRIC_SCOPE,
+  OUTCOME_STATUSES,
+  isVariantStatus,
   pageInfo,
   readSeasonSource,
   toProductRow,
@@ -88,10 +91,13 @@ async function variantWhere(shop: string, f: ProductFilters, scope: string): Pro
       { sku: { contains: f.q, mode: "insensitive" } },
     ];
   }
-  if (f.status || scope !== METRIC_SCOPE) {
-    // A status filter, or a location view (only the variants with a metric at that location).
+  if (f.outcome === "dontReorder") where.noReorder = true;
+  else if (f.outcome) where.noReorder = false;
+  const statuses = f.outcome && f.outcome !== "dontReorder" ? OUTCOME_STATUSES[f.outcome] : f.status ? [f.status] : null;
+  if (statuses || scope !== METRIC_SCOPE) {
+    // A status filter (the status words' nightly statuses), or a location view (only the variants with a metric at that location).
     const ids = await prisma.variantMetric.findMany({
-      where: { shop, scope, ...(f.status ? { status: f.status } : {}) },
+      where: { shop, scope, ...(statuses ? { status: { in: statuses } } : {}) },
       select: { variantId: true },
     });
     if (ids.length > MAX_IN_IDS) return { where, only: new Set(ids.map((r) => r.variantId)) };
@@ -143,7 +149,7 @@ const VARIANT_SELECT = {
 type PlanLine = NonNullable<ReturnType<typeof variantLine>>;
 
 /** The forward plan, per variant: its order line (Order now's, M4) and its plan state. */
-export type PlanView = { line: Map<string, PlanLine>; state: Map<string, PlanVariantState> };
+export type PlanView = { line: Map<string, PlanLine>; state: Map<string, PlanVariantState>; today: string };
 
 export async function planView(shop: string, scope: string = METRIC_SCOPE, now: Date = new Date()): Promise<PlanView> {
   // The whole plan sorts the table; reused while nothing it reads changed (order-plan.server).
@@ -155,7 +161,7 @@ export async function planView(shop: string, scope: string = METRIC_SCOPE, now: 
     const l = variantLine(events, data.today);
     if (l) line.set(id, l);
   }
-  return { line, state };
+  return { line, state, today: data.today };
 }
 
 /**
@@ -164,7 +170,25 @@ export async function planView(shop: string, scope: string = METRIC_SCOPE, now: 
  * date that passed; null when already out with no known run-out day, M3), else its next planned
  * order. Without a planned order in the 13 weeks: nothing to order ("—") and the plan's date.
  */
-export function withPlan(row: ProductRow, view: PlanView | null, noReorder: boolean): ProductRow {
+export function withPlan(row: ProductRow, view: PlanView | null, noReorder: boolean, today: string = view?.today ?? new Date().toISOString().slice(0, 10)): ProductRow {
+  const planned = planned_(row, view, noReorder);
+  // The status words (clarity pass 2026-10-23): one rule for every screen (lib/outcome-shared).
+  const st = view?.state.get(row.id);
+  const outcome = outcomeOf({
+    status: row.status,
+    today,
+    noReorder,
+    orderBy: planned.orderBy,
+    overdue: !!planned.overdue,
+    outlook: st?.outlook ?? null,
+    soldOutSince: planned.dueNote?.soldOutSince ?? null,
+    onHand: row.onHand,
+    daysLeft: row.daysLeft,
+  });
+  return { ...planned, outcome };
+}
+
+function planned_(row: ProductRow, view: PlanView | null, noReorder: boolean): ProductRow {
   if (noReorder) return { ...row, noReorder: true, orderQty: null, orderBy: null, overdue: false };
   if (!view) return { ...row, noReorder: false };
   const l = view.line.get(row.id);
@@ -201,11 +225,33 @@ async function orderedIds(
       : prisma.variant.findMany({ where: q.where, select, orderBy: ORDER, take: CSV_MAX_ROWS }),
     f.supplier ? planSuppliers(shop) : Promise.resolve([]),
   ]);
-  const list = f.supplier ? rows.filter((r) => supplierValue(r, suppliers) === f.supplier) : rows;
+  let list = f.supplier ? rows.filter((r) => supplierValue(r, suppliers) === f.supplier) : rows;
+  const metricRows =
+    view && (f.sort !== "title" || f.outcome)
+      ? await prisma.variantMetric.findMany({ where: { shop, scope }, select: { variantId: true, orderBy: true, status: true, daysLeft: true } })
+      : [];
+  if (view && f.outcome) {
+    // The status words row by row (the database only pre-filtered by nightly status).
+    const metric = new Map(metricRows.map((m) => [m.variantId, m]));
+    list = list.filter((r) => {
+      const m = metric.get(r.id);
+      const l = view.line.get(r.id);
+      const st = view.state.get(r.id);
+      const o = outcomeOf({
+        status: m && isVariantStatus(m.status) ? m.status : null,
+        today: view.today,
+        noReorder: r.noReorder,
+        orderBy: l ? l.orderBy : (st?.deadline ?? null),
+        overdue: !!l?.overdue,
+        outlook: st?.outlook ?? null,
+        soldOutSince: l ? (dueNote(l.events)?.soldOutSince ?? null) : null,
+        daysLeft: m?.daysLeft === null || m?.daysLeft === undefined ? null : Number(m.daysLeft),
+      });
+      return o.key === f.outcome;
+    });
+  }
   if (!view || f.sort === "title") return list.map((r) => r.id);
-  const stored = new Map(
-    (await prisma.variantMetric.findMany({ where: { shop, scope }, select: { variantId: true, orderBy: true } })).map((m) => [m.variantId, m.orderBy ? m.orderBy.toISOString().slice(0, 10) : null]),
-  );
+  const stored = new Map(metricRows.map((m) => [m.variantId, m.orderBy ? m.orderBy.toISOString().slice(0, 10) : null]));
   const key = (r: { id: string; noReorder: boolean }): [number, string] => {
     if (r.noReorder) return [2, ""];
     const l = view.line.get(r.id);
@@ -262,7 +308,7 @@ export async function listProducts(
   const q = await variantWhere(shop, filters, scope);
   const view = forecast ? await planView(shop, scope, now) : null;
   // By order-by date (the default with the forecast) or a supplier filter: ordered in memory.
-  const inMemory = (!!view && filters.sort !== "title") || !!filters.supplier;
+  const inMemory = (!!view && (filters.sort !== "title" || !!filters.outcome)) || !!filters.supplier;
   let total: number;
   let info: PageInfo;
   let variants: { id: string; productId: string; productTitle: string; variantTitle: string; sku: string | null; vendor: string | null; image: string | null; noReorder: boolean }[];
@@ -396,6 +442,8 @@ export type VariantDetail = {
   caseQty: number | null;
   /** The supplier's article / style code for the product (purchase order documents); null = none. */
   supplierCode?: string | null;
+  /** The supplier its orders go to (Settings → Suppliers); null = grouped by vendor. */
+  supplierName?: string | null;
   /** Variants of the same product (the "Don't reorder" choice for the whole product). */
   siblings: { id: string; variantTitle: string; noReorder: boolean }[];
   /** Settings → growth assumption (the Trend row). */
@@ -456,7 +504,14 @@ export async function getVariantDetail(
     source?.level === "collection"
       ? ((await prisma.collection.findFirst({ where: { shop, id: source.collectionId }, select: { title: true } }))?.title ?? null)
       : null;
+  // The supplier the plan used (spec gap closed in the clarity pass: the product page names it).
+  const supplierId = (metric?.inputs as Record<string, unknown> | null | undefined)?.supplierId;
+  const supplierName =
+    typeof supplierId === "string" && supplierId
+      ? ((await prisma.supplier.findFirst({ where: { shop, id: supplierId }, select: { name: true } }))?.name ?? null)
+      : null;
   return {
+    supplierName,
     variant: { id: variant.id, productId: variant.productId, productTitle: variant.productTitle, productType: variant.productType ?? null, variantTitle: variant.variantTitle, sku: variant.sku, vendor: variant.vendor, image: variant.image, noReorder: !!variant.noReorder },
     caseQty: caseQtys.length === 1 ? caseQtys[0]! : (variant.caseQty ?? null),
     supplierCode: siblings.find((v) => v.id === variant.id)?.supplierCode ?? siblings.find((v) => v.supplierCode)?.supplierCode ?? null,
@@ -477,4 +532,40 @@ export async function getVariantDetail(
     sales: sales.map((s) => ({ day: s.day, sold: s._sum.sold ?? 0 })),
     stock,
   };
+}
+
+export type OutcomeCounts = Record<OutcomeKey, number> & { total: number };
+
+/**
+ * How many products (variants) carry each status word — the Dashboard's "Your stock today"
+ * (clarity pass 2026-10-23). The same rule as the Products table (outcomeOf with the plan's
+ * outlook); tracked, non-bundle variants with a metric. Database only (the plan is cached).
+ */
+export async function outcomeCounts(shop: string, now: Date = new Date()): Promise<OutcomeCounts> {
+  const [view, metrics, variants] = await Promise.all([
+    planView(shop, METRIC_SCOPE, now),
+    prisma.variantMetric.findMany({ where: { shop, scope: METRIC_SCOPE }, select: { variantId: true, status: true, daysLeft: true } }),
+    prisma.variant.findMany({ where: { shop, tracked: true, isBundle: false }, select: { id: true, noReorder: true } }),
+  ]);
+  const metric = new Map(metrics.map((m) => [m.variantId, m]));
+  const counts = { orderNow: 0, orderSoon: 0, ok: 0, tooMuch: 0, notSelling: 0, learning: 0, dontReorder: 0, total: 0 } as OutcomeCounts;
+  for (const v of variants) {
+    const m = metric.get(v.id);
+    if (!m) continue;
+    const l = view.line.get(v.id);
+    const st = view.state.get(v.id);
+    const o = outcomeOf({
+      status: isVariantStatus(m.status) ? m.status : null,
+      today: view.today,
+      noReorder: !!v.noReorder,
+      orderBy: l ? l.orderBy : (st?.deadline ?? null),
+      overdue: !!l?.overdue,
+      outlook: st?.outlook ?? null,
+      soldOutSince: l ? (dueNote(l.events)?.soldOutSince ?? null) : null,
+      daysLeft: m.daysLeft === null ? null : Number(m.daysLeft),
+    });
+    counts[o.key] += 1;
+    counts.total += 1;
+  }
+  return counts;
 }

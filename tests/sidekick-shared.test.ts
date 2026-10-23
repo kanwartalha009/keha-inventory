@@ -101,7 +101,9 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     const meta = r.results![0]!._meta as Record<string, unknown> & { lines: Record<string, unknown>[] };
     // A1: the shirt is short by more than one lead time — overdue, no date, the day it runs out.
     expect(meta).toMatchObject({ grouped_by: "supplier", order_by: null, overdue: true, orders: 2, products: 2, units: 66, cost: 1016 });
-    expect(meta.order_by_label).toBe("overdue — runs out Sun 18 Oct 2026 (in 2 days)");
+    // Clarity pass: the app's words — "order now" when it runs out before a new order could arrive.
+    expect(meta.order_by_label).toBe("due now — runs out Sun 18 Oct 2026 (in 2 days)");
+    expect(meta).toMatchObject({ status: "Order now", status_reason: "Runs out Sun 18 Oct 2026 (in 2 days) · a new order would arrive Fri 30 Oct 2026 (in 14 days)" });
     expect(meta.lines.map((l) => [l.variant_gid, l.order_qty, l.order_by, l.overdue, l.arrives, l.days_left])).toEqual([
       [V(1), 38, null, true, "2026-10-30", 2],
       // Ordered on its own order-by date (tomorrow), not today (audit 2026-10-17).
@@ -153,7 +155,7 @@ describe("order plan (the forward plan the Order plan screens show)", () => {
     const r = orderPreviewResponse(rows, plan);
     expect(r.url).toBe("app://app/reorder");
     expect(r.results!.map((x) => [x.uri, x._meta.order_by, x._meta.suggested_order_qty])).toEqual(rows.map((x) => [x.variantId, x.orderBy, x.qty]));
-    expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: null, order_by_label: "overdue — runs out Sun 18 Oct 2026 (in 2 days)", overdue: true, suggested_order_qty: 38 } });
+    expect(r.results![0]).toMatchObject({ name: "Linen shirt — M", _meta: { days_left: 2, order_by: null, order_by_label: "due now — runs out Sun 18 Oct 2026 (in 2 days)", status: "Order now", overdue: true, suggested_order_qty: 38 } });
     const text = JSON.stringify(r);
     for (const word of ["supplier", "cost", "cash", "calendar"]) expect(text).not.toContain(word);
     expect(orderPreviewResponse([], plan).message).toMatch(new RegExp(`^${MSG.nothingToOrder} 12 products can't be planned yet`));
@@ -209,7 +211,8 @@ describe("product stock", () => {
       name: "Hoodie — Blue / M",
       _meta: {
         product_gid: "gid://shopify/Product/70",
-        status: "Low stock",
+        status: "Order soon",
+        status_reason: "Order by Tue 20 Oct 2026 (in 3 days) · lasts to Sat 24 Oct 2026 (in 7 days)",
         on_hand: 9,
         incoming: null,
         sales_per_day: 1.3,
@@ -234,7 +237,7 @@ describe("product stock", () => {
     const r = productStockResponse([stockRow({ daysLeft: null, orderBy: null, orderQty: null })], { query: "x", total: 1, forecast: false, today: TODAY });
     const meta = r.results![0]!._meta;
     for (const k of ["days_left", "order_by", "order_by_label", "suggested_order_qty"]) expect(meta).not.toHaveProperty(k);
-    expect(meta).toMatchObject({ status: "Low stock", on_hand: 9 });
+    expect(meta).toMatchObject({ status: "Order soon", status_reason: "Its buffer is running low", on_hand: 9 });
   });
 
   it("says when nothing matches", () => {
@@ -310,8 +313,8 @@ describe("other tools", () => {
       TODAY,
     );
     expect(r.cards).toEqual([
-      { name: "Sales at risk (next 28 days)", amount: 1234.57, how_we_got_this: "Based on: x" },
-      { name: "Lost sales (last 90 days)", amount: null, how_we_got_this: null },
+      { name: "Sales at risk, next 4 weeks", amount: 1234.57, how_we_got_this: "Based on: x" },
+      { name: "Sales lost while sold out, last 90 days", amount: null, how_we_got_this: null },
     ]);
     expect(r.dead_stock).toMatchObject({ amount: 900, units: 50, variants: 3, valued_at: "cost, or retail price where a variant has no cost" });
     expect(String((r.dead_stock as { how_we_got_this: string }).how_we_got_this)).toContain("90 days");
@@ -395,6 +398,6 @@ describe("order plan not ready (2026-10-17 click-through: never 'nothing to orde
       notReady: { ready: false, state: "noSales", readyOn: "2026-10-31" },
     });
     expect(out).toMatchObject({ ready: false, order_advice: noSales });
-    expect(out.results![0]!._meta).toMatchObject({ status: "Out of stock", on_hand: 0, sales_per_day: null, days_left: 0, order_by: null, order_by_label: null, suggested_order_qty: null });
+    expect(out.results![0]!._meta).toMatchObject({ status: "Order now", on_hand: 0, sales_per_day: null, days_left: 0, order_by: null, order_by_label: null, suggested_order_qty: null });
   });
 });

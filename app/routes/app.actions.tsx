@@ -20,7 +20,9 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticateApp } from "../services/data-scope.server";
 import { can, planFor } from "../services/entitlements.server";
 import { getActionList } from "../models/actions.server";
-import { readiness } from "../models/dashboard.server";
+import { latestMoney, readiness } from "../models/dashboard.server";
+import { MoneyFigure, useFmt } from "../components/money";
+import { ACTIONS_MONEY, type MoneySnapshot } from "../lib/money-shared";
 import { kehaPreorderInstalled } from "../services/keha-preorder.server";
 import { ActionList } from "../components/action-list";
 import { PlanNotReadyNote } from "../components/order-plan";
@@ -48,16 +50,25 @@ export type ActionsResult =
   /** Sample data mode: no discount is created in the store (I-1). */
   | { ok: false; error: "sample" };
 
-export type ActionsPageData = { readiness: PlanReadiness; list: ActionListView | null; timezone: string | null };
+export type ActionsPageData = {
+  readiness: PlanReadiness;
+  list: ActionListView | null;
+  timezone: string | null;
+  /** Lost sales and sold-out page visits (clarity pass: moved here from the Dashboard). */
+  money?: MoneySnapshot | null;
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<ActionsPageData> => {
   const { admin, shop, sample } = await authenticateApp(request);
   const now = new Date();
   const [plan, ready] = await Promise.all([planFor(shop), readiness(shop, now)]);
-  const list = ready.ready
-    ? await getActionList(shop, plan, now, { preorderInstalled: sample ? async () => false : () => kehaPreorderInstalled(admin, shop) })
-    : null;
-  return { readiness: ready, list, timezone: list?.timezone ?? null };
+  const [list, money] = ready.ready
+    ? await Promise.all([
+        getActionList(shop, plan, now, { preorderInstalled: sample ? async () => false : () => kehaPreorderInstalled(admin, shop) }),
+        latestMoney(shop).catch(() => null),
+      ])
+    : [null, null];
+  return { readiness: ready, list, timezone: list?.timezone ?? null, money };
 };
 
 /** A tab switch on the Actions page (only ?tab= changes) reloads nothing (lib/revalidate-shared). */
@@ -83,7 +94,10 @@ export default function ActionsPage() {
           </s-stack>
         </s-section>
       ) : data.list ? (
-        <ActionList list={data.list} timezone={data.timezone} mode="full" />
+        <>
+          {data.money && <SoldOutCost money={data.money} />}
+          <ActionList list={data.list} timezone={data.timezone} mode="full" />
+        </>
       ) : (
         <s-section heading={t("This week's actions")}>
           <s-paragraph color="subdued">{t("Nothing to do this week. We'll tell you when something needs you.")}</s-paragraph>
@@ -163,3 +177,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   return reply({ ok: true, op: "clear", id, discountId: created.id });
 };
+
+/** What sold-out products already cost (clarity pass 2026-10-23: from the Dashboard to here, next to the Stock gaps tab). */
+function SoldOutCost({ money }: { money: MoneySnapshot }) {
+  const { t } = useLocale();
+  const fmt = useFmt(money.currency);
+  return (
+    <s-section heading={t("What sold-out products cost you")}>
+      <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
+        {ACTIONS_MONEY.map((key) => (
+          <MoneyFigure key={key} cardKey={key} money={money} fmt={fmt} />
+        ))}
+      </s-grid>
+    </s-section>
+  );
+}

@@ -35,6 +35,18 @@ model Session {
   @@index([shop])
 }
 
+/// First-session measurement (clarity pass 2026-10-23): the first time a shop reached each step —
+/// installed, saw its plan on the Dashboard, saw order suggestions, created a purchase order. One row
+/// per (shop, kind); no shopper data. Read only as counts on /health.
+model ActivationEvent {
+  shop String
+  kind String
+  at   DateTime @default(now())
+
+  @@id([shop, kind])
+  @@index([kind, at])
+}
+
 model NovaReferral {
   shop      String   @id
   ref       String

@@ -131,6 +131,9 @@ const VID = (n: number) => `gid://shopify/ProductVariant/${n}`;
 const WH: PlanningLocation = { id: "gid://shopify/Location/1", name: "Main warehouse", role: "warehouse" };
 const STORE: PlanningLocation = { id: "gid://shopify/Location/2", name: "Barcelona", role: "store" };
 
+/** The store's planning rules for "How we plan:" (clarity pass 2026-10-23). */
+const PREVIEW_BASIS = { leadTimeDays: 21, cycleDays: 30, safetyLevel: "balanced" as const, suppliers: 2, locationsLeftOut: 0 };
+
 function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoaderData {
   if (opts.syncing) return buildHome({ shop: null, money: null, trackedVariants: 0, variantsWithCost: 0, salesDays: 0 }, plan, NOW);
   const home = buildHome(homeRaw(), plan, NOW);
@@ -140,6 +143,8 @@ function dashboard(plan: PlanCode, opts: { syncing?: boolean } = {}): HomeLoader
     ...home,
     renderedAt: NOW.toISOString(),
     briefing: buildBriefing({ currency: fx.currency, week: thisWeek(fx), counts: actions.counts, cashStuck: home.money?.values.cashStuck ?? null }),
+    // "Your stock today": products per status word (models/products.server outcomeCounts).
+    stock: { orderNow: 2, orderSoon: 3, ok: 18, tooMuch: 2, notSelling: 1, learning: 12, dontReorder: 0, total: 38 },
     actions,
     // Free: the teaching lock with the store's own totals, as the loader sends it (limit 2 so the fixture has "more").
     orderPlan: plan === "free" ? { kind: "preview", rows: previewRows(fx), teaser: lockTeaser(fx, 2), currency: fx.currency } : { kind: "full", plan: fx },
@@ -293,6 +298,7 @@ function orderNow(kind: "free" | "growth" | "pro"): ReorderPageData {
     openOrders: OPEN_ORDERS,
     today: fx.today,
     staleDrafts: 1,
+    basis: PREVIEW_BASIS,
   };
   if (kind === "free") return { ...base, enabled: false, groups: [], openOrders: [], preview: previewRows(fx), teaser: lockTeaser(fx, 2) };
   if (kind === "growth") return base;
@@ -424,6 +430,7 @@ function products(kind: "free" | "growth" | "pro"): ProductsData {
     locations: [],
     location: null,
     locationCount: 1,
+    basis: PREVIEW_BASIS,
   };
   return kind === "pro" ? { ...base, locationsEnabled: true, locations: [WH, STORE], locationCount: 2 } : base;
 }
@@ -589,15 +596,15 @@ type Screen = {
 const S = (s: Screen) => s;
 const screens: Screen[] = [
   S({ slug: "dashboard--free-ready", screen: "Dashboard", state: "Free, ready", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => dashboard("free"), expect: ["Dashboard", "Money at stake", "Linen shirt"] }),
-  S({ slug: "dashboard--growth-ready", screen: "Dashboard", state: "Growth, ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), expect: ["Due this week", "Money at stake", "Lisbon Linen", "Reorder Tee", "Still reading older months"] }),
+  S({ slug: "dashboard--growth-ready", screen: "Dashboard", state: "Growth, ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), expect: ["This week", "Your stock today", "Order now", "Money at stake", "Lisbon Linen", "Reorder Tee", "Still reading older months"] }),
   S({ slug: "dashboard--growth-syncing", screen: "Dashboard", state: "Growth, syncing (empty)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth", { syncing: true }), expect: ["Setting up your order plan", "Waiting to start", "Setup guide"] }),
   S({ slug: "dashboard--growth-first-sync-large", screen: "Dashboard", state: "Growth, first sync, large store, a month failing", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("large", "growth"), expect: ["Setting up your order plan", "Large stores take a few hours — you can close this page.", "We'll email you when your order plan is ready.", "While you wait", "Import from a CSV", "Worked out from how fast your store has been read so far."] }),
   S({ slug: "dashboard--free-first-sync-small", screen: "Dashboard", state: "Free, first sync, small store (first estimate)", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => firstSync("small", "free"), expect: ["Setting up your order plan", "You can close this page — we keep reading in the background.", "Growth plan"] }),
-  S({ slug: "dashboard--growth-plan-ready", screen: "Dashboard", state: "Growth, the read just finished", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("finished", "growth"), expect: ["Your order plan is ready", "Due this week"] }),
+  S({ slug: "dashboard--growth-plan-ready", screen: "Dashboard", state: "Growth, the read just finished", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => firstSync("finished", "growth"), expect: ["Your order plan is ready", "This week"] }),
   S({ slug: "actions--growth", screen: "Actions", state: "Growth, all tabs", nav: "actions", url: "/app/actions", plan: "growth", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid" }), expect: ["Actions", "Stock gaps", "Clear Cardigan"] }),
   S({ slug: "actions--growth-clearance", screen: "Actions", state: "Growth, ?tab=clear (a Dashboard tile)", nav: "actions", url: "/app/actions?tab=clear", plan: "growth", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("growth"), timezone: "Europe/Madrid" }), expect: ["Clear Cardigan", "Active clearance discounts"] }),
   S({ slug: "actions--free", screen: "Actions", state: "Free, top 10", nav: "actions", url: "/app/actions", plan: "free", Component: ActionsPage, data: () => ({ readiness: { ready: true }, list: actionList("free", { fillers: 12 }), timezone: "Europe/Madrid" }), expect: ["Upgrade to see them"] }),
-  S({ slug: "dashboard--pro-ready", screen: "Dashboard", state: "Pro, ready", nav: "dashboard", url: "/app", plan: "pro", Component: Home, data: () => dashboard("pro"), expect: ["Due this week", "Money at stake", "Take preorders"] }),
+  S({ slug: "dashboard--pro-ready", screen: "Dashboard", state: "Pro, ready", nav: "dashboard", url: "/app", plan: "pro", Component: Home, data: () => dashboard("pro"), expect: ["This week", "Money at stake", "Take preorders"] }),
 
   S({ slug: "order-now--free-preview", screen: "Order plan → Due now", state: "Free preview", nav: "orderplan", url: "/app/reorder", plan: "free", Component: Reorder, data: () => orderNow("free"), expect: ["Order plan", "What to order, and by when", "Linen shirt"] }),
   S({ slug: "order-now--growth", screen: "Order plan → Due now", state: "Growth", nav: "orderplan", url: "/app/reorder?variants=1", plan: "growth", Component: Reorder, data: () => orderNow("growth"), expect: ["Order plan", "Lisbon Linen", "Create purchase order"] }),
@@ -611,10 +618,11 @@ const screens: Screen[] = [
   S({ slug: "season-plan--growth-empty", screen: "Order plan → Season planner", state: "Growth, empty", nav: "orderplan", url: "/app/reorder/season", plan: "growth", Component: Planner, data: () => planner({ scenarios: [], selected: null, canAdd: true }), expect: ["Plan your next season", "New scenario"] }),
   S({ slug: "open-orders--growth", screen: "Order plan → Purchase orders", state: "Growth", nav: "orderplan", url: "/app/reorder/orders", plan: "growth", Component: OpenOrders, data: (): OpenOrdersPageData => ({ enabled: true, orders: OPEN_ORDER_ROWS, today: "2026-10-17" }), expect: ["Purchase orders", "PO-0001", "Shopify PO"] }),
 
-  S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV", "All product types"] }),
+  S({ slug: "products--growth", screen: "Products", state: "Growth", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), expect: ["Products", "Linen shirt", "Export CSV", "All product types", "How we plan:"] }),
   S({ slug: "products--pro-2-locations", screen: "Products", state: "Pro, 2 locations", nav: "products", url: "/app/products", plan: "pro", Component: Products, data: () => products("pro"), expect: ["Products", "Linen shirt", "keha-switcher"] }),
   S({ slug: "products--free", screen: "Products", state: "Free", nav: "products", url: "/app/products", plan: "free", Component: Products, data: () => products("free"), expect: ["Products", "Linen shirt", "upgrade=csvExport"] }),
-  S({ slug: "product-detail--growth", screen: "Product detail", state: "Growth", nav: "products", url: "/app/products/2", pattern: "/app/products/:variantId", plan: "growth", Component: VariantDetail, data: () => variantDetail(), expect: ["How the forecast was built", "Recent sales", "Linen shirt", "Season from", "Shirts"] }),
+  S({ slug: "product-detail--growth", screen: "Product detail", state: "Growth (as first opened)", nav: "products", url: "/app/products/2", pattern: "/app/products/:variantId", plan: "growth", Component: VariantDetail, data: () => variantDetail(), expect: ["What to do", "Forecast details and settings", "Recent sales", "Linen shirt"] }),
+  S({ slug: "product-detail--growth-details", screen: "Product detail", state: "Growth, forecast details open", nav: "products", url: "/app/products/2?details=1", pattern: "/app/products/:variantId", plan: "growth", Component: VariantDetail, data: () => variantDetail(), expect: ["How the forecast was built", "Recent sales", "Linen shirt", "Season from", "Shirts"] }),
 
   S({ slug: "settings-defaults", screen: "Settings → Defaults", state: "Growth", nav: "settings", url: "/app/settings", plan: "growth", Component: Settings, data: () => ({ form: settingsToForm(DEFAULT_SETTINGS) }), expect: ["Default lead time", "App language"] }),
   S({ slug: "settings-suppliers", screen: "Settings → Suppliers", state: "Growth", nav: "settings", url: "/app/settings/suppliers", plan: "growth", Component: Suppliers, data: () => suppliers, expect: ["Add supplier", "Acme Textiles", "Lisbon Linen"] }),
@@ -633,7 +641,7 @@ const screens: Screen[] = [
   // Sample data mode (owner 2026-10-17): the offer while the store is read, the banner on every page,
   // the store-changing actions off with a note.
   S({ slug: "dashboard--sample-offer", screen: "Sample data", state: "Store still syncing: the offer card", nav: "dashboard", url: "/app", plan: "free", Component: Home, data: () => ({ ...dashboard("free", { syncing: true }), sampleOffer: true }), expect: ["Explore Keha with sample data", "Explore with sample data", "Setting up your order plan"] }),
-  S({ slug: "dashboard--sample-data", screen: "Sample data", state: "Dashboard on sample data (Free store: Growth shown)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), sample: SAMPLE_ON, expect: ["You're viewing sample data — nothing here is from your store.", "Switch to my store", "Sample data shows every Growth feature, whatever your plan.", "Due this week"] }),
+  S({ slug: "dashboard--sample-data", screen: "Sample data", state: "Dashboard on sample data (Free store: Growth shown)", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), sample: SAMPLE_ON, expect: ["You're viewing sample data — nothing here is from your store.", "Switch to my store", "Sample data shows every Growth feature, whatever your plan.", "This week"] }),
   S({ slug: "dashboard--sample-store-ready", screen: "Sample data", state: "The store's own data is ready", nav: "dashboard", url: "/app", plan: "growth", Component: Home, data: () => dashboard("growth"), sample: { ...SAMPLE_ON, realReady: true, planLifted: false }, expect: ["Your store is ready — your own order plan is waiting.", "Switch to my store"] }),
   S({ slug: "products--sample-data", screen: "Sample data", state: "Products on sample data", nav: "products", url: "/app/products", plan: "growth", Component: Products, data: () => products("growth"), sample: SAMPLE_ON, expect: ["You're viewing sample data — nothing here is from your store.", "Linen shirt"] }),
   S({ slug: "order-now--sample-transfers-off", screen: "Sample data", state: "Due now (Pro): transfers off", nav: "orderplan", url: "/app/reorder", plan: "pro", Component: Reorder, data: () => orderNow("pro"), sample: SAMPLE_ON, expect: ["Transfers are off in sample data — nothing is created in your store.", "Create transfer in Shopify"] }),

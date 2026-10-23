@@ -122,15 +122,6 @@ export const ORDERING_TR: Record<string, Tr> = {
   "Above last year": { es: "Más que el año pasado", fr: "Au-dessus de l'an dernier", de: "Über Vorjahr", it: "Sopra l'anno scorso", pt: "Acima do ano passado", nl: "Boven vorig jaar", pl: "Powyżej zeszłego roku" },
 
   // ---- Order now ----
-  "Everything to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums.": {
-    es: "Todo lo que hay que pedir en los próximos 7 días, por proveedor, cada línea con su propia fecha límite. Las cantidades incluyen las cajas y los mínimos del proveedor.",
-    fr: "Tout ce qu'il faut commander dans les 7 prochains jours, par fournisseur, chaque ligne avec sa propre date limite. Les quantités tiennent compte des cartons et des minimums du fournisseur.",
-    de: "Alles, was in den nächsten 7 Tagen zu bestellen ist, nach Lieferant, jede Zeile mit ihrem eigenen Bestelltermin. Die Mengen berücksichtigen Kartons und die Mindestmengen des Lieferanten.",
-    it: "Tutto ciò che va ordinato nei prossimi 7 giorni, per fornitore, ogni riga con la sua data limite. Le quantità tengono conto delle confezioni e dei minimi del fornitore.",
-    pt: "Tudo o que é preciso encomendar nos próximos 7 dias, por fornecedor, cada linha com a sua própria data limite. As quantidades incluem as caixas e os mínimos do fornecedor.",
-    nl: "Alles wat je de komende 7 dagen moet bestellen, per leverancier, elke regel met zijn eigen besteldatum. De hoeveelheden houden rekening met dozen en de minimums van de leverancier.",
-    pl: "Wszystko do zamówienia w ciągu najbliższych 7 dni, według dostawcy, każda pozycja z własnym terminem. Ilości uwzględniają opakowania i minima dostawcy.",
-  },
   "What {location} needs to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums.": {
     es: "Lo que {location} tiene que pedir en los próximos 7 días, por proveedor, cada línea con su propia fecha límite. Las cantidades incluyen las cajas y los mínimos del proveedor.",
     fr: "Ce que {location} doit commander dans les 7 prochains jours, par fournisseur, chaque ligne avec sa propre date limite. Les quantités tiennent compte des cartons et des minimums du fournisseur.",

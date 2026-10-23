@@ -659,7 +659,7 @@ function BuilderRow({
           </s-stack>
         </div>
       </s-table-cell>
-      <s-table-cell>{l.section === "added" ? "—" : <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />}</s-table-cell>
+      <s-table-cell>{l.section === "added" ? "—" : <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} outlook={l.outlook} />}</s-table-cell>
       <s-table-cell>
         <div className="keha-qty">
           <s-number-field

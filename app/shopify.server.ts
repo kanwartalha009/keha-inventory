@@ -1,4 +1,5 @@
 import "@shopify/shopify-app-react-router/adapters/node";
+import { recordActivation } from "./models/activation.server";
 import {
   ApiVersion,
   AppDistribution,
@@ -45,6 +46,8 @@ const shopify = shopifyApp({
       // throws; the hourly data tick queues it again if this enqueue is lost. A finished backfill
       // returns at once.
       await enqueueJob(session.shop, "backfill");
+      // First-session measurement (clarity pass): the install, once per shop.
+      await recordActivation(session.shop, "installed");
     },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN

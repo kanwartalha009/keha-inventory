@@ -35,6 +35,7 @@ import {
   planDays,
   planEnd,
   planStore,
+  type StockOutlook,
   type PlanEvent,
   type PlanSkip,
   type PlanSupplierRules,
@@ -275,6 +276,8 @@ export type PlanVariantState = {
   noReorder: boolean;
   /** Already late (stock at arrival of an order placed today below safety); with deadline null: out, run-out day unknown. */
   overdue?: boolean;
+  /** Today's stock outlook (engine/forward-plan-shared StockOutlook): the status words come from it. */
+  outlook?: StockOutlook | null;
 };
 
 export type OrderPlanOptions = {
@@ -465,7 +468,7 @@ export async function computeOrderPlan(shop: string, now: Date = new Date(), opt
     // A projected variant's null date is the plan's answer (never runs low, or already out with
     // no known run-out day — M3): only rows the plan can't project keep compute's date.
     const deadline = p?.projected ? p.deadline : (p?.deadline ?? (p?.skip ? null : storedBy(s.variantId)));
-    state.set(s.variantId, { deadline, skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false, overdue: !!p?.overdue });
+    state.set(s.variantId, { deadline, skip: p?.skip ?? null, supplierKey: s.supplierKey, noReorder: false, overdue: !!p?.overdue, outlook: p?.outlook ?? null });
   }
   const events = plan.events;
   // Fit to budget → Apply (merchant audit 2026-10-18): orders the merchant moved to next month wait

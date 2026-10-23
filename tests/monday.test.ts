@@ -211,15 +211,16 @@ const base: MondayEmailInput = {
 };
 
 describe("composeMondayEmail", () => {
-  it("English: money subject, the 4 numbers, change, '—' for nulls, links", () => {
+  it("English: money subject, the 2 numbers of the Dashboard (clarity pass), change, links", () => {
     const e = composeMondayEmail(base);
     // Headline = Sales at risk + Cash stuck (1200 + 3400.5), not the past-period cards.
     expect(e.subject).toBe("€4,601 at stake this week");
     expect(e.text).toContain("Weekly stock summary for Acme Shoes");
-    expect(e.text).toContain("Sales at risk (next 28 days): €1,200 (+€200 vs last week)");
-    expect(e.text).toMatch(/^Lost sales \(last 90 days\): —$/m); // null → "—", no change
-    expect(e.text).toContain("Cash tied up: €3,401 (Same as last week)");
-    expect(e.text).toMatch(/^Sales missed on sold-out pages \(last 30 days\): €50$/m); // before null → no change
+    expect(e.text).toContain("Sales at risk, next 4 weeks: €1,200 (+€200 vs last week)");
+    expect(e.text).toContain("Cash tied up in slow stock: €3,401 (Same as last week)");
+    // The look-back figures are on the Actions page, not in the email (same 2 as the Dashboard).
+    expect(e.text).not.toContain("Sales lost while sold out");
+    expect(e.text).not.toContain("Sales missed on sold-out pages");
     expect(e.text).toContain(`Open in Keha: ${base.links.app}`);
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
     expect(e.text).not.toContain("Refreshed weekly");
@@ -229,7 +230,7 @@ describe("composeMondayEmail", () => {
     expect(e.html).toContain(`href="${base.links.app}"`);
     expect(e.html).toContain(`href="${base.links.unsubscribe}"`);
     expect(e.html).toContain("+€200 vs last week");
-    expect(e.html).toContain(">—<");
+    expect(composeMondayEmail({ ...base, now: { ...base.now, cashStuck: null } }).html).toContain(">—<"); // null → "—"
   });
 
   it("Spanish: translated labels, store-locale money, Free line", () => {
@@ -237,9 +238,9 @@ describe("composeMondayEmail", () => {
     const eur = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
     expect(e.subject).toBe(`${eur(4601)} en juego esta semana`);
     expect(e.text).toContain("Resumen semanal de stock de Acme Shoes");
-    expect(e.text).toContain(`Ventas en riesgo (próximos 28 días): ${eur(1200)} (`);
+    expect(e.text).toContain(`Ventas en riesgo, próximas 4 semanas: ${eur(1200)} (`);
     expect(e.text).toContain("respecto a la semana pasada");
-    expect(e.text).toContain("Dinero inmovilizado");
+    expect(e.text).toContain("Dinero inmovilizado en stock lento");
     expect(e.text).toContain("Igual que la semana pasada");
     expect(e.text).toContain("Se actualiza cada semana en el plan Gratis");
     expect(e.text).toContain("Abrir en Keha:");
@@ -265,11 +266,11 @@ describe("composeMondayEmail", () => {
     expect(formatMoneyWhole(12, "NOT_A_CURRENCY", "en")).toBe("12 NOT_A_CURRENCY");
   });
 
-  it("headline counts only the forward-looking money; past cards stay in the body", () => {
+  it("headline counts only the forward-looking money; the past figures aren't in the email", () => {
     const e = composeMondayEmail({ ...base, now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } });
     expect(e.subject).toBe("Your stock this week");
-    expect(e.text).toContain("Lost sales (last 90 days): €900");
-    expect(e.text).toContain("Sales missed on sold-out pages (last 30 days): €80");
+    expect(e.text).not.toContain("€900");
+    expect(e.text).toMatch(/^Sales at risk, next 4 weeks: —/m); // null → "—"
     expect(e.html).toContain(">Your stock this week</h1>");
     expect(composeMondayEmail({ ...base, locale: "es", now: { atRisk: null, lost90: 900, cashStuck: null, soldOutTraffic: 80 } }).subject).toBe(
       "Tu stock esta semana",
@@ -345,7 +346,7 @@ describe("runMondayEmails without an email provider: Shopify Flow 'Weekly order 
     expect(Object.keys(payload).sort()).toEqual(["Cash due this week", "Order plan link", "Orders due this week", "Subject", "Summary text"]);
     expect(payload.Subject).toMatch(/at stake this week/);
     expect(payload["Summary text"]).toContain("Weekly stock summary for Acme Shoes");
-    expect(payload["Summary text"]).toContain("Cash tied up: —");
+    expect(payload["Summary text"]).toContain("Cash tied up in slow stock: —");
     // The Flow text has no email footer or unsubscribe link (the merchant's workflow controls it).
     expect(payload["Summary text"]).not.toContain("unsubscribe");
     expect(payload["Summary text"]).not.toContain("You get this email");
@@ -411,7 +412,7 @@ describe("runMondayEmails", () => {
     // vs the 11 Oct row (7 days back), not the 17 Oct one.
     const plus500 = new Intl.NumberFormat("es", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0, signDisplay: "exceptZero" }).format(500);
     expect(sent.text).toContain(`(${plus500} respecto a la semana pasada)`);
-    expect(sent.text).toContain("Dinero inmovilizado: —");
+    expect(sent.text).toContain("Dinero inmovilizado en stock lento: —");
     expect(sent.text).toContain("https://admin.shopify.com/store/acme/apps/");
     expect(sent.text).toMatch(/https:\/\/inventory\.test\/email\/unsubscribe\?token=[\w-]+/);
     // Mail clients' own unsubscribe button (RFC 2369 / 8058), same link as the footer.
@@ -797,21 +798,25 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     expect(e.html).toContain('href="https://x/app/reorder?supplier=s%3A2"');
     // Still there: unsubscribe and the money rows.
     expect(e.text).toContain(`Unsubscribe: ${base.links.unsubscribe}`);
-    expect(e.text).toContain("Sales at risk (next 28 days): €1,200");
+    expect(e.text).toContain("Sales at risk, next 4 weeks: €1,200");
     const one = plan() as Extract<MondayOrders, { kind: "plan" }>;
     expect(composeMondayEmail({ ...base, orders: plan({ lines: [one.lines[0]!] }) }).subject).toBe(
       "1 order due this week · by Wed, Oct 21",
     );
   });
 
-  it("an overdue order leads: '{supplier} order is overdue · {units} units', flagged in the block", () => {
+  it("an order that can't wait leads: '{supplier}: order now · {units} units', flagged in the block", () => {
     const p = plan();
     if (p.kind !== "plan") throw new Error();
     const lines = [p.lines[0]!, { ...p.lines[1]!, overdue: true, orderBy: "2026-10-19" }];
     const e = composeMondayEmail({ ...base, orders: { ...p, lines } });
-    expect(e.subject).toBe("Lisbon Linen order is overdue · 40 units");
-    expect(e.text).toContain("- Overdue: Lisbon Linen · 40 units · Due today");
-    expect(e.html).toContain(">Overdue</span>");
+    expect(e.subject).toBe("Lisbon Linen: order now · 40 units");
+    expect(e.text).toContain("- Order now: Lisbon Linen · 40 units · Due today");
+    expect(e.html).toContain(">Order now</span>");
+    // Overdue only below its buffer (late: false): "Order soon", amber, and the subject stays the orders due.
+    const soon = composeMondayEmail({ ...base, orders: { ...p, lines: [p.lines[0]!, { ...lines[1]!, late: false }] } });
+    expect(soon.text).toContain("- Order soon: Lisbon Linen · 40 units · Due today");
+    expect(soon.subject).not.toContain("order now");
   });
 
   it("a line due today reads 'order today' and is not flagged overdue (one label rule)", () => {
@@ -874,7 +879,7 @@ describe("Monday email: Order this week first, subject leads with the job", () =
     const e = composeMondayEmail({ ...base, refresh: "weekly", orders });
     expect(e.subject).toBe("2 products to order by Nov 2");
     expect(e.text).toContain("Your most urgent products");
-    expect(e.text).toContain("- Overdue: Linen shirt · M / White · 24 units · Due today");
+    expect(e.text).toContain("- Order now: Linen shirt · M / White · 24 units · Due today");
     expect(e.text).toContain("- Cap · 6 units · Due Nov 2");
     expect(e.text).not.toContain("Review order"); // read-only
     expect(e.text).toContain("See plans: https://x/app/plans");
@@ -935,10 +940,10 @@ describe("runMondayEmails: Order this week from the order plan", () => {
     tables.moneyAtStake = [money("2026-10-18", "1500.00")];
     await runMondayEmails(S, MON);
     const payload = flow.fire.mock.calls[0]![3] as Record<string, string>;
-    expect(payload.Subject).toBe("Acme Textiles order is overdue · 30 units");
+    expect(payload.Subject).toBe("Acme Textiles: order now · 30 units");
     expect(payload["Orders due this week"]).toBe("1");
     expect(payload["Cash due this week"]).toBe("€450");
-    expect(payload["Summary text"]).toContain("- Overdue: Acme Textiles · 30 units · €450 · Due today");
+    expect(payload["Summary text"]).toContain("- Order now: Acme Textiles · 30 units · €450 · Due today");
   });
 
   it("Growth: one line per supplier with Review order into Order now for that supplier", async () => {
@@ -947,8 +952,8 @@ describe("runMondayEmails: Order this week from the order plan", () => {
     tables.moneyAtStake = [money("2026-10-18", "1500.00")];
     expect(await runMondayEmails(S, MON)).toBe("sent");
     const sent = sendEmail.mock.calls[0][0] as { subject: string; text: string; headers?: Record<string, string> };
-    expect(sent.subject).toBe("Acme Textiles order is overdue · 30 units");
-    expect(sent.text).toContain("- Overdue: Acme Textiles · 30 units · €450 · Due today");
+    expect(sent.subject).toBe("Acme Textiles: order now · 30 units");
+    expect(sent.text).toContain("- Order now: Acme Textiles · 30 units · €450 · Due today");
     expect(sent.text).toContain("Review order: https://admin.shopify.com/store/acme/apps/keha-inventory/app/reorder?supplier=s%3A1");
     expect(JSON.stringify(sent)).toContain("List-Unsubscribe");
   });

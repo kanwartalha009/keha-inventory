@@ -3,6 +3,7 @@
  * detail view's chart series. Pure, client-safe. Unknown values stay null and
  * render "—" (invariant I-5).
  */
+import { isOutcome, outcomeLabel, outcomeOf, type Outcome, type OutcomeKey } from "./outcome-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import { safetyStock } from "./engine/order-shared";
 import { VARIANT_STATUSES, type VariantStatus } from "./engine/types-shared";
@@ -24,49 +25,15 @@ export function isVariantStatus(v: unknown): v is VariantStatus {
   return typeof v === "string" && (VARIANT_STATUSES as readonly string[]).includes(v);
 }
 
-/** Display order for the status filter. */
-export const STATUS_ORDER: VariantStatus[] = ["out", "running_low", "healthy", "too_much", "dead", "not_enough_data"];
-
-export function statusLabel(status: VariantStatus, t: T): string {
-  switch (status) {
-    case "out":
-      return t("Out of stock");
-    case "running_low":
-      return t("Low stock");
-    case "healthy":
-      return t("In stock");
-    case "too_much":
-      return t("Overstock");
-    case "dead":
-      return t("Dead stock");
-    case "not_enough_data":
-      return t("Insufficient data");
-  }
-}
-
-export type StatusTone = "critical" | "warning" | "success" | "caution" | "neutral" | "auto";
-
-export function statusTone(status: VariantStatus): StatusTone {
-  switch (status) {
-    case "out":
-      return "critical";
-    case "running_low":
-      return "warning";
-    case "healthy":
-      return "success";
-    case "too_much":
-      return "caution";
-    case "dead":
-      return "neutral";
-    case "not_enough_data":
-      return "auto";
-  }
-}
+// The status words a merchant sees are the outcomes (lib/outcome-shared, clarity pass 2026-10-23);
+// the engine's VariantStatus stays the input they are worked out from and the `?status=` filter.
 
 // ── Filters and paging ───────────────────────────────────────────────────
 
 export type ProductFilters = {
   status: VariantStatus | null;
+  /** The status words (lib/outcome-shared) — the filter the table shows since the clarity pass. */
+  outcome?: OutcomeKey | null;
   collection: string | null;
   vendor: string | null;
   /** Shopify product type (URL `type`). */
@@ -89,6 +56,7 @@ export function parseFilters(params: URLSearchParams): ProductFilters {
   const status = params.get("status");
   return {
     status: isVariantStatus(status) ? status : null,
+    outcome: isOutcome(params.get("outcome")) ? (params.get("outcome") as OutcomeKey) : null,
     collection: clean(params.get("collection")),
     vendor: clean(params.get("vendor")),
     productType: clean(params.get("type")),
@@ -107,6 +75,7 @@ export function parsePage(params: URLSearchParams): number {
 export function filtersToParams(f: ProductFilters): URLSearchParams {
   const p = new URLSearchParams();
   if (f.status) p.set("status", f.status);
+  if (f.outcome) p.set("outcome", f.outcome);
   if (f.collection) p.set("collection", f.collection);
   if (f.vendor) p.set("vendor", f.vendor);
   if (f.productType) p.set("type", f.productType);
@@ -161,6 +130,8 @@ export type ProductRow = {
   /** A1: the season's first order, or why an overdue order has no date (forward-plan dueNote). */
   dueNote?: DueNote | null;
   productId?: string;
+  /** The status words and their reason (lib/outcome-shared), worked out on the server. */
+  outcome?: Outcome;
 };
 
 /** Open Keha order units for one variant (models/reorder.server kehaOnOrder). */
@@ -210,8 +181,12 @@ export function toProductRow(
   stock: StockSumIn | null | undefined,
   forecast: boolean,
   onOrder?: OnOrderIn | null,
+  today: DayKey = new Date().toISOString().slice(0, 10),
 ): ProductRow {
   const status = metric && isVariantStatus(metric.status) ? metric.status : null;
+  const onHand = finite(stock?.onHand);
+  const daysLeft = forecast ? finite(metric?.daysLeft) : null;
+  const orderBy = forecast ? dayOf(metric?.orderBy ?? null) : null;
   return {
     id: v.id,
     numericId: variantNumericId(v.id),
@@ -221,15 +196,18 @@ export function toProductRow(
     vendor: v.vendor,
     image: v.image,
     status,
-    onHand: finite(stock?.onHand),
+    onHand,
     incoming: finite(stock?.incoming),
     rate: finite(metric?.rate),
-    daysLeft: forecast ? finite(metric?.daysLeft) : null,
+    daysLeft,
     neverRunsOut: forecast ? !!metric?.neverRunsOut : false,
-    orderBy: forecast ? dayOf(metric?.orderBy ?? null) : null,
+    orderBy,
     orderQty: forecast ? finite(metric?.orderQty) : null,
     onOrder: onOrder && onOrder.qty > 0 ? onOrder.qty : 0,
     onOrderArrival: onOrder && onOrder.qty > 0 ? onOrder.arrival : null,
+    // The status word from the nightly numbers alone; withPlan (models/products.server) refines it
+    // with the order plan's outlook and "Don't reorder".
+    outcome: outcomeOf({ status, today, orderBy, overdue: false, onHand, daysLeft }),
   };
 }
 
@@ -310,7 +288,8 @@ export function productsCsv(rows: readonly ProductRow[], t: T, forecast: boolean
       variantName(r.variantTitle),
       r.sku,
       r.vendor,
-      r.status ? statusLabel(r.status, t) : null,
+      // The status words, as on the screen (clarity pass).
+      r.outcome ? outcomeLabel(r.outcome.key, t) : null,
       r.onHand,
       r.incoming,
       r.rate === null ? null : Math.round(r.rate * 10) / 10,
@@ -537,3 +516,18 @@ export function readForecastInputs(raw: unknown, sigma: number | null): Forecast
 export function isNeutralMultiplier(v: number | null): boolean {
   return v === null || v === 1;
 }
+
+/**
+ * The nightly statuses behind each status word — the database pre-filter (and the whole filter
+ * when the plan isn't read: Free). With the plan, rows are then checked one by one (outcomeOf):
+ * a healthy variant due this week is "Order soon", and running low can be "Order now" or "soon".
+ */
+export const OUTCOME_STATUSES: Record<OutcomeKey, VariantStatus[]> = {
+  orderNow: ["out", "running_low", "healthy"],
+  orderSoon: ["running_low", "healthy"],
+  ok: ["healthy", "running_low"],
+  tooMuch: ["too_much"],
+  notSelling: ["dead"],
+  learning: ["not_enough_data"],
+  dontReorder: ["out", "running_low", "healthy", "too_much", "dead", "not_enough_data"],
+};

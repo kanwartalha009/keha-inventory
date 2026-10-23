@@ -16,7 +16,7 @@
  */
 import { casePackFor, supplierFor, type SupplierLite } from "./supplier-shared";
 import { lineQuantity, netNeed } from "./engine/order-shared";
-import { ORDER_NOW_DAYS, dueNote, ordersDue, topUpToMinimum, type DueNote, type OrderWhy, type PlanEvent, type TopUpLine } from "./engine/forward-plan-shared";
+import { ORDER_NOW_DAYS, dueNote, ordersDue, topUpToMinimum, type DueNote, type OrderWhy, type PlanEvent, type StockOutlook, type TopUpLine } from "./engine/forward-plan-shared";
 import { addDays, type DayKey } from "./engine/dates-shared";
 import type { OrderPlanData } from "./order-plan-shared";
 
@@ -65,6 +65,8 @@ export type ReorderLine = {
   overdue: boolean;
   /** A1: the season's first order, or why an overdue line has no date (forward-plan dueNote). */
   dueNote?: DueNote | null;
+  /** Today's stock outlook (the variant's first planned order): the line's status words (lib/outcome-shared). */
+  outlook?: StockOutlook | null;
   /** Planned quantity after the case pack, the minimums and the order's top-ups. */
   suggested: number;
   pack: number | null;
@@ -100,7 +102,7 @@ export type ReorderGroup = {
   /** Earliest order-by date of its lines. */
   orderBy: string | null;
   overdue: boolean;
-  /** Really late (forward-plan isLate): the red "Overdue" badge; below-safety-stock lines don't count. */
+  /** Really late (forward-plan isLate): the red "Order now" badge; lines only below their buffer don't count. */
   late: boolean;
   /** The order (supplier) currency. */
   currency: string;
@@ -279,6 +281,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       orderBy: events.length ? due.orderBy : (v?.deadline ?? null),
       overdue: due.overdue,
       dueNote: dueNote(events),
+      outlook: events.find((e) => e.outlook)?.outlook ?? null,
       suggested: Math.max(qty, plannedQty !== undefined ? lineQuantity(plannedQty, pack, moq) : 0),
       pack,
       moq,
@@ -332,7 +335,7 @@ export function buildOrderNow(input: OrderNowInput): ReorderGroup[] {
       leadTimeSource: info.leadTimeSource,
       orderBy,
       overdue: due.overdue || lines.some((l) => l.overdue),
-      late: lines.some((l) => l.overdue && !l.dueNote?.belowSafety),
+      late: lines.some((l) => (l.outlook ? l.outlook.outNow || l.outlook.beforeArrival : l.overdue && !l.dueNote?.belowSafety)),
       currency: info.currency,
       storeCurrency: plan.currency.toUpperCase(),
       exchangeRate: info.exchangeRate,

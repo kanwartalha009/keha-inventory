@@ -18,6 +18,8 @@
  * Numbers follow the app's invariants: an unknown value is null, never 0.
  * Text is English (Sidekick answers in the merchant's language itself).
  */
+import { outcomeOf, outcomeReasonText, planOutcome, worstOutcome, type Outcome } from "./outcome-shared";
+import { isVariantStatus } from "./products-shared";
 import type { MoneyCardKey } from "./money-shared";
 import type { PlanNotReady } from "./dashboard-shared";
 import type { MoneyRefresh } from "./plan-shared";
@@ -340,14 +342,19 @@ export function daysLeftMeta(daysLeft: number | null | undefined, neverRunsOut: 
 }
 
 /** order_by_label of an overdue order with no date (already out, the day it ran out unknown — M3). */
-const OVERDUE_NO_DATE = "overdue — already out of stock, the day it ran out isn't known";
+const OVERDUE_NO_DATE = "due now — already out of stock, the day it ran out isn't known";
 /**
  * A1: long overdue (the date would be more than lead time + cycle back) — the day it sold out, or
  * will; off season — the next order is the season's.
  */
+/** The app's status word and its reason for Sidekick (the badge and the line under it on every screen). */
+const statusMeta = (o: Outcome | null, today: DayKey) =>
+  o ? { status: STATUS_WORDS[o.key] ?? undefined, status_reason: outcomeReasonText(o.reason, (x) => x, (d) => dayLabel(d, today) ?? d) || undefined } : {};
+
 const dueLabel = (day: DayKey | null, overdue: boolean, today: DayKey, note?: DueNote | null) => {
-  if (!day && overdue && note?.soldOutSince) return `overdue — sold out since ${dayLabel(note.soldOutSince, today)}`;
-  if (!day && overdue && note?.runsOut) return `${note.belowSafety ? "below safety stock" : "overdue"} — runs out ${dayLabel(note.runsOut, today)}`;
+  // The order-by date in words; how urgent it is comes from the status word next to it (`status`).
+  if (!day && overdue && note?.soldOutSince) return `due now — sold out since ${dayLabel(note.soldOutSince, today)}`;
+  if (!day && overdue && note?.runsOut) return `due now — ${note.belowSafety ? "its buffer is running low, lasts to" : "runs out"} ${dayLabel(note.runsOut, today)}`;
   if (day && !overdue && note?.nextSeason) return `next season: order by ${dayLabel(day, today)}`;
   return day ? dayLabel(day, today) : overdue ? OVERDUE_NO_DATE : null;
 };
@@ -385,7 +392,9 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
       grouped_by: s?.kind === "supplier" ? "supplier" : "vendor (no supplier set)",
       order_by: first,
       order_by_label: dueLabel(first, g.overdue, data.today, dueNote(g.events)),
-      overdue: g.late || undefined,
+      overdue: g.overdue || undefined,
+      // Clarity pass: the supplier's most urgent status word, as the Dashboard shows it.
+      ...statusMeta(worstOutcome(g.events.map((e) => planOutcome({ orderBy: dueDay(e), overdue: e.overdue, outlook: e.outlook ?? null, note: e.context ?? null }, data.today))), data.today),
       orders: g.lines,
       products: g.products,
       units: g.units,
@@ -400,6 +409,7 @@ export function orderPlanResponse(data: OrderPlanData, opts: OrderPlanOptions): 
           order_qty: e.qty,
           order_by: dueDay(e),
           overdue: e.overdue || undefined,
+          ...statusMeta(planOutcome({ orderBy: dueDay(e), overdue: e.overdue, outlook: e.outlook ?? null, note: e.context ?? null }, data.today), data.today),
           arrives: e.arrives,
           cost: money(e.cost),
           ...daysLeftMeta(v?.daysLeft, v?.neverRunsOut),
@@ -458,6 +468,7 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
         order_by: r.orderBy,
         order_by_label: dueLabel(r.orderBy, r.overdue, data.today, r.dueNote),
         overdue: r.overdue || undefined,
+        ...statusMeta(planOutcome({ orderBy: r.orderBy, overdue: r.overdue, outlook: r.outlook ?? null, note: r.dueNote ?? null }, data.today), data.today),
         suggested_order_qty: r.qty,
         sku: data.variants[r.variantId]?.sku ?? undefined,
       }),
@@ -467,14 +478,15 @@ export function orderPreviewResponse(rows: readonly PreviewRow[], data: Pick<Ord
 
 // ── Product stock ───────────────────────────────────────────────────────────
 
-/** The app's own status words (lib/products-shared statusLabel, English). */
+/** The app's own status words (lib/outcome-shared outcomeLabel, English; clarity pass 2026-10-23). */
 export const STATUS_WORDS: Record<string, string> = {
-  out: "Out of stock",
-  running_low: "Low stock",
-  healthy: "In stock",
-  too_much: "Overstock",
-  dead: "Dead stock",
-  not_enough_data: "Insufficient data",
+  orderNow: "Order now",
+  orderSoon: "Order soon",
+  ok: "OK",
+  tooMuch: "Too much",
+  notSelling: "Not selling",
+  learning: "Learning",
+  dontReorder: "Don't reorder",
 };
 
 export type ProductStockIn = {
@@ -484,6 +496,8 @@ export type ProductStockIn = {
   variantTitle: string;
   sku: string | null;
   status: string | null;
+  /** The status words (lib/outcome-shared), when worked out. */
+  outcome?: Outcome;
   onHand: number | null;
   incoming: number | null;
   rate: number | null;
@@ -507,10 +521,17 @@ export function productStockResponse(
   // Plan not ready: stock and sales stay, the order fields are unknown and the reason is given.
   const advice = ctx.notReady ? notReadyMessage(ctx.notReady, ctx.today) : null;
   const results = rows.map((r) => {
+    // The page's status word; from the nightly numbers alone when the caller didn't work it out.
+    const outcome =
+      r.outcome ??
+      (r.status && isVariantStatus(r.status)
+        ? outcomeOf({ status: r.status, today: ctx.today, orderBy: ctx.forecast ? r.orderBy : null, overdue: false, onHand: r.onHand, daysLeft: ctx.forecast ? r.daysLeft : null })
+        : null);
     const meta: Record<string, unknown> = {
       product_gid: r.productId,
       sku: r.sku ?? undefined,
-      status: r.status ? (STATUS_WORDS[r.status] ?? null) : null,
+      status: outcome ? (STATUS_WORDS[outcome.key] ?? null) : null,
+      status_reason: outcome ? outcomeReasonText(outcome.reason, (x) => x, (d) => dayLabel(d, ctx.today) ?? d) || undefined : undefined,
       on_hand: r.onHand,
       incoming: r.incoming,
       on_order_with_keha: r.onOrder > 0 ? r.onOrder : undefined,
@@ -582,10 +603,10 @@ export function actionListResponse(
 
 /** The card titles as Home shows them (lib/dashboard-shared moneyCardTitle, English). */
 export const MONEY_TITLES: Record<MoneyCardKey, string> = {
-  atRisk: "Sales at risk (next 28 days)",
-  lost90: "Lost sales (last 90 days)",
-  cashStuck: "Cash tied up (overstock and dead stock)",
-  soldOutTraffic: "Sales missed on sold-out pages (last 30 days)",
+  atRisk: "Sales at risk, next 4 weeks",
+  lost90: "Sales lost while sold out, last 90 days",
+  cashStuck: "Cash tied up in slow stock (overstock and dead stock)",
+  soldOutTraffic: "Sales missed on sold-out pages, last 30 days",
 };
 
 export type MoneyIn = {

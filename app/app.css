@@ -765,3 +765,17 @@ s-table { display: block; max-width: 100%; overflow-x: auto; }
 .keha-qty__note { display: block; white-space: normal; line-height: 1.3; }
 /* Order-by cells with context (Products): badge on top, the context under it, wrapping. */
 .keha-due-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-inline-size: 6rem; max-inline-size: 11rem; white-space: normal; }
+
+/* Clarity pass (2026-10-23): text that must wrap inside a nowrap table cell (Why this quantity),
+   and a quiet Details disclosure for the planner's formula. */
+.keha-wrap { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.keha-details > summary { cursor: pointer; color: var(--keha-text-secondary); font-size: var(--keha-font-size-md); padding: var(--keha-space-050) 0; }
+.keha-details[open] > summary { margin-bottom: var(--keha-space-100, 4px); }
+
+/* "Your stock today" (clarity pass 2026-10-23): one clickable box per status word. */
+.keha-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--keha-space-300, 12px); }
+.keha-stat { display: flex; flex-direction: column; align-items: flex-start; gap: var(--keha-space-100); padding: var(--keha-space-300, 12px); border: 1px solid var(--keha-border); border-radius: 12px; background: var(--keha-surface); color: inherit; text-decoration: none; }
+.keha-stat:hover { background: var(--keha-surface-hover); }
+.keha-stat:focus-visible { outline: 2px solid #005bd3; outline-offset: 1px; }
+.keha-stat__count { font-size: var(--keha-font-size-xl); line-height: 1.2; font-weight: var(--keha-weight-semibold); font-variant-numeric: tabular-nums; color: var(--keha-text); }
+.keha-plan-basis { display: inline; }

@@ -180,6 +180,11 @@ const { loadOrderPlan } = await import("../app/models/order-plan.server");
 const { thisWeek, planWeeks, supplierName } = await import("../app/lib/order-plan-shared");
 const { cashTotals, dueDay, dueNote, ordersDue } = await import("../app/lib/engine/forward-plan-shared");
 const { dueText } = await import("../app/lib/order-plan-shared");
+const { outcomeLabel, outcomeReasonText, planOutcome, worstOutcome } = await import("../app/lib/outcome-shared");
+// The status words with their reason, as every screen shows them (clarity pass 2026-10-23).
+const said = (o: { key: Parameters<typeof outcomeLabel>[0]; reason: Parameters<typeof outcomeReasonText>[0] } | null) =>
+  o ? [outcomeLabel(o.key, (x) => x), outcomeReasonText(o.reason, (x) => x, (d) => d)].filter(Boolean).join(" — ") : "—";
+const lineOutcome = (e: (typeof plan.events)[number]) => planOutcome({ orderBy: dueDay(e), overdue: e.overdue, outlook: e.outlook ?? null, note: e.context ?? null }, plan.today);
 const { addDays: addDaysTo } = await import("../app/lib/engine/dates-shared");
 const KEY = "sim-check.myshopify.com";
 const now = new Date(`${store.meta.today}T07:00:00.000Z`);
@@ -207,7 +212,7 @@ line("Due this week", `${week.suppliers.length} suppliers, ${fmt(week.totals.uni
 for (const s of week.suppliers) {
   const due = ordersDue(s.events);
   // The app's own label rule (forward-plan dueState): "Due today" is never overdue.
-  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue, dueNote(s.events))}`);
+  line(`  ${supplierName(plan, s.supplierKey, (x) => x)}`, `${fmt(s.units)} units, ${s.cash === null ? "—" : fmt(s.cash)}, ${dueText(due.orderBy, plan.today, (x) => x, "en-GB", due.overdue, dueNote(s.events))} · ${said(worstOutcome(s.events.map(lineOutcome)))}`);
 }
 const total = cashTotals(plan.events);
 line("Order calendar", `${fmt(total.lines)} orders, ${fmt(total.units)} units, ${plan.currency} ${fmt(total.cash ?? 0)} (${total.missingCost} lines without a cost)`);
@@ -231,5 +236,5 @@ line("Held back below a style minimum", `${(plan.belowMinimum ?? []).length} sty
 head("Sample plan lines");
 for (const e of plan.events.slice(0, 8)) {
   const v = plan.variants[e.variantId];
-  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units, ${dueText(dueDay(e), plan.today, (x) => x, "en-GB", e.overdue, dueNote([e]))}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
+  line(`${v?.productTitle ?? e.variantId} — ${v?.variantTitle ?? ""}`, `${e.qty} units, ${said(lineOutcome(e))}, arrives ${e.arrives}, ${e.cost === null ? "—" : fmt(e.cost, 2)}`);
 }

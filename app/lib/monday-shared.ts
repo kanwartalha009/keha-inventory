@@ -20,7 +20,7 @@
  * (composeMondayEmail) and Slack (lib/slack-shared buildSlackMonday) render it.
  */
 import { fill, translate, type Locale } from "./i18n";
-import { change, MONEY_CARDS, type MoneyCardKey } from "./money-shared";
+import { change, DASHBOARD_MONEY, type MoneyCardKey } from "./money-shared";
 import { isVisible, reasonTemplate, rankActions, tabOf, type ActionKind, type ActionState, type ReasonParams } from "./actions-shared";
 import { hasFeature, visibleRows, type MoneyRefresh, type PlanCode } from "./plan-shared";
 import { reasonSentence } from "./action-facts-shared";
@@ -140,12 +140,14 @@ export type MondayOrderLine = {
   /** forward-plan ordersDue: the earliest order-by date (overdue: the one that passed; null = overdue, no date). */
   orderBy: DayKey | null;
   overdue: boolean;
+  /** Runs out before a new order could arrive (forward-plan isLate): "Order now"; else overdue = "Order soon". */
+  late?: boolean;
   /** "Review order": Order now for this supplier. */
   link: string;
 };
 
 /** Free: one row of its top-10 preview (read-only). */
-export type MondayPreviewRow = { title: string; variant: string; qty: number; orderBy: DayKey; overdue: boolean };
+export type MondayPreviewRow = { title: string; variant: string; qty: number; orderBy: DayKey; overdue: boolean; late?: boolean };
 
 export type MondayOrders =
   | {
@@ -271,11 +273,11 @@ export function mondayOrderSubject(orders: MondayOrders, tr: (k: string) => stri
     const date = formatEmailDay(last, numLocale, false);
     return n === 1 ? fill(tr("1 product to order by {date}"), { date }) : fill(tr("{n} products to order by {date}"), { n: count(n), date });
   }
-  const overdue = orders.lines.find((l) => l.overdue);
-  if (overdue) return fill(tr("{supplier} order is overdue · {units} units"), { supplier: overdue.name, units: count(overdue.units) });
+  const late = orders.lines.find((l) => l.late ?? l.overdue);
+  if (late) return fill(tr("{supplier}: order now · {units} units"), { supplier: late.name, units: count(late.units) });
   if (orders.lines.length) {
-    // No line is overdue here, so every line has a date.
-    const first = orders.lines.map((l) => l.orderBy ?? orders.today).sort()[0]!;
+    // No line runs out before a new order here; one only below its buffer (overdue) is due today.
+    const first = orders.lines.map((l) => (l.overdue ? orders.today : (l.orderBy ?? orders.today))).sort()[0]!;
     const day = formatEmailDay(first, numLocale);
     return orders.lines.length === 1
       ? fill(tr("1 order due this week · by {day}"), { day })
@@ -330,7 +332,8 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
           r.overdue ? tr("Due today") : r.orderBy === orders.today ? tr("Due today") : fill(tr("Due {date}"), { date: formatEmailDay(r.orderBy, numLocale, false) }),
         ].join(" · "),
         overdue: r.overdue,
-        flag: r.overdue ? tr("Overdue") : null,
+        // The app's status words (clarity pass): red only when it runs out before a new order could arrive.
+        flag: (r.late ?? r.overdue) ? tr("Order now") : r.overdue ? tr("Order soon") : null,
         link: null,
         label: null,
       })),
@@ -353,7 +356,7 @@ function orderBlock(orders: MondayOrders, tr: (k: string) => string, numLocale: 
         l.overdue || (l.orderBy ?? orders.today) === orders.today ? tr("Due today") : fill(tr("Due {date}"), { date: formatEmailDay(l.orderBy ?? orders.today, numLocale) }),
       ].join(" · "),
       overdue: l.overdue,
-      flag: l.overdue ? tr("Overdue") : null,
+      flag: (l.late ?? l.overdue) ? tr("Order now") : l.overdue ? tr("Order soon") : null,
       link: l.link,
       label: tr("Review order"),
     })),
@@ -391,14 +394,15 @@ export function mondaySummary(input: MondayEmailInput): MondaySummary {
   const numLocale = input.numberLocale || locale;
   const money = (v: number) => formatMoneyWhole(v, currency, numLocale, locale);
 
+  // The same two figures and titles as the Dashboard (clarity pass 2026-10-23).
   const labels: Record<MoneyCardKey, string> = {
-    atRisk: tr("Sales at risk (next 28 days)"),
-    lost90: tr("Lost sales (last 90 days)"),
-    cashStuck: tr("Cash tied up"),
-    soldOutTraffic: tr("Sales missed on sold-out pages (last 30 days)"),
+    atRisk: tr("Sales at risk, next 4 weeks"),
+    lost90: tr("Sales lost while sold out, last 90 days"),
+    cashStuck: tr("Cash tied up in slow stock"),
+    soldOutTraffic: tr("Sales missed on sold-out pages, last 30 days"),
   };
 
-  const rows = MONEY_CARDS.map((k) => {
+  const rows = DASHBOARD_MONEY.map((k) => {
     const now = input.now[k];
     const delta = input.before ? change(now, input.before[k]) : null;
     const rounded = delta == null ? null : Math.round(delta);

@@ -33,6 +33,10 @@
  * section teaches only when the store has two or more locations (otherwise nothing is shown).
  * Open orders are their own tab (/app/reorder/orders).
  */
+import { IntroWithPlan } from "../components/plan-basis";
+import { recordActivation } from "../models/activation.server";
+import { planBasisOrNull } from "../models/plan-basis.server";
+import type { PlanBasis } from "../lib/plan-basis-shared";
 import { useEffect, useMemo, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useNavigation, useSearchParams } from "react-router";
@@ -45,7 +49,7 @@ import { loadOrderPlan } from "../models/order-plan.server";
 import { readiness } from "../models/dashboard.server";
 import { OrderPlanTabs } from "../components/order-plan-tabs";
 import { AboveLastYearBadge, CantPlan, DueLabel, NoReorderConfirm, PlanNotReadyNote, PreviewLock, PreviewTable, StaleDrafts, WhyPopover, useNotReadyText } from "../components/order-plan";
-import { dueText, lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type PreviewRow } from "../lib/order-plan-shared";
+import { lockTeaser, previewRows, readOrderLink, shortDay, type LockTeaser, type PreviewRow } from "../lib/order-plan-shared";
 import { LocationSwitcher, switcherMode } from "../components/location-switcher";
 import { LOCKED_TRANSFERS, TransfersSection, type TransfersView } from "../components/transfers-section";
 import { loadTransfers } from "../models/transfers.server";
@@ -122,12 +126,15 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
   // Active locations: the switcher hides itself in a one-location store; transfers need two.
   const active = await activeLocationCount(shop);
   const transfersShown = showTransfers({ transfersEnabled: features.transfers, planningLocations: locations.length, activeLocations: active });
-  const [reorder, transfers, ready] = await Promise.all([
+  const [reorder, transfers, ready, basis] = await Promise.all([
     loadReorder(shop, selected, view.scope, planned, new Date(), link, parseCoverParams(url.searchParams.getAll("cover"), readCoverDays)),
     features.transfers && transfersShown ? loadTransfers(shop).then((x) => ({ enabled: true, ...x })) : Promise.resolve(LOCKED_TRANSFERS),
     readiness(shop),
+    planBasisOrNull(shop),
   ]);
   const only = supplierKey ? reorder.groups.find((g) => g.key === supplierKey) : undefined;
+  // First-session measurement: the first time order suggestions were on screen (sample data skipped).
+  if (reorder.groups.length > 0) void recordActivation(shop, "suggestions_seen");
   return {
     ...reorder,
     groups: only ? [only] : reorder.groups,
@@ -144,6 +151,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<ReorderPa
     showTransfers: transfersShown,
     preview: null,
     readiness: ready,
+    basis,
   };
 };
 
@@ -196,6 +204,8 @@ export const headers: HeadersFunction = (h) => boundary.headers(h);
 
 export type ReorderPageData = ReorderData & {
   enabled: boolean;
+  /** How we plan (clarity pass): the store's rules, said once under the title. */
+  basis?: PlanBasis | null;
   /** Free: the 10 most urgent products (read only); null on Growth / Pro. */
   preview?: PreviewRow[] | null;
   /** Free: the rest of the plan in numbers (the teaching lock). */
@@ -260,7 +270,7 @@ export default function Reorder() {
           ? fill(t("What {location} needs to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums."), {
               location: location.name,
             })
-          : t("Everything to order in the next 7 days, from each supplier, each line on its own order-by date. Quantities include case packs and the supplier's minimums.")
+          : <IntroWithPlan text={t("What to order in the next 7 days, by supplier. Quantities include case packs and minimums.")} basis={data.basis} />
       }
     >
       {/* Tabs first, then this page's notes: the tab strip no longer jumps between tabs (2026-10-20). */}
@@ -461,14 +471,18 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
     <FormCard
       title={title}
       sub={`${t("Lead time")}: ${leadLabel} · ${
-        // Merchant audit 2026-10-18: an overdue supplier said "Order by: —"; the shared label rule
-        // (dueText) says "Overdue since 12 Oct" or "Overdue · sold out since …" instead.
-        group.overdue ? dueText(group.orderBy, today, t, locale, true, group.lines.find((l) => l.overdue && l.dueNote)?.dueNote ?? null) : `${t("Order by")}: ${formatDay(group.orderBy, locale)}`
+        // Clarity pass (2026-10-23): what the supplier's lines mean, not "Overdue since 11 Oct" beside
+        // products with weeks of stock — red only when something runs out before a new order lands.
+        group.late
+          ? t("some products run out before a new order could arrive")
+          : group.overdue
+            ? t("order this week to keep a small buffer")
+            : `${t("Order by")}: ${formatDay(group.orderBy, locale)}`
       }`}
       action={
-        group.kind === "vendor" || group.selected || group.late ? (
+        group.kind === "vendor" || group.selected || group.late || group.overdue ? (
           <span className="keha-inline">
-            {group.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+            {group.late ? <s-badge tone="critical">{t("Order now")}</s-badge> : group.overdue ? <s-badge tone="warning">{t("Order soon")}</s-badge> : null}
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
             {group.selected && (
               <s-badge tone="info">{group.lines.some((l) => l.fromPlanner) ? t("From the Season planner") : t("From your action list")}</s-badge>
@@ -601,7 +615,7 @@ function GroupCard({ group, location, today }: { group: ReorderGroup; location: 
             {/* The supplier order builder (online plan): here when there is no "Can join this order" list to carry it. */}
             {!location && joinable.length === 0 && (
               <s-button variant="secondary" {...link(builderLink(group.key, null, group.coverDays))}>
-                {t("Build purchase order")}
+                {t("Add products due later")}
               </s-button>
             )}
             <s-button variant="primary" disabled={flag(totals.units === 0 || fetcher.state !== "idle")} loading={flag(fetcher.state !== "idle")} onClick={() => setConfirm(true)}>
@@ -677,7 +691,7 @@ function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine
           </button>
           {builder && (
             <s-button variant="secondary" {...link(builderLink(group.key, null, group.coverDays))}>
-              {t("Build purchase order")}
+              {t("Add products due later")}
             </s-button>
           )}
         </div>
@@ -707,7 +721,7 @@ function JoinList({ lines, group, today, onJoin, builder }: { lines: ReorderLine
                         </s-stack>
                       </s-table-cell>
                       <s-table-cell>
-                        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />
+                        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} outlook={l.outlook} />
                       </s-table-cell>
                       <s-table-cell>{formatCount(l.suggested, locale)}</s-table-cell>
                       <s-table-cell>{formatPrice(l.unitCostStore === null ? null : l.unitCostStore * l.suggested, group.storeCurrency, locale)}</s-table-cell>
@@ -779,7 +793,7 @@ function LineRow({
         </div>
       </s-table-cell>
       <s-table-cell>
-        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} />
+        <DueLabel deadline={l.orderBy} overdue={l.overdue} today={today} note={l.dueNote} outlook={l.outlook} />
       </s-table-cell>
       <s-table-cell>{formatCount(l.onHand, locale)}</s-table-cell>
       <s-table-cell>

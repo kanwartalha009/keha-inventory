@@ -740,7 +740,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-heading>{groupName(group, t)}</s-heading>
             {group.kind === "vendor" && <s-badge tone="neutral">{t("No supplier — grouped by vendor")}</s-badge>}
-            {group.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+            {group.late && <s-badge tone="critical">{t("Order now")}</s-badge>}
           </s-stack>
           <s-link {...link(reorderLink(group.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), scenarioId ? { scenarioId, groupKey: group.key } : undefined))}>{t("Add to purchase order")}</s-link>
         </s-stack>
@@ -798,7 +798,7 @@ function GroupTable({ group, currency, scenarioId }: { group: PlannerGroup; curr
                   <s-table-cell>
                     <s-stack direction="block" gap="none">
                       <span>{formatDay(l.orderBy, locale)}</span>
-                      {l.late && <s-badge tone="critical">{t("Overdue")}</s-badge>}
+                      {l.late && <s-badge tone="critical">{t("Order now")}</s-badge>}
                     </s-stack>
                   </s-table-cell>
                   <s-table-cell>
